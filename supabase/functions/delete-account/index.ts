@@ -23,6 +23,15 @@ const SWEEP_AVATAR_FOLDER_LIMIT = 100;
 /** The purge stage only support can resolve; `process_due` never retries it. */
 const NEEDS_SUPPORT_STAGE = 'billing_not_found';
 const NEEDS_SUPPORT_REASON = 'billing_subscription_not_found';
+/**
+ * A purge reported success but the request row is still there. `user_id` is
+ * `REFERENCES auth.users ON DELETE CASCADE`, so the row can only survive if
+ * the auth user was NOT deleted — `deleteUser` answered "not found" for a live
+ * user. The account still holds personal data, so the request is parked
+ * `pending` (never `executed`): the user keeps seeing it and can cancel, the
+ * hourly batch skips it, and the overdue alert keeps naming it.
+ */
+const SURVIVED_PURGE_REASON = 'request_survived_purge';
 
 interface DeleteAccountAuthClient {
   auth: {
@@ -75,6 +84,11 @@ function defaultDeleteAccountDependencies(): DeleteAccountHandlerDependencies {
 interface ClaimedRequest {
   id: string;
   user_id: string;
+  /**
+   * The claim stamp this run took. Every later write is fenced on it, so a
+   * run that lost the row to a reclaim cannot flip the winner's request.
+   */
+  claimed_at: string | null;
 }
 
 type ClaimOutcome =
@@ -98,11 +112,21 @@ async function claimPending(
     .eq('id', requestId)
     .eq('status', 'pending')
     .lte('scheduled_for', nowIso)
-    .select('id, user_id');
+    .select('id, user_id, claimed_at');
   return claimOutcome(data, error);
 }
 
-/** Re-takes a claim whose run crashed (still `executing`, claim too old). */
+/**
+ * Re-takes a claim whose run crashed: still `executing` and either claimed
+ * too long ago or carrying no `claimed_at` at all. A NULL stamp has no
+ * default and no CHECK behind it (a support fix or a partial write can leave
+ * one), and it matches neither the due query nor a `claimed_at < cutoff`
+ * sweep, so without this it would sit `executing` for ever.
+ */
+function stuckClaimFilter(cutoffIso: string): string {
+  return `claimed_at.is.null,claimed_at.lt.${cutoffIso}`;
+}
+
 async function reclaimStuck(
   admin: SupabaseClient,
   requestId: string,
@@ -114,38 +138,57 @@ async function reclaimStuck(
     .update({ claimed_at: nowIso })
     .eq('id', requestId)
     .eq('status', 'executing')
-    .lt('claimed_at', cutoffIso)
-    .select('id, user_id');
+    .or(stuckClaimFilter(cutoffIso))
+    .select('id, user_id, claimed_at');
   return claimOutcome(data, error);
 }
 
 /**
- * After a failed purge (the user and the request still exist): back to
- * `pending`, so the next run or the user can retry, or the user can cancel.
- * A failure only support can resolve is marked so `process_due` skips it.
+ * Puts a claimed request back to `pending` (fenced on the claim this run
+ * took), so the next run or the user can retry, or the user can cancel.
+ * `last_attempt_at` is stamped so the due query can order a repeatedly
+ * failing row behind rows that have never been attempted. A failure only
+ * support can resolve is marked so `process_due` skips it entirely.
+ *
+ * Returns the number of rows it actually released — 0 means the row is gone
+ * (cascaded away with the auth user) or is held by another run.
  */
 async function releaseClaim(
   admin: SupabaseClient,
   request: ClaimedRequest,
-  result: Extract<PurgeResult, { ok: false }>,
-): Promise<void> {
-  const needsSupport = result.stage === NEEDS_SUPPORT_STAGE;
-  const { error } = await admin
+  needsSupportReason: string | null,
+): Promise<number> {
+  const { data, error } = await admin
     .from('deletion_requests')
     .update({
       status: 'pending',
       claimed_at: null,
-      ...(needsSupport ? { needs_support_reason: NEEDS_SUPPORT_REASON } : {}),
+      last_attempt_at: new Date().toISOString(),
+      ...(needsSupportReason ? { needs_support_reason: needsSupportReason } : {}),
     })
     .eq('id', request.id)
-    .eq('status', 'executing');
+    .eq('status', 'executing')
+    .eq('claimed_at', request.claimed_at)
+    .select('id');
   if (error) {
     console.error('[DELETION_ALERT] claim_revert_failed', {
       user_id: request.user_id,
       request_id: request.id,
       error,
     });
+    return 0;
   }
+  return ((data ?? []) as unknown[]).length;
+}
+
+/** Releases a failed purge's claim and logs the support alert if there is one. */
+async function releaseFailedClaim(
+  admin: SupabaseClient,
+  request: ClaimedRequest,
+  result: Extract<PurgeResult, { ok: false }>,
+): Promise<void> {
+  const needsSupport = result.stage === NEEDS_SUPPORT_STAGE;
+  await releaseClaim(admin, request, needsSupport ? NEEDS_SUPPORT_REASON : null);
   if (needsSupport) {
     console.error(
       `[DELETION_ALERT] needs_support ${NEEDS_SUPPORT_REASON} user=${request.user_id}`,
@@ -155,28 +198,21 @@ async function releaseClaim(
 }
 
 /**
- * After a successful purge the request normally cascaded away with the user.
- * If it did not (the auth user was already gone, or the FK does not cascade),
- * close it so it is not reclaimed every 15 minutes, and alert.
+ * After a successful purge the request cascades away with the auth user. If
+ * it is still there the user was NOT deleted (see SURVIVED_PURGE_REASON), so
+ * the row is parked back on `pending` with that reason instead of being
+ * closed as `executed`: closing it would strand a live account that can
+ * neither be retried, cancelled nor re-requested.
+ *
+ * Returns true when the request survived (i.e. the account is still there).
  */
-async function finishClaim(admin: SupabaseClient, request: ClaimedRequest): Promise<void> {
-  const { data, error } = await admin
-    .from('deletion_requests')
-    .update({ status: 'executed', executed_at: new Date().toISOString() })
-    .eq('id', request.id)
-    .eq('status', 'executing')
-    .select('id');
-  if (error) {
-    console.error('[DELETION_ALERT] claim_finish_failed', {
-      user_id: request.user_id,
-      request_id: request.id,
-      error,
-    });
-  } else if (((data ?? []) as unknown[]).length > 0) {
-    console.error(`[DELETION_ALERT] request_survived_purge user=${request.user_id}`, {
-      request_id: request.id,
-    });
-  }
+async function closeClaim(admin: SupabaseClient, request: ClaimedRequest): Promise<boolean> {
+  const released = await releaseClaim(admin, request, SURVIVED_PURGE_REASON);
+  if (released === 0) return false;
+  console.error(`[DELETION_ALERT] ${SURVIVED_PURGE_REASON} user=${request.user_id}`, {
+    request_id: request.id,
+  });
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,17 +220,40 @@ async function finishClaim(admin: SupabaseClient, request: ClaimedRequest): Prom
 // private.invoke_edge_function with x-cron-secret.
 // ---------------------------------------------------------------------------
 
+/**
+ * Counts only. pg_net persists this body in `net._http_response`, so the
+ * UUIDs of accounts that were just erased must not appear in it (they would
+ * outlive the tables the purge emptied). The per-user detail stays in the
+ * Edge logs, which is where the [DELETION_ALERT] channel already reads it.
+ */
 export interface ProcessDueReport {
-  purged: string[];
-  failed: { user_id: string; stage: string }[];
-  reclaimed: string[];
-  needs_support: string[];
+  purged: number;
+  failed: number;
+  failed_by_stage: Record<string, number>;
+  reclaimed: number;
+  needs_support: number;
   overdue: number;
+  needs_support_overdue: number;
   residue: {
     deleted: Record<string, number>;
+    skipped: string[];
     avatar_folders_removed: number;
     failed: boolean;
   };
+}
+
+/** Runs the purge, converting a throw into a releasable failure. */
+async function runPurge(
+  deps: DeleteAccountHandlerDependencies,
+  admin: SupabaseClient,
+  userId: string,
+): Promise<PurgeResult> {
+  try {
+    return await deps.purge(admin, userId);
+  } catch (err) {
+    // Unknown progress; every step is idempotent, so release for a retry.
+    return { ok: false, stage: 'delete_user', billingCancelled: false, detail: String(err) };
+  }
 }
 
 async function purgeClaimed(
@@ -203,30 +262,29 @@ async function purgeClaimed(
   request: ClaimedRequest,
   report: ProcessDueReport,
 ): Promise<void> {
-  let result: PurgeResult;
-  try {
-    result = await deps.purge(admin, request.user_id);
-  } catch (err) {
-    // Unknown progress; every step is idempotent, so release for a retry.
-    result = { ok: false, stage: 'delete_user', billingCancelled: false, detail: String(err) };
-  }
+  const result = await runPurge(deps, admin, request.user_id);
   if (result.ok) {
-    await finishClaim(admin, request);
-    report.purged.push(request.user_id);
     if (result.residualTables.length > 0) {
       console.error('[DELETION_ALERT] account deleted with residual rows', {
         user_id: request.user_id,
         residual_tables: result.residualTables,
       });
     }
+    if (await closeClaim(admin, request)) {
+      // The account is still there: not a purge, a support case.
+      report.needs_support++;
+      return;
+    }
+    report.purged++;
     console.log(`[DELETE_DUE] purged user=${request.user_id}`, {
       billing_cancelled: result.billingCancelled,
     });
     return;
   }
-  await releaseClaim(admin, request, result);
-  if (result.stage === NEEDS_SUPPORT_STAGE) report.needs_support.push(request.user_id);
-  report.failed.push({ user_id: request.user_id, stage: result.stage });
+  await releaseFailedClaim(admin, request, result);
+  if (result.stage === NEEDS_SUPPORT_STAGE) report.needs_support++;
+  report.failed++;
+  report.failed_by_stage[result.stage] = (report.failed_by_stage[result.stage] ?? 0) + 1;
   console.error(`[DELETE_DUE] purge failed user=${request.user_id}`, {
     stage: result.stage,
     billing_cancelled: result.billingCancelled,
@@ -248,9 +306,19 @@ async function sweepResidue(admin: SupabaseClient, report: ProcessDueReport): Pr
     if (error) throw error;
     const sweep = (data ?? {}) as {
       deleted?: Record<string, number>;
+      skipped?: string[];
       orphan_avatar_folders?: string[];
     };
     report.residue.deleted = sweep.deleted ?? {};
+    report.residue.skipped = sweep.skipped ?? [];
+    if (report.residue.skipped.length > 0) {
+      // A table the sweep could not touch (schema drift) is residue that
+      // silently survives, so it is an alert and not a clean run.
+      report.residue.failed = true;
+      console.error('[DELETION_ALERT] residue_sweep_skipped_tables', {
+        skipped: report.residue.skipped,
+      });
+    }
     for (const folder of sweep.orphan_avatar_folders ?? []) {
       if (await removeAvatars(admin, folder)) {
         report.residue.avatar_folders_removed++;
@@ -273,12 +341,14 @@ async function processDue(
   deps: DeleteAccountHandlerDependencies,
 ): Promise<ProcessDueReport> {
   const report: ProcessDueReport = {
-    purged: [],
-    failed: [],
-    reclaimed: [],
-    needs_support: [],
+    purged: 0,
+    failed: 0,
+    failed_by_stage: {},
+    reclaimed: 0,
+    needs_support: 0,
     overdue: 0,
-    residue: { deleted: {}, avatar_folders_removed: 0, failed: false },
+    needs_support_overdue: 0,
+    residue: { deleted: {}, skipped: [], avatar_folders_removed: 0, failed: false },
   };
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
@@ -289,10 +359,10 @@ async function processDue(
   //    deleted), so running one again is safe.
   const { data: stuck, error: stuckError } = await admin
     .from('deletion_requests')
-    .select('id, user_id')
+    .select('id, user_id, claimed_at')
     .eq('status', 'executing')
-    .lt('claimed_at', cutoffIso)
-    .order('claimed_at', { ascending: true })
+    .or(stuckClaimFilter(cutoffIso))
+    .order('claimed_at', { ascending: true, nullsFirst: true })
     .limit(PROCESS_DUE_BATCH_SIZE);
   if (stuckError) throw stuckError;
   // Requests attempted in this run; a failed one waits for the next run.
@@ -309,19 +379,24 @@ async function processDue(
     console.error(`[DELETION_ALERT] reclaimed_stuck_claim user=${row.user_id}`, {
       request_id: row.id,
     });
-    report.reclaimed.push(row.user_id);
+    report.reclaimed++;
     await purgeClaimed(admin, deps, claim.request, report);
   }
 
-  // 2. Due requests, oldest first; requests waiting on support are skipped.
-  const remaining = PROCESS_DUE_BATCH_SIZE - report.reclaimed.length;
+  // 2. Due requests; requests waiting on support are skipped. Ordered by
+  //    last_attempt_at NULLS FIRST so a row that keeps failing is retried
+  //    behind every request that has never been attempted — ten poisoned
+  //    rows cannot take the whole batch every hour. Among never-attempted
+  //    rows this is still oldest scheduled_for first.
+  const remaining = PROCESS_DUE_BATCH_SIZE - report.reclaimed;
   if (remaining > 0) {
     const { data: due, error: dueError } = await admin
       .from('deletion_requests')
-      .select('id, user_id')
+      .select('id, user_id, claimed_at')
       .eq('status', 'pending')
       .lte('scheduled_for', nowIso)
       .is('needs_support_reason', null)
+      .order('last_attempt_at', { ascending: true, nullsFirst: true })
       .order('scheduled_for', { ascending: true })
       .limit(remaining);
     if (dueError) throw dueError;
@@ -339,17 +414,28 @@ async function processDue(
     }
   }
 
-  // 3. Anything still open well past its date (PR 68 runbook).
+  // 3. Anything still open well past its date (PR 68 runbook). A row parked
+  //    for support is expected to sit there until a human clears the reason,
+  //    so it alerts under its own tag instead of drowning the generic
+  //    `overdue` alert with an hourly repeat.
   const overdueCutoff = new Date(now - OVERDUE_ALERT_DAYS * 86_400_000).toISOString();
   const { data: overdue, error: overdueError } = await admin
     .from('deletion_requests')
-    .select('user_id, status, scheduled_for, claimed_at, needs_support_reason')
+    .select('user_id, status, scheduled_for, claimed_at, needs_support_reason, last_attempt_at')
     .in('status', ['pending', 'executing'])
     .lt('scheduled_for', overdueCutoff);
   if (overdueError) {
     console.error('[DELETION_ALERT] overdue_check_failed', { error: overdueError });
   } else {
     for (const row of (overdue ?? []) as Record<string, unknown>[]) {
+      if (row.needs_support_reason) {
+        report.needs_support_overdue++;
+        console.error(
+          `[DELETION_ALERT] needs_support_overdue ${row.needs_support_reason} user=${row.user_id}`,
+          row,
+        );
+        continue;
+      }
       report.overdue++;
       console.error(`[DELETION_ALERT] overdue user=${row.user_id}`, row);
     }
@@ -466,10 +552,12 @@ async function deleteAccountHandler(
       return json({ error: 'Deletion request is no longer pending' }, 409);
     }
 
-    const result = await deps.purge(supabaseAdmin, userId);
+    // A throw releases the claim too (runPurge), so a crash in the purge
+    // cannot leave the row `executing` until the 15-minute cron reclaim.
+    const result = await runPurge(deps, supabaseAdmin, userId);
     if (!result.ok) {
       // deleteUser did not succeed, so the user and the request still exist.
-      await releaseClaim(supabaseAdmin, claim.request, result);
+      await releaseFailedClaim(supabaseAdmin, claim.request, result);
       console.error('[DELETE_ACCOUNT] purge failed:', {
         user_id: userId,
         stage: result.stage,
@@ -505,12 +593,20 @@ async function deleteAccountHandler(
       return json({ error: `Failed to delete account. ${retryText}` }, 500, retry);
     }
 
-    await finishClaim(supabaseAdmin, claim.request);
     if (result.residualTables.length > 0) {
       console.error('[DELETION_ALERT] account deleted with residual rows', {
         user_id: userId,
         residual_tables: result.residualTables,
       });
+    }
+    if (await closeClaim(supabaseAdmin, claim.request)) {
+      // The request row is still there, so the auth user is too: the account
+      // was NOT erased. Never report success — the SPA would sign the user
+      // out of a live account and show the deletion as done.
+      return json({
+        error: 'Your account could not be fully deleted. It has been flagged for our support team; please contact support so we can finish it.',
+        code: SURVIVED_PURGE_REASON,
+      }, 500);
     }
     console.log(`Account deleted successfully for user ${userId}`);
     return json({ success: true }, 200);

@@ -1,13 +1,15 @@
 -- Due account deletion pgTAP (KD-11, PR 35; 20260920003500):
 --   * deletion_requests: the 'executing' claim status, claimed_at,
---     needs_support_reason; one status CHECK;
+--     needs_support_reason, last_attempt_at; one status CHECK;
 --   * the claim is conditional and the user's cancel is refused while claimed;
 --   * public.sweep_deleted_account_residue: definer, search_path pinned,
 --     service_role only; removes FK-less rows of missing users only and
 --     lists their avatar folders;
 --   * private.schedule_due_deletion_job: owner-only; with pg_cron installed
---     in this transaction, schedules `delete-due-accounts` hourly once and
---     repairs a drifted job in place.
+--     in this transaction, schedules `delete-due-accounts` hourly once,
+--     INACTIVE (Operator Action 7 activates it after reviewing the overdue
+--     preview), and repairs a drifted job in place without touching the
+--     active flag.
 --
 -- Run locally with `supabase test db`.
 
@@ -25,6 +27,10 @@ SELECT col_type_is('public', 'deletion_requests', 'claimed_at', 'timestamp with 
     'claimed_at is timestamptz');
 SELECT has_column('public', 'deletion_requests', 'needs_support_reason',
     'deletion_requests.needs_support_reason exists');
+SELECT has_column('public', 'deletion_requests', 'last_attempt_at',
+    'deletion_requests.last_attempt_at exists');
+SELECT col_type_is('public', 'deletion_requests', 'last_attempt_at', 'timestamp with time zone',
+    'last_attempt_at is timestamptz');
 
 SELECT is(
     (SELECT count(*)::int FROM pg_constraint
@@ -173,10 +179,15 @@ INSERT INTO public.paddle_webhook_events (event_type, user_id, payload) VALUES
      '{"data":{"custom_data":{"user_id":"not-a-uuid"}}}'::jsonb);
 INSERT INTO public.subscription_events (user_id, operation, row_snapshot) VALUES
     ('35353535-0000-4000-8000-0000000000dd', 'DELETE', '{}'::jsonb);
+INSERT INTO storage.buckets (id, name) VALUES ('due-deletion-other', 'due-deletion-other')
+ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.objects (bucket_id, name) VALUES
     ('avatars', '35353535-0000-4000-8000-0000000000dd/avatar.png'),
+    ('avatars', '35353535-0000-4000-8000-0000000000de/avatar.png'),
     ('avatars', '35353535-0000-4000-8000-000000000002/avatar.png'),
-    ('avatars', 'not-a-user-folder/file.png');
+    ('avatars', 'not-a-user-folder/file.png'),
+    -- Same orphan-uuid folder shape, different bucket: not an avatar.
+    ('due-deletion-other', '35353535-0000-4000-8000-0000000000df/file.png');
 
 CREATE TEMP TABLE sweep_result AS
 SELECT public.sweep_deleted_account_residue(100) AS r;
@@ -197,6 +208,43 @@ SELECT ok(
       @> '["not-a-user-folder"]'::jsonb,
     'only avatar folders of missing users are listed'
 );
+-- The bucket_id = 'avatars' predicate: the same orphan-uuid folder shape in
+-- another bucket is never handed to the Storage remove (R-20).
+SELECT ok(
+    NOT (SELECT r->'orphan_avatar_folders' FROM sweep_result)
+      @> '["35353535-0000-4000-8000-0000000000df"]'::jsonb,
+    'folders outside the avatars bucket are not listed'
+);
+-- p_avatar_limit really caps the per-run folder scan (R-20): two orphan
+-- folders exist, a limit of 1 returns one.
+SELECT is(
+    jsonb_array_length(public.sweep_deleted_account_residue(1)->'orphan_avatar_folders'),
+    1,
+    'p_avatar_limit caps the orphan folder scan'
+);
+SELECT is(
+    jsonb_array_length(public.sweep_deleted_account_residue(100)->'orphan_avatar_folders'),
+    2,
+    'without the cap both orphan folders are listed'
+);
+-- rate_limit_tracking is swept even where no orphan row can be seeded (its
+-- FK cascades locally; prod may lack the FK, which is what the sweep is for).
+SELECT ok(
+    jsonb_exists((SELECT r->'deleted' FROM sweep_result), 'rate_limit_tracking'),
+    'rate_limit_tracking is swept'
+);
+SELECT ok(
+    jsonb_exists((SELECT r->'deleted' FROM sweep_result), 'subscription_events')
+    AND jsonb_exists((SELECT r->'deleted' FROM sweep_result), 'sync_tombstones')
+    AND jsonb_exists((SELECT r->'deleted' FROM sweep_result), 'paddle_webhook_events'),
+    'every FK-less table is swept'
+);
+-- Nothing was skipped on a complete schema; a skip is reported, not silent.
+SELECT is(
+    (SELECT r->'skipped' FROM sweep_result),
+    '[]'::jsonb,
+    'no table is skipped on a schema that has them all'
+);
 SELECT is(
     (SELECT count(*)::int FROM public.sync_tombstones
      WHERE user_id = '35353535-0000-4000-8000-0000000000dd'),
@@ -209,11 +257,14 @@ SELECT is(
     1,
     'a live user''s tombstones stay'
 );
+-- Only the user_id column rule. A row whose sole link is the client-supplied
+-- checkout custom_data is NOT swept: an event naming a user that never
+-- existed is exactly what support and fraud review need (R-5).
 SELECT set_eq(
     $$ SELECT event_type FROM public.paddle_webhook_events WHERE event_type LIKE 'due-deletion-%' $$,
     $$ VALUES ('due-deletion-live'), ('due-deletion-null'), ('due-deletion-payload-live'),
-              ('due-deletion-payload-junk') $$,
-    'only webhook rows naming a missing user (column or checkout custom data) are deleted'
+              ('due-deletion-payload-junk'), ('due-deletion-payload-orphan') $$,
+    'only webhook rows whose user_id column names a missing user are deleted'
 );
 SELECT is(
     (SELECT count(*)::int FROM public.subscription_events
@@ -243,15 +294,33 @@ SELECT results_eq(
     'delete-due-accounts runs hourly through private.invoke_edge_function with mode process_due'
 );
 
+-- R-13/R-26: the job is created INACTIVE, so applying the migration cannot
+-- start irreversibly deleting accounts before the operator has reviewed the
+-- overdue preview. Operator Action 7 activates it.
+SELECT is(
+    (SELECT active FROM cron.job WHERE jobname = 'delete-due-accounts'),
+    false,
+    'a newly created delete-due-accounts job is inactive until the operator activates it'
+);
+
 CREATE TEMP TABLE due_jobid AS SELECT jobid FROM cron.job WHERE jobname = 'delete-due-accounts';
+-- The operator activates it (Operator Action 7) and the schedule drifts.
 SELECT cron.alter_job(
-    (SELECT jobid FROM due_jobid), schedule := '0 0 * * *', active := false
+    (SELECT jobid FROM due_jobid), schedule := '0 0 * * *', active := true
 );
 SELECT private.schedule_due_deletion_job();
 SELECT results_eq(
     $$ SELECT jobid, schedule, active FROM cron.job WHERE jobname = 'delete-due-accounts' $$,
-    $$ SELECT jobid, '17 * * * *'::text, false FROM due_jobid $$,
-    're-running keeps one job, repairs its schedule in place and keeps it paused'
+    $$ SELECT jobid, '17 * * * *'::text, true FROM due_jobid $$,
+    're-running keeps one job, repairs its schedule in place and never pauses a live job'
+);
+-- And a re-apply of a paused job leaves it paused.
+SELECT cron.alter_job((SELECT jobid FROM due_jobid), active := false);
+SELECT private.schedule_due_deletion_job();
+SELECT is(
+    (SELECT active FROM cron.job WHERE jobname = 'delete-due-accounts'),
+    false,
+    're-running never resumes a job the operator paused'
 );
 
 SELECT * FROM finish();

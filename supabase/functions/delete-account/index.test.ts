@@ -6,7 +6,11 @@ import {
   type PurgeUserDependencies,
 } from "../_shared/accountPurge.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
-import { createDeleteAccountHandler } from "./index.ts";
+import {
+  createDeleteAccountHandler,
+  PROCESS_DUE_BATCH_SIZE,
+  STUCK_CLAIM_MINUTES,
+} from "./index.ts";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_USER_ID = "22222222-2222-4222-8222-222222222222";
@@ -44,6 +48,7 @@ interface FakeRequest {
   executed_at?: string | null;
   claimed_at?: string | null;
   needs_support_reason?: string | null;
+  last_attempt_at?: string | null;
 }
 
 interface FakeSubscription {
@@ -64,14 +69,20 @@ interface FakeState {
   subscription: FakeSubscription | null;
   /** Error returned by the subscriptions lookup. */
   subscriptionError: FakeError | null;
-  /** Avatar file names by folder (user id). */
+  /** Avatar object names by folder key (`<uid>` or `<uid>/<prefix>`). */
   avatarFolders: Record<string, string[]>;
+  /** true: storage.remove reports success but deletes nothing. */
+  avatarRemoveNoop: boolean;
   /** USER_ID's avatar files (accessor over `avatarFolders`). */
   avatars: string[];
   /** Users removed by auth.admin.deleteUser. */
   deletedUsers: string[];
   /** What public.sweep_deleted_account_residue returns. */
-  sweepResult: { deleted: Record<string, number>; orphan_avatar_folders: string[] };
+  sweepResult: {
+    deleted: Record<string, number>;
+    skipped: string[];
+    orphan_avatar_folders: string[];
+  };
   sweepError: FakeError | null;
   /** Awaited before a deletion_requests list select resolves. */
   beforeListSelect?: (filters: [string, unknown][]) => Promise<void> | void;
@@ -98,8 +109,9 @@ function fakeState(overrides: Partial<FakeState> = {}): FakeState {
     deletionRequests: [],
     subscriptions: {},
     avatarFolders: {},
+    avatarRemoveNoop: false,
     deletedUsers: [],
-    sweepResult: { deleted: {}, orphan_avatar_folders: [] },
+    sweepResult: { deleted: {}, skipped: [], orphan_avatar_folders: [] },
     sweepError: null,
     subscriptionError: null,
     rateLimitAllowed: true,
@@ -147,6 +159,7 @@ function fakeState(overrides: Partial<FakeState> = {}): FakeState {
     executed_at: null,
     claimed_at: null,
     needs_support_reason: null,
+    last_attempt_at: null,
   };
   state.subscription = null;
   state.avatars = ["avatar.png"];
@@ -172,29 +185,46 @@ function requestFor(userId: string, overrides: Partial<FakeRequest> = {}): FakeR
     executed_at: null,
     claimed_at: null,
     needs_support_reason: null,
+    last_attempt_at: null,
     ...overrides,
   };
+}
+
+/** The `.or("a.is.null,b.lt.x")` disjunction, stored as one filter entry. */
+const OR_FILTER = "__or";
+
+function matchesTerm(row: Record<string, unknown>, key: string, value: unknown): boolean {
+  const [, column, op] = key.match(/^(.+?)( in| is|!=|<=|<)?$/) ?? [];
+  const actual = row[column] ?? null;
+  switch (op) {
+    case "!=":
+      return actual !== value;
+    case "<":
+      return actual !== null && String(actual) < String(value);
+    case "<=":
+      return actual !== null && String(actual) <= String(value);
+    case " in":
+      return (value as unknown[]).includes(actual);
+    case " is":
+      return actual === value;
+    default:
+      return actual === value;
+  }
 }
 
 /** PostgREST-style filter keys: `col` (eq), `col!=`, `col<`, `col<=`, `col in`, `col is`. */
 function rowMatches(row: Record<string, unknown>, filters: [string, unknown][]): boolean {
   return filters.every(([key, value]) => {
-    const [, column, op] = key.match(/^(.+?)( in| is|!=|<=|<)?$/) ?? [];
-    const actual = row[column] ?? null;
-    switch (op) {
-      case "!=":
-        return actual !== value;
-      case "<":
-        return actual !== null && String(actual) < String(value);
-      case "<=":
-        return actual !== null && String(actual) <= String(value);
-      case " in":
-        return (value as unknown[]).includes(actual);
-      case " is":
-        return actual === value;
-      default:
-        return actual === value;
-    }
+    if (key !== OR_FILTER) return matchesTerm(row, key, value);
+    // `col.op.value` terms, any of which may match.
+    return String(value).split(",").some((term) => {
+      const [column, op, ...rest] = term.split(".");
+      const raw = rest.join(".");
+      if (op === "is") return matchesTerm(row, `${column} is`, raw === "null" ? null : raw);
+      if (op === "lt") return matchesTerm(row, `${column}<`, raw);
+      if (op === "eq") return matchesTerm(row, column, raw);
+      throw new Error(`fake: unsupported or() operator ${op}`);
+    });
   });
 }
 
@@ -202,7 +232,7 @@ class FakeQuery {
   private filters: [string, unknown][] = [];
   private returnRows = false;
   private headCount = false;
-  private orderBy: { column: string; ascending: boolean } | null = null;
+  private orderBy: { column: string; ascending: boolean; nullsFirst: boolean }[] = [];
   private maxRows: number | null = null;
   constructor(
     private state: FakeState,
@@ -241,8 +271,18 @@ class FakeQuery {
     return this;
   }
 
-  order(column: string, options: { ascending?: boolean } = {}) {
-    this.orderBy = { column, ascending: options.ascending ?? true };
+  or(expression: string) {
+    this.filters.push([OR_FILTER, expression]);
+    return this;
+  }
+
+  order(column: string, options: { ascending?: boolean; nullsFirst?: boolean } = {}) {
+    this.orderBy.push({
+      column,
+      ascending: options.ascending ?? true,
+      // PostgREST/Postgres default: NULLs last on ASC.
+      nullsFirst: options.nullsFirst ?? false,
+    });
     return this;
   }
 
@@ -310,7 +350,11 @@ class FakeQuery {
     for (const request of matched) Object.assign(request, this.values);
     return {
       data: this.returnRows
-        ? matched.map((r) => ({ id: r.id, user_id: r.user_id ?? USER_ID }))
+        ? matched.map((r) => ({
+          id: r.id,
+          user_id: r.user_id ?? USER_ID,
+          claimed_at: r.claimed_at ?? null,
+        }))
         : null,
       error: null,
     };
@@ -318,12 +362,18 @@ class FakeQuery {
 
   private async resolveList(): Promise<{ data: unknown; error: unknown }> {
     let rows = this.matchingRequests().map((r) => ({ ...r, user_id: r.user_id ?? USER_ID }));
-    if (this.orderBy) {
-      const { column, ascending } = this.orderBy;
+    if (this.orderBy.length > 0) {
       rows = rows.sort((a, b) => {
-        const x = String((a as Record<string, unknown>)[column]);
-        const y = String((b as Record<string, unknown>)[column]);
-        return (x < y ? -1 : x > y ? 1 : 0) * (ascending ? 1 : -1);
+        for (const { column, ascending, nullsFirst } of this.orderBy) {
+          const x = (a as Record<string, unknown>)[column] ?? null;
+          const y = (b as Record<string, unknown>)[column] ?? null;
+          if (x === null && y === null) continue;
+          if (x === null) return nullsFirst ? -1 : 1;
+          if (y === null) return nullsFirst ? 1 : -1;
+          const cmp = String(x) < String(y) ? -1 : String(x) > String(y) ? 1 : 0;
+          if (cmp !== 0) return cmp * (ascending ? 1 : -1);
+        }
+        return 0;
       });
     }
     if (this.maxRows !== null) rows = rows.slice(0, this.maxRows);
@@ -411,14 +461,30 @@ function fakeAdmin(state: FakeState): SupabaseClient {
           list(prefix: string) {
             state.calls.push({ kind: "storage.list", prefix });
             return Promise.resolve({
-              data: (state.avatarFolders[prefix] ?? []).map((name) => ({ name })),
+              // Supabase reports a nested prefix as a placeholder with a null
+              // id; a real object carries one.
+              data: (state.avatarFolders[prefix] ?? [])
+                .filter((name) =>
+                  // An emptied prefix stops being listed, as in Storage.
+                  state.avatarFolders[`${prefix}/${name}`] === undefined ||
+                  state.avatarFolders[`${prefix}/${name}`].length > 0
+                )
+                .map((name) => ({
+                  name,
+                  id: state.avatarFolders[`${prefix}/${name}`] === undefined
+                    ? `obj-${prefix}/${name}`
+                    : null,
+                })),
               error: null,
             });
           },
           remove(paths: string[]) {
             state.calls.push({ kind: "storage.remove", paths });
+            if (state.avatarRemoveNoop) return Promise.resolve({ data: [], error: null });
             for (const path of paths) {
-              const [folder, name] = path.split("/");
+              const cut = path.lastIndexOf("/");
+              const folder = path.slice(0, cut);
+              const name = path.slice(cut + 1);
               state.avatarFolders[folder] = (state.avatarFolders[folder] ?? []).filter(
                 (file) => file !== name,
               );
@@ -1007,15 +1073,32 @@ function processDueState(overrides: Partial<FakeState> = {}): FakeState {
 const isPendingSelect = (filters: [string, unknown][]) =>
   filters.some(([c, v]) => c === "status" && v === "pending");
 
+const isExecutingSelect = (filters: [string, unknown][]) =>
+  filters.some(([c, v]) => c === "status" && v === "executing");
+
+function requestUpdates(state: FakeState): { values: Record<string, unknown>; filters: [string, unknown][] }[] {
+  return state.calls.flatMap((c) =>
+    c.kind === "update" && c.table === "deletion_requests"
+      ? [{ values: c.values, filters: c.filters }]
+      : []
+  );
+}
+
 Deno.test("process_due: a missing or wrong cron secret is refused with 401 and no side effect", async () => {
   const state = processDueState();
   const paddle = fakePaddle({});
   const handler = handlerFor(state, paddle.deps);
 
+  // The wrong secret is the same length as CRON_SECRET, so a comparison that
+  // only checks length cannot pass this on its own (R-22).
+  const wrongSecret: string = "test-cron-secres";
+  assertEquals(wrongSecret.length, CRON_SECRET.length);
+  assert(wrongSecret !== CRON_SECRET);
+
   for (const req of [
     cronPost(null),
     cronPost(""),
-    cronPost("wrong-secret"),
+    cronPost(wrongSecret),
     // A user JWT never authorises the batch mode.
     cronPost(null, { Authorization: "Bearer user-jwt" }),
   ]) {
@@ -1056,8 +1139,12 @@ Deno.test("process_due: two due requests are purged oldest first; a request not 
 
     assertEquals(res.status, 200, liveStatus);
     const body = await res.json();
-    assertEquals(body.purged, [USER_ID, OTHER_USER_ID], liveStatus);
-    assertEquals(body.failed, []);
+    // Counts only: pg_net stores this body, so no purged user id is in it.
+    assertEquals(body.purged, 2, liveStatus);
+    assertEquals(body.failed, 0);
+    assertEquals(body.failed_by_stage, {});
+    assertEquals(body.needs_support, 0);
+    assertEquals(JSON.stringify(body).includes(USER_ID), false, "no user id in the body");
     assertEquals(state.deletedUsers, [USER_ID, OTHER_USER_ID]);
     // One immediate cancel for the subscriber, mirrored before deleteUser.
     const cancels = paddle.calls.filter((c) => c.method === "POST");
@@ -1077,6 +1164,53 @@ Deno.test("process_due: two due requests are purged oldest first; a request not 
   }
 });
 
+Deno.test("process_due: the claim stamps claimed_at, and the release clears it and stamps last_attempt_at (R-16)", async () => {
+  const state = processDueState({
+    subscription: { paddle_subscription_id: SUBSCRIPTION_ID, status: "active" },
+  });
+  let claimedAtDuringPurge: string | null | undefined;
+  const paddle = fakePaddle({
+    cancelStatus: 500,
+    onGet: () => {
+      claimedAtDuringPurge = state.deletionRequest?.claimed_at ?? null;
+    },
+  });
+
+  await silenced(() => handlerFor(state, paddle.deps)(cronPost()));
+
+  assert(
+    typeof claimedAtDuringPurge === "string" && claimedAtDuringPurge.length > 0,
+    `the claim must stamp claimed_at, got ${JSON.stringify(claimedAtDuringPurge)}`,
+  );
+  const claim = requestUpdates(state).find((u) => u.values.status === "executing");
+  assertEquals(claim?.values.claimed_at, claimedAtDuringPurge);
+  // Released for the next run: the stamp is cleared and the attempt recorded.
+  assertEquals(state.deletionRequest?.status, "pending");
+  assertEquals(state.deletionRequest?.claimed_at, null);
+  assert(state.deletionRequest?.last_attempt_at, "the failed attempt is stamped");
+});
+
+Deno.test("process_due: a release is fenced on the claim it took, so it cannot flip a row another run holds (R-13)", async () => {
+  const state = processDueState({
+    subscription: { paddle_subscription_id: SUBSCRIPTION_ID, status: "active" },
+  });
+  // Mid-purge another run reclaims the row (a new claimed_at).
+  const otherRunClaim = "2030-01-01T00:00:00.000Z";
+  const paddle = fakePaddle({
+    cancelStatus: 500,
+    onGet: () => {
+      const row = state.deletionRequest;
+      if (row) row.claimed_at = otherRunClaim;
+    },
+  });
+
+  const res = await silenced(() => handlerFor(state, paddle.deps)(cronPost()));
+
+  assertEquals((await res.json()).failed, 1);
+  assertEquals(state.deletionRequest?.status, "executing", "the other run's claim survives");
+  assertEquals(state.deletionRequest?.claimed_at, otherRunClaim);
+});
+
 Deno.test("process_due: a Paddle failure leaves the request pending for the next hourly run", async () => {
   const state = processDueState({
     subscription: { paddle_subscription_id: SUBSCRIPTION_ID, status: "active" },
@@ -1086,15 +1220,16 @@ Deno.test("process_due: a Paddle failure leaves the request pending for the next
   const first = await silenced(() => handlerFor(state, fakePaddle({ cancelStatus: 500 }).deps)(cronPost()));
   assertEquals(first.status, 200);
   const report = await first.json();
-  assertEquals(report.purged, []);
-  assertEquals(report.failed, [{ user_id: USER_ID, stage: "billing_cancel" }]);
+  assertEquals(report.purged, 0);
+  assertEquals(report.failed, 1);
+  assertEquals(report.failed_by_stage, { billing_cancel: 1 });
   assertUntouched(state);
   assertEquals(state.deletionRequest?.needs_support_reason ?? null, null);
 
   // The next run retries it.
   const paddle = fakePaddle({});
   const second = await silenced(() => handlerFor(state, paddle.deps)(cronPost()));
-  assertEquals((await second.json()).purged, [USER_ID]);
+  assertEquals((await second.json()).purged, 1);
   assertEquals(paddle.calls.map((c) => c.method), ["GET", "POST"]);
   assertEquals(state.deletedUsers, [USER_ID]);
 });
@@ -1108,7 +1243,7 @@ Deno.test("process_due: billing_subscription_not_found is marked for support, al
     handlerFor(state, fakePaddle({ getStatus: 404 }).deps)(cronPost())
   );
   const report = await first.result.json();
-  assertEquals(report.needs_support, [USER_ID]);
+  assertEquals(report.needs_support, 1);
   assertEquals(state.deletionRequest?.status, "pending", "the user can still cancel");
   assertEquals(state.deletionRequest?.needs_support_reason, "billing_subscription_not_found");
   assert(
@@ -1118,7 +1253,7 @@ Deno.test("process_due: billing_subscription_not_found is marked for support, al
 
   const paddle = fakePaddle({});
   const second = await silenced(() => handlerFor(state, paddle.deps)(cronPost()));
-  assertEquals((await second.json()).purged, []);
+  assertEquals((await second.json()).purged, 0);
   assertEquals(paddle.calls.length, 0, "not retried");
   assertEquals(state.deletedUsers, []);
   assertEquals(state.deletionRequest?.status, "pending");
@@ -1137,7 +1272,7 @@ Deno.test("process_due: a cancel that lands before the claim leaves the account 
   const res = await silenced(() => handlerFor(state, paddle.deps)(cronPost()));
 
   assertEquals(res.status, 200);
-  assertEquals((await res.json()).purged, []);
+  assertEquals((await res.json()).purged, 0);
   assertEquals(state.deletionRequest?.status, "cancelled");
   assertEquals(paddle.calls.length, 0);
   assertEquals(state.deletedUsers, []);
@@ -1169,17 +1304,51 @@ Deno.test("process_due: two concurrent runs purge a due request once", async () 
   );
 
   assertEquals(arrived, 2);
-  const purged = [...(await a.json()).purged, ...(await b.json()).purged];
-  assertEquals(purged, [USER_ID]);
+  assertEquals((await a.json()).purged + (await b.json()).purged, 1);
   assertEquals(state.deletedUsers, [USER_ID]);
   assertEquals(paddle.calls.filter((c) => c.method === "POST").length, 1);
 });
 
-Deno.test("process_due: a claim stuck for 20 minutes is reclaimed and purged; one 5 minutes old is left alone", async () => {
+Deno.test("process_due: two concurrent runs reclaim and re-purge a stuck claim once (R-17)", async () => {
+  const state = processDueState({
+    subscription: { paddle_subscription_id: SUBSCRIPTION_ID, status: "active" },
+  });
+  state.deletionRequest = requestFor(USER_ID, {
+    status: "executing",
+    claimed_at: minutesAgo(STUCK_CLAIM_MINUTES + 1),
+  });
+  // Both runs read the stuck row before either re-stamps it.
+  let arrived = 0;
+  let release!: () => void;
+  const bothSelected = new Promise<void>((resolve) => (release = resolve));
+  state.beforeListSelect = async (filters) => {
+    if (!isExecutingSelect(filters)) return;
+    arrived++;
+    if (arrived === 2) release();
+    await bothSelected;
+  };
+  const paddle = fakePaddle({});
+
+  const [a, b] = await silenced(() =>
+    Promise.all([
+      handlerFor(state, paddle.deps)(cronPost()),
+      handlerFor(state, paddle.deps)(cronPost()),
+    ])
+  );
+
+  assertEquals(arrived, 2);
+  const reports = [await a.json(), await b.json()];
+  assertEquals(reports[0].reclaimed + reports[1].reclaimed, 1, "only one run re-takes the claim");
+  assertEquals(reports[0].purged + reports[1].purged, 1);
+  assertEquals(state.deletedUsers, [USER_ID]);
+  assertEquals(paddle.calls.filter((c) => c.method === "POST").length, 1);
+});
+
+Deno.test("process_due: a claim stuck past STUCK_CLAIM_MINUTES is reclaimed and purged; a fresher one is left alone", async () => {
   const state = processDueState();
-  const recentClaim = minutesAgo(5);
+  const recentClaim = minutesAgo(STUCK_CLAIM_MINUTES - 1);
   state.deletionRequests = [
-    requestFor(USER_ID, { status: "executing", claimed_at: minutesAgo(20) }),
+    requestFor(USER_ID, { status: "executing", claimed_at: minutesAgo(STUCK_CLAIM_MINUTES + 1) }),
     requestFor(OTHER_USER_ID, { status: "executing", claimed_at: recentClaim }),
   ];
 
@@ -1188,46 +1357,127 @@ Deno.test("process_due: a claim stuck for 20 minutes is reclaimed and purged; on
   );
 
   const report = await res.json();
-  assertEquals(report.reclaimed, [USER_ID]);
-  assertEquals(report.purged, [USER_ID]);
+  assertEquals(report.reclaimed, 1);
+  assertEquals(report.purged, 1);
   assertEquals(state.deletedUsers, [USER_ID]);
   assert(lines.includes(`[DELETION_ALERT] reclaimed_stuck_claim user=${USER_ID}`), lines.join("\n"));
   assert(!lines.some((l) => l.includes(`reclaimed_stuck_claim user=${OTHER_USER_ID}`)));
   assertEquals(state.deletionRequests, [
     requestFor(OTHER_USER_ID, { status: "executing", claimed_at: recentClaim }),
   ]);
+  // The select itself is narrowed to stuck claims, not just the UPDATE.
+  const executingSelect = state.calls.find((c) =>
+    c.kind === "select" && c.table === "deletion_requests" && isExecutingSelect(c.filters)
+  );
+  assert(
+    executingSelect?.kind === "select" &&
+      executingSelect.filters.some(([key]) => key === OR_FILTER),
+    "the stuck-claim select carries the claimed_at cutoff",
+  );
+});
+
+Deno.test("process_due: an executing row with no claimed_at is reclaimed, not stranded (R-10)", async () => {
+  const state = processDueState();
+  state.deletionRequest = requestFor(USER_ID, { status: "executing", claimed_at: null });
+
+  const { result: res, lines } = await captured(() =>
+    handlerFor(state, fakePaddle({}).deps)(cronPost())
+  );
+
+  const report = await res.json();
+  assertEquals(report.reclaimed, 1);
+  assertEquals(report.purged, 1);
+  assertEquals(state.deletedUsers, [USER_ID]);
+  assert(lines.includes(`[DELETION_ALERT] reclaimed_stuck_claim user=${USER_ID}`), lines.join("\n"));
 });
 
 Deno.test("process_due: a reclaimed request whose purge fails again is released to pending", async () => {
   const state = processDueState({
     subscription: { paddle_subscription_id: SUBSCRIPTION_ID, status: "active" },
   });
-  state.deletionRequest = requestFor(USER_ID, { status: "executing", claimed_at: minutesAgo(30) });
+  state.deletionRequest = requestFor(USER_ID, {
+    status: "executing",
+    claimed_at: minutesAgo(STUCK_CLAIM_MINUTES * 2),
+  });
 
   const res = await silenced(() => handlerFor(state, fakePaddle({ cancelStatus: 503 }).deps)(cronPost()));
 
-  assertEquals((await res.json()).failed, [{ user_id: USER_ID, stage: "billing_cancel" }]);
+  const report = await res.json();
+  assertEquals(report.failed, 1);
+  assertEquals(report.failed_by_stage, { billing_cancel: 1 });
   assertEquals(state.deletionRequest?.status, "pending");
   assertEquals(state.deletionRequest?.claimed_at, null);
   assertEquals(state.deletedUsers, []);
 });
 
-Deno.test("process_due: a request that survives a successful purge is closed and alerted, not reclaimed forever", async () => {
-  // The auth user is already gone (deleteUser 404 counts as done), so nothing
-  // cascades the request away.
+Deno.test("process_due: a request that survives a successful purge is parked for support, never closed as executed (R-1)", async () => {
+  // deletion_requests.user_id is ON DELETE CASCADE, so a surviving row means
+  // the auth user survived too: deleteUser answered 404 for a live account.
   const state = processDueState({ deleteUserError: { status: 404, message: "User not found" } });
-  state.deletionRequest = requestFor(USER_ID, { status: "executing", claimed_at: minutesAgo(20) });
+  state.deletionRequest = requestFor(USER_ID, {
+    status: "executing",
+    claimed_at: minutesAgo(STUCK_CLAIM_MINUTES + 1),
+  });
 
   const { result: res, lines } = await captured(() =>
     handlerFor(state, fakePaddle({}).deps)(cronPost())
   );
 
-  assertEquals((await res.json()).purged, [USER_ID]);
-  assertEquals(state.deletionRequest?.status, "executed");
+  const report = await res.json();
+  assertEquals(report.purged, 0, "an account that still exists was not purged");
+  assertEquals(report.needs_support, 1);
+  assertEquals(state.deletionRequest?.status, "pending", "still visible and cancellable");
+  assertEquals(state.deletionRequest?.needs_support_reason, "request_survived_purge");
+  assertEquals(state.deletionRequest?.claimed_at, null);
   assert(lines.includes(`[DELETION_ALERT] request_survived_purge user=${USER_ID}`), lines.join("\n"));
 
+  // The hourly batch skips it (no reclaim loop, no silent re-purge), but it
+  // is still surfaced by the needs-support alert instead of going quiet.
   const again = await silenced(() => handlerFor(state, fakePaddle({}).deps)(cronPost()));
-  assertEquals((await again.json()).reclaimed, [], "a closed request is not reclaimed");
+  const second = await again.json();
+  assertEquals(second.reclaimed, 0);
+  assertEquals(second.purged, 0);
+  assertEquals(state.deletionRequest?.status, "pending");
+
+  // The user can still cancel it.
+  assertEquals(userCancelsDeletion(state), true);
+});
+
+Deno.test("delete-account: a surviving request on the user path is reported as a failure, never as success (R-1)", async () => {
+  const state = fakeState({ deleteUserError: { status: 404, message: "User not found" } });
+
+  const { result: res, lines } = await captured(() =>
+    handlerFor(state, fakePaddle({}).deps)(post())
+  );
+
+  assertEquals(res.status, 500);
+  const body = await res.json();
+  assertEquals(body.code, "request_survived_purge");
+  assertEquals(body.success, undefined, "the SPA must not sign out a live account");
+  assertEquals(state.deletionRequest?.status, "pending");
+  assertEquals(state.deletionRequest?.needs_support_reason, "request_survived_purge");
+  assert(lines.includes(`[DELETION_ALERT] request_survived_purge user=${USER_ID}`), lines.join("\n"));
+});
+
+Deno.test("delete-account: a purge that throws on the user path releases the claim (R-2)", async () => {
+  const state = fakeState();
+  const handler = createDeleteAccountHandler({
+    createAuthClient: () => ({
+      auth: { getUser: () => Promise.resolve({ data: { user: { id: USER_ID } } }) },
+    }),
+    createAdminClient: () => fakeAdmin(state),
+    purge: () => {
+      throw new Error("purge exploded");
+    },
+    env: (key) => (key === "CRON_SECRET" ? CRON_SECRET : undefined),
+  });
+
+  const res = await silenced(() => handler(post()));
+
+  assertEquals(res.status, 500);
+  assertEquals(state.deletionRequest?.status, "pending", "not left executing until the cron reclaim");
+  assertEquals(state.deletionRequest?.claimed_at, null);
+  assert(state.deletionRequest?.last_attempt_at);
 });
 
 Deno.test("process_due: at most 10 requests are executed per run, oldest first", async () => {
@@ -1241,32 +1491,71 @@ Deno.test("process_due: at most 10 requests are executed per run, oldest first",
 
   const res = await silenced(() => handlerFor(state, fakePaddle({}).deps)(cronPost()));
 
-  assertEquals((await res.json()).purged, ids.slice(0, 10));
+  assertEquals((await res.json()).purged, PROCESS_DUE_BATCH_SIZE);
+  assertEquals(state.deletedUsers, ids.slice(0, 10));
   assertEquals(state.deletionRequests.map((r) => r.user_id).sort(), ids.slice(10));
 });
 
-Deno.test("process_due: requests open 2 days past their date raise an overdue alert", async () => {
+Deno.test("process_due: rows that keep failing never starve a never-attempted request (R-9)", async () => {
+  const state = processDueState({ deletionRequest: null });
+  // A full batch of rows that have already failed, all scheduled earlier than
+  // the fresh one, so plain scheduled_for ordering would shut it out for ever.
+  const poisoned = Array.from({ length: PROCESS_DUE_BATCH_SIZE }, (_, i) =>
+    requestFor(`bbbbbbbb-bbbb-4bbb-8bbb-${String(i).padStart(12, "0")}`, {
+      id: `poison-${i}`,
+      scheduled_for: `2020-01-${String(i + 1).padStart(2, "0")}T00:00:00.000Z`,
+      last_attempt_at: minutesAgo(90),
+    }));
+  const fresh = requestFor(USER_ID, { id: "fresh", scheduled_for: "2021-01-01T00:00:00.000Z" });
+  state.deletionRequests = [...poisoned, fresh];
+
+  const res = await silenced(() => handlerFor(state, fakePaddle({}).deps)(cronPost()));
+
+  assertEquals((await res.json()).purged, PROCESS_DUE_BATCH_SIZE);
+  assert(
+    state.deletedUsers.includes(USER_ID),
+    `the never-attempted request must get a slot: ${state.deletedUsers.join(", ")}`,
+  );
+  assertEquals(state.deletedUsers[0], USER_ID, "never-attempted rows go first");
+});
+
+Deno.test("process_due: overdue rows alert; a row parked for support alerts under its own tag (R-12)", async () => {
   const state = processDueState();
   state.deletionRequests = [
     requestFor(USER_ID, { needs_support_reason: "billing_subscription_not_found" }),
+    requestFor(THIRD_USER_ID, { scheduled_for: PAST }),
     requestFor(OTHER_USER_ID, { scheduled_for: minutesAgo(60 * 24) }),
   ];
-  // The second one is due but not overdue; make its purge fail so it stays.
+  // The last one is due but not overdue; make every purge fail so rows stay.
+  state.subscriptions[THIRD_USER_ID] = { paddle_subscription_id: SUBSCRIPTION_ID, status: "active" };
   state.subscriptions[OTHER_USER_ID] = { paddle_subscription_id: SUBSCRIPTION_ID, status: "active" };
 
   const { result: res, lines } = await captured(() =>
     handlerFor(state, fakePaddle({ cancelStatus: 500 }).deps)(cronPost())
   );
 
-  assertEquals((await res.json()).overdue, 1);
-  assert(lines.includes(`[DELETION_ALERT] overdue user=${USER_ID}`), lines.join("\n"));
+  const report = await res.json();
+  assertEquals(report.overdue, 1, "only the row with no support reason");
+  assertEquals(report.needs_support_overdue, 1);
+  assert(lines.includes(`[DELETION_ALERT] overdue user=${THIRD_USER_ID}`), lines.join("\n"));
+  assert(
+    lines.includes(
+      `[DELETION_ALERT] needs_support_overdue billing_subscription_not_found user=${USER_ID}`,
+    ),
+    lines.join("\n"),
+  );
+  assert(!lines.some((l) => l.startsWith(`[DELETION_ALERT] overdue user=${USER_ID}`)));
   assert(!lines.some((l) => l.includes(`overdue user=${OTHER_USER_ID}`)));
 });
 
 Deno.test("process_due: the residue sweep removes deleted users' avatar folders; a sweep failure is an alert, not a 5xx", async () => {
   const deadUser = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
   const state = processDueState({ deletionRequest: null });
-  state.sweepResult = { deleted: { sync_tombstones: 2 }, orphan_avatar_folders: [deadUser] };
+  state.sweepResult = {
+    deleted: { sync_tombstones: 2 },
+    skipped: [],
+    orphan_avatar_folders: [deadUser],
+  };
   state.avatarFolders[deadUser] = ["avatar.png", "old.png"];
   state.avatarFolders[OTHER_USER_ID] = ["avatar.png"];
 
@@ -1276,6 +1565,7 @@ Deno.test("process_due: the residue sweep removes deleted users' avatar folders;
   const report = await res.json();
   assertEquals(report.residue, {
     deleted: { sync_tombstones: 2 },
+    skipped: [],
     avatar_folders_removed: 1,
     failed: false,
   });
@@ -1289,6 +1579,59 @@ Deno.test("process_due: the residue sweep removes deleted users' avatar folders;
   assertEquals(result.status, 200);
   assertEquals((await result.json()).residue.failed, true);
   assert(lines.includes("[DELETION_ALERT] residue_sweep_failed"), lines.join("\n"));
+});
+
+Deno.test("process_due: a table the sweep had to skip is reported and alerted, not counted as clean (R-23)", async () => {
+  const state = processDueState({ deletionRequest: null });
+  state.sweepResult = {
+    deleted: { sync_tombstones: 1 },
+    skipped: ["paddle_webhook_events:42703"],
+    orphan_avatar_folders: [],
+  };
+
+  const { result, lines } = await captured(() => handlerFor(state, fakePaddle({}).deps)(cronPost()));
+
+  const report = await result.json();
+  assertEquals(report.residue.skipped, ["paddle_webhook_events:42703"]);
+  assertEquals(report.residue.failed, true, "a skipped table is residue that survived");
+  assertEquals(report.residue.deleted, { sync_tombstones: 1 }, "the other tables were still swept");
+  assert(lines.includes("[DELETION_ALERT] residue_sweep_skipped_tables"), lines.join("\n"));
+});
+
+Deno.test("process_due: an orphan avatar folder with a nested prefix is emptied recursively (R-25)", async () => {
+  const deadUser = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const state = processDueState({ deletionRequest: null });
+  state.sweepResult = { deleted: {}, skipped: [], orphan_avatar_folders: [deadUser] };
+  // The avatars storage policy allows any key under `<uid>/%`, so a nested
+  // prefix is reachable; the bucket is public, so a leftover stays fetchable.
+  state.avatarFolders[deadUser] = ["avatar.png", "thumbs"];
+  state.avatarFolders[`${deadUser}/thumbs`] = ["small.png"];
+
+  const res = await silenced(() => handlerFor(state, fakePaddle({}).deps)(cronPost()));
+
+  const report = await res.json();
+  assertEquals(report.residue.avatar_folders_removed, 1);
+  assertEquals(report.residue.failed, false);
+  assertEquals(state.avatarFolders[deadUser], ["thumbs"], "only the prefix placeholder is left");
+  assertEquals(state.avatarFolders[`${deadUser}/thumbs`], [], "the nested object is gone");
+  const removed = state.calls.flatMap((c) => (c.kind === "storage.remove" ? c.paths : []));
+  assert(removed.includes(`${deadUser}/thumbs/small.png`), removed.join(", "));
+  assert(!removed.includes(`${deadUser}/thumbs`), "a prefix is never removed as if it were a file");
+});
+
+Deno.test("process_due: a folder that still holds objects after the removal is not counted as cleaned (R-25)", async () => {
+  const deadUser = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  const state = processDueState({ deletionRequest: null, avatarRemoveNoop: true });
+  state.sweepResult = { deleted: {}, skipped: [], orphan_avatar_folders: [deadUser] };
+  state.avatarFolders[deadUser] = ["avatar.png"];
+
+  const { result, lines } = await captured(() => handlerFor(state, fakePaddle({}).deps)(cronPost()));
+
+  const report = await result.json();
+  assertEquals(report.residue.avatar_folders_removed, 0);
+  assertEquals(report.residue.failed, true);
+  assertEquals(state.avatarFolders[deadUser], ["avatar.png"]);
+  assert(lines.includes("[DELETION_ALERT] avatar_cleanup_failed"), lines.join("\n"));
 });
 
 // ---------------------------------------------------------------------------
@@ -1639,11 +1982,34 @@ Deno.test({
       const claimWrite = () =>
         admin.from("deletion_requests")
           .update({ status: "executing", claimed_at: new Date().toISOString() })
-          .eq("id", requestId).eq("status", "pending").select("id");
+          .eq("id", requestId).eq("status", "pending").select("id, user_id, claimed_at");
       const claim = await must("claim", claimWrite());
       assertEquals(claim.data?.length, 1);
+      const claimedAt = (claim.data?.[0] as { claimed_at: string }).claimed_at;
+      assert(claimedAt, "the claim returns its stamp");
       const reclaim = await must("second claim", claimWrite());
       assertEquals(reclaim.data?.length, 0, "a claimed request cannot be claimed twice");
+
+      // The fence the handler puts on every later write: the timestamp
+      // PostgREST hands back must compare equal when sent straight back
+      // (it is rendered +00:00, not Z, and compared as an instant).
+      const fenced = await must(
+        "fenced no-op",
+        admin.from("deletion_requests")
+          .update({ claimed_at: claimedAt })
+          .eq("id", requestId).eq("status", "executing").eq("claimed_at", claimedAt)
+          .select("id"),
+      );
+      assertEquals(fenced.data?.length, 1, "the claimed_at fence matches the claim it took");
+      const stale = await must(
+        "stale fence",
+        admin.from("deletion_requests")
+          .update({ status: "pending" })
+          .eq("id", requestId).eq("status", "executing")
+          .eq("claimed_at", "2000-01-01T00:00:00.000Z")
+          .select("id"),
+      );
+      assertEquals(stale.data?.length, 0, "a run that lost its claim cannot release the row");
 
       // While claimed, the user's own cancel (RLS: status = 'pending') is refused.
       const userClient = createClient(
@@ -1662,16 +2028,19 @@ Deno.test({
 
       // The release the handler issues after an aborted purge (here the
       // needs-support variant).
-      await must(
+      const revert = await must(
         "revert",
         admin.from("deletion_requests")
           .update({
             status: "pending",
             claimed_at: null,
+            last_attempt_at: new Date().toISOString(),
             needs_support_reason: "billing_subscription_not_found",
           })
-          .eq("id", requestId).eq("status", "executing"),
+          .eq("id", requestId).eq("status", "executing").eq("claimed_at", claimedAt)
+          .select("id"),
       );
+      assertEquals(revert.data?.length, 1, "the fenced revert releases the claim it took");
       const reverted = await must(
         "read",
         admin.from("deletion_requests")
@@ -1806,17 +2175,31 @@ Deno.test({
   async fn() {
     const admin = integrationAdmin();
     const user = await createAuthUser(admin, "due");
+    const nullClaim = await createAuthUser(admin, "null-claim");
     const waiting = await createAuthUser(admin, "waiting");
     try {
       await seedPurgeFixture(admin, user, SUBSCRIPTION_ID);
+      await seedPurgeFixture(admin, nullClaim, null);
       await seedPurgeFixture(admin, waiting, null);
       // A due request cannot be seeded (grace trigger), but a claim left
       // behind by a crashed run can: the reclaim path runs the full purge.
       await must(
         "stuck claim",
         admin.from("deletion_requests")
-          .update({ status: "executing", claimed_at: new Date(Date.now() - 20 * 60_000).toISOString() })
+          .update({
+            status: "executing",
+            claimed_at: new Date(Date.now() - (STUCK_CLAIM_MINUTES + 5) * 60_000).toISOString(),
+          })
           .eq("user_id", user.id),
+      );
+      // An `executing` row with no claim stamp at all (a support fix or a
+      // partial write): real PostgREST must parse the `.or()` that catches
+      // it, or the row is invisible to both the reclaim and the due query.
+      await must(
+        "claimless executing row",
+        admin.from("deletion_requests")
+          .update({ status: "executing", claimed_at: null })
+          .eq("user_id", nullClaim.id),
       );
 
       const paddle = fakePaddle({ status: "active" });
@@ -1826,14 +2209,17 @@ Deno.test({
 
       assertEquals(res.status, 200);
       const report = await res.json();
-      assertEquals(report.reclaimed, [user.id]);
-      assertEquals(report.purged, [user.id]);
+      assertEquals(report.reclaimed, 2);
+      assertEquals(report.purged, 2);
       assert(lines.includes(`[DELETION_ALERT] reclaimed_stuck_claim user=${user.id}`));
+      assert(lines.includes(`[DELETION_ALERT] reclaimed_stuck_claim user=${nullClaim.id}`));
       assertEquals(paddle.calls.map((c) => c.method), ["GET", "POST"]);
-      const gone = await admin.auth.admin.getUserById(user.id);
-      assert(gone.error || !gone.data.user, "auth user deleted");
+      for (const purged of [user, nullClaim]) {
+        const gone = await admin.auth.admin.getUserById(purged.id);
+        assert(gone.error || !gone.data.user, `auth user ${purged.id} deleted`);
+        assertEquals(await avatarNames(admin, purged.id), []);
+      }
       assertEquals(await rowsReferencing(admin, user.id, { subscriptionId: SUBSCRIPTION_ID }), []);
-      assertEquals(await avatarNames(admin, user.id), []);
 
       // Not yet due: untouched.
       const other = await must(
@@ -1843,7 +2229,7 @@ Deno.test({
       assertEquals(other.data, { status: "pending", claimed_at: null });
       assertEquals(await avatarNames(admin, waiting.id), ["avatar.png"]);
     } finally {
-      await cleanupUsers(admin, [user.id, waiting.id]);
+      await cleanupUsers(admin, [user.id, nullClaim.id, waiting.id]);
     }
   },
 });
@@ -1880,6 +2266,7 @@ Deno.test({
       assertEquals(res.status, 200);
       const report = await res.json();
       assertEquals(report.residue.failed, false);
+      assertEquals(report.residue.skipped, [], JSON.stringify(report.residue));
       assert(report.residue.deleted.sync_tombstones >= 1, JSON.stringify(report.residue));
       assert(report.residue.avatar_folders_removed >= 1, JSON.stringify(report.residue));
 
