@@ -902,7 +902,13 @@ function timestampSortKey(value: string): string {
   return `${Number.isFinite(millis) ? millis : 0}:${frac}`;
 }
 
-function applyPersonalRecordCursor(
+/**
+ * Models the `(updated_at, id)` composite predicate that every
+ * `get_*_excluding_ids` RPC applies server-side. Sessions and personal records
+ * share `encodeCursor`/`decodeCursor` and `buildCursorCondition` in the
+ * handler, so the same helper drives both RPC doubles.
+ */
+function applyCompositeCursor(
   rows: Array<Record<string, unknown>>,
   args: Record<string, unknown>,
 ): Array<Record<string, unknown>> {
@@ -952,7 +958,7 @@ Deno.test("identical-microsecond personal records produce a distinct nextCursor"
     rpcImpl: (name, args) => {
       if (name !== "get_personal_records_excluding_ids") return undefined;
       return {
-        data: applyPersonalRecordCursor(dataset, args),
+        data: applyCompositeCursor(dataset, args),
         error: null,
       };
     },
@@ -990,6 +996,69 @@ Deno.test("identical-microsecond personal records produce a distinct nextCursor"
     "nextCursor must advance when more identical-timestamp PRs remain",
   );
 });
+
+// Replaces the permanently-skipped mock case
+// `tests/sync/pull-pagination.test.ts` carried ("entities with identical
+// updated_at but different id are each returned exactly once when paginated
+// one-at-a-time"). That case never executed in any mode; this one runs in
+// `npm run test:edge` against the real handler.
+Deno.test("identical-timestamp sessions are each returned exactly once when paged one at a time", async () => {
+  const sharedUpdatedAt = "2026-08-01T00:00:00.000Z";
+  const ids = [
+    "00000000-0000-4000-8000-0000000000a1",
+    "00000000-0000-4000-8000-0000000000a2",
+    "00000000-0000-4000-8000-0000000000a3",
+  ];
+  const dataset = ids.map((id, index) => ({
+    ...sessionRpcRow(),
+    id,
+    name: `Collision ${index}`,
+    started_at: sharedUpdatedAt,
+    updated_at: sharedUpdatedAt,
+    exercise_count: 0,
+  }));
+
+  const harness = makeHarness(undefined, {
+    rpcImpl: (name, args) => {
+      if (name !== "get_sessions_excluding_ids") return undefined;
+      return { data: applyCompositeCursor(dataset, args), error: null };
+    },
+  });
+
+  const collected: string[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < ids.length; page++) {
+    const response = await harness.handler(requestFromBody({
+      ...validPullBody(),
+      pageSize: 1,
+      ...(cursor === undefined ? {} : { cursor }),
+    }));
+    const body = await json(response);
+    assertEquals(response.status, 200, JSON.stringify(body));
+    const pageSessions = body.sessions as Array<{ id: string }>;
+    assertEquals(pageSessions.length, 1, `page ${page}`);
+    collected.push(pageSessions[0].id);
+    const next = body.nextCursor;
+    const isLastPage = page === ids.length - 1;
+    if (isLastPage) {
+      // Nothing left in any bucket, so the run ends rather than cursoring on.
+      assertEquals(body.hasMore, false);
+      break;
+    }
+    assertEquals(body.hasMore, true, `page ${page} must report more`);
+    assert(
+      typeof next === "string" && next.length > 0,
+      `page ${page} must carry a cursor for the remaining collisions`,
+    );
+    assert(next !== cursor, `page ${page} cursor must advance`);
+    cursor = next;
+  }
+
+  // Each id exactly once, in id-ASC order (the stable secondary sort).
+  assertEquals(collected, ids);
+  assertEquals(new Set(collected).size, ids.length);
+});
+
 
 Deno.test("first-page pull queries exact owner and profile and maps all five canonicals", async () => {
   const harness = makeHarness(undefined, {
