@@ -18,11 +18,11 @@ export const MANUAL_SYNC_WINDOW_SECONDS = 900;
  *
  * For the API-key providers (hevy, liftosaur) invoking `<provider>-sync` with
  * `body.api_key` is the ONLY way to store a key — the browser cannot write
- * `oauth_tokens`. Charging those to the pull budget means three mistyped keys
- * lock the user out of saving a corrected one for 15 minutes with no way back.
- * They also carry no provider-quota argument: an API key is per user, unlike
- * Strava's application-wide read quota. A separate, roomier bucket keeps the
- * abuse ceiling while leaving a typo-retry loop usable.
+ * `oauth_tokens`. They also carry no provider-quota argument: an API key is
+ * per user, unlike Strava's application-wide read quota. The separate bucket
+ * caps credential churn, while handlers also charge each API-key call to the
+ * ordinary sync bucket because it continues into provider work. The effective
+ * full-sync allowance therefore remains three calls per 15 minutes.
  */
 export const CREDENTIAL_WRITE_MAX_REQUESTS = 10;
 
