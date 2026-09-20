@@ -243,11 +243,6 @@ SELECT is(
           AND p.proname IN (
               'exercise_frequency', 'exercise_names', 'exercise_progress_series',
               'exercise_progress_series_many', 'personal_record_history',
-              'profile_workout_stats', 'session_volume_buckets'
-          )
-    ),
-    7,
-    'exactly one overload of each of the seven analytics RPCs'
               'personal_record_bests', 'profile_workout_stats', 'session_volume_buckets'
           )
     ),
@@ -264,7 +259,6 @@ SELECT is(
           AND p.proname IN (
               'exercise_frequency', 'exercise_names', 'exercise_progress_series',
               'exercise_progress_series_many', 'personal_record_history',
-              'profile_workout_stats', 'session_volume_buckets'
               'personal_record_bests', 'profile_workout_stats', 'session_volume_buckets'
           )
           AND NOT p.prosecdef
@@ -276,8 +270,8 @@ SELECT is(
               WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'
           )
     ),
-    7,
-    'all seven are SECURITY INVOKER, search_path pinned, authenticated-only (no anon, no PUBLIC)'
+    8,
+    'all eight are SECURITY INVOKER, search_path pinned, authenticated-only (no anon, no PUBLIC)'
     8,
     'all eight are SECURITY INVOKER, search_path pinned, authenticated-only (no anon, no PUBLIC)'
 );
