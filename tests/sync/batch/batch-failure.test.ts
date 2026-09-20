@@ -22,7 +22,6 @@ import {
 	type SessionDto,
 } from "../helpers/edge-function-harness";
 import {
-	getAllMockSessions,
 	getBatchFailureConfig,
 	getMockStoreCounts,
 	resetBatchCallCount,

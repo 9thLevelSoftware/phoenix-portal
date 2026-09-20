@@ -2,6 +2,7 @@ import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { CHILD_PAGE_SIZE } from "../_shared/pagedByParent.ts";
 import { createMobileSyncPullHandler } from "./index.ts";
+import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 
 type AuthBehavior = (jwt: string) => Promise<unknown>;
 
@@ -28,6 +29,82 @@ function validPullBody(): Record<string, unknown> {
     },
   };
 }
+
+Deno.test("cycle pull exposes authoritative progress and nullable day modifiers", async () => {
+  const cycleId = "90000000-0000-4000-8000-000000000001";
+  const progressState = {
+    currentDayNumber: 2,
+    lastCompletedDate: 1_789_948_800_000,
+    cycleStartDate: 1_789_862_400_000,
+    lastAdvancedAt: 1_789_952_400_000,
+    completedDays: [1],
+    missedDays: [],
+    rotationCount: 3,
+  };
+  const harness = makeHarness(undefined, {
+    rpcImpl(name) {
+      if (name !== "get_cycles_excluding_ids") return undefined;
+      return {
+        data: [{
+          id: cycleId,
+          user_id: VALID_USER_ID,
+          name: "Full cycle",
+          description: null,
+          duration_weeks: 1,
+          workout_days: 1,
+          rest_days: 0,
+          current_week: 1,
+          status: "active",
+          started_at: null,
+          last_used_at: null,
+          progression_settings: null,
+          deload_settings: null,
+          template_id: null,
+          progress_state: progressState,
+          updated_at: "2026-09-20T12:00:00Z",
+        }],
+        error: null,
+      };
+    },
+    fromPages: {
+      training_cycles: [{
+        data: [{ id: cycleId, progress_state: progressState }],
+        error: null,
+      }],
+      cycle_days: [{
+        data: [{
+          id: "90000000-0000-4000-8000-000000000002",
+          cycle_id: cycleId,
+          day_number: 1,
+          day_type: "workout",
+          routine_id: null,
+          weight_adjustment: 0,
+          rep_modifier: 0,
+          rest_override: null,
+          rest_type: null,
+          notes: null,
+          echo_level: null,
+          eccentric_load_percent: 125,
+        }],
+        error: null,
+      }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const cycle = (body.cycles as Array<Record<string, unknown>>)[0];
+  assertEquals(cycle.progressionSettingsPresent, true);
+  assertEquals(cycle.progressionSettings, null);
+  assertEquals(cycle.progressStatePresent, true);
+  assertEquals(cycle.progressState, progressState);
+  const day = (cycle.days as Array<Record<string, unknown>>)[0];
+  assertEquals(day.echoLevelPresent, true);
+  assertEquals(day.echoLevel, null);
+  assertEquals(day.eccentricLoadPercentPresent, true);
+  assertEquals(day.eccentricLoadPercent, 125);
+});
 
 function requestFromBody(
   body: unknown,
@@ -67,6 +144,10 @@ interface AdminOptions {
     args: Record<string, unknown>,
   ) => { data: unknown; error: unknown } | undefined;
   fromPages?: Record<string, Array<{ data: unknown; error: unknown }>>;
+  fromImpl?: (
+    name: string,
+    operations: Array<{ name: string; args: unknown[] }>,
+  ) => { data: unknown; error: unknown } | undefined;
 }
 
 function createAdminDouble(
@@ -134,6 +215,8 @@ function createAdminDouble(
         }
         return options.preferenceResult ?? { data: null, error: null };
       }
+      const implResult = options.fromImpl?.(name, operations);
+      if (implResult) return implResult;
       const pages = options.fromPages?.[name];
       if (pages) {
         const index = fromPageIndex[name] ?? 0;
@@ -325,6 +408,84 @@ Deno.test("shared profile preference contract module is required by pull too", a
   const moduleName = "../_shared/" + "profilePreferenceContract.ts";
   const contract = await import(new URL(moduleName, import.meta.url).href);
   assert(Object.keys(contract).length > 0);
+});
+
+Deno.test("pull returns persistent account deletion and ownership events", async () => {
+  const deletionId = "50000000-0000-4000-8000-000000000001";
+  const transferId = "50000000-0000-4000-8000-000000000002";
+  const harness = makeHarness(undefined, {
+    fromPages: {
+      workout_deletion_tombstones: [{
+        data: [{
+          mutation_id: deletionId,
+          profile_id: VALID_PROFILE_ID,
+          scope: "WORKOUT",
+          portal_session_id: "50000000-0000-4000-8000-000000000003",
+          component_session_id: null,
+          deleted_at: "2026-09-20T12:00:00.000Z",
+          recorded_at: "2026-09-20T18:00:00.000Z",
+        }],
+        error: null,
+      }],
+      profile_ownership_events: [{
+        data: [{
+          mutation_id: transferId,
+          source_profile_id: null,
+          target_profile_id: "default",
+          target_profile_name: "Default",
+          target_profile_color_index: 0,
+          workout_session_ids: ["50000000-0000-4000-8000-000000000003"],
+          routine_ids: [],
+          cycle_ids: [],
+          personal_record_ids: [],
+          transferred_at: "2026-09-20T12:01:00.000Z",
+        }],
+        error: null,
+      }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.workoutDeletions, [{
+    mutationId: deletionId,
+    profileId: VALID_PROFILE_ID,
+    scope: "WORKOUT",
+    portalSessionId: "50000000-0000-4000-8000-000000000003",
+    componentSessionId: null,
+    deletedAt: "2026-09-20T12:00:00.000Z",
+  }]);
+  const deletionCall = harness.adminCalls.find((call) =>
+    call.kind === "from" && call.name === "workout_deletion_tombstones"
+  );
+  assertEquals(
+    deletionCall?.operations?.find((op) => op.name === "select")?.args[0],
+    "mutation_id, profile_id, scope, portal_session_id, component_session_id, deleted_at, recorded_at",
+  );
+  assertEquals(
+    deletionCall?.operations?.filter((op) => op.name === "gt"),
+    [{ name: "gt", args: ["recorded_at", "1970-01-01T00:00:00.000Z"] }],
+  );
+  assertEquals(
+    deletionCall?.operations?.filter((op) => op.name === "order"),
+    [
+      { name: "order", args: ["recorded_at", { ascending: true }] },
+      { name: "order", args: ["mutation_id", { ascending: true }] },
+    ],
+  );
+  assertEquals(body.ownershipEvents, [{
+    mutationId: transferId,
+    sourceProfileId: null,
+    targetProfileId: "default",
+    targetProfileName: "Default",
+    targetProfileColorIndex: 0,
+    workoutSessionIds: ["50000000-0000-4000-8000-000000000003"],
+    routineIds: [],
+    cycleIds: [],
+    personalRecordIds: [],
+    transferredAt: "2026-09-20T12:01:00.000Z",
+  }]);
 });
 
 for (
@@ -956,12 +1117,14 @@ Deno.test("ordinary pull response fields remain unchanged when preferences are a
     "gamificationStats",
     "hasMore",
     "localProfiles",
+    "ownershipEvents",
     "personalRecords",
     "profilePreferenceSections",
     "routines",
     "rpgAttributes",
     "sessions",
     "syncTime",
+    "workoutDeletions",
   ]);
   assertEquals(body.sessions, []);
   assertEquals(body.routines, []);
@@ -1066,21 +1229,6 @@ for (
     assertEquals(harness.loggerCalls, [[{ name: expectedName }]]);
   });
 }
-
-interface LocalIntegrationEnvironment {
-  url: string;
-  anonKey: string;
-  serviceRoleKey: string;
-}
-
-const localIntegrationEnvironment: LocalIntegrationEnvironment | null = (() => {
-  const url = Deno.env.get("SUPABASE_URL");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  return url && anonKey && serviceRoleKey
-    ? { url, anonKey, serviceRoleKey }
-    : null;
-})();
 
 interface LocalPullFixture {
   admin: SupabaseClient;
@@ -1444,7 +1592,7 @@ Deno.test("child paging: PAGE+1 then a non-Range error is generic 503", async ()
   assertEquals(body.code, "57014");
 });
 
-Deno.test("external_activities hasMore is true when the 500-row cap is hit", async () => {
+Deno.test("external_activities hasMore is false when exactly 500 rows exist", async () => {
   const activities = Array.from({ length: 500 }, (_, i) => ({
     id: `act-${i}`,
     external_id: `ext-${i}`,
@@ -1468,7 +1616,7 @@ Deno.test("external_activities hasMore is true when the 500-row cap is hit", asy
   const response = await harness.handler(requestFromBody(validPullBody()));
   assertEquals(response.status, 200);
   const body = await json(response);
-  assertEquals(body.externalActivitiesHasMore, true);
+  assertEquals(body.externalActivitiesHasMore, false);
   assertEquals((body.externalActivities as unknown[]).length, 500);
 });
 
@@ -1521,6 +1669,406 @@ Deno.test({
         { p_user_id: fixture.ownerId },
       );
       if (recomputed.error) throw new Error("recompute failed");
+Deno.test("external activities paginate a tied synced_at cluster without skips or duplicates", async () => {
+  const syncedAt = "2026-08-02T00:00:00.123456+00:00";
+  const activities = Array.from({ length: 750 }, (_, index) => ({
+    id: `60000000-0000-4000-8000-${index.toString().padStart(12, "0")}`,
+    external_id: `ext-${index}`,
+    provider: "strava",
+    name: `Run ${index}`,
+    activity_type: "Run",
+    started_at: "2026-08-01T00:00:00.000Z",
+    duration_seconds: 60,
+    distance_meters: 1000,
+    calories: 10,
+    avg_heart_rate: null,
+    max_heart_rate: null,
+    elevation_gain_meters: null,
+    raw_data: null,
+    synced_at: syncedAt,
+  }));
+  const activityQueries: Array<Array<{ name: string; args: unknown[] }>> = [];
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    fromImpl: (name, operations) => {
+      if (name !== "external_activities") return undefined;
+      activityQueries.push(structuredClone(operations));
+      const cursorFilter = operations.find((operation) => operation.name === "or");
+      const cursorId = cursorFilter
+        ? String(cursorFilter.args[0]).match(/id\.gt\.([0-9a-f-]+)\)/i)?.[1]
+        : undefined;
+      const startIndex = cursorId
+        ? activities.findIndex((activity) => activity.id === cursorId) + 1
+        : 0;
+      return {
+        data: activities.slice(startIndex, startIndex + 501),
+        error: null,
+      };
+    },
+  });
+
+  const firstResponse = await harness.handler(requestFromBody(validPullBody()));
+  const firstBody = await json(firstResponse);
+  assertEquals(firstResponse.status, 200);
+  assertEquals(firstBody.hasMore, true);
+  assertEquals(firstBody.externalActivitiesHasMore, true);
+  assertEquals((firstBody.externalActivities as unknown[]).length, 500);
+  assert(typeof firstBody.nextCursor === "string");
+
+  const secondResponse = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    cursor: firstBody.nextCursor,
+  }));
+  const secondBody = await json(secondResponse);
+  assertEquals(secondResponse.status, 200);
+  assertEquals(secondBody.hasMore, false);
+  assertEquals(secondBody.externalActivitiesHasMore, false);
+  assertEquals((secondBody.externalActivities as unknown[]).length, 250);
+
+  const receivedIds = [
+    ...(firstBody.externalActivities as Array<{ id: string }>),
+    ...(secondBody.externalActivities as Array<{ id: string }>),
+  ].map((activity) => activity.id);
+  assertEquals(receivedIds, activities.map((activity) => activity.id));
+  assertEquals(new Set(receivedIds).size, activities.length);
+  assertEquals(
+    activityQueries.map((operations) =>
+      operations.filter((operation) => operation.name === "order")
+    ),
+    [
+      [
+        { name: "order", args: ["synced_at", { ascending: true }] },
+        { name: "order", args: ["id", { ascending: true }] },
+      ],
+      [
+        { name: "order", args: ["synced_at", { ascending: true }] },
+        { name: "order", args: ["id", { ascending: true }] },
+      ],
+    ],
+  );
+  assertEquals(
+    activityQueries.map((operations) =>
+      operations.find((operation) => operation.name === "limit")?.args
+    ),
+    [[501], [501]],
+  );
+  assertEquals(
+    activityQueries[1]?.find((operation) => operation.name === "or")?.args,
+    [
+      `synced_at.gt.${syncedAt},and(synced_at.eq.${syncedAt},id.gt.${activities[499].id})`,
+    ],
+  );
+});
+
+// Mirror of the Kotlin ExternalActivitySyncDto in Project-Phoenix-MP
+// (shared/.../data/sync/PortalSyncDtos.kt). PortalWireJson has
+// ignoreUnknownKeys=true and explicitNulls=false but NOT coerceInputValues,
+// so a required field that is absent or null, or a non-nullable defaulted
+// field sent as JSON null, fails decoding of the whole pull response.
+const MOBILE_EXTERNAL_ACTIVITY_REQUIRED_STRINGS = [
+  "id",
+  "externalId",
+  "provider",
+  "name",
+  "startedAt",
+  "syncedAt",
+] as const;
+// "int" mirrors a Kotlin `Int`: kotlinx rejects fractional JSON numbers there.
+type MobileWireType = "string" | "number" | "int" | "boolean";
+const MOBILE_EXTERNAL_ACTIVITY_NON_NULLABLE_DEFAULTED: Record<
+  string,
+  MobileWireType
+> = {
+  activityType: "string",
+  durationSeconds: "int",
+};
+const MOBILE_EXTERNAL_ACTIVITY_NULLABLE_FIELDS: Record<
+  string,
+  MobileWireType
+> = {
+  distanceMeters: "number",
+  calories: "int",
+  avgHeartRate: "int",
+  maxHeartRate: "int",
+  elevationGainMeters: "number",
+  rawData: "string",
+};
+
+function matchesMobileWireType(value: unknown, type: MobileWireType): boolean {
+  if (type === "int") return Number.isInteger(value);
+  return typeof value === type;
+}
+
+// Asserts that non-nullable-with-default Kotlin fields are absent or of the
+// right type, never JSON null (PortalWireJson has no coerceInputValues).
+function assertNonNullableDefaulted(
+  dto: Record<string, unknown>,
+  fields: Record<string, MobileWireType>,
+): void {
+  for (const [field, type] of Object.entries(fields)) {
+    const value = dto[field];
+    assert(
+      value === undefined || matchesMobileWireType(value, type),
+      `${field} must be absent or a ${type}, never null`,
+    );
+  }
+}
+
+function assertDecodesAsMobileExternalActivity(
+  dto: Record<string, unknown>,
+): void {
+  for (const field of MOBILE_EXTERNAL_ACTIVITY_REQUIRED_STRINGS) {
+    const value = dto[field];
+    assert(
+      typeof value === "string" && value.length > 0,
+      `required ${field} must be a non-empty string`,
+    );
+  }
+  assertNonNullableDefaulted(
+    dto,
+    MOBILE_EXTERNAL_ACTIVITY_NON_NULLABLE_DEFAULTED,
+  );
+  for (
+    const [field, type] of Object.entries(
+      MOBILE_EXTERNAL_ACTIVITY_NULLABLE_FIELDS,
+    )
+  ) {
+    const value = dto[field];
+    assert(
+      value === undefined || value === null ||
+        matchesMobileWireType(value, type),
+      `${field} must be null or a ${type}`,
+    );
+  }
+  assert(
+    !Number.isNaN(Date.parse(dto.syncedAt as string)),
+    "syncedAt must be an ISO-8601 timestamp",
+  );
+  assert(
+    !Number.isNaN(Date.parse(dto.startedAt as string)),
+    "startedAt must be an ISO-8601 timestamp",
+  );
+}
+
+Deno.test("external activity DTOs always carry a non-empty ISO syncedAt and decode as the mobile DTO", async () => {
+  const base = {
+    external_id: "ext",
+    provider: "strava",
+    name: "Ride",
+    started_at: "2026-08-01T00:00:00+00:00",
+    distance_meters: null,
+    calories: null,
+    avg_heart_rate: null,
+    max_heart_rate: null,
+    elevation_gain_meters: null,
+    raw_data: { source: "fixture" },
+  };
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    fromPages: {
+      external_activities: [{
+        data: [
+          {
+            ...base,
+            id: "act-synced",
+            activity_type: "Ride",
+            duration_seconds: 120,
+            synced_at: "2026-08-02T00:00:00+00:00",
+            updated_at: "2026-08-03T00:00:00+00:00",
+          },
+          {
+            ...base,
+            id: "act-updated-only",
+            activity_type: null,
+            duration_seconds: null,
+            synced_at: null,
+            updated_at: "2026-08-03T00:00:00+00:00",
+          },
+          {
+            ...base,
+            id: "act-started-only",
+            activity_type: null,
+            duration_seconds: null,
+          },
+        ],
+        error: null,
+      }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  const dtos = body.externalActivities as Record<string, unknown>[];
+  assertEquals(dtos.length, 3);
+  for (const dto of dtos) assertDecodesAsMobileExternalActivity(dto);
+
+  const [synced, updatedOnly, startedOnly] = dtos;
+  assertEquals(synced.syncedAt, "2026-08-02T00:00:00+00:00");
+  assertEquals(synced.activityType, "Ride");
+  assertEquals(synced.durationSeconds, 120);
+  assertEquals(synced.rawData, JSON.stringify({ source: "fixture" }));
+  assertEquals(updatedOnly.syncedAt, "2026-08-03T00:00:00+00:00");
+  assertEquals(updatedOnly.activityType, "strength");
+  assertEquals(updatedOnly.durationSeconds, 0);
+  assertEquals(startedOnly.syncedAt, "2026-08-01T00:00:00+00:00");
+});
+
+Deno.test("mobile wire int mirror rejects fractional numbers for Kotlin Int fields", () => {
+  assert(matchesMobileWireType(60, "int"));
+  assert(!matchesMobileWireType(60.5, "int"));
+  assert(!matchesMobileWireType(null, "int"));
+  assert(matchesMobileWireType(60.5, "number"));
+});
+
+// Kotlin PullRoutineExerciseDto.isAmrap: Boolean = false,
+// PullRoutineExerciseDto.stallDetection: Boolean = true and
+// PullBadgeDto.badgeTier: String = "bronze" are non-nullable with defaults,
+// while routine_exercises.is_amrap / stall_detection and
+// earned_badges.badge_tier are nullable columns.
+const MOBILE_ROUTINE_EXERCISE_NON_NULLABLE_DEFAULTED: Record<
+  string,
+  MobileWireType
+> = {
+  isAmrap: "boolean",
+  stallDetection: "boolean",
+};
+const MOBILE_BADGE_NON_NULLABLE_DEFAULTED: Record<string, MobileWireType> = {
+  badgeTier: "string",
+};
+
+Deno.test("null routine exercise flags and badge tier are pulled as the mobile defaults, never null", async () => {
+  const routineId = "00000000-0000-4000-8000-0000000000a1";
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) => {
+      if (name === "get_routines_excluding_ids") {
+        return {
+          data: [{
+            id: routineId,
+            user_id: VALID_USER_ID,
+            name: "Null flags",
+            description: "",
+            exercise_count: 2,
+            estimated_duration: 0,
+            times_completed: 0,
+            is_favorite: false,
+            updated_at: "2026-08-01T00:00:00+00:00",
+          }],
+          error: null,
+        };
+      }
+      if (name === "get_badges_excluding_ids") {
+        return {
+          data: [
+            {
+              id: "00000000-0000-4000-8000-0000000000b1",
+              user_id: VALID_USER_ID,
+              badge_id: "first_workout",
+              badge_name: "First",
+              badge_description: null,
+              badge_tier: null,
+              earned_at: "2026-08-01T00:00:00+00:00",
+            },
+            {
+              id: "00000000-0000-4000-8000-0000000000b2",
+              user_id: VALID_USER_ID,
+              badge_id: "tenth_workout",
+              badge_name: "Tenth",
+              badge_description: null,
+              badge_tier: "gold",
+              earned_at: "2026-08-02T00:00:00+00:00",
+            },
+          ],
+          error: null,
+        };
+      }
+      return undefined;
+    },
+    fromPages: {
+      routine_exercises: [{
+        data: [
+          {
+            id: "00000000-0000-4000-8000-0000000000c1",
+            routine_id: routineId,
+            name: "Row",
+            muscle_group: "Back",
+            sets: 3,
+            reps: 10,
+            weight: 20,
+            rest_seconds: 90,
+            mode: "OLD_SCHOOL",
+            order_index: 0,
+            is_amrap: null,
+            stall_detection: null,
+            catalog: null,
+          },
+          {
+            id: "00000000-0000-4000-8000-0000000000c2",
+            routine_id: routineId,
+            name: "Press",
+            muscle_group: "Chest",
+            sets: 3,
+            reps: 10,
+            weight: 20,
+            rest_seconds: 90,
+            mode: "OLD_SCHOOL",
+            order_index: 1,
+            is_amrap: true,
+            stall_detection: false,
+            catalog: null,
+          },
+        ],
+        error: null,
+      }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+
+  const routines = body.routines as Array<Record<string, unknown>>;
+  assertEquals(routines.length, 1);
+  const exercises = routines[0].exercises as Array<Record<string, unknown>>;
+  assertEquals(exercises.length, 2);
+  for (const exercise of exercises) {
+    assertNonNullableDefaulted(
+      exercise,
+      MOBILE_ROUTINE_EXERCISE_NON_NULLABLE_DEFAULTED,
+    );
+  }
+  assertEquals(exercises[0].isAmrap, false);
+  assertEquals(exercises[0].stallDetection, true);
+  assertEquals(exercises[1].isAmrap, true);
+  assertEquals(exercises[1].stallDetection, false);
+
+  const badges = body.badges as Array<Record<string, unknown>>;
+  assertEquals(badges.length, 2);
+  for (const badge of badges) {
+    assertNonNullableDefaulted(badge, MOBILE_BADGE_NON_NULLABLE_DEFAULTED);
+  }
+  assertEquals(badges.map((badge) => badge.badgeTier), ["bronze", "gold"]);
+});
+
+Deno.test({
+  name:
+    "integration: pulled external activity from real SQL carries syncedAt and decodes as the mobile DTO",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    const activityId = crypto.randomUUID();
+    try {
+      const inserted = await fixture.admin.from("external_activities").insert({
+        id: activityId,
+        user_id: fixture.ownerId,
+        external_id: `pr72-${activityId}`,
+        provider: "strava",
+        name: "Integration ride",
+        started_at: "2026-08-01T00:00:00.000Z",
+        // activity_type / duration_seconds left NULL on purpose; synced_at
+        // takes its column DEFAULT NOW().
+      });
+      if (inserted.error) {
+        throw new Error(
+          `external activity fixture failed: ${inserted.error.code} ${inserted.error.message}`,
+        );
+      }
 
       const logs: unknown[][] = [];
       const handler = realPullHandler(fixture, fixture.ownerId, logs);
@@ -1595,6 +2143,17 @@ Deno.test({
       assertEquals(secondResponse.status, 200);
       assertEquals(secondBody.gamificationStats, null);
     } finally {
+      assertEquals(response.status, 200);
+      assertEquals(logs, []);
+      const dtos = body.externalActivities as Record<string, unknown>[];
+      const dto = dtos.find((candidate) => candidate.id === activityId);
+      assert(dto, "seeded external activity must be pulled");
+      assertDecodesAsMobileExternalActivity(dto);
+      assertEquals(dto.activityType, "strength");
+      assertEquals(dto.durationSeconds, 0);
+    } finally {
+      const deleted = await fixture.admin.from("external_activities").delete()
+        .eq("id", activityId);
       await deleteLocalPullFixtureRows(fixture.admin, [
         fixture.ownerId,
         fixture.otherId,
@@ -1734,4 +2293,13 @@ Deno.test("pull serves the device shadow stats, never the derived columns", asyn
     lastWorkoutAt: "2026-07-10T10:00:00.000Z",
     updatedAt: "2026-07-10T00:00:00.000Z",
   });
+});
+      if (deleted.error) {
+        throw new Error(
+          `external activity cleanup failed: ${deleted.error.code} ${deleted.error.message}`,
+        );
+      }
+    }
+    await assertLocalPullFixtureClean(fixture);
+  },
 });

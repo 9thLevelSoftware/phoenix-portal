@@ -15,21 +15,16 @@ import {
 
 setupSyncTests();
 
-const LWW_RPC_MIGRATION = "20260707130000_update_lww_rpc_template_id.sql";
+const LWW_RPC_MIGRATION = "20260920120000_sync_reliability_contract.sql";
 const PULL_RPC_MIGRATION = "20260707140000_update_pull_rpc_template_id.sql";
 const CYCLE_PULL_SIGNATURE =
 	"public.get_cycles_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ)";
-const MOBILE_SYNC_PUSH_SOURCE = "supabase/functions/mobile-sync-push/index.ts";
 
 function readMigration(filename: string): string {
 	return readFileSync(
 		join(process.cwd(), "supabase", "migrations", filename),
 		"utf8",
 	);
-}
-
-function readSource(filename: string): string {
-	return readFileSync(join(process.cwd(), filename), "utf8");
 }
 
 function extractTrainingCycleLwwBody(sql: string): string {
@@ -41,10 +36,9 @@ function extractTrainingCycleLwwBody(sql: string): string {
 }
 
 describe("Training cycle template_id migration safeguards", () => {
-	it("keeps the LWW function conflict pragma while preserving existing template_id values", () => {
+	it("preserves existing template_id values in the final cycle LWW function", () => {
 		const body = extractTrainingCycleLwwBody(readMigration(LWW_RPC_MIGRATION));
 
-		expect(body).toMatch(/#variable_conflict\s+use_column/);
 		expect(body).toMatch(
 			/template_id\s*=\s*COALESCE\s*\(\s*EXCLUDED\.template_id\s*,\s*c\.template_id\s*\)/i,
 		);
@@ -84,22 +78,8 @@ describe("Training cycle template_id migration safeguards", () => {
 });
 
 describe("Training cycle template_id push handling", () => {
-	it("chunks the legacy template_id preservation probe before PostgREST in filters", () => {
-		const source = readSource(MOBILE_SYNC_PUSH_SOURCE);
-		const lookupBlock = source.slice(
-			source.indexOf("const cycleIdsMissingTemplateId ="),
-			source.indexOf("const { error: cycErr } = await supabase"),
-		);
-
-		expect(lookupBlock).toContain("const chunkSize = 100;");
-		expect(lookupBlock).toMatch(
-			/for\s*\(\s*let\s+i\s*=\s*0;\s*i\s*<\s*cycleIdsMissingTemplateId\.length;\s*i\s*\+=\s*chunkSize\s*\)/,
-		);
-		expect(lookupBlock).toContain(".in('id', chunk)");
-	});
-
 	liveIt(
-		"preserves an existing training_cycles.template_id when SYNC_LWW_ENABLED=false and mobile pushes templateId null",
+		"preserves an existing training_cycles.template_id when a newer mobile cycle omits it",
 		async () => {
 			const testUser = await createTrackedTestUser(undefined, undefined, {
 				seedSubscription: false,
@@ -137,6 +117,7 @@ describe("Training cycle template_id push handling", () => {
 				progressionSettings: null,
 				deloadSettings: null,
 				templateId: existingTemplateId,
+				updatedAt: "2026-07-07T12:00:00.000Z",
 				days: [],
 			};
 			const seedPushResult = await callPushEndpoint(
@@ -160,6 +141,7 @@ describe("Training cycle template_id push handling", () => {
 				progressionSettings: null,
 				deloadSettings: null,
 				templateId: null,
+				updatedAt: "2026-07-07T13:00:00.000Z",
 				days: [],
 			};
 

@@ -16,6 +16,7 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { formatWeight, type WeightUnit } from "@/lib/units";
 import { profileOptions } from "@/queries/profile";
 import { routineDetailOptions } from "@/queries/routines";
+import { workoutModeLabel } from "../../../supabase/functions/_shared/workoutModes.ts";
 
 function formatExercisePrescription(
 	exercise: {
@@ -35,14 +36,14 @@ function formatExercisePrescription(
 		: formatWeight(exercise.weight, unit);
 
 	if (exercise.duration_seconds) {
-		return `${exercise.sets} sets • ${exercise.duration_seconds}s • ${loadLabel} • ${exercise.mode}`;
+		return `${exercise.sets} sets • ${exercise.duration_seconds}s • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
 	}
 
 	if (exercise.is_amrap) {
-		return `${exercise.sets} sets • AMRAP • ${loadLabel} • ${exercise.mode}`;
+		return `${exercise.sets} sets • AMRAP • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
 	}
 
-	return `${exercise.sets} sets • ${exercise.reps} reps • ${loadLabel} • ${exercise.mode}`;
+	return `${exercise.sets} sets • ${exercise.reps} reps • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
 }
 
 function exerciseBadges(exercise: {
