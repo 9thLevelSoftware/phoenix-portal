@@ -9,7 +9,9 @@
  *   - routines.length > 10_000 → 400
  *   - cycles.length > 10_000 → 400 (aligned with other entities; audit #6)
  *   - Rate limit: 11th request inside the 60s window returns 429
- *   - Subscription gating: non-EMBER tier → 402/403 on push (and pull)
+ *   - Subscription gating is pinned by Deno handler tests instead (FREE → 402,
+ *     lookup error → 503, no write first): supabase/functions/_shared/
+ *     requireSubscription.test.ts and mobile-sync-{push,pull}/index.test.ts.
  *   - Missing Authorization header → 401
  *   - Expired / invalid JWT → 401 with AUTH signal
  *
@@ -22,7 +24,7 @@
  * Several tests run against the mock Edge Function harness because the mock
  * already intercepts auth/validation at the same boundaries (see
  * `tests/sync/helpers/mock-edge-functions.ts`). Tests that require live
- * Supabase semantics (rate limit, subscription lookup) use `liveIt` with a
+ * Supabase semantics (payload/array caps, rate limit, JWT expiry) use `liveIt` with a
  * clear comment pointing at the real Edge Function —
  * we do not synthesize passing assertions against behaviour the mock does
  * not implement.
@@ -348,43 +350,6 @@ describe("Server-Side Validation Invariants", () => {
 				);
 				expect(eleventh.status).toBe(429);
 				expect(eleventh.error?.code).toBe("RATE_LIMITED");
-			},
-		);
-	});
-
-	describe("Subscription tier gating (EMBER or higher on push)", () => {
-		liveIt(
-			"rejects FREE tier user with 402/403 on push — requires live subscription lookup",
-			async () => {
-				const unsubscribedUser = await createTestUser(undefined, undefined, {
-					seedSubscription: false,
-				});
-				// Gate implementation: supabase/functions/_shared/requireSubscription.ts
-				// and wired in mobile-sync-push/index.ts lines 471-472.
-				// Mock harness does not inspect subscription tier.
-				//
-				// To exercise: seed a `subscriptions` row with tier='FREE' for the
-				// test user (or leave the row absent — the gate's default behaviour)
-				// then expect status to be 402 or 403. Audit 01 pins this to 'EMBER+'.
-				const result = await callPushEndpoint(
-					createMinimalPushPayload(unsubscribedUser.id),
-					unsubscribedUser.accessToken,
-				);
-				expect([402, 403]).toContain(result.status);
-			},
-		);
-
-		liveIt(
-			"rejects FREE tier user with 402/403 on pull — requires live subscription lookup",
-			async () => {
-				const unsubscribedUser = await createTestUser(undefined, undefined, {
-					seedSubscription: false,
-				});
-				// mobile-sync-pull/index.ts enforces the same gate with a 20 req/min
-				// limit. Document: per audit 01, FREE users should be rejected
-				// consistently across both endpoints.
-				const result = await callPullEndpoint(0, unsubscribedUser.accessToken);
-				expect([402, 403]).toContain(result.status);
 			},
 		);
 	});
