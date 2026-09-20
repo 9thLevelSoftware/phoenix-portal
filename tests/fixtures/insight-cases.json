@@ -75,6 +75,7 @@
 					"type": "achievement",
 					"title": "New PR: Bench Press Max Weight",
 					"description": "You set a personal record on Bench Press Max Weight — 225 kg per cable (up 10 kg per cable from 215 kg per cable).",
+					"description": "You set a personal record on Bench Press Max Weight — 225 kg (up 10 kg from 215 kg).",
 					"metric": {
 						"name": "Bench Press Max Weight",
 						"value": 225,
@@ -165,6 +166,7 @@
 					"type": "achievement",
 					"title": "New PR: Bench Press Max Weight",
 					"description": "You set a personal record on Bench Press Max Weight — 496.0 lbs per cable (up 22.0 lbs per cable from 474.0 lbs per cable).",
+					"description": "You set a personal record on Bench Press Max Weight — 496.0 lbs (up 22.0 lbs from 474.0 lbs).",
 					"metric": {
 						"name": "Bench Press Max Weight",
 						"value": 496,
@@ -383,6 +385,7 @@
 					"type": "achievement",
 					"title": "New PR: Squat",
 					"description": "You set a personal record on Squat — 180 kg per cable.",
+					"description": "You set a personal record on Squat — 180 kg.",
 					"metric": {
 						"name": "Squat",
 						"value": 180,

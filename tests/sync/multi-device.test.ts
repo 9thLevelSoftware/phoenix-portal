@@ -25,7 +25,6 @@ import {
 	createTestUser,
 	type ExerciseDto,
 	generateTestId,
-	type PushPayload,
 	type RoutineDto,
 	type SessionDto,
 	type SetDto,

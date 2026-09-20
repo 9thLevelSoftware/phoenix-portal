@@ -261,6 +261,14 @@ SELECT diag('database:scheduler-cron-jobs');
 -- this transaction; this fails loudly if the image cannot, so the job
 -- assertions below always execute.
 CREATE EXTENSION IF NOT EXISTS pg_cron;
+SELECT cron.schedule(
+    'sync-tombstones-retention',
+    '23 3 * * *',
+    'DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval ''180 days'''
+);
+SELECT lives_ok(
+    $$ SELECT private.schedule_sync_queue_jobs() $$,
+    'schedule_sync_queue_jobs runs with pg_cron installed and removes legacy tombstone retention'
 SELECT lives_ok(
     $$ SELECT private.schedule_sync_queue_jobs() $$,
     'schedule_sync_queue_jobs runs with pg_cron installed'
@@ -277,6 +285,14 @@ SELECT set_eq(
     $$ VALUES
         ('process-sync-queue', '*/5 * * * *',
          'SELECT private.invoke_edge_function(''process-sync-queue'', ''{}''::jsonb)'),
+        ('cron-job-run-details-retention', '41 3 * * *',
+         'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days''')
+    $$,
+    'the scheduler jobs exist with the expected schedule and command'
+);
+SELECT is(
+    (SELECT count(*)::int FROM pg_temp.scheduler_jobs()),
+    2,
         ('sync-tombstones-retention', '23 3 * * *',
          'DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval ''180 days'''),
         ('cron-job-run-details-retention', '41 3 * * *',
@@ -317,6 +333,19 @@ SELECT diag('database:sync-queue-client-insert-guard');
 INSERT INTO auth.users (id, email)
 VALUES ('31313131-0000-4000-8000-0000000000f0'::uuid, 'scheduler-guard@example.test')
 ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.subscriptions (id, user_id, tier, status, current_period_end)
+VALUES (
+    '31313131-5555-4000-8000-0000000000f0'::uuid,
+    '31313131-0000-4000-8000-0000000000f0'::uuid,
+    'FLAME',
+    'active',
+    now() + interval '30 days'
+)
+ON CONFLICT (user_id) DO UPDATE
+SET tier = EXCLUDED.tier,
+    status = EXCLUDED.status,
+    current_period_end = EXCLUDED.current_period_end;
 
 SET LOCAL ROLE authenticated;
 SELECT set_config(

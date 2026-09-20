@@ -115,6 +115,46 @@ describe("ErrorBoundary + PageErrorFallback", () => {
 		sessionStorage.removeItem("phoenix-chunk-reload");
 	});
 
+	it("shows an offline message (and does not auto-reload) for chunk errors while offline", () => {
+		function ChunkErrorComponent() {
+			throw new Error(
+				"Failed to fetch dynamically imported module: https://phoenix-portal.com/assets/FAQ-abc123.js",
+			);
+		}
+
+		const reloadMock = vi.fn();
+		Object.defineProperty(window, "location", {
+			value: { ...window.location, reload: reloadMock },
+			writable: true,
+		});
+		sessionStorage.removeItem("phoenix-chunk-reload");
+		const onLine = vi.spyOn(window.navigator, "onLine", "get");
+		onLine.mockReturnValue(false);
+
+		try {
+			renderWithProviders(
+				<BoundaryWrapper>
+					<ChunkErrorComponent />
+				</BoundaryWrapper>,
+			);
+
+			expect(screen.getByText("You're offline")).toBeInTheDocument();
+			expect(
+				screen.getByText(/hasn't been downloaded for offline use yet/i),
+			).toBeInTheDocument();
+			expect(
+				screen.queryByText("New version available"),
+			).not.toBeInTheDocument();
+			expect(
+				screen.getByRole("button", { name: /try again/i }),
+			).toBeInTheDocument();
+			expect(reloadMock).not.toHaveBeenCalled();
+			expect(sessionStorage.getItem("phoenix-chunk-reload")).toBeNull();
+		} finally {
+			onLine.mockRestore();
+		}
+	});
+
 	it("does not show blank screen on error (always shows actionable UI)", () => {
 		renderWithProviders(
 			<BoundaryWrapper>

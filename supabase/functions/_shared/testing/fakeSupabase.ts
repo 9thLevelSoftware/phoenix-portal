@@ -2,6 +2,7 @@
  * Minimal in-memory stand-in for a supabase-js client, for Edge handler tests
  * (no network, no live secrets). Supports the PostgREST builder subset the
  * sync handlers use: select / insert / update / upsert(onConflict), eq / is /
+ * lt, order / limit, single / maybeSingle, and awaiting the builder.
  * lt / lte / gt / gte / in, order / limit, single / maybeSingle, awaiting the
  * builder, and `rpc()` against registered stubs.
  */

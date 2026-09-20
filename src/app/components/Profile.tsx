@@ -423,6 +423,11 @@ export function Profile() {
 									<div className="text-white font-medium">
 										{PLAN_LABELS[subscriptionDisplayTier]}
 									</div>
+									{isStale && (
+										<div className="text-sm text-muted-foreground">
+											{subscriptionStatus === "past_due"
+												? "Payment past due. Checking billing status..."
+												: "Subscription expired. Refreshing billing status..."}
 									{/*
 									 * A failed payment must be visible DURING Paddle's retry
 									 * window, which is exactly when `isStale` is still false

@@ -14,6 +14,7 @@ import {
 	toSupersetColorName,
 	toWireMode,
 } from "../../supabase/functions/_shared/workoutModes.ts";
+import { toWireMode } from "../../supabase/functions/_shared/workoutModes.ts";
 
 function estimatedRoutineDurationSeconds(
 	exercises: RoutineExerciseInput[],

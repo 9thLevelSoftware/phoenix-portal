@@ -1,32 +1,23 @@
 import { format } from "date-fns";
 import JSZip from "jszip";
 import Papa from "papaparse";
-import {
-	type BodyMuscleFocusModel,
-	type BodyMuscleFocusRow,
-	buildBodyMuscleFocusModel,
+import type {
+	BodyMuscleFocusModel,
+	BodyMuscleFocusRow,
 } from "@/lib/body-muscle-analytics";
+import { loadBodyMuscleAnalytics } from "@/lib/body-muscle-analytics-loader";
 import { supabase } from "@/lib/supabase";
+import {
+	fetchAllSupabasePages,
+	fetchAllSupabasePagesForChunks,
+} from "@/lib/supabasePaging";
 import { convertWeight, getUnitLabel, type WeightUnit } from "@/lib/units";
 import { normalizeCableCount } from "@/lib/units/loadDisplay";
 
-const SUPABASE_PAGE_SIZE = 1000;
-const SUPABASE_FILTER_CHUNK_SIZE = 100;
+// Re-exported for existing callers; the helpers now live in supabasePaging.ts.
+export { fetchAllSupabasePages, fetchAllSupabasePagesForChunks };
 
 type ProgressCallback = (step: string, current: number, total: number) => void;
-type SupabasePageResult<T> = {
-	data: T[] | null;
-	error: unknown;
-};
-type FetchSupabasePage<T> = (
-	from: number,
-	to: number,
-) => PromiseLike<SupabasePageResult<T>>;
-type FetchSupabaseChunkPage<T, V> = (
-	values: V[],
-	from: number,
-	to: number,
-) => PromiseLike<SupabasePageResult<T>>;
 
 export interface AnalyticsWorkoutExerciseSummaryRow {
 	date: string | Date;
@@ -120,51 +111,6 @@ function round(value: number, digits = 2): number {
 
 function toPerCableWeightKg(weightKg: number | null | undefined): number {
 	return weightKg ?? 0;
-}
-
-export async function fetchAllSupabasePages<T>(
-	fetchPage: FetchSupabasePage<T>,
-	pageSize = SUPABASE_PAGE_SIZE,
-): Promise<T[]> {
-	const rows: T[] = [];
-
-	for (let offset = 0; ; offset += pageSize) {
-		const { data, error } = await fetchPage(offset, offset + pageSize - 1);
-		if (error) {
-			throw error;
-		}
-
-		const page = data ?? [];
-		rows.push(...page);
-		if (page.length < pageSize) {
-			return rows;
-		}
-	}
-}
-
-export async function fetchAllSupabasePagesForChunks<T, V>(
-	values: V[],
-	fetchPage: FetchSupabaseChunkPage<T, V>,
-	options: {
-		chunkSize?: number;
-		pageSize?: number;
-	} = {},
-): Promise<T[]> {
-	const chunkSize = options.chunkSize ?? SUPABASE_FILTER_CHUNK_SIZE;
-	const pageSize = options.pageSize ?? SUPABASE_PAGE_SIZE;
-	const rows: T[] = [];
-
-	for (let offset = 0; offset < values.length; offset += chunkSize) {
-		const chunk = values.slice(offset, offset + chunkSize);
-		rows.push(
-			...(await fetchAllSupabasePages(
-				(from, to) => fetchPage(chunk, from, to),
-				pageSize,
-			)),
-		);
-	}
-
-	return rows;
 }
 
 export function generateWorkoutExerciseSummaryCsv(
@@ -488,6 +434,7 @@ export async function exportAnalyticsTablesZip(
 			exercises,
 			sets,
 		);
+		const { buildBodyMuscleFocusModel } = await loadBodyMuscleAnalytics();
 		const bodyFocusModel = buildBodyMuscleFocusModel(
 			buildBodyFocusRows(workouts, exercises, sets),
 		);

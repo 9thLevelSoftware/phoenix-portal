@@ -484,6 +484,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			// PR 21 (KD-5): the device LWW key.
 			"client_updated_at",
 		],
+		{ optionalColumns: ["created_at"] },
 	),
 	{
 		table: "routine_exercises",
@@ -607,6 +608,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"target_basis",
 		],
 		{ optionalColumns: ["last_snapshot_at"] },
+		{ optionalColumns: ["last_snapshot_at", "predicted_completion_date"] },
 	),
 	owned(
 		"goal_snapshots",

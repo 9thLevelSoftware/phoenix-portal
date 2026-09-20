@@ -288,6 +288,16 @@ Deno.test("prod-only optional columns are dropped when the database lacks them",
   assertEquals(selects, [
     [...GOAL_COLUMNS, ...GOAL_OPTIONAL].join(","),
     GOAL_COLUMNS.join(","),
+  const { handler, recorded } = doubleHandler([
+    { data: null, error: { code: "42703", message: "column routines.created_at does not exist" } },
+    { data: [{ id: "r1" }], error: null, count: 1 },
+  ]);
+  const response = await handler(request({ table: "routines" }));
+  assertEquals(response.status, 200);
+  const selects = recorded.ops.filter(([name]) => name === "select").map(([, args]) => args[0]);
+  assertEquals(selects, [
+    [...ROUTINE_COLUMNS, ...ROUTINE_OPTIONAL].join(","),
+    ROUTINE_COLUMNS.join(","),
   ]);
 });
 

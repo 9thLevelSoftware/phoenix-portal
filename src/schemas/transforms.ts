@@ -16,6 +16,7 @@ const nullableSetting = <T>(normalize: (value: unknown) => T | null) =>
 		.string()
 		.nullish()
 		.transform((value) => normalize(value));
+import { toWireMode } from "../../supabase/functions/_shared/workoutModes.ts";
 
 // Loads are stored and returned per cable, exactly as the phone shows them.
 // Schemas never convert them: the display adapter (src/lib/units/loadDisplay.ts)

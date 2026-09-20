@@ -18,6 +18,9 @@ import {
 import {
   buildPaddleSubscriptionPatch,
   checkoutRequiredResponseBody,
+  decidePlanChangeGate,
+  PAYMENT_PAST_DUE_HTTP_STATUS,
+  paymentPastDueResponseBody,
 } from "../_shared/paddleSubscriptionUpdate.ts";
 import { billingAction } from "../_shared/billingAction.ts";
 
@@ -296,6 +299,61 @@ async function paddleUpdateSubscriptionHandler(
       );
     }
 
+    // Look up user's current subscription
+    const { data: sub, error: subError } = await supabaseAdmin
+      .from("subscriptions")
+      .select("paddle_subscription_id, price_id, tier, status, current_period_end, cancel_at_period_end")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (subError) {
+      console.error("Error fetching subscription:", subError);
+      return new Response(
+        JSON.stringify({ error: "Failed to fetch subscription" }),
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Validate subscription state. past_due keeps access but cannot change
+    // plan until the payment method is updated (see decidePlanChangeGate).
+    const gate = decidePlanChangeGate(sub, deps.now());
+    if (gate.action === "checkout_required") {
+      return new Response(
+        JSON.stringify(checkoutRequiredResponseBody(gate.reason)),
+        { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+    if (gate.action === "payment_past_due") {
+      return new Response(
+        JSON.stringify(paymentPastDueResponseBody()),
+        {
+          status: PAYMENT_PAST_DUE_HTTP_STATUS,
+          headers: { ...cors, "Content-Type": "application/json" },
+        },
+      );
+    }
+    if (!sub) {
+      // Unreachable: the gate only proceeds for an existing row.
+      throw new Error("plan change gate proceeded without a subscription row");
+    }
+
+    // Call Paddle API to update the subscription
+    const paddleEnv = deps.env.get("PADDLE_ENVIRONMENT") ?? "production";
+    const baseUrl = paddleEnv === "sandbox"
+      ? "https://sandbox-api.paddle.com"
+      : "https://api.paddle.com";
+    const apiKey = deps.env.get("PADDLE_API_KEY");
+
+    if (!apiKey) {
+      console.error("PADDLE_API_KEY is not set");
+      return new Response(
+        JSON.stringify({ error: "Billing service not configured" }),
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    const currentPaddleSubscriptionId = gate.paddleSubscriptionId;
+
     // Fetch the authoritative current subscription so we can (a) carry forward
     // add-ons/metered items on a plan switch and (b) reconcile against Paddle's
     // current item state rather than a possibly-stale local price_id.
@@ -355,6 +413,7 @@ async function paddleUpdateSubscriptionHandler(
     }
 
     const paddleResponse = await deps.fetch(
+      `${baseUrl}/subscriptions/${gate.paddleSubscriptionId}`,
       `${baseUrl}/subscriptions/${currentPaddleSubscriptionId}`,
       {
         method: "PATCH",
