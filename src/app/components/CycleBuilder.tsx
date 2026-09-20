@@ -40,11 +40,11 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import type { Json } from "@/lib/database.types";
 import {
-	formatWeight,
 	type WeightUnit,
 	weightInputToKg,
 	weightInputValue,
 } from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 import { useSaveCycle, useUpdateCycle } from "@/mutations/cycles";
 import { cycleDetailOptions } from "@/queries/cycles";
 import { routineListOptions } from "@/queries/routines";
@@ -1467,7 +1467,7 @@ function PreviewModal({
 									<span className="text-primary">
 										{cycle.progression.type === "percentage"
 											? `${cycle.progression.amount}%`
-											: formatWeight(cycle.progression.amount, unit)}
+											: formatLoad(cycle.progression.amount, null, unit)}
 									</span>
 								</div>
 							)}
