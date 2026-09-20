@@ -24,11 +24,6 @@ SELECT col_is_pk(
     'primary key is (user_id, entity, entity_id)'
 );
 SELECT ok(
-    NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'public.sync_tombstones'::regclass AND contype = 'f'
-    ),
-    'sync_tombstones has no foreign key (the trigger can fire during an account cascade)'
     EXISTS (
         SELECT 1
         FROM pg_constraint c

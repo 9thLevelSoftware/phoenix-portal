@@ -429,9 +429,6 @@ SELECT lives_ok(
        VALUES ('31313131-0000-4000-8000-0000000000f0', 'liftosaur', 'incremental', 'pending',
                '2020-01-01') $$,
     'service-side (postgres) inserts are not clamped'
-       VALUES ('31313131-0000-4000-8000-0000000000f0', 'strava', 'incremental', 'pending',
-               '2020-01-01') $$,
-    'service-side (postgres) inserts are not clamped or deduplicated'
 );
 SELECT is(
     (SELECT count(*)::int FROM public.sync_queue
