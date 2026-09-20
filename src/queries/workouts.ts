@@ -195,7 +195,7 @@ export function recentPRsOptions(userId: string, profileId?: string | null) {
 				.limit(5);
 			if (error) throw error;
 			return personalRecordListSchema.parse(
-				await resolvePersonalRecordDisplayNames(data),
+				await resolvePersonalRecordDisplayNames(data, userId),
 			);
 		},
 	});

@@ -17,20 +17,37 @@ function buildChain(terminal: { data: unknown; error: unknown }) {
 
 let chain: ReturnType<typeof buildChain>;
 const fromFn = vi.fn(() => chain);
+const rpcFn = vi.fn();
 
 vi.mock("@/lib/supabase", () => ({
-	supabase: { from: (...args: unknown[]) => fromFn(...args) },
+	supabase: {
+		from: (...args: unknown[]) => fromFn(...args),
+		rpc: (...args: unknown[]) => rpcFn(...args),
+	},
 }));
+
+function mockRpc(result: { data: unknown; error: unknown }) {
+	rpcFn.mockResolvedValue(result);
+}
+
+/** Pin the "browser" zone so the assertions cannot pass by accident in UTC CI. */
+function stubTimeZone(timeZone: string) {
+	return vi
+		.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions")
+		.mockReturnValue({ timeZone } as Intl.ResolvedDateTimeFormatOptions);
+}
 
 // --- Tests ----------------------------------------------------------------
 
 describe("volumeTrendOptions", () => {
 	beforeEach(() => {
+		vi.restoreAllMocks();
 		vi.clearAllMocks();
+		fromFn.mockImplementation(() => chain);
 	});
 
 	it("uses analytics.summary query key with volume prefix", async () => {
-		chain = buildChain({ data: [], error: null });
+		mockRpc({ data: [], error: null });
 		const { volumeTrendOptions } = await import("../analytics");
 		const opts = volumeTrendOptions("user-1", "4w");
 		expect(opts.queryKey).toEqual(
@@ -39,7 +56,7 @@ describe("volumeTrendOptions", () => {
 	});
 
 	it("defaults period to 4w", async () => {
-		chain = buildChain({ data: [], error: null });
+		mockRpc({ data: [], error: null });
 		const { volumeTrendOptions } = await import("../analytics");
 		const opts = volumeTrendOptions("user-1");
 		expect(opts.queryKey).toEqual(
@@ -47,24 +64,52 @@ describe("volumeTrendOptions", () => {
 		);
 	});
 
-	it("returns volume trend data points", async () => {
-		const raw = [
-			{ started_at: "2026-03-01T08:00:00Z", total_volume: 500 },
-			{ started_at: "2026-03-03T08:00:00Z", total_volume: 600 },
-		];
-		chain = buildChain({ data: raw, error: null });
+	it("aggregates weekly buckets in SQL instead of reading every session row", async () => {
+		const tz = stubTimeZone("America/New_York");
+		mockRpc({
+			data: [
+				{
+					week_start: "2026-02-23",
+					sessions: 3,
+					total_volume: 1500,
+					total_duration_seconds: 7200,
+					total_sets: 30,
+				},
+			],
+			error: null,
+		});
+
 		const { volumeTrendOptions } = await import("../analytics");
-		const opts = volumeTrendOptions("user-1");
+		const opts = volumeTrendOptions("user-1", "all", "profile-1");
 		const result = await opts.queryFn?.({} as never);
-		expect(result).toHaveLength(2);
-		expect(result[0].total_volume).toBe(500);
+
+		expect(rpcFn).toHaveBeenCalledTimes(1);
+		expect(rpcFn).toHaveBeenCalledWith("session_volume_buckets", {
+			p_period: "all",
+			// The RPC's Monday-week rule only matches the chart's former local
+			// bucketing when it is given the browser zone (PR 40 hand-off).
+			p_tz: "America/New_York",
+			p_profile_id: "profile-1",
+		});
+		// No session rows in the URL, so the "all" period cannot be truncated.
+		expect(fromFn).not.toHaveBeenCalled();
+		expect(result).toHaveLength(1);
+		expect(result[0].week_start).toBe("2026-02-23");
+		tz.mockRestore();
+	});
+
+	it("omits the profile argument instead of passing null", async () => {
+		mockRpc({ data: [], error: null });
+		const { volumeTrendOptions } = await import("../analytics");
+		await volumeTrendOptions("user-1", "12w").queryFn?.({} as never);
+
+		const args = rpcFn.mock.calls[0][1] as Record<string, unknown>;
+		expect(args).not.toHaveProperty("p_profile_id");
+		expect(args.p_period).toBe("12w");
 	});
 
 	it("throws on Supabase error", async () => {
-		chain = buildChain({
-			data: null,
-			error: { message: "query failed" },
-		});
+		mockRpc({ data: null, error: { message: "query failed" } });
 		const { volumeTrendOptions } = await import("../analytics");
 		const opts = volumeTrendOptions("user-1");
 		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
@@ -73,7 +118,7 @@ describe("volumeTrendOptions", () => {
 	});
 
 	it("returns empty array when no sessions exist", async () => {
-		chain = buildChain({ data: [], error: null });
+		mockRpc({ data: [], error: null });
 		const { volumeTrendOptions } = await import("../analytics");
 		const opts = volumeTrendOptions("user-1");
 		const result = await opts.queryFn?.({} as never);
@@ -83,12 +128,13 @@ describe("volumeTrendOptions", () => {
 
 describe("muscleGroupOptions", () => {
 	beforeEach(() => {
+		vi.restoreAllMocks();
 		vi.clearAllMocks();
 		fromFn.mockImplementation(() => chain);
 	});
 
 	it("uses analytics.summary query key with muscle-groups", async () => {
-		chain = buildChain({ data: [], error: null });
+		mockRpc({ data: [], error: null });
 		const { muscleGroupOptions } = await import("../analytics");
 		const opts = muscleGroupOptions("user-1");
 		expect(opts.queryKey).toEqual(
@@ -99,24 +145,26 @@ describe("muscleGroupOptions", () => {
 	it("classifies exercises by NAME, not the raw muscle_group column", async () => {
 		// Regression: production data has muscle_group='General' on 100% of rows
 		// (mobile hardcoded it). Classification must come from the exercise name.
-		const sessionChain = buildChain({
-			data: [{ id: "s1" }, { id: "s2" }],
-			error: null,
-		});
-		const exerciseChain = buildChain({
+		mockRpc({
 			data: [
-				{ name: "Bench Press", muscle_group: "General" },
-				{ name: "Incline Bench Press", muscle_group: "General" },
-				{ name: "Bent Over Row", muscle_group: "General" },
-				{ name: "Low Bar Squat", muscle_group: "General" },
+				{ exercise_name: "Bench Press", muscle_group: "General", sessions: 1 },
+				{
+					exercise_name: "Incline Bench Press",
+					muscle_group: "General",
+					sessions: 1,
+				},
+				{
+					exercise_name: "Bent Over Row",
+					muscle_group: "General",
+					sessions: 1,
+				},
+				{
+					exercise_name: "Low Bar Squat",
+					muscle_group: "General",
+					sessions: 1,
+				},
 			],
 			error: null,
-		});
-
-		let callCount = 0;
-		fromFn.mockImplementation(() => {
-			callCount++;
-			return callCount === 1 ? sessionChain : exerciseChain;
 		});
 
 		const { muscleGroupOptions } = await import("../analytics");
@@ -137,18 +185,16 @@ describe("muscleGroupOptions", () => {
 	});
 
 	it("keeps a real muscle_group hint for names it cannot classify", async () => {
-		const sessionChain = buildChain({ data: [{ id: "s1" }], error: null });
-		const exerciseChain = buildChain({
+		mockRpc({
 			data: [
-				{ name: "Bicep Curl", muscle_group: "General" },
-				{ name: "Some Proprietary Machine", muscle_group: "Back" },
+				{ exercise_name: "Bicep Curl", muscle_group: "General", sessions: 1 },
+				{
+					exercise_name: "Some Proprietary Machine",
+					muscle_group: "Back",
+					sessions: 1,
+				},
 			],
 			error: null,
-		});
-		let callCount = 0;
-		fromFn.mockImplementation(() => {
-			callCount++;
-			return callCount === 1 ? sessionChain : exerciseChain;
 		});
 
 		const { muscleGroupOptions } = await import("../analytics");
@@ -163,8 +209,61 @@ describe("muscleGroupOptions", () => {
 		);
 	});
 
+	it("makes one RPC call with no session id list and weights by session count", async () => {
+		// 1,600 counted sessions across two exercises. The old path fetched every
+		// session id, put them all in a GET URL (fatal past ~200 sessions) and then
+		// read `exercises` rows that PostgREST capped at 1,000 — so a 1,200-session
+		// exercise could never be counted in full (F-035 / F-034).
+		mockRpc({
+			data: [
+				{
+					exercise_name: "Bench Press",
+					muscle_group: "General",
+					sessions: 1200,
+				},
+				{
+					exercise_name: "Bent Over Row",
+					muscle_group: "General",
+					sessions: 400,
+				},
+			],
+			error: null,
+		});
+
+		const { muscleGroupOptions } = await import("../analytics");
+		const opts = muscleGroupOptions("user-1", "profile-1");
+		const result = await opts.queryFn?.({} as never);
+
+		expect(rpcFn).toHaveBeenCalledTimes(1);
+		expect(rpcFn).toHaveBeenCalledWith("exercise_frequency", {
+			p_profile_id: "profile-1",
+		});
+		expect(fromFn).not.toHaveBeenCalled();
+		expect(result).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ name: "Chest", value: 75 }),
+				expect.objectContaining({ name: "Back", value: 25 }),
+			]),
+		);
+	});
+
+	it("omits the profile argument instead of passing null", async () => {
+		mockRpc({ data: [], error: null });
+		const { muscleGroupOptions } = await import("../analytics");
+		await muscleGroupOptions("user-1", null).queryFn?.({} as never);
+		expect(rpcFn).toHaveBeenCalledWith("exercise_frequency", {});
+	});
+
+	it("throws on RPC error", async () => {
+		mockRpc({ data: null, error: { message: "rpc failed" } });
+		const { muscleGroupOptions } = await import("../analytics");
+		await expect(
+			muscleGroupOptions("user-1").queryFn?.({} as never),
+		).rejects.toEqual(expect.objectContaining({ message: "rpc failed" }));
+	});
+
 	it("returns empty array when user has no sessions", async () => {
-		chain = buildChain({ data: [], error: null });
+		mockRpc({ data: [], error: null });
 		const { muscleGroupOptions } = await import("../analytics");
 		const opts = muscleGroupOptions("user-1");
 		const result = await opts.queryFn?.({} as never);
@@ -228,6 +327,53 @@ describe("strengthProgressOptions", () => {
 		const result = await opts.queryFn?.({} as never);
 
 		expect(result[0].exercise_name).toBe("Bayesian Curl (Handles)");
+	});
+
+	it("resolves legacy exercise-id names by user_id, never by a session id list", async () => {
+		// 1,200 PR rows whose exercise_name is the exercises row id. The old
+		// lookup sent all 1,200 session ids in a GET URL (~45 KB, dead well past
+		// the ~8 KB limit — F-035).
+		const records = Array.from({ length: 1200 }, (_, i) => {
+			const suffix = String(i).padStart(12, "0");
+			return {
+				exercise_name: `00000000-0000-4000-8000-${suffix}`,
+				exercise_id: null,
+				session_id: `session-${i}`,
+				record_type: "MAX_WEIGHT",
+				workout_phase: "CONCENTRIC",
+				value: 100,
+				achieved_at: "2026-03-01T00:00:00Z",
+			};
+		});
+		const recordsChain = buildChain({ data: records, error: null });
+		const exercisesChain = buildChain({
+			data: [
+				{
+					id: "00000000-0000-4000-8000-000000000007",
+					session_id: "session-7",
+					name: "Bench Press",
+					exercise_id: null,
+					catalog: null,
+				},
+			],
+			error: null,
+		});
+
+		let callCount = 0;
+		fromFn.mockImplementation((table: unknown) => {
+			callCount++;
+			expect(table).toBe(callCount === 1 ? "personal_records" : "exercises");
+			return callCount === 1 ? recordsChain : exercisesChain;
+		});
+
+		const { strengthProgressOptions } = await import("../analytics");
+		const result = await strengthProgressOptions("user-1").queryFn?.(
+			{} as never,
+		);
+
+		expect(exercisesChain.in).not.toHaveBeenCalled();
+		expect(exercisesChain.eq).toHaveBeenCalledWith("user_id", "user-1");
+		expect(result[7].exercise_name).toBe("Bench Press");
 	});
 
 	it("selects record type and workout phase for phase-aware strength charts", async () => {

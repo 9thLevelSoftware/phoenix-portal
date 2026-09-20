@@ -132,17 +132,22 @@ export function normalizePersonalRecordSessionExerciseDisplayNames<
 
 export async function resolvePersonalRecordDisplayNames<
 	T extends PersonalRecordCatalogJoinRow,
->(rows: readonly T[] | null | undefined): Promise<T[]> {
+>(rows: readonly T[] | null | undefined, userId: string): Promise<T[]> {
 	const catalogNormalized = normalizePersonalRecordCatalogDisplayNames(rows);
 	const sessionIds = sessionIdsNeedingExerciseNameLookup(catalogNormalized);
 	if (sessionIds.length === 0) return catalogNormalized;
 
+	// Scoped by user_id, not by a `.in("session_id", ids)` list: the id list
+	// grew with the number of PR rows and blew the ~8 KB GET URL limit at a few
+	// hundred sessions (F-035). `exercises.user_id` is indexed and RLS already
+	// restricts the rows to the caller; the lookup map is keyed by
+	// `${session_id}:${exercise id}`, so widening the fetch cannot mismatch.
 	const { data, error } = await supabase
 		.from("exercises")
 		.select(
 			"id, session_id, name, exercise_id, catalog:exercise_catalog(id, name, display_name)",
 		)
-		.in("session_id", sessionIds);
+		.eq("user_id", userId);
 	if (error) throw error;
 
 	return normalizePersonalRecordSessionExerciseDisplayNames(
