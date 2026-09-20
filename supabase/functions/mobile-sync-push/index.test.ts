@@ -12,6 +12,7 @@ import {
   scanTopLevelJsonObject,
 } from "../_shared/profilePreferenceContract.ts";
 import { createMobileSyncPushHandler } from "./index.ts";
+import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 import { SYNC_LWW_ENABLED } from "../_shared/flags.ts";
 
@@ -411,19 +412,33 @@ type TableResultValue = { data: unknown; error: unknown; count?: number };
 type TableResult =
   | TableResultValue
   | ((eqFilters: Record<string, unknown>) => TableResultValue);
+interface QueryOperation {
+  name: string;
+  args: unknown[];
+}
+
+type QueryContext = QueryOperation[] & Record<string, unknown>;
+type TerminalResultValue = { data: unknown; error: unknown; count?: number };
+type TerminalResult =
+  | TerminalResultValue
+  | ((context: QueryContext) => TerminalResultValue);
 
 function permissiveQuery(
   table: string,
   onWrite: (method: string, args: unknown[]) => void,
   terminalResult: TableResult = {
+  terminalResult: TerminalResult = {
     data: [],
     error: null,
     count: 0,
   },
+  writeError?: (method: string) => unknown,
+  onCall?: (method: string, args: unknown[]) => void,
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
   const eqFilters: Record<string, unknown> = {};
+  let injectedWriteError: unknown = null;
   const chainMethods = [
     "select",
     "eq",
@@ -443,12 +458,20 @@ function permissiveQuery(
     "delete",
     "returns",
   ];
+  const operations = [] as unknown as QueryContext;
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
       if (method === "neq") ownershipProbe = true;
       if (method === "eq") eqFilters[String(args[0])] = args[1];
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method, args);
+      onCall?.(method, args);
+      operations.push({ name: method, args });
+      if (method === "neq") ownershipProbe = true;
+      if (method === "eq") operations[String(args[0])] = args[1];
+      if (["insert", "upsert", "update", "delete"].includes(method)) {
+        onWrite(method, args);
+        injectedWriteError = writeError?.(method) ?? injectedWriteError;
       }
       return query;
     };
@@ -476,6 +499,12 @@ function permissiveQuery(
         ? { data: [], error: null, count: 0 }
         : typeof terminalResult === "function"
         ? terminalResult(eqFilters)
+      injectedWriteError
+        ? { data: null, error: injectedWriteError }
+        : ownershipProbe
+        ? { data: [], error: null, count: 0 }
+        : typeof terminalResult === "function"
+        ? terminalResult(operations)
         : terminalResult,
     ).then(resolve, reject);
   return query;
@@ -494,6 +523,13 @@ interface PushHarness {
   operationEvents: string[];
   channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
   broadcastPayloads: unknown[];
+  /** Every admin query builder with its chained calls and arguments. */
+  adminQueries: AdminQueryRecord[];
+}
+
+interface AdminQueryRecord {
+  table: string;
+  calls: Array<{ method: string; args: unknown[] }>;
 }
 
 function makeHarness(
@@ -503,6 +539,15 @@ function makeHarness(
     rpcBehavior?: RpcBehavior;
     personalRecordsResult?: { data: unknown; error: unknown };
     tableResults?: Record<string, TableResult>;
+    /** Error injected into a write, keyed `table:method` (e.g. `routines:delete`). */
+    writeErrors?: Record<string, unknown>;
+    /** Real clients for chosen tables (real-SQL tests); others stay mocked. */
+    tableClients?: Record<string, { from(table: string): unknown }>;
+    /**
+     * Terminal result for reads/writes on these tables (e.g. probes); a
+     * function receives the chained operations (select/in/... with args).
+     */
+    tableResults?: Record<string, TerminalResult>;
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -515,15 +560,22 @@ function makeHarness(
   const adminWriteArgs: Array<
     { table: string; method: string; args: unknown[] }
   > = [];
+  const adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }> =
+    [];
   const loggerCalls: unknown[][] = [];
   const operationEvents: string[] = [];
   const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
     [];
   const broadcastPayloads: unknown[] = [];
+  const adminQueries: AdminQueryRecord[] = [];
 
   const admin = {
     from(table: string) {
       adminFromCalls.push(table);
+      const realClient = options.tableClients?.[table];
+      if (realClient) return realClient.from(table);
+      const record: AdminQueryRecord = { table, calls: [] };
+      adminQueries.push(record);
       return permissiveQuery(
         table,
         (method, args) => {
@@ -534,6 +586,8 @@ function makeHarness(
         table === "personal_records"
           ? options.personalRecordsResult
           : options.tableResults?.[table],
+        (method) => options.writeErrors?.[`${table}:${method}`],
+        (method, args) => record.calls.push({ method, args }),
       );
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
@@ -619,7 +673,23 @@ function makeHarness(
     operationEvents,
     channelCalls,
     broadcastPayloads,
+    adminQueries,
   };
+}
+
+/** Queries on `table` whose chain includes the write `method`. */
+function writeQueries(
+  harness: PushHarness,
+  table: string,
+  method: string,
+): AdminQueryRecord[] {
+  return harness.adminQueries.filter((query) =>
+    query.table === table && query.calls.some((call) => call.method === method)
+  );
+}
+
+function callArgs(query: AdminQueryRecord, method: string): unknown[] {
+  return query.calls.find((call) => call.method === method)?.args ?? [];
 }
 
 async function json(response: Response): Promise<Record<string, unknown>> {
@@ -1993,6 +2063,511 @@ Deno.test("legacy push response keeps ordinary fields and adds empty preference 
   );
 });
 
+// PR 22 (F-024): required sub-step failures fail the push with a retryable
+// 503 instead of a 200 that lets mobile advance lastSync and drop the work.
+const PARTIAL_WRITE_BODY = {
+  error: "Sync temporarily unavailable",
+  code: "partial_write_retry",
+};
+const INJECTED_DB_ERROR = { message: "injected database failure", code: "XX000" };
+
+async function assertPartialWriteRetry(
+  harness: PushHarness,
+  response: Response,
+): Promise<void> {
+  assertEquals(response.status, 503);
+  assertEquals(await json(response), PARTIAL_WRITE_BODY);
+  assertEquals(harness.channelCalls, []);
+  assertEquals(harness.broadcastPayloads, []);
+  assertEquals(harness.loggerCalls, [[{ name: "PartialWriteRetry" }]]);
+}
+
+Deno.test("routine delete failure returns retryable 503 and no sync_complete", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routines:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedRoutineIds: [ROUTINE_ID],
+  }));
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("cycle delete failure returns retryable 503 and no sync_complete", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "training_cycles:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedCycleIds: [CYCLE_ID],
+  }));
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("routine exercise orphan cleanup failure returns retryable 503", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(
+    requestFromBody(validNestedRelationshipBody()),
+  );
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("allProfiles upsert failure returns 503 before any session write", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "local_profiles:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(
+    requestFromBody(validNestedRelationshipBody()),
+  );
+  await assertPartialWriteRetry(harness, response);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table !== "local_profiles"),
+    [],
+  );
+});
+
+Deno.test("single-profile upsert failure returns 503 before any session write", async () => {
+  const body = validNestedRelationshipBody();
+  delete body.allProfiles;
+  const harness = makeHarness(undefined, {
+    writeErrors: { "local_profiles:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody(body));
+  await assertPartialWriteRetry(harness, response);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table !== "local_profiles"),
+    [],
+  );
+});
+
+const CATALOG_EXERCISE_ID = "00000000-0000-4000-8000-000000000050";
+const ASSESSMENT_ID = "00000000-0000-4000-8000-000000000051";
+
+function assessmentBody(): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    assessments: [{
+      id: ASSESSMENT_ID,
+      exerciseId: CATALOG_EXERCISE_ID,
+      estimatedOneRepMaxKg: 100,
+      loadVelocityData: "[]",
+      createdAt: "2026-07-11T12:00:00.000Z",
+    }],
+  };
+}
+
+const CATALOG_RESULT = {
+  data: [{
+    id: CATALOG_EXERCISE_ID,
+    name: "Bench Press",
+    is_custom: false,
+    archived: false,
+  }],
+  error: null,
+};
+
+Deno.test("VBT upsert failure keeps 200 and reports failed.assessments", async () => {
+  const harness = makeHarness(undefined, {
+    tableResults: { exercise_catalog: CATALOG_RESULT },
+    writeErrors: { "vbt_assessments:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody(assessmentBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.assessmentsInserted, 0);
+  assertEquals(body.failed, {
+    phaseStatistics: [],
+    exerciseSignatures: [],
+    assessments: [ASSESSMENT_ID],
+    externalActivities: [],
+  });
+  assertEquals(harness.broadcastPayloads.length, 1);
+});
+
+Deno.test("successful push reports an empty failed map", async () => {
+  const harness = makeHarness(undefined, {
+    tableResults: {
+      exercise_catalog: CATALOG_RESULT,
+      // What `.upsert(...).select('id')` returns: the rows actually inserted.
+      vbt_assessments: { data: [{ id: "inserted-row" }], error: null },
+    },
+  });
+  const response = await harness.handler(requestFromBody(assessmentBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.assessmentsInserted, 1);
+  assertEquals(body.failed, {
+    phaseStatistics: [],
+    exerciseSignatures: [],
+    assessments: [],
+    externalActivities: [],
+  });
+  // The client id used for failure reporting must never reach PostgREST.
+  const upserts = writeQueries(harness, "vbt_assessments", "upsert");
+  assertEquals(upserts.length, 1);
+  const rows = callArgs(upserts[0]!, "upsert")[0] as Array<
+    Record<string, unknown>
+  >;
+  assertEquals(rows.length, 1);
+  assert(!Object.hasOwn(rows[0]!, "clientId"));
+  assertEquals(rows[0]!.exercise_id, CATALOG_EXERCISE_ID);
+  assertEquals(rows[0]!.estimated_1rm_kg, 100);
+  assertEquals(rows[0]!.user_id, VALID_USER_ID);
+});
+
+/**
+ * In-memory stand-in for vbt_assessments with the PR 23 unique index
+ * semantics: rows are keyed by (user_id, exercise_id, timestamptz VALUE of
+ * created_at), so "...Z" and "...+00:00" forms of one instant collide.
+ * - select: returns the stored rows (the pre-fix handler's existence re-page).
+ * - insert: appends blindly (the pre-fix handler relied on its own string
+ *   dedupe, so this lets a pre-fix duplicate show up in `rows`).
+ * - upsert: only ON CONFLICT (user_id,exercise_id,created_at) DO NOTHING is
+ *   modelled; any other options return an error. Same-key rows inside one
+ *   batch are skipped like Postgres does. With `.select()` it returns only
+ *   the inserted rows, as PostgREST does.
+ */
+function fakeVbtAssessmentsTable(stored: Array<Record<string, unknown>>) {
+  const rows = stored.map((row) => ({ ...row }));
+  const key = (row: Record<string, unknown>) =>
+    `${row.user_id}|${row.exercise_id}|${Date.parse(String(row.created_at))}`;
+  const client = {
+    from(_table: string) {
+      let op: "select" | "insert" | "upsert" = "select";
+      let values: Array<Record<string, unknown>> = [];
+      let options: Record<string, unknown> | undefined;
+      let returning = false;
+      const run = () => {
+        if (op === "select") {
+          return { data: rows.map((row) => ({ ...row })), error: null };
+        }
+        if (op === "insert") {
+          rows.push(...values.map((value) => ({ id: crypto.randomUUID(), ...value })));
+          return { data: null, error: null };
+        }
+        if (
+          options?.onConflict !== "user_id,exercise_id,created_at" ||
+          options?.ignoreDuplicates !== true
+        ) {
+          return {
+            data: null,
+            error: { message: "fake models only DO NOTHING on vbt_assessments_identity" },
+          };
+        }
+        const seen = new Set(rows.map(key));
+        const inserted: Array<Record<string, unknown>> = [];
+        for (const value of values) {
+          if (seen.has(key(value))) continue;
+          seen.add(key(value));
+          const row = { id: crypto.randomUUID(), ...value };
+          rows.push(row);
+          inserted.push(row);
+        }
+        return {
+          data: returning ? inserted.map((row) => ({ id: row.id })) : null,
+          error: null,
+        };
+      };
+      const query: Record<string, unknown> = {};
+      for (const method of ["eq", "in", "order", "range", "limit", "gt", "neq", "is"]) {
+        query[method] = () => query;
+      }
+      query.select = () => {
+        if (op !== "select") returning = true;
+        return query;
+      };
+      query.insert = (next: Array<Record<string, unknown>>) => {
+        op = "insert";
+        values = next;
+        return query;
+      };
+      query.upsert = (
+        next: Array<Record<string, unknown>>,
+        nextOptions?: Record<string, unknown>,
+      ) => {
+        op = "upsert";
+        values = next;
+        options = nextOptions;
+        return query;
+      };
+      query.then = (
+        resolve: (value: unknown) => unknown,
+        reject?: (reason: unknown) => unknown,
+      ) => Promise.resolve(run()).then(resolve, reject);
+      return query;
+    },
+  };
+  return { rows, client };
+}
+
+Deno.test("VBT push of a Z timestamp against a stored +00:00 row writes no duplicate", async () => {
+  // The stored row reads back from PostgREST as "+00:00"; mobile sends the
+  // same instant as "Z". The pre-fix handler re-paged this table and
+  // compared strings, missed the match and inserted a copy on every push:
+  // the stored row below is what that old select-then-insert path read, and
+  // it is why this test fails against the pre-fix handler. The fixed handler
+  // never reads it; it hands the row to ON CONFLICT DO NOTHING, which the
+  // fake models on the timestamptz value. The real-SQL test below proves the
+  // same against Postgres.
+  const table = fakeVbtAssessmentsTable([{
+    id: "stored-row",
+    user_id: VALID_USER_ID,
+    exercise_id: CATALOG_EXERCISE_ID,
+    estimated_1rm_kg: 100,
+    created_at: "2026-07-11T12:00:00+00:00",
+  }]);
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const harness = makeHarness(undefined, {
+      tableResults: { exercise_catalog: CATALOG_RESULT },
+      tableClients: { vbt_assessments: table.client },
+    });
+    const response = await harness.handler(requestFromBody(assessmentBody()));
+    const body = await json(response);
+
+    assertEquals(response.status, 200, JSON.stringify(body));
+    assertEquals((body.failed as Record<string, unknown>).assessments, []);
+    assertEquals(body.assessmentsInserted, 0, `push ${attempt}`);
+    assertEquals(table.rows.length, 1, `push ${attempt}`);
+    assertEquals(table.rows[0]!.id, "stored-row");
+  }
+});
+
+Deno.test("VBT push with two same-instant rows in one payload stores one row", async () => {
+  // "...Z" and "...+00:00" of one instant pass the string-keyed payload
+  // duplicate check but hit one conflict key. DO NOTHING keeps the first;
+  // DO UPDATE would have failed the whole statement.
+  const table = fakeVbtAssessmentsTable([]);
+  const base = assessmentBody();
+  const [first] = base.assessments as Array<Record<string, unknown>>;
+  const body = {
+    ...base,
+    assessments: [
+      first,
+      {
+        ...first,
+        id: "00000000-0000-4000-8000-000000000053",
+        createdAt: "2026-07-11T12:00:00+00:00",
+      },
+    ],
+  };
+  const harness = makeHarness(undefined, {
+    tableResults: { exercise_catalog: CATALOG_RESULT },
+    tableClients: { vbt_assessments: table.client },
+  });
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals((responseBody.failed as Record<string, unknown>).assessments, []);
+  assertEquals(responseBody.assessmentsInserted, 1);
+  assertEquals(table.rows.length, 1);
+  assert(!Object.hasOwn(table.rows[0]!, "clientId"));
+  assertEquals(table.rows[0]!.user_id, VALID_USER_ID);
+});
+
+function manyIds(prefix: string, count: number): string[] {
+  return Array.from(
+    { length: count },
+    (_, i) => `00000000-0000-4000-${prefix}-${i.toString().padStart(12, "0")}`,
+  );
+}
+
+Deno.test("routine and cycle tombstone deletes are chunked at 100 ids", async () => {
+  const routineIds = manyIds("8a00", 250);
+  const cycleIds = manyIds("8b00", 201);
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedRoutineIds: routineIds,
+    deletedCycleIds: cycleIds,
+  }));
+
+  assertEquals(response.status, 200);
+  const cases: Array<[string, string[], number[]]> = [
+    ["routines", routineIds, [100, 100, 50]],
+    ["training_cycles", cycleIds, [100, 100, 1]],
+  ];
+  for (const [table, ids, sizes] of cases) {
+    const deletes = writeQueries(harness, table, "delete");
+    const chunks = deletes.map((query) => callArgs(query, "in")[1] as string[]);
+    assertEquals(chunks.map((chunk) => chunk.length), sizes);
+    assertEquals(chunks.flat(), ids);
+    for (const query of deletes) {
+      assertEquals(callArgs(query, "eq"), ["user_id", VALID_USER_ID]);
+    }
+  }
+  assertEquals(harness.broadcastPayloads.length, 1);
+});
+
+Deno.test("a failed tombstone delete chunk stops at that chunk with a retryable 503", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routines:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedRoutineIds: manyIds("8a00", 250),
+  }));
+  await assertPartialWriteRetry(harness, response);
+  assertEquals(writeQueries(harness, "routines", "delete").length, 1);
+});
+
+Deno.test("orphan cleanup failure for a routine with no exercises returns retryable 503", async () => {
+  const body = validNestedRelationshipBody();
+  const routines = body.routines as Array<Record<string, unknown>>;
+  routines[0] = { ...routines[0], exerciseCount: 0, exercises: [] };
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody(body));
+  await assertPartialWriteRetry(harness, response);
+  const deletes = writeQueries(harness, "routine_exercises", "delete");
+  assertEquals(deletes.length, 1);
+  // The delete-all branch: no `not in` filter.
+  assert(!deletes[0]!.calls.some((call) => call.method === "not"));
+  assertEquals(callArgs(deletes[0]!, "eq"), ["routine_id", ROUTINE_ID]);
+});
+
+Deno.test("routine_exercises upsert failure returns the same retryable 503", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routine_exercises:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(
+    requestFromBody(validNestedRelationshipBody()),
+  );
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("retrying the identical payload after a 503 succeeds and replays the same writes", async () => {
+  const deletedRoutineId = "00000000-0000-4000-8000-000000000060";
+  const writeErrors: Record<string, unknown> = {
+    "routines:delete": INJECTED_DB_ERROR,
+  };
+  const harness = makeHarness(undefined, { writeErrors });
+  const body = {
+    ...validNestedRelationshipBody(),
+    deletedRoutineIds: [deletedRoutineId],
+  };
+
+  const first = await harness.handler(requestFromBody(body));
+  assertEquals(first.status, 503);
+  assertEquals(harness.broadcastPayloads, []);
+  const firstWrites = [...harness.adminWriteCalls];
+  const firstRpcCallCount = harness.adminRpcCalls.length;
+
+  delete writeErrors["routines:delete"];
+  const second = await harness.handler(requestFromBody(body));
+  const secondBody = await json(second);
+  assertEquals(second.status, 200, JSON.stringify(secondBody));
+  assertEquals(harness.broadcastPayloads.length, 1);
+
+  // The retry re-runs exactly the same writes up to and including the delete
+  // (upserts by id; deleting an already-absent row is a no-op), then goes on
+  // to the steps the first attempt never reached.
+  const secondWrites = harness.adminWriteCalls.slice(firstWrites.length);
+  assertEquals(secondWrites.slice(0, firstWrites.length), firstWrites);
+  assert(
+    harness.adminRpcCalls.slice(firstRpcCallCount).some((call) =>
+      call.name === "merge_training_cycles_from_push"
+    ),
+  );
+  // Session-graph writes are id-keyed upserts, never blind inserts.
+  assertEquals(
+    secondWrites.filter((call) =>
+      call.method === "insert" &&
+      ["workout_sessions", "exercises", "sets", "rep_summaries"].includes(
+        call.table,
+      )
+    ),
+    [],
+  );
+});
+
+const PHASE_STATS_ID = "00000000-0000-4000-8000-000000000070";
+
+Deno.test("phase statistics upsert failure keeps 200 and reports failed.phaseStatistics", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "session_phase_statistics:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validNestedRelationshipBody(),
+    phaseStatistics: [{ id: PHASE_STATS_ID, sessionId: SESSION_ID }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.phaseStatisticsInserted, 0);
+  assertEquals(body.failed, {
+    phaseStatistics: [PHASE_STATS_ID],
+    exerciseSignatures: [],
+    assessments: [],
+    externalActivities: [],
+  });
+  assertEquals(harness.broadcastPayloads.length, 1);
+});
+
+const SIGNATURE_ID = "00000000-0000-4000-8000-000000000071";
+const UNRESOLVED_SIGNATURE_ID = "00000000-0000-4000-8000-000000000072";
+
+Deno.test("signature upsert failure reports only attempted signature ids", async () => {
+  const harness = makeHarness(undefined, {
+    tableResults: { exercise_catalog: CATALOG_RESULT },
+    writeErrors: { "exercise_signatures:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    exerciseSignatures: [
+      { id: SIGNATURE_ID, exerciseId: CATALOG_EXERCISE_ID },
+      // No catalog match: dropped before the write, so not a failure.
+      { id: UNRESOLVED_SIGNATURE_ID, exerciseId: "not-in-catalog" },
+    ],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.exerciseSignaturesUpserted, 0);
+  assertEquals(body.failed, {
+    phaseStatistics: [],
+    exerciseSignatures: [SIGNATURE_ID],
+    assessments: [],
+    externalActivities: [],
+  });
+});
+
+const EXTERNAL_ACTIVITY_ID = "00000000-0000-4000-8000-000000000073";
+
+Deno.test("external activity upsert failure reports failed.externalActivities with no ack", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "external_activities:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profileId: "default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    externalActivities: [{
+      id: EXTERNAL_ACTIVITY_ID,
+      externalId: "external-activity-a",
+      provider: "test-provider",
+      name: "Upsert fails",
+      startedAt: "2026-07-11T12:00:00.000Z",
+    }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.externalActivitiesUpserted, 0);
+  assertEquals(body.externalActivityKeys, []);
+  assertEquals(body.failed, {
+    phaseStatistics: [],
+    exerciseSignatures: [],
+    assessments: [],
+    externalActivities: [EXTERNAL_ACTIVITY_ID],
+  });
+});
+
 Deno.test("a newer active personal record cannot resurrect a stored tombstone", async () => {
   const personalRecordId = "00000000-0000-4000-8000-000000000040";
   const harness = makeHarness(undefined, {
@@ -2721,6 +3296,10 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): an older build's cycle is sent
   } else {
     assertEquals(sent.updated_at, null);
   }
+  // Undated-push rule (R-1/R-7, NF-15): an omitted updatedAt is dated at
+  // receipt under BOTH flag values, so the merge never sees null and a NOT
+  // NULL updated_at column can never be handed one.
+  assertEquals(typeof sent.updated_at, "string");
 });
 
 Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycles whose structure was applied`, async () => {
@@ -2731,6 +3310,7 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycle
         accepted: true,
         server_updated_at: "2026-07-16T02:00:00.5+00:00",
         structure_applied: true,
+        client_updated_at: "2026-07-16T01:50:00+00:00",
       },
       {
         // Portal edited after the device's base: config merged, structure
@@ -2741,10 +3321,16 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycle
         structure_applied: false,
       },
       {
+        client_updated_at: "2026-07-16T01:50:01+00:00",
+      },
+      {
+        // R-3/R-6: the rejection reports the stored LWW key, never the
+        // server-clock cursor that feeds cycleVersions.
         id: MERGE_CYCLE_3_ID,
         accepted: false,
         server_updated_at: "2026-07-16T02:00:02+00:00",
         structure_applied: false,
+        client_updated_at: "2026-07-16T01:50:02+00:00",
       },
     ]),
   });
@@ -2764,6 +3350,7 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycle
   assertEquals((body.rejections as Record<string, unknown>).cycles, [{
     id: MERGE_CYCLE_3_ID,
     serverUpdatedAt: "2026-07-16T02:00:02+00:00",
+    serverUpdatedAt: "2026-07-16T01:50:02+00:00",
   }]);
 });
 
@@ -2839,6 +3426,12 @@ Deno.test("present empty preference field is evaluated without an RPC", async ()
     },
     skippedDeleted: { routines: [], cycles: [] },
     cycleVersions: {},
+    failed: {
+      phaseStatistics: [],
+      exerciseSignatures: [],
+      assessments: [],
+      externalActivities: [],
+    },
     profilePreferencesAccepted: true,
     canonicalProfilePreferenceSections: [],
     profilePreferenceRejections: [],
@@ -3545,6 +4138,460 @@ Deno.test({
         (coreMutation.payload as Record<string, unknown>).bodyWeightKg,
       );
       assertEquals(stored.data.equipment_rack, rackMutation.payload);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// PR 20 (F-009): replace_session_children keeps stored telemetry when a
+// session is re-pushed without it. Real SQL against the local stack.
+// Key rule: tier 1 = stable exercise row id + set_number; tier 2 (only for
+// exercise ids absent on the other side) = identity + order_index +
+// set_number; both unique on old and new side.
+// Current mobile wire shape (PortalSyncAdapter.kt): one set per exercise with
+// set_number 1, exercise id = stable mobile session id, fresh set ids per push.
+// ---------------------------------------------------------------------------
+
+interface ChildPushExercise {
+  /** Exercise row id; stable across pushes on current mobile. */
+  id: string;
+  catalogId: string | null;
+  name: string;
+  orderIndex: number;
+  /** One entry per set: set_number and how many telemetry samples to send. */
+  sets: Array<{ setNumber: number; telemetry: number }>;
+}
+
+interface ChildPushResult {
+  /** setIds[exerciseIndex][setIndex] */
+  setIds: string[][];
+  preserved: number;
+}
+
+async function createTelemetrySession(
+  fixture: LocalIntegrationFixture,
+): Promise<string> {
+  const sessionId = crypto.randomUUID();
+  const inserted = await fixture.admin.from("workout_sessions").insert({
+    id: sessionId,
+    user_id: fixture.ownerId,
+    started_at: new Date().toISOString(),
+  });
+  if (inserted.error) throw new Error("session fixture creation failed");
+  return sessionId;
+}
+
+async function pushSessionChildren(
+  fixture: LocalIntegrationFixture,
+  sessionId: string,
+  exercises: ChildPushExercise[],
+): Promise<ChildPushResult> {
+  const exerciseRows: Record<string, unknown>[] = [];
+  const setRows: Record<string, unknown>[] = [];
+  const telemetryRows: Record<string, unknown>[] = [];
+  const setIds: string[][] = [];
+  for (const exercise of exercises) {
+    exerciseRows.push({
+      id: exercise.id,
+      session_id: sessionId,
+      user_id: fixture.ownerId,
+      name: exercise.name,
+      exercise_id: exercise.catalogId,
+      muscle_group: "General",
+      order_index: exercise.orderIndex,
+    });
+    const ids: string[] = [];
+    for (const set of exercise.sets) {
+      const setId = crypto.randomUUID();
+      ids.push(setId);
+      setRows.push({
+        id: setId,
+        exercise_id: exercise.id,
+        user_id: fixture.ownerId,
+        set_number: set.setNumber,
+        target_reps: 10,
+        actual_reps: 10,
+        weight_kg: 20,
+        rpe: null,
+        is_pr: false,
+        notes: null,
+        workout_mode: "OLD_SCHOOL",
+      });
+      for (let i = 0; i < set.telemetry; i++) {
+        telemetryRows.push({
+          id: crypto.randomUUID(),
+          set_id: setId,
+          user_id: fixture.ownerId,
+          timestamp_ms: i * 10,
+          force_n: 100 + i,
+          velocity_mps: 0.5,
+          position_mm: 250,
+          cable: "A",
+        });
+      }
+    }
+    setIds.push(ids);
+  }
+  const result = await fixture.admin.rpc("replace_session_children", {
+    p_user_id: fixture.ownerId,
+    p_session_ids: [sessionId],
+    p_exercises: exerciseRows,
+    p_sets: setRows,
+    p_rep_summaries: [],
+    p_rep_telemetry: telemetryRows,
+  });
+  if (result.error) {
+    throw new Error(`replace_session_children failed: ${result.error.message}`);
+  }
+  const data = result.data as Record<string, unknown>;
+  return { setIds, preserved: Number(data.rep_telemetry_preserved) };
+}
+
+/** Sorted telemetry ids per set id, for the given set ids. */
+async function telemetryIdsBySet(
+  fixture: LocalIntegrationFixture,
+  setIds: string[],
+): Promise<Record<string, string[]>> {
+  const rows = await fixture.admin.from("rep_telemetry")
+    .select("id,set_id")
+    .in("set_id", setIds);
+  if (rows.error) throw new Error("telemetry verification query failed");
+  const bySet: Record<string, string[]> = {};
+  for (const setId of setIds) bySet[setId] = [];
+  for (const row of rows.data as Array<{ id: string; set_id: string }>) {
+    bySet[row.set_id].push(row.id);
+  }
+  for (const setId of setIds) bySet[setId].sort();
+  return bySet;
+}
+
+/** Telemetry rows owned by the fixture user (one session per test). */
+async function telemetryCount(
+  fixture: LocalIntegrationFixture,
+): Promise<number> {
+  const rows = await fixture.admin.from("rep_telemetry")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", fixture.ownerId);
+  if (rows.error || rows.count === null) {
+    throw new Error("telemetry count query failed");
+  }
+  return rows.count;
+}
+
+Deno.test({
+  name:
+    "integration: mobile-shaped re-push without telemetry keeps each repeated set's telemetry; new telemetry replaces; removed set loses only its own",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const sessionId = await createTelemetrySession(fixture);
+      // Three sets of the same catalog exercise = three portal exercises with
+      // stable ids, one set each numbered 1.
+      const exerciseIds = [
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+      ];
+      const routine = (
+        telemetry: number[],
+        keep = [0, 1, 2],
+      ): ChildPushExercise[] =>
+        keep.map((index, orderIndex) => ({
+          id: exerciseIds[index],
+          catalogId: null,
+          name: "Bench Press",
+          orderIndex,
+          sets: [{ setNumber: 1, telemetry: telemetry[index] }],
+        }));
+
+      const first = await pushSessionChildren(
+        fixture,
+        sessionId,
+        routine([2, 1, 3]),
+      );
+      const firstBySet = await telemetryIdsBySet(fixture, first.setIds.flat());
+      assertEquals(await telemetryCount(fixture), 6);
+
+      // Re-push without telemetry: count unchanged, each set keeps its own.
+      const second = await pushSessionChildren(
+        fixture,
+        sessionId,
+        routine([0, 0, 0]),
+      );
+      assertEquals(second.preserved, 6);
+      assertEquals(await telemetryCount(fixture), 6);
+      const secondBySet = await telemetryIdsBySet(
+        fixture,
+        second.setIds.flat(),
+      );
+      for (let i = 0; i < 3; i++) {
+        assertEquals(
+          secondBySet[second.setIds[i][0]],
+          firstBySet[first.setIds[i][0]],
+        );
+      }
+
+      // New telemetry for the middle set replaces only its curve.
+      const third = await pushSessionChildren(
+        fixture,
+        sessionId,
+        routine([0, 4, 0]),
+      );
+      const thirdBySet = await telemetryIdsBySet(fixture, third.setIds.flat());
+      assertEquals(thirdBySet[third.setIds[1][0]].length, 4);
+      assertEquals(
+        thirdBySet[third.setIds[0][0]],
+        firstBySet[first.setIds[0][0]],
+      );
+      assertEquals(
+        thirdBySet[third.setIds[2][0]],
+        firstBySet[first.setIds[2][0]],
+      );
+      assertEquals(await telemetryCount(fixture), 9);
+
+      // Middle set deleted on mobile: the third exercise moves to
+      // order_index 1 and still keeps its curve by stable id.
+      const fourth = await pushSessionChildren(
+        fixture,
+        sessionId,
+        routine([0, 0, 0], [0, 2]),
+      );
+      const fourthBySet = await telemetryIdsBySet(
+        fixture,
+        fourth.setIds.flat(),
+      );
+      assertEquals(
+        fourthBySet[fourth.setIds[0][0]],
+        firstBySet[first.setIds[0][0]],
+      );
+      assertEquals(
+        fourthBySet[fourth.setIds[1][0]],
+        firstBySet[first.setIds[2][0]],
+      );
+      assertEquals(await telemetryCount(fixture), 5);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: legacy regenerated exercise ids re-link only on a unique identity and position",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const sessionId = await createTelemetrySession(fixture);
+      const legacy = (telemetry: number): ChildPushExercise[] => [
+        // Same exercise twice, both defaulted to order_index 0: ambiguous.
+        {
+          id: crypto.randomUUID(),
+          catalogId: null,
+          name: "Bench Press",
+          orderIndex: 0,
+          sets: [{ setNumber: 1, telemetry }],
+        },
+        {
+          id: crypto.randomUUID(),
+          catalogId: null,
+          name: "bench press ",
+          orderIndex: 0,
+          sets: [{ setNumber: 1, telemetry }],
+        },
+        // Unique identity + position: re-linked.
+        {
+          id: crypto.randomUUID(),
+          catalogId: null,
+          name: "Cable Row",
+          orderIndex: 1,
+          sets: [{ setNumber: 1, telemetry }],
+        },
+      ];
+      const first = await pushSessionChildren(fixture, sessionId, legacy(2));
+      const firstBySet = await telemetryIdsBySet(fixture, first.setIds.flat());
+      assertEquals(await telemetryCount(fixture), 6);
+
+      const repush = await pushSessionChildren(fixture, sessionId, legacy(0));
+      assertEquals(repush.preserved, 2);
+      assertEquals(await telemetryCount(fixture), 2);
+      const repushBySet = await telemetryIdsBySet(
+        fixture,
+        repush.setIds.flat(),
+      );
+      assertEquals(
+        repushBySet[repush.setIds[2][0]],
+        firstBySet[first.setIds[2][0]],
+      );
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+/**
+ * The real push handler wired to the local stack: every table read/write and
+ * RPC goes to real SQL through the service-role client; only auth (fixed to
+ * the fixture owner) and the realtime broadcast are stubbed.
+ */
+function makeRealSqlPushHandler(
+  fixture: LocalIntegrationFixture,
+): (req: Request) => Promise<Response> {
+  const admin = {
+    from: (table: string) => fixture.admin.from(table),
+    rpc: (name: string, args: Record<string, unknown> = {}) =>
+      fixture.admin.rpc(name, args),
+    channel() {
+      return {
+        subscribe(callback: (status: string) => void) {
+          callback("SUBSCRIBED");
+          return {};
+        },
+        async send() {
+          return "ok";
+        },
+      };
+    },
+    async removeChannel() {
+      return "ok";
+    },
+  };
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      return admin;
+    },
+    logOperationalFailure: () => {},
+    now: () => Date.now(),
+  } as never);
+}
+
+Deno.test({
+  name:
+    "integration: handler re-push with regenerated set ids and no telemetry keeps stored telemetry",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const subscription = await fixture.admin.from("subscriptions").insert({
+        user_id: fixture.ownerId,
+        tier: "INFERNO",
+        status: "active",
+        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      if (subscription.error) {
+        throw new Error("subscription fixture creation failed");
+      }
+      const catalog = await fixture.admin.from("exercise_catalog")
+        .select("id,name")
+        .eq("is_custom", false)
+        .limit(1)
+        .single();
+      if (catalog.error) throw new Error("catalog lookup failed");
+      const catalogName = (catalog.data as { name: string }).name;
+      const catalogId = (catalog.data as { id: string }).id;
+
+      // Mobile shape: routine session, one set per exercise numbered 1,
+      // stable exercise ids; the catalog exercise is repeated and resolved by
+      // name on the server, the custom one stays name-only.
+      const sessionId = crypto.randomUUID();
+      const exercises = [
+        { id: crypto.randomUUID(), name: catalogName },
+        { id: crypto.randomUUID(), name: catalogName },
+        { id: crypto.randomUUID(), name: "PR20 Custom Pulldown" },
+      ];
+      const buildBody = (withTelemetry: boolean) => {
+        const setIds = exercises.map(() => crypto.randomUUID());
+        const telemetry = withTelemetry
+          ? setIds.flatMap((setId, index) =>
+            Array.from({ length: index + 1 }, (_, sample) => ({
+              id: crypto.randomUUID(),
+              setId,
+              timestampMs: sample * 10,
+              forceN: 100 + sample,
+              velocityMps: 0.5,
+              positionMm: 250,
+              cable: "A",
+            }))
+          )
+          : [];
+        return {
+          setIds,
+          body: {
+            ...validPushBody(),
+            profileId: fixture.profileId,
+            sessions: [{
+              id: sessionId,
+              userId: fixture.ownerId,
+              name: "PR20 routine",
+              startedAt: "2026-09-18T10:00:00.000Z",
+              updatedAt: new Date().toISOString(),
+              exercises: exercises.map((exercise, index) => ({
+                id: exercise.id,
+                sessionId,
+                exerciseId: null,
+                name: exercise.name,
+                orderIndex: index,
+                sets: [{
+                  id: setIds[index],
+                  exerciseId: exercise.id,
+                  setNumber: 1,
+                  targetReps: 10,
+                  actualReps: 10,
+                  weightKg: 20,
+                  workoutMode: "OLD_SCHOOL",
+                  repSummaries: [],
+                }],
+              })),
+            }],
+            telemetry,
+          },
+        };
+      };
+
+      const handler = makeRealSqlPushHandler(fixture);
+      const first = buildBody(true);
+      const firstResponse = await handler(requestFromBody(first.body));
+      assertEquals(firstResponse.status, 200, await firstResponse.text());
+      const firstBySet = await telemetryIdsBySet(fixture, first.setIds);
+      assertEquals(
+        first.setIds.map((setId) => firstBySet[setId].length),
+        [1, 2, 3],
+      );
+      const stored = await fixture.admin.from("exercises")
+        .select("id,exercise_id")
+        .eq("session_id", sessionId);
+      if (stored.error) throw new Error("exercise verification failed");
+      const storedCatalogIds = new Map(
+        (stored.data as Array<{ id: string; exercise_id: string | null }>)
+          .map((row) => [row.id, row.exercise_id]),
+      );
+      assertEquals(storedCatalogIds.get(exercises[0].id), catalogId);
+      assertEquals(storedCatalogIds.get(exercises[1].id), catalogId);
+      assertEquals(storedCatalogIds.get(exercises[2].id), null);
+
+      const second = buildBody(false);
+      const secondResponse = await handler(requestFromBody(second.body));
+      assertEquals(secondResponse.status, 200, await secondResponse.text());
+      assertEquals(await telemetryCount(fixture), 6);
+      const secondBySet = await telemetryIdsBySet(fixture, second.setIds);
+      for (let i = 0; i < exercises.length; i++) {
+        assertEquals(
+          secondBySet[second.setIds[i]],
+          firstBySet[first.setIds[i]],
+        );
+      }
     } finally {
       await cleanupLocalIntegrationFixture(fixture);
     }
@@ -4691,6 +5738,9 @@ Deno.test({
         deload_settings: stored.deload_settings,
         template_id: stored.template_id,
         updated_at: new Date(String(stored.updated_at)).toISOString(),
+        // PR 21: the pushed updatedAt is the LWW key; updated_at (pull
+        // cursor) is the server clock (NF-12).
+        client_updated_at: new Date(String(stored.client_updated_at)).toISOString(),
         portal_edited_at: stored.portal_edited_at,
       }, {
         user_id: fixture.ownerId,
@@ -4710,6 +5760,13 @@ Deno.test({
         updated_at: "2026-07-02T09:30:00.000Z",
         portal_edited_at: null,
       });
+        client_updated_at: "2026-07-02T09:30:00.000Z",
+        portal_edited_at: null,
+      });
+      assert(
+        Date.parse(String(stored.updated_at)) > Date.parse("2026-07-02T09:30:00.000Z"),
+        "updated_at is the server write time, not the pushed updatedAt",
+      );
       assertEquals(await storedDays(fixture, ids.cycleId), [{
         day_number: 1,
         day_type: "workout",
@@ -4725,3 +5782,902 @@ Deno.test({
     }
   },
 });
+
+// ---------------------------------------------------------------------------
+// KD-5 (PR 21): real-SQL LWW clock. client_updated_at is the LWW key (the
+// device's updatedAt, or now() for a portal edit); updated_at stays the
+// server-owned pull cursor. Runs under the SYNC_LWW_ENABLED value of the run
+// (CI runs both).
+// ---------------------------------------------------------------------------
+
+/** A mobile push of one session and one routine stamped `updatedAt`. */
+function lwwClockPush(
+  ids: { sessionId: string; routineId: string },
+  version: string,
+  updatedAt: string,
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    lastSync: Date.now() - 60_000,
+    profileId: "default",
+    profileName: "Default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    sessions: [{
+      id: ids.sessionId,
+      userId: "mobile-local-user",
+      name: `Session ${version}`,
+      startedAt: "2026-07-01T08:00:00.000Z",
+      notes: null,
+      updatedAt,
+      exercises: [],
+    }],
+    routines: [{
+      id: ids.routineId,
+      userId: "mobile-local-user",
+      name: `Routine ${version}`,
+      description: "",
+      exerciseCount: 0,
+      estimatedDuration: 0,
+      timesCompleted: 0,
+      isFavorite: false,
+      updatedAt,
+      exercises: [],
+    }],
+  };
+}
+
+Deno.test({
+  name:
+    "integration: VBT push is idempotent on the timestamptz value and the unique index exists",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const authBehavior: AuthBehavior = async () => ({
+        data: { user: { id: fixture.ownerId } },
+        error: null,
+      });
+      const vbtCount = async (): Promise<number> => {
+        const result = await fixture.admin.from("vbt_assessments")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", fixture.ownerId);
+        if (result.error) throw new Error("vbt count query failed");
+        return result.count ?? -1;
+      };
+      const push = async (
+        body: Record<string, unknown>,
+        expectedInserted: number,
+      ) => {
+        const harness = makeHarness(authBehavior, {
+          tableResults: { exercise_catalog: CATALOG_RESULT },
+          tableClients: { vbt_assessments: fixture.admin },
+        });
+        const response = await harness.handler(requestFromBody(body));
+        const responseBody = await json(response);
+        assertEquals(response.status, 200, JSON.stringify(responseBody));
+        assertEquals(
+          (responseBody.failed as Record<string, unknown>).assessments,
+          [],
+        );
+        assertEquals(responseBody.assessmentsInserted, expectedInserted);
+      };
+
+      // A row stored earlier with a numeric offset. PostgREST reads it back
+      // as "+00:00"; the wire value is the same instant written with "Z".
+      const stored = await fixture.admin.from("vbt_assessments").insert({
+        user_id: fixture.ownerId,
+        exercise_id: CATALOG_EXERCISE_ID,
+        estimated_1rm_kg: 100,
+        load_velocity_data: [],
+        created_at: "2026-07-11T12:00:00+00:00",
+      });
+      if (stored.error) throw new Error("vbt fixture insert failed");
+      assertEquals(await vbtCount(), 1);
+
+      // "Z" payload against the stored "+00:00" row: no new row.
+      await push(assessmentBody(), 0);
+      assertEquals(await vbtCount(), 1);
+      // Second identical push: still a no-op.
+      await push(assessmentBody(), 0);
+      assertEquals(await vbtCount(), 1);
+
+      // A new assessment (different instant) is inserted exactly once.
+      const withNew = {
+        ...assessmentBody(),
+        assessments: [
+          ...(assessmentBody().assessments as unknown[]),
+          {
+            id: "00000000-0000-4000-8000-000000000052",
+            exerciseId: CATALOG_EXERCISE_ID,
+            estimatedOneRepMaxKg: 105,
+            loadVelocityData: "[]",
+            createdAt: "2026-07-12T12:00:00.000Z",
+          },
+        ],
+      };
+      await push(withNew, 1);
+      await push(withNew, 0);
+      assertEquals(await vbtCount(), 2);
+
+      // One payload carrying the same instant twice ("Z" and "+00:00"): it
+      // passes the string-keyed payload check, and DO NOTHING stores one row
+      // instead of failing the statement.
+      const sameKeyTwice = {
+        ...assessmentBody(),
+        assessments: [
+          {
+            id: "00000000-0000-4000-8000-000000000054",
+            exerciseId: CATALOG_EXERCISE_ID,
+            estimatedOneRepMaxKg: 110,
+            loadVelocityData: "[]",
+            createdAt: "2026-07-13T12:00:00.000Z",
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000055",
+            exerciseId: CATALOG_EXERCISE_ID,
+            estimatedOneRepMaxKg: 110,
+            loadVelocityData: "[]",
+            createdAt: "2026-07-13T12:00:00+00:00",
+          },
+        ],
+      };
+      await push(sameKeyTwice, 1);
+      assertEquals(await vbtCount(), 3);
+
+      // The unique index exists: a plain duplicate insert (same instant,
+      // different text form) is rejected with unique_violation.
+      const duplicate = await fixture.admin.from("vbt_assessments").insert({
+        user_id: fixture.ownerId,
+        exercise_id: CATALOG_EXERCISE_ID,
+        estimated_1rm_kg: 100,
+        created_at: "2026-07-11T12:00:00.000Z",
+      });
+      assertEquals(duplicate.error?.code, "23505");
+      assertEquals(await vbtCount(), 3);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+// ─── routine exercise durationSeconds (KD-2: nested, optional) ───────────────
+
+const TIMED_ROUTINE_EXERCISE_ID = "00000000-0000-4000-8000-000000000022";
+
+/**
+ * A routine exercise exactly as the shipping mobile build serializes
+ * PortalRoutineExerciseSyncDto (Project-Phoenix-MP PortalSyncDtos.kt:213-249,
+ * PortalWireJson encodeDefaults=true / explicitNulls=false, values from
+ * PortalSyncAdapter.kt:570-620). It has no durationSeconds key.
+ */
+function currentMobileRoutineExercise(id: string): Record<string, unknown> {
+  return {
+    id,
+    routineId: ROUTINE_ID,
+    exerciseId: "Plank",
+    name: "Plank",
+    displayName: "Plank",
+    muscleGroup: "Core",
+    exerciseEquipment: "",
+    sets: 3,
+    reps: 10,
+    weight: 0.0,
+    restSeconds: 60,
+    mode: "ECHO",
+    orderIndex: 0,
+    perSetWeights: "[0.0,0.0,0.0]",
+    perSetRest: "[60,60,60]",
+    isAmrap: false,
+    isBodyweight: true,
+    repCountTiming: "TOP",
+    stopAtPosition: "TOP",
+    stallDetection: true,
+    eccentricLoad: "LOAD_100",
+    echoLevel: "HARDER",
+    perSetEchoLevels: '["HARDER","HARDER","HARDER"]',
+    warmupSets: "[]",
+    rackBehaviorOverrides: "{}",
+    dropSetEnabled: false,
+  };
+}
+
+function routinePushBody(
+  exercises: Record<string, unknown>[],
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    profileId: "default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    routines: [{
+      id: ROUTINE_ID,
+      userId: VALID_USER_ID,
+      name: "Timed routine",
+      description: "",
+      exerciseCount: exercises.length,
+      estimatedDuration: 0,
+      timesCompleted: 0,
+      isFavorite: false,
+      exercises,
+    }],
+  };
+}
+
+async function storedLwwRow(
+  fixture: TombstonePushFixture,
+  table: "workout_sessions" | "routines",
+  id: string,
+): Promise<Record<string, unknown>> {
+  const columns = table === "workout_sessions"
+    ? "name, notes, updated_at, client_updated_at"
+    : "name, updated_at, client_updated_at";
+  const row = await fixture.admin.from(table).select(columns).eq("id", id).single();
+  if (row.error) throw new Error(`${table} lookup failed: ${row.error.message}`);
+  return row.data as unknown as Record<string, unknown>;
+}
+
+const epochMs = (value: unknown) => Date.parse(String(value));
+
+type RejectionLists = Record<string, Array<Record<string, unknown>>>;
+
+Deno.test({
+  name:
+    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) a device clock 10 minutes behind the server keeps updating; an older write loses only under LWW`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = { sessionId: crypto.randomUUID(), routineId: crypto.randomUUID() };
+      const deviceClock = (minutesAgo: number) =>
+        new Date(Date.now() - minutesAgo * 60_000).toISOString();
+
+      // v1 creates, v2 updates (the server trigger moves updated_at to its
+      // own clock), v3 is the device's next edit, still behind the server.
+      // Before PR 21 the LWW gate compared v3 with updated_at and rejected it.
+      await pushOk(handler, lwwClockPush(ids, "v1", deviceClock(30)));
+      await pushOk(handler, lwwClockPush(ids, "v2", deviceClock(20)));
+      const v3Stamp = deviceClock(10);
+      const v3 = await pushOk(handler, lwwClockPush(ids, "v3", v3Stamp));
+      const v3Rejections = v3.rejections as RejectionLists;
+      assertEquals(v3Rejections.sessions, []);
+      assertEquals(v3Rejections.routines, []);
+      for (const table of ["workout_sessions", "routines"] as const) {
+        const id = table === "workout_sessions" ? ids.sessionId : ids.routineId;
+        const row = await storedLwwRow(fixture, table, id);
+        assertEquals(row.name, table === "workout_sessions" ? "Session v3" : "Routine v3");
+        assertEquals(epochMs(row.client_updated_at), epochMs(v3Stamp), `${table} stores the device key`);
+        assert(
+          epochMs(row.updated_at) > epochMs(v3Stamp),
+          `${table} updated_at is the server write clock`,
+        );
+      }
+
+      // A second device's older write, stamped before v3. This pins the
+      // `RETURNING ... / FOUND` decision (the pre-check SELECT is gone), but
+      // it is a sequential call, not two interleaved transactions — the
+      // acceptance wording deliberately no longer says "concurrent" (R-11).
+      const olderStamp = deviceClock(15);
+      const older = await pushOk(handler, lwwClockPush(ids, "older", olderStamp));
+      const rejections = older.rejections as RejectionLists;
+      const session = await storedLwwRow(fixture, "workout_sessions", ids.sessionId);
+      const routine = await storedLwwRow(fixture, "routines", ids.routineId);
+      if (SYNC_LWW_ENABLED) {
+        assertEquals(rejections.sessions.map((r) => r.id), [ids.sessionId]);
+        assertEquals(rejections.routines.map((r) => r.id), [ids.routineId]);
+        // server_updated_at is the stored key, not the server write time.
+        assertEquals(
+          epochMs(rejections.sessions[0].serverUpdatedAt),
+          epochMs(session.client_updated_at),
+        );
+        assertEquals(
+          epochMs(rejections.routines[0].serverUpdatedAt),
+          epochMs(routine.client_updated_at),
+        );
+        assertEquals(epochMs(session.client_updated_at), epochMs(v3Stamp));
+        assertEquals(session.name, "Session v3");
+        assertEquals(routine.name, "Routine v3");
+      } else {
+        // Last push wins; the key follows it, so it is right when LWW is on.
+        assertEquals(rejections.sessions, []);
+        assertEquals(rejections.routines, []);
+        assertEquals(session.name, "Session older");
+        assertEquals(routine.name, "Routine older");
+        assertEquals(epochMs(session.client_updated_at), epochMs(olderStamp));
+        assertEquals(epochMs(routine.client_updated_at), epochMs(olderStamp));
+      }
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) portal notes and routine edits advance the key, reach pull, and survive an earlier-stamped push under LWW`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = { sessionId: crypto.randomUUID(), routineId: crypto.randomUUID() };
+
+      // The device's last version, stamped T1 by its clock.
+      const t1 = new Date(Date.now() - 5 * 60_000).toISOString();
+      await pushOk(handler, lwwClockPush(ids, "phone", t1));
+      const beforePortal = await storedLwwRow(fixture, "workout_sessions", ids.sessionId);
+
+      // Portal edits at T2 > T1, through PostgREST as the signed-in user.
+      await asPortalUser(fixture, async (browser) => {
+        const notes = await browser.from("workout_sessions")
+          .update({ notes: "Portal note" }, { count: "exact" })
+          .eq("id", ids.sessionId);
+        if (notes.error) throw new Error(`portal notes edit failed: ${notes.error.message}`);
+        assertEquals(notes.count, 1);
+        const rename = await browser.from("routines")
+          .update({ name: "Portal routine" }, { count: "exact" })
+          .eq("id", ids.routineId);
+        if (rename.error) throw new Error(`portal routine edit failed: ${rename.error.message}`);
+        assertEquals(rename.count, 1);
+      });
+      const session = await storedLwwRow(fixture, "workout_sessions", ids.sessionId);
+      const routine = await storedLwwRow(fixture, "routines", ids.routineId);
+      assert(epochMs(session.client_updated_at) > epochMs(t1), "portal edit advances the session key");
+      assert(epochMs(routine.client_updated_at) > epochMs(t1), "portal edit advances the routine key");
+      assertEquals(session.client_updated_at, session.updated_at);
+
+      // #116: an incremental pull that already knows the session returns it.
+      const pulled = await fixture.admin.rpc("get_sessions_excluding_ids", {
+        p_user_id: fixture.ownerId,
+        p_known_ids: [ids.sessionId],
+        p_last_sync_at: beforePortal.updated_at,
+      });
+      if (pulled.error) throw new Error(`sessions pull RPC failed: ${pulled.error.message}`);
+      const pulledRows = pulled.data as Array<Record<string, unknown>>;
+      assertEquals(pulledRows.map((r) => [r.id, r.notes]), [[ids.sessionId, "Portal note"]]);
+
+      // The device re-pushes its unchanged T1 version, then an edit stamped
+      // T1 + 1 s (still before the portal edit).
+      const t1b = new Date(Date.parse(t1) + 1_000).toISOString();
+      for (const [version, stamp] of [["phone", t1], ["phone edit", t1b]] as const) {
+        const response = await pushOk(handler, lwwClockPush(ids, version, stamp));
+        const rejections = response.rejections as RejectionLists;
+        const storedSession = await storedLwwRow(fixture, "workout_sessions", ids.sessionId);
+        const storedRoutine = await storedLwwRow(fixture, "routines", ids.routineId);
+        if (SYNC_LWW_ENABLED) {
+          assertEquals(rejections.sessions.map((r) => r.id), [ids.sessionId], version);
+          assertEquals(rejections.routines.map((r) => r.id), [ids.routineId], version);
+          assertEquals(storedSession.notes, "Portal note", `${version}: portal notes survive`);
+          assertEquals(storedRoutine.name, "Portal routine", `${version}: portal rename survives`);
+          assertEquals(storedSession.client_updated_at, session.client_updated_at);
+        } else {
+          // Documented LWW-off behaviour: the push overwrites (last push
+          // wins) and stores its own key.
+          assertEquals(rejections.sessions, [], version);
+          assertEquals(storedSession.notes, null, version);
+          assertEquals(storedRoutine.name, `Routine ${version}`);
+          assertEquals(epochMs(storedSession.client_updated_at), epochMs(stamp));
+        }
+      }
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+/** Real pull handler for the fixture owner (another device of the account). */
+function realPullHandlerFor(
+  fixture: TombstonePushFixture,
+): (request: Request) => Promise<Response> {
+  return createMobileSyncPullHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      return fixture.admin;
+    },
+    logOperationalFailure: () => {},
+    now: () => Date.now(),
+  } as never);
+}
+
+Deno.test({
+  name:
+    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) rows created by a device 10 minutes behind reach another device's delta pull (NF-12)`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const push = realTombstonePushHandler(fixture);
+      const pull = realPullHandlerFor(fixture);
+      const ids = { sessionId: crypto.randomUUID(), routineId: crypto.randomUUID() };
+
+      // Device B last synced just before device A's push.
+      const lastSyncB = Date.now() - 1_000;
+      const slowStamp = new Date(Date.now() - 10 * 60_000).toISOString();
+      await pushOk(push, lwwClockPush(ids, "slow", slowStamp));
+
+      for (const table of ["workout_sessions", "routines"] as const) {
+        const id = table === "workout_sessions" ? ids.sessionId : ids.routineId;
+        const row = await storedLwwRow(fixture, table, id);
+        assertEquals(epochMs(row.client_updated_at), epochMs(slowStamp), `${table} key is the device time`);
+        assert(
+          epochMs(row.updated_at) > lastSyncB,
+          `${table} pull cursor is the server clock, not the slow device clock`,
+        );
+      }
+
+      // Device B: timestamp delta pull (lastSync > 0, no parity lists; no
+      // profile filter, see the PR 21 summary for the legacy 'default'
+      // profile filter gap).
+      const response = await pull(requestFromBody({
+        deviceId: "device-b",
+        lastSync: lastSyncB,
+        pageSize: 75,
+      }));
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+      const sessions = body.sessions as Array<Record<string, unknown>>;
+      const routines = body.routines as Array<Record<string, unknown>>;
+      assertEquals(sessions.map((s) => s.id), [ids.sessionId]);
+      assertEquals(routines.map((r) => r.id), [ids.routineId]);
+      // R-4, legacy timestamp-mode branch (lastSync > 0, no parity lists, so
+      // the pull uses `select('*')` rather than get_sessions_excluding_ids):
+      // the reported updatedAt is the device's own LWW key here too.
+      assertEquals(
+        epochMs(sessions[0].updatedAt),
+        epochMs(slowStamp),
+        "timestamp-mode pull reports the device stamp, not the server write clock",
+      );
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+/** A push whose session/routine/cycle DTOs carry no `updatedAt` at all. */
+function undatedPush(
+  ids: { sessionId: string; routineId: string; cycleId: string },
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    lastSync: Date.now() - 60_000,
+    profileId: "default",
+    profileName: "Default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    sessions: [{
+      id: ids.sessionId,
+      userId: "mobile-local-user",
+      name: "Undated session",
+      startedAt: "2026-07-01T08:00:00.000Z",
+      notes: null,
+      exercises: [],
+    }],
+    routines: [{
+      id: ids.routineId,
+      userId: "mobile-local-user",
+      name: "Undated routine",
+      description: "",
+      exerciseCount: 0,
+      estimatedDuration: 0,
+      timesCompleted: 0,
+      isFavorite: false,
+      exercises: [],
+    }],
+    cycles: [{
+      id: ids.cycleId,
+      userId: "mobile-local-user",
+      name: "Undated cycle",
+      durationWeeks: 1,
+      workoutDays: 1,
+      restDays: 0,
+      currentWeek: 1,
+      status: "active",
+      days: [],
+    }],
+  };
+}
+
+async function storedClocks(
+  fixture: TombstonePushFixture,
+  table: "workout_sessions" | "routines" | "training_cycles",
+  id: string,
+): Promise<{ updated_at: unknown; client_updated_at: unknown }> {
+  const row = await fixture.admin
+    .from(table)
+    .select("updated_at, client_updated_at")
+    .eq("id", id)
+    .single();
+  if (row.error) throw new Error(`${table} clock lookup failed: ${row.error.message}`);
+  return row.data as unknown as { updated_at: unknown; client_updated_at: unknown };
+}
+
+Deno.test({
+  name:
+    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) a push that omits updatedAt is dated at receipt and never stores a null clock (NF-15 / R-1)`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = {
+        sessionId: crypto.randomUUID(),
+        routineId: crypto.randomUUID(),
+        cycleId: crypto.randomUUID(),
+      };
+      const tables = [
+        ["workout_sessions", ids.sessionId],
+        ["routines", ids.routineId],
+        ["training_cycles", ids.cycleId],
+      ] as const;
+
+      const beforeFirst = Date.now() - 2_000;
+      await pushOk(handler, undatedPush(ids));
+      for (const [table, id] of tables) {
+        const row = await storedClocks(fixture, table, id);
+        // routines.updated_at / training_cycles.updated_at are NOT NULL in
+        // production; a row built as `updatedAt ?? null` fails 23502 there,
+        // and a BEFORE UPDATE trigger cannot rescue it (PostgreSQL checks
+        // NOT NULL against the proposed tuple).
+        assert(row.updated_at !== null, `${table}.updated_at must never be written null`);
+        assert(
+          row.client_updated_at !== null,
+          `${table}.client_updated_at must never be written null`,
+        );
+        assert(
+          epochMs(row.client_updated_at) >= beforeFirst,
+          `${table}: an undated push is dated at receipt`,
+        );
+      }
+
+      // A portal edit now owns the LWW key. The LWW-off PostgREST upsert used
+      // to overwrite it with NULL on the next undated push (R-1), which would
+      // silently hand the row back to the server write clock the day the flag
+      // flips.
+      await asPortalUser(fixture, async (browser) => {
+        const notes = await browser.from("workout_sessions")
+          .update({ notes: "Portal note" }, { count: "exact" })
+          .eq("id", ids.sessionId);
+        if (notes.error) throw new Error(`portal notes edit failed: ${notes.error.message}`);
+        const routine = await browser.from("routines")
+          .update({ description: "Portal description" }, { count: "exact" })
+          .eq("id", ids.routineId);
+        if (routine.error) throw new Error(`portal routine edit failed: ${routine.error.message}`);
+        const cycle = await browser.from("training_cycles")
+          .update({ description: "Portal description" }, { count: "exact" })
+          .eq("id", ids.cycleId);
+        if (cycle.error) throw new Error(`portal cycle edit failed: ${cycle.error.message}`);
+      });
+      const portalKeys = new Map<string, number>();
+      for (const [table, id] of tables) {
+        const row = await storedClocks(fixture, table, id);
+        portalKeys.set(table, epochMs(row.client_updated_at));
+      }
+
+      const beforeSecond = Date.now() - 2_000;
+      await pushOk(handler, undatedPush(ids));
+      for (const [table, id] of tables) {
+        const row = await storedClocks(fixture, table, id);
+        assert(row.updated_at !== null, `${table}.updated_at must never be written null`);
+        assert(
+          row.client_updated_at !== null,
+          `${table}: an undated push must not erase the stored portal stamp`,
+        );
+        // Documented consequence (R-7): with no device date to go on the
+        // server dates the push at receipt, so it beats the earlier portal
+        // edit under both flag values.
+        assert(
+          epochMs(row.client_updated_at) >= beforeSecond,
+          `${table}: the undated push is re-dated at receipt`,
+        );
+        assert(
+          epochMs(row.client_updated_at) >= (portalKeys.get(table) ?? 0),
+          `${table}: the LWW key never moves backwards`,
+        );
+      }
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) the same-sync pull reports a just-pushed session's device stamp while the cursor stays server-clock (R-4)`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const push = realTombstonePushHandler(fixture);
+      const pull = realPullHandlerFor(fixture);
+      const first = { sessionId: crypto.randomUUID(), routineId: crypto.randomUUID() };
+      const second = { sessionId: crypto.randomUUID(), routineId: crypto.randomUUID() };
+
+      // The device's clock trails the DB by 10 minutes - more than the
+      // push-to-stamp latency mobile relies on. SyncManager stamps each
+      // pushed session with its own currentTimeMillis() and mergeSessionsLww
+      // then accepts an incoming row when incomingTs >= existingTs, so
+      // reporting the server write clock here made the device overwrite its
+      // own freshly recorded session with the lossy pull projection
+      // (warmupReps 0, averaged duration, lossy mode map, constructor
+      // defaults for progressionKg / isJustLift / routineId, ...).
+      const firstStamp = new Date(Date.now() - 10 * 60_000).toISOString();
+      const secondStamp = new Date(Date.now() - 9 * 60_000).toISOString();
+      await pushOk(push, lwwClockPush(first, "slow one", firstStamp));
+      await pushOk(push, lwwClockPush(second, "slow two", secondStamp));
+
+      const storedFirst = await storedLwwRow(fixture, "workout_sessions", first.sessionId);
+      assert(
+        epochMs(storedFirst.updated_at) > epochMs(firstStamp),
+        "the server write clock is ahead of the slow device",
+      );
+
+      const response = await pull(requestFromBody({
+        deviceId: "device-a",
+        lastSync: 0,
+        pageSize: 75,
+      }));
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+      const sessions = body.sessions as Array<Record<string, unknown>>;
+      const byId = new Map(sessions.map((s) => [s.id as string, s]));
+      assertEquals(
+        epochMs(byId.get(first.sessionId)?.updatedAt),
+        epochMs(firstStamp),
+        "the pull reports the device's own stamp for its just-pushed session",
+      );
+      assertEquals(
+        epochMs(byId.get(second.sessionId)?.updatedAt),
+        epochMs(secondStamp),
+        "...for every session in the page",
+      );
+      assert(
+        epochMs(byId.get(first.sessionId)?.updatedAt) <= epochMs(storedFirst.updated_at),
+        "the reported stamp never exceeds what the device pushed",
+      );
+
+      // The pagination cursor must stay on the server write clock, otherwise
+      // pages would be ordered by one clock and filtered by another.
+      const paged = await pull(requestFromBody({
+        deviceId: "device-a",
+        lastSync: 0,
+        pageSize: 1,
+      }));
+      const pagedBody = await json(paged);
+      assertEquals(paged.status, 200, JSON.stringify(pagedBody));
+      assertEquals(pagedBody.hasMore, true);
+      const cursor = JSON.parse(atob(String(pagedBody.nextCursor))) as {
+        type: string;
+        updatedAt: string;
+        id: string;
+      };
+      assertEquals(cursor.type, "sessions");
+      assertEquals(cursor.id, first.sessionId);
+      assertEquals(
+        epochMs(cursor.updatedAt),
+        epochMs(storedFirst.updated_at),
+        "the next-page cursor is the server write clock, not the device stamp",
+      );
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) the flag-off PostgREST upsert cannot move a row to another owner (R-13)`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    let attackerId: string | null = null;
+    try {
+      const push = realTombstonePushHandler(fixture);
+      const ids = { sessionId: crypto.randomUUID(), routineId: crypto.randomUUID() };
+      await pushOk(
+        push,
+        lwwClockPush(ids, "victim", new Date(Date.now() - 60_000).toISOString()),
+      );
+
+      const suffix = crypto.randomUUID();
+      const attacker = await fixture.admin.auth.admin.createUser({
+        email: `pr21-attacker-${suffix}@example.invalid`,
+        password: `pw-${suffix}`,
+        email_confirm: true,
+      });
+      if (attacker.error || !attacker.data.user) throw new Error("attacker fixture failed");
+      attackerId = attacker.data.user.id;
+
+      // SYNC_LWW_ENABLED defaults to false, so the SHIPPING push path is the
+      // service-role PostgREST upsert at mobile-sync-push/index.ts:1786-1789,
+      // which never reaches the guarded LWW RPCs. It writes user_id along
+      // with the content, so a victim id landing in the TOCTOU window after
+      // assertRowsOwnedByUser changes the row's OWNER outright. This is that
+      // exact write, issued the way the handler issues it. Without the
+      // owner-immutable trigger it succeeds.
+      const takeover = await fixture.admin
+        .from("workout_sessions")
+        .upsert(
+          {
+            id: ids.sessionId,
+            user_id: attackerId,
+            name: "takeover",
+            started_at: "2026-07-01T08:00:00.000Z",
+            client_updated_at: new Date(Date.now() + 86_400_000).toISOString(),
+          },
+          { onConflict: "id" },
+        );
+      assert(takeover.error !== null, "the cross-user session upsert must be refused");
+      assertEquals(takeover.error?.code, "42501", JSON.stringify(takeover.error));
+
+      const routineTakeover = await fixture.admin
+        .from("routines")
+        .upsert(
+          {
+            id: ids.routineId,
+            user_id: attackerId,
+            name: "takeover",
+            client_updated_at: new Date(Date.now() + 86_400_000).toISOString(),
+          },
+          { onConflict: "id" },
+        );
+      assert(routineTakeover.error !== null, "the cross-user routine upsert must be refused");
+      assertEquals(routineTakeover.error?.code, "42501", JSON.stringify(routineTakeover.error));
+
+      const session = await storedLwwRow(fixture, "workout_sessions", ids.sessionId);
+      const routine = await storedLwwRow(fixture, "routines", ids.routineId);
+      assertEquals(session.name, "Session victim", "the victim's session is untouched");
+      assertEquals(routine.name, "Routine victim", "the victim's routine is untouched");
+      const owners = await fixture.admin
+        .from("workout_sessions")
+        .select("user_id")
+        .eq("id", ids.sessionId)
+        .single();
+      if (owners.error) throw new Error(`owner lookup failed: ${owners.error.message}`);
+      assertEquals(
+        (owners.data as unknown as { user_id: string }).user_id,
+        fixture.ownerId,
+        "the row still belongs to the victim",
+      );
+    } finally {
+      const toDelete = attackerId === null
+        ? [fixture.ownerId]
+        : [fixture.ownerId, attackerId];
+      await deleteTombstonePushFixture(fixture.admin, toDelete);
+    }
+  },
+});
+function routineExerciseUpsertRows(
+  harness: PushHarness,
+): Array<Record<string, unknown>> {
+  const upserts = harness.adminWriteArgs.filter((call) =>
+    call.table === "routine_exercises" && call.method === "upsert"
+  );
+  assertEquals(upserts.length, 1);
+  return upserts[0].args[0] as Array<Record<string, unknown>>;
+}
+
+Deno.test("current mobile routine exercise shape (no durationSeconds) is 200 and leaves duration untouched", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(
+    requestFromBody(routinePushBody([
+      currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
+    ])),
+  );
+
+  assertEquals(response.status, 200);
+  const [row] = routineExerciseUpsertRows(harness);
+  assertEquals(row.id, ROUTINE_EXERCISE_ID);
+  assertEquals(row.eccentric_load, "LOAD_100");
+  // The column is not in the upsert at all, so a stored duration survives.
+  assertEquals("duration_seconds" in row, false);
+});
+
+/**
+ * A routine_exercises stand-in that honours the probe's `.select(columns)`
+ * and `.in("id", ids)`: it returns only the requested rows, projected to the
+ * requested columns. Writes resolve empty.
+ */
+function storedRoutineExercises(
+  stored: Array<Record<string, unknown>>,
+): TerminalResult {
+  return (operations) => {
+    const select = operations.find((op) => op.name === "select");
+    const inIds = operations.find((op) => op.name === "in");
+    if (!select || !inIds) return { data: [], error: null };
+    const columns = String(select.args[0]).split(",").map((c) => c.trim());
+    const ids = inIds.args[1] as string[];
+    return {
+      data: stored
+        .filter((row) => ids.includes(row.id as string))
+        .map((row) =>
+          Object.fromEntries(
+            columns.filter((c) => c in row).map((c) => [c, row[c]]),
+          )
+        ),
+      error: null,
+    };
+  };
+}
+
+for (
+  const omitter of [
+    {
+      label: "current mobile shape (drop-set fields omitted)",
+      fields: {},
+    },
+    {
+      // needsDropSetExistingRow(e) is false here, so only the duration
+      // predicate decides whether this row is probed.
+      label: "explicit drop-set fields",
+      fields: { dropSetEnabled: false, dropSetMinWeightKg: null },
+    },
+  ]
+) {
+  Deno.test(`routine exercise without durationSeconds keeps its stored duration in a mixed batch: ${omitter.label}`, async () => {
+    const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+      tableResults: {
+        routine_exercises: storedRoutineExercises([{
+          id: ROUTINE_EXERCISE_ID,
+          drop_set_enabled: false,
+          drop_set_min_weight_kg: null,
+          duration_seconds: 45,
+        }]),
+      },
+    });
+    const timed = {
+      ...currentMobileRoutineExercise(TIMED_ROUTINE_EXERCISE_ID),
+      orderIndex: 1,
+      durationSeconds: 30,
+      dropSetEnabled: false,
+      dropSetMinWeightKg: null,
+    };
+    const response = await harness.handler(
+      requestFromBody(routinePushBody([
+        { ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID), ...omitter.fields },
+        timed,
+      ])),
+    );
+
+    assertEquals(response.status, 200);
+    const rows = routineExerciseUpsertRows(harness);
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    // Omitted: filled from the stored row, never NULLed by the batch key union.
+    assertEquals(byId.get(ROUTINE_EXERCISE_ID)?.duration_seconds, 45);
+    // Sent: stored as given.
+    assertEquals(byId.get(TIMED_ROUTINE_EXERCISE_ID)?.duration_seconds, 30);
+  });
+}
+
+Deno.test("routine exercise durationSeconds null clears the duration", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(
+    requestFromBody(routinePushBody([{
+      ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
+      durationSeconds: null,
+    }])),
+  );
+
+  assertEquals(response.status, 200);
+  const [row] = routineExerciseUpsertRows(harness);
+  assertEquals(row.duration_seconds, null);
+});
+
+for (const bad of [-1, 1.5, "45", 2_147_483_648]) {
+  Deno.test(`routine exercise durationSeconds ${JSON.stringify(bad)} is rejected before privileges`, async () => {
+    const harness = makeHarness();
+    const response = await harness.handler(
+      requestFromBody(routinePushBody([{
+        ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
+        durationSeconds: bad,
+      }])),
+    );
+
+    assertEquals(response.status, 400);
+    assertNoPrivilegedActivity(harness);
+  });
+}
