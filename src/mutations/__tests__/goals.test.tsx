@@ -366,6 +366,42 @@ describe("useUpdateGoal", () => {
 			"Failed to update goal. Please try again.",
 		);
 	});
+
+	it("shows the goal-limit error when re-activating a goal at the cap (P0001)", async () => {
+		const { useUpdateGoal } = await import("../goals");
+
+		const selectSingle = vi.fn().mockResolvedValue({
+			data: null,
+			error: {
+				message: "Goal limit reached for your subscription tier",
+				code: "P0001",
+			},
+		});
+		const selectFn = vi.fn(() => ({ single: selectSingle }));
+		const eqUser = vi.fn(() => ({ select: selectFn }));
+		const eqId = vi.fn(() => ({ eq: eqUser }));
+		mockChain.update.mockImplementation(() => ({ eq: eqId }));
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateGoal(), { wrapper });
+
+		result.current.mutate({
+			goalId: "archived-goal",
+			updates: { status: "active" },
+		});
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(result.current.error?.message).toBe(
+			"Goal limit reached for your subscription tier",
+		);
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Goal limit reached for your subscription tier.",
+		);
+		expect(mockToast.error).not.toHaveBeenCalledWith(
+			"Failed to update goal. Please try again.",
+		);
+	});
 });
 
 // ---------------------------------------------------------------------------

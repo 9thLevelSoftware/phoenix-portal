@@ -1,3 +1,5 @@
+import { createClient } from "jsr:@supabase/supabase-js@2";
+import { completeClaimedSyncQueueEntry } from "../_shared/completeSyncQueueEntry.ts";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { errorMessage } from "../_shared/errorMessage.ts";
@@ -156,6 +158,9 @@ async function liftosaurSyncHandler(
 		}
 
 		const { api_key, sync_type } = body;
+		const queueId = !jwtUser && typeof body.queue_id === "string"
+			? body.queue_id
+			: null;
 
 		const supabase = deps.createAdminClient();
 
@@ -459,18 +464,11 @@ async function liftosaurSyncHandler(
 			.eq("user_id", userId)
 			.eq("provider", "liftosaur");
 
-		// Mark sync queue entry as completed
-		if (sync_type) {
-			await supabase
-				.from("sync_queue")
-				.update({
-					status: "completed",
-					completed_at: new Date().toISOString(),
-				})
-				.eq("user_id", userId)
-				.eq("provider", "liftosaur")
-				.eq("status", "pending");
-		}
+		await completeClaimedSyncQueueEntry(supabase, {
+			queueId,
+			userId,
+			provider: "liftosaur",
+		});
 
 		return new Response(
 			JSON.stringify({

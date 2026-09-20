@@ -25,7 +25,6 @@ import {
 	callPullEndpoint,
 	callPushEndpoint,
 	createMinimalPushPayload,
-	createTestExercise,
 	createTestSession,
 	createTestSet,
 	createTestUser,

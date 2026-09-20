@@ -8,9 +8,15 @@ import {
 import { paddleWebhookResponseForCustomUserId } from "../_shared/paddleWebhookUserId.ts";
 import {
   buildSubscriptionUpsertFromPaddleState,
+  mapPaddleStatusToSubscriptionStatus,
   type PaddleSubscriptionState,
   resolveBasePlanPriceId,
 } from "../_shared/paddleSubscriptionState.ts";
+import {
+  classifySubscriptionEventTarget,
+  ENTITLEMENT_KEEPING_STATUSES,
+  PADDLE_LIVE_STATUS_FILTER,
+} from "../_shared/billingAction.ts";
 import {
   classifyPaddleEventOrder,
   evaluatePaddleCustomDataTrust,
@@ -39,6 +45,32 @@ export interface PaddleWebhooksDbClient {
       };
     };
   };
+/** The stored subscription columns this handler reads. */
+export interface StoredSubscriptionRow {
+  last_event_id?: string | null;
+  last_event_occurred_at?: string | null;
+  tier?: string | null;
+  paddle_subscription_id?: string | null;
+  status?: string | null;
+  current_period_end?: string | null;
+  cancel_at_period_end?: boolean | null;
+}
+
+export interface SubscriptionsTableQuery {
+  select(columns: string): {
+    eq(column: "user_id", value: string): {
+      maybeSingle(): PromiseLike<{
+        data: StoredSubscriptionRow | null;
+        error: unknown;
+      }>;
+}
+
+export interface SubscriptionEventsTableQuery {
+  insert(values: Record<string, unknown>): PromiseLike<{ error: unknown }>;
+}
+
+  from(table: "subscriptions"): SubscriptionsTableQuery;
+  from(table: "subscription_events"): SubscriptionEventsTableQuery;
   rpc(
     fn: "apply_subscription_event",
     args: Record<string, unknown>,
@@ -67,6 +99,108 @@ function defaultPaddleWebhooksDependencies(): PaddleWebhooksDependencies {
       return Date.now();
     },
   };
+  /** Paddle API fetch (used to look for a second live subscription). */
+  fetch: typeof fetch;
+    fetch: (input, init) => fetch(input, init),
+/** Cap on the webhook's one outbound Paddle call. */
+const PADDLE_LISTING_TIMEOUT_MS = 10_000;
+/**
+ * The customer's other live Paddle subscriptions, newest first.
+ *
+ * Used when the tracked subscription is cancelled: if the customer is still
+ * paying for an untracked one, adopting it beats downgrading them (R-34).
+ * Returns `null` when Paddle could not be asked at all.
+ *
+ * Every row is re-validated against what was requested — a Paddle customer is
+ * keyed by an email the buyer types at checkout, so this list is NOT proof of
+ * ownership and the caller must still check `custom_data`.
+ */
+async function listLiveCustomerSubscriptions(
+  {
+    env,
+    fetch: fetchImpl,
+    customerId,
+    excludeSubscriptionId,
+  }: {
+    env: { get(key: string): string | undefined };
+    fetch: typeof fetch;
+    customerId: string;
+    excludeSubscriptionId: string;
+  },
+): Promise<PaddleSubscriptionState[] | null> {
+  const apiKey = env.get("PADDLE_API_KEY");
+  if (!apiKey) {
+    console.warn(
+      "[Paddle] PADDLE_API_KEY is not set — cannot look for an untracked subscription",
+    );
+    return null;
+  }
+  const baseUrl = env.get("PADDLE_ENVIRONMENT") === "sandbox"
+    ? "https://sandbox-api.paddle.com"
+    : "https://api.paddle.com";
+  // order_by makes "newest first" what we actually asked for, so two live
+  // subscriptions resolve deterministically instead of by page order.
+  const url =
+    `${baseUrl}/subscriptions?customer_id=${encodeURIComponent(customerId)}` +
+    `&status=${PADDLE_LIVE_STATUS_FILTER}&order_by=-created_at`;
+  let response: Response;
+  try {
+    response = await fetchImpl(url, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      // A hung Paddle call must not hold the webhook open until the platform
+      // kills it; a timeout falls through to the previous behaviour (apply
+      // the cancellation) rather than blocking the delivery.
+      signal: AbortSignal.timeout(PADDLE_LISTING_TIMEOUT_MS),
+    });
+  } catch (err) {
+    console.error("[Paddle] Customer subscription listing failed:", err);
+    return null;
+  }
+  if (!response.ok) {
+    console.error(
+      "[Paddle] Customer subscription listing failed:",
+      response.status,
+      await response.text(),
+    );
+    return null;
+  }
+  let body: { data?: PaddleSubscriptionState[] } | null = null;
+  try {
+    body = await response.json();
+  } catch {
+    console.error("[Paddle] Customer subscription listing returned non-JSON");
+    return null;
+  }
+  return (body?.data ?? []).filter((subscription) => {
+    if (
+      typeof subscription?.id !== "string" ||
+      subscription.id === excludeSubscriptionId
+    ) {
+      return false;
+    }
+    // Re-check what the query asked for: a filter regression or a wrong page
+    // must never be written into the row.
+    if (subscription.customer_id !== customerId) {
+      console.error(
+        "[BILLING_ALERT] Paddle listing returned a subscription for another customer:",
+        `requested=${customerId}`,
+        `returned=${subscription.customer_id}`,
+      );
+      return false;
+    }
+    if (!ENTITLEMENT_KEEPING_STATUSES.has(subscription.status)) {
+      console.error(
+        "[BILLING_ALERT] Paddle listing returned a non-live subscription:",
+        `${subscription.id}=${subscription.status}`,
+      );
+      return false;
+    }
+    return true;
+  });
 }
 
 // ─── Webhook Handler ────────────────────────────────────────────────────────
@@ -80,6 +214,7 @@ export function createPaddleWebhooksHandler(
 async function paddleWebhooksHandler(
   req: Request,
   { env, createAdminClient, now }: PaddleWebhooksDependencies,
+  { env, createAdminClient, now, fetch: fetchImpl }: PaddleWebhooksDependencies,
 ): Promise<Response> {
   // Only accept POST
   if (req.method !== "POST") {
@@ -223,7 +358,9 @@ async function paddleWebhooksHandler(
     const supabase = createAdminClient();
     const { data: existingSubscription, error: existingSubscriptionError } = await supabase
       .from("subscriptions")
-      .select("last_event_id, last_event_occurred_at, tier, paddle_subscription_id")
+      .select(
+        "last_event_id, last_event_occurred_at, tier, paddle_subscription_id, status, current_period_end, cancel_at_period_end",
+      )
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -308,6 +445,62 @@ async function paddleWebhooksHandler(
       );
     }
 
+    // A customer may hold more than one Paddle subscription, but the portal
+    // keeps a single row per user. An event from an untracked subscription
+    // must not revoke the access the tracked one grants (F-022).
+    const incomingStatus = mapPaddleStatusToSubscriptionStatus(
+      String(event.data.status ?? ""),
+    );
+    const eventTarget = classifySubscriptionEventTarget({
+      incomingSubscriptionId: event.data.id,
+      incomingStatus,
+      storedRow: existingSubscription,
+      now: new Date(now()),
+    });
+    if (eventTarget === "ignore_untracked_subscription") {
+      console.error(
+        "[BILLING_ALERT] foreign_subscription_event_ignored:",
+        `event_id=${event.event_id}`,
+        `event_type=${event.event_type}`,
+        `user_id=${userId}`,
+        `untracked_subscription_id=${event.data.id}`,
+        `untracked_status=${incomingStatus}`,
+        `tracked_subscription_id=${existingSubscription?.paddle_subscription_id}`,
+      );
+      // Audit the ignored subscription so PR 68's manual double-subscription
+      // resolution has the id and status to work from. The same row is
+      // written by public.apply_subscription_event when its own guard fires.
+      const { error: noteError } = await supabase
+        .from("subscription_events")
+        .insert({
+          user_id: userId,
+          operation: "IGNORED",
+          note: "untracked_subscription",
+          status: incomingStatus,
+          paddle_customer_id: event.data.customer_id ?? null,
+          paddle_subscription_id: event.data.id ?? null,
+          last_event_id: event.event_id,
+          last_event_occurred_at: eventOrder.occurredAt,
+          row_snapshot: {
+            tracked_subscription_id:
+              existingSubscription?.paddle_subscription_id ?? null,
+            tracked_status: existingSubscription?.status ?? null,
+            event_type: event.event_type,
+          },
+        });
+      if (noteError) {
+        console.error(
+          "[BILLING_ALERT] Failed to record untracked_subscription note:",
+          event.event_id,
+          noteError,
+        );
+      }
+      return new Response(
+        JSON.stringify({ received: true, ignored: "untracked_subscription" }),
+        { status: 200, headers: responseHeaders },
+      );
+    }
+
     const priceId = resolveBasePlanPriceId(
       event.data as PaddleSubscriptionState,
       getAllAllowedPriceIds(env),
@@ -346,6 +539,143 @@ async function paddleWebhooksHandler(
       occurredAt: eventOrder.occurredAt,
     });
 
+    // No lockout while the customer is still paying for an untracked
+    // subscription (R-34): before letting a cancellation downgrade the user,
+    // ask Paddle whether another subscription of theirs is still live.
+    let untrackedSwitch: PaddleSubscriptionState | null = null;
+    let untrackedSwitchTier = tier;
+    let untrackedSwitchPriceId: string | undefined;
+    const customerId = typeof event.data.customer_id === "string"
+      ? event.data.customer_id
+      : null;
+    if (
+      upsertData.status === "canceled" &&
+      typeof event.data.id === "string" &&
+      customerId
+    ) {
+      const liveSubscriptions = await listLiveCustomerSubscriptions({
+        env,
+        fetch: fetchImpl,
+        customerId,
+        excludeSubscriptionId: event.data.id,
+      });
+      if (liveSubscriptions === null) {
+        // Paddle could not be asked (429, 5xx, timeout). Applying the
+        // cancellation now would downgrade a customer who may still be
+        // paying, and leave them on a `canceled` row — which billingAction
+        // maps to `checkout`, i.e. an invitation to open another
+        // subscription. Refuse the delivery instead: the row keeps its
+        // current (entitled) state and Paddle redelivers, at which point the
+        // listing is retried. If Paddle never recovers, the stale-refresh
+        // path re-reads this subscription and writes the cancellation.
+        console.error(
+          "[BILLING_ALERT] untracked_subscription_lookup_failed:",
+          `event_id=${event.event_id}`,
+          `user_id=${userId}`,
+          `canceling_subscription_id=${event.data.id}`,
+          "reason=could not list the customer's other subscriptions",
+        );
+        return new Response(
+          JSON.stringify({ error: "Could not check for a live subscription" }),
+          { status: 500, headers: responseHeaders },
+        );
+      }
+      // Walk every candidate, not just the newest: a third party who checked
+      // out under this user's billing email shares the Paddle customer, and
+      // with order_by=-created_at their (unadoptable) subscription sits at
+      // [0]. Stopping there would abandon the rescue and drop a customer who
+      // IS still paying to FREE, with their own provably-owned sibling
+      // sitting at [1] (security round-2 R-6). The ownership proof below is
+      // unchanged — this only stops one plant from hiding a real sibling.
+      for (const candidate of liveSubscriptions) {
+        // AUTHORIZATION, not just identification. Sharing a Paddle customer
+        // proves nothing: the customer is keyed by the email the buyer types
+        // into the overlay, so anyone who checks out under this user's
+        // billing email lands on the same customer. Adopting on customer id
+        // alone would let them bind someone else's subscription into their
+        // own row — free entitlement, plus cancel/refresh/plan-change control
+        // of the victim's subscription, since every billing function keys off
+        // the stored paddle_subscription_id.
+        //
+        // The candidate must carry the same signed custom_data the webhook
+        // demands of an incoming event: user_id === this user, with a cd_sig
+        // that verifies. Deliberately the RAW verifier, not
+        // evaluatePaddleCustomDataTrust — the legacy unsigned fallback must
+        // never be reachable here. `paddle_subscription_id` also has a
+        // partial UNIQUE index (20260920004400) as structural defence in
+        // depth.
+        const candidateCustomData = candidate.custom_data ?? null;
+        const candidateUserId = candidateCustomData?.user_id;
+        const candidateSigValid = await verifyPaddleCustomDataSignature(
+          userId,
+          candidateCustomData?.cd_sig,
+          customDataSecret,
+        );
+        if (candidateUserId !== userId || !candidateSigValid) {
+          console.error(
+            "[BILLING_ALERT] untracked_subscription_not_adopted:",
+            `event_id=${event.event_id}`,
+            `user_id=${userId}`,
+            `candidate_subscription_id=${candidate.id}`,
+            `candidate_user_id=${typeof candidateUserId === "string" ? candidateUserId : typeof candidateUserId}`,
+            `cd_sig_valid=${candidateSigValid}`,
+            "reason=candidate does not prove it belongs to this user",
+          );
+          continue;
+        }
+
+        const candidatePriceId = resolveBasePlanPriceId(
+          candidate,
+          getAllAllowedPriceIds(env),
+        );
+        const candidateTier = mapPriceIdToTier(candidatePriceId, env);
+        if (!candidatePriceId || candidateTier === "FREE") {
+          // A missing or unknown price on the live subscription would adopt
+          // the user onto FREE — worse than leaving the cancellation alone.
+          // `!candidatePriceId` covers an items-less candidate, which would
+          // otherwise slip past an `unknown price` check and be adopted at
+          // tier FREE (general review R-4).
+          console.error(
+            "[BILLING_ALERT] Untracked live subscription has no usable price ID; not adopting it:",
+            `candidate_subscription_id=${candidate.id}`,
+            `price_id=${candidatePriceId || "(none)"}`,
+          );
+          continue;
+        }
+
+        untrackedSwitch = candidate;
+        untrackedSwitchTier = candidateTier;
+        untrackedSwitchPriceId = candidatePriceId;
+        break;
+      }
+    }
+
+    // ONE write, whatever the outcome. When a live sibling was found the
+    // cancellation is never applied at all: the row moves straight from the
+    // cancelled subscription to the adopted one, so no reader ever observes a
+    // transient `canceled` (which would resolve FREE for requireSubscription
+    // and offer the user a third checkout), and a failure leaves the row
+    // exactly as it was — the redelivery re-runs the whole rescue.
+    //
+    // Known residual, not introduced here: the write still carries this
+    // event's occurred_at, so a sibling cancellation that occurred EARLIER
+    // than the tracked one comes back `stale` and the row stays active on an
+    // already-cancelled subscription until its period end. That follows from
+    // the pre-existing occurred_at ordering rule — the previous
+    // cancel-then-adopt sequence stamped the same clock and had it too — and
+    // it is not steerable by an attacker. paddle-refresh-subscription and the
+    // sibling's own later events correct it.
+    const applyPayload = untrackedSwitch
+      ? buildSubscriptionUpsertFromPaddleState({
+        userId,
+        subscription: untrackedSwitch,
+        tier: untrackedSwitchTier,
+        priceId: untrackedSwitchPriceId,
+        eventId: event.event_id,
+        occurredAt: eventOrder.occurredAt,
+      })
+      : upsertData;
+
     // Apply atomically with an ordering guard: the RPC only writes when this
     // event is strictly newer than the stored last_event_occurred_at, closing
     // the read-then-upsert race between concurrent deliveries (F264).
@@ -354,23 +684,40 @@ async function paddleWebhooksHandler(
       {
         p_user_id: userId,
         p_paddle_customer_id:
-          (upsertData.paddle_customer_id as string | null) ?? null,
+          (applyPayload.paddle_customer_id as string | null) ?? null,
         p_paddle_subscription_id:
-          (upsertData.paddle_subscription_id as string | null) ?? null,
-        p_tier: upsertData.tier as string,
-        p_status: upsertData.status as string,
-        p_price_id: (upsertData.price_id as string | null) ?? null,
+          (applyPayload.paddle_subscription_id as string | null) ?? null,
+        p_tier: applyPayload.tier as string,
+        p_status: applyPayload.status as string,
+        p_price_id: (applyPayload.price_id as string | null) ?? null,
         p_current_period_start:
-          (upsertData.current_period_start as string | null) ?? null,
+          (applyPayload.current_period_start as string | null) ?? null,
         p_current_period_end:
-          (upsertData.current_period_end as string | null) ?? null,
-        p_cancel_at_period_end: Boolean(upsertData.cancel_at_period_end),
+          (applyPayload.current_period_end as string | null) ?? null,
+        p_cancel_at_period_end: Boolean(applyPayload.cancel_at_period_end),
         p_last_event_id: event.event_id,
         p_last_event_occurred_at: eventOrder.occurredAt,
       },
     );
 
     if (error) {
+      if (untrackedSwitch) {
+        console.error(
+          "[BILLING_ALERT] switch_to_untracked_subscription_failed:",
+          `event_id=${event.event_id}`,
+          `user_id=${userId}`,
+          `untracked_subscription_id=${untrackedSwitch.id}`,
+          error,
+        );
+        // The row is untouched — still the (now cancelled in Paddle) tracked
+        // subscription, so the user keeps access rather than dropping to FREE.
+        // 500 makes Paddle redeliver, and because last_event_occurred_at did
+        // not move the redelivery is accepted and the rescue runs again.
+        return new Response(
+          JSON.stringify({ error: "Failed to adopt live subscription" }),
+          { status: 500, headers: responseHeaders },
+        );
+      }
       console.error(`[BILLING_ALERT] Error applying subscription event for ${event.event_type}:`, error);
       return new Response(
         JSON.stringify({ error: "Database upsert failed" }),
@@ -379,12 +726,58 @@ async function paddleWebhooksHandler(
     }
 
     if (applied === false) {
+      // `false` now means "stale OR refused by the untracked-subscription
+      // guard". Tell them apart: the guard firing means a concurrent
+      // delivery re-pointed the row between our read and our write, which is
+      // worth an alert; a lost ordering race is routine.
+      const writtenSubscriptionId =
+        (applyPayload.paddle_subscription_id as string | null) ?? null;
+      const storedSubscriptionId =
+        existingSubscription?.paddle_subscription_id ?? null;
+      if (
+        // On the adoption path the guard can never be what refused: the
+        // candidate's status is always in ('active','trialing','past_due'),
+        // which the SQL guard always admits. So a false there is only ever a
+        // lost ordering race, and must not be labelled a guard rejection.
+        !untrackedSwitch &&
+        storedSubscriptionId &&
+        writtenSubscriptionId &&
+        writtenSubscriptionId !== storedSubscriptionId
+      ) {
+        console.error(
+          "[BILLING_ALERT] subscription_guard_rejected_write:",
+          `event_id=${event.event_id}`,
+          `user_id=${userId}`,
+          `attempted_subscription_id=${writtenSubscriptionId}`,
+          `tracked_subscription_id=${storedSubscriptionId}`,
+          untrackedSwitch ? "path=untracked_switch" : "path=direct",
+        );
+        return new Response(
+          JSON.stringify({ received: true, ignored: "untracked_subscription" }),
+          { status: 200, headers: responseHeaders },
+        );
+      }
       // A concurrent, newer event won the ordering race at write time.
       console.warn(
         `[Paddle] Skipped stale event ${event.event_id} at write time (lost ordering race)`,
       );
       return new Response(
         JSON.stringify({ received: true, stale: true }),
+        { status: 200, headers: responseHeaders },
+      );
+    }
+
+    if (untrackedSwitch) {
+      console.error(
+        "[BILLING_ALERT] switched_to_untracked_subscription:",
+        `event_id=${event.event_id}`,
+        `user_id=${userId}`,
+        `canceled_subscription_id=${event.data.id}`,
+        `adopted_subscription_id=${untrackedSwitch.id}`,
+        `adopted_status=${applyPayload.status}`,
+      );
+      return new Response(
+        JSON.stringify({ received: true, switchedToUntrackedSubscription: true }),
         { status: 200, headers: responseHeaders },
       );
     }

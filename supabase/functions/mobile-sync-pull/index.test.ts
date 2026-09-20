@@ -2,6 +2,7 @@ import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { CHILD_PAGE_SIZE } from "../_shared/pagedByParent.ts";
 import { createMobileSyncPullHandler, STALE_OVERLAP_MS } from "./index.ts";
+import { createMobileSyncPullHandler } from "./index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 
 type AuthBehavior = (jwt: string) => Promise<unknown>;
@@ -29,6 +30,82 @@ function validPullBody(): Record<string, unknown> {
     },
   };
 }
+
+Deno.test("cycle pull exposes authoritative progress and nullable day modifiers", async () => {
+  const cycleId = "90000000-0000-4000-8000-000000000001";
+  const progressState = {
+    currentDayNumber: 2,
+    lastCompletedDate: 1_789_948_800_000,
+    cycleStartDate: 1_789_862_400_000,
+    lastAdvancedAt: 1_789_952_400_000,
+    completedDays: [1],
+    missedDays: [],
+    rotationCount: 3,
+  };
+  const harness = makeHarness(undefined, {
+    rpcImpl(name) {
+      if (name !== "get_cycles_excluding_ids") return undefined;
+      return {
+        data: [{
+          id: cycleId,
+          user_id: VALID_USER_ID,
+          name: "Full cycle",
+          description: null,
+          duration_weeks: 1,
+          workout_days: 1,
+          rest_days: 0,
+          current_week: 1,
+          status: "active",
+          started_at: null,
+          last_used_at: null,
+          progression_settings: null,
+          deload_settings: null,
+          template_id: null,
+          progress_state: progressState,
+          updated_at: "2026-09-20T12:00:00Z",
+        }],
+        error: null,
+      };
+    },
+    fromPages: {
+      training_cycles: [{
+        data: [{ id: cycleId, progress_state: progressState }],
+        error: null,
+      }],
+      cycle_days: [{
+        data: [{
+          id: "90000000-0000-4000-8000-000000000002",
+          cycle_id: cycleId,
+          day_number: 1,
+          day_type: "workout",
+          routine_id: null,
+          weight_adjustment: 0,
+          rep_modifier: 0,
+          rest_override: null,
+          rest_type: null,
+          notes: null,
+          echo_level: null,
+          eccentric_load_percent: 125,
+        }],
+        error: null,
+      }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const cycle = (body.cycles as Array<Record<string, unknown>>)[0];
+  assertEquals(cycle.progressionSettingsPresent, true);
+  assertEquals(cycle.progressionSettings, null);
+  assertEquals(cycle.progressStatePresent, true);
+  assertEquals(cycle.progressState, progressState);
+  const day = (cycle.days as Array<Record<string, unknown>>)[0];
+  assertEquals(day.echoLevelPresent, true);
+  assertEquals(day.echoLevel, null);
+  assertEquals(day.eccentricLoadPercentPresent, true);
+  assertEquals(day.eccentricLoadPercent, 125);
+});
 
 function requestFromBody(
   body: unknown,
@@ -69,6 +146,10 @@ interface AdminOptions {
   ) => { data: unknown; error: unknown } | undefined;
   fromPages?: Record<string, Array<{ data: unknown; error: unknown }>>;
   subscriptionResult?: { data: unknown; error: unknown };
+  fromImpl?: (
+    name: string,
+    operations: Array<{ name: string; args: unknown[] }>,
+  ) => { data: unknown; error: unknown } | undefined;
 }
 
 function createAdminDouble(
@@ -137,6 +218,8 @@ function createAdminDouble(
         }
         return options.preferenceResult ?? { data: null, error: null };
       }
+      const implResult = options.fromImpl?.(name, operations);
+      if (implResult) return implResult;
       const pages = options.fromPages?.[name];
       if (pages) {
         const index = fromPageIndex[name] ?? 0;
@@ -328,6 +411,84 @@ Deno.test("shared profile preference contract module is required by pull too", a
   const moduleName = "../_shared/" + "profilePreferenceContract.ts";
   const contract = await import(new URL(moduleName, import.meta.url).href);
   assert(Object.keys(contract).length > 0);
+});
+
+Deno.test("pull returns persistent account deletion and ownership events", async () => {
+  const deletionId = "50000000-0000-4000-8000-000000000001";
+  const transferId = "50000000-0000-4000-8000-000000000002";
+  const harness = makeHarness(undefined, {
+    fromPages: {
+      workout_deletion_tombstones: [{
+        data: [{
+          mutation_id: deletionId,
+          profile_id: VALID_PROFILE_ID,
+          scope: "WORKOUT",
+          portal_session_id: "50000000-0000-4000-8000-000000000003",
+          component_session_id: null,
+          deleted_at: "2026-09-20T12:00:00.000Z",
+          recorded_at: "2026-09-20T18:00:00.000Z",
+        }],
+        error: null,
+      }],
+      profile_ownership_events: [{
+        data: [{
+          mutation_id: transferId,
+          source_profile_id: null,
+          target_profile_id: "default",
+          target_profile_name: "Default",
+          target_profile_color_index: 0,
+          workout_session_ids: ["50000000-0000-4000-8000-000000000003"],
+          routine_ids: [],
+          cycle_ids: [],
+          personal_record_ids: [],
+          transferred_at: "2026-09-20T12:01:00.000Z",
+        }],
+        error: null,
+      }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.workoutDeletions, [{
+    mutationId: deletionId,
+    profileId: VALID_PROFILE_ID,
+    scope: "WORKOUT",
+    portalSessionId: "50000000-0000-4000-8000-000000000003",
+    componentSessionId: null,
+    deletedAt: "2026-09-20T12:00:00.000Z",
+  }]);
+  const deletionCall = harness.adminCalls.find((call) =>
+    call.kind === "from" && call.name === "workout_deletion_tombstones"
+  );
+  assertEquals(
+    deletionCall?.operations?.find((op) => op.name === "select")?.args[0],
+    "mutation_id, profile_id, scope, portal_session_id, component_session_id, deleted_at, recorded_at",
+  );
+  assertEquals(
+    deletionCall?.operations?.filter((op) => op.name === "gt"),
+    [{ name: "gt", args: ["recorded_at", "1970-01-01T00:00:00.000Z"] }],
+  );
+  assertEquals(
+    deletionCall?.operations?.filter((op) => op.name === "order"),
+    [
+      { name: "order", args: ["recorded_at", { ascending: true }] },
+      { name: "order", args: ["mutation_id", { ascending: true }] },
+    ],
+  );
+  assertEquals(body.ownershipEvents, [{
+    mutationId: transferId,
+    sourceProfileId: null,
+    targetProfileId: "default",
+    targetProfileName: "Default",
+    targetProfileColorIndex: 0,
+    workoutSessionIds: ["50000000-0000-4000-8000-000000000003"],
+    routineIds: [],
+    cycleIds: [],
+    personalRecordIds: [],
+    transferredAt: "2026-09-20T12:01:00.000Z",
+  }]);
 });
 
 for (
@@ -1270,17 +1431,21 @@ Deno.test("ordinary pull response fields remain unchanged when preferences are a
     "badges",
     "customExercises",
     "cycles",
+    "deletedCycleIds",
+    "deletedRoutineIds",
     "externalActivities",
     "externalActivitiesHasMore",
     "gamificationStats",
     "hasMore",
     "localProfiles",
+    "ownershipEvents",
     "personalRecords",
     "profilePreferenceSections",
     "routines",
     "rpgAttributes",
     "sessions",
     "syncTime",
+    "workoutDeletions",
   ]);
   assertEquals(body.sessions, []);
   assertEquals(body.routines, []);
@@ -1300,6 +1465,8 @@ Deno.test("ordinary pull response fields remain unchanged when preferences are a
   assertEquals(body.localProfiles, []);
   assertEquals(body.externalActivities, []);
   assertEquals(body.customExercises, []);
+  assertEquals(body.deletedRoutineIds, []);
+  assertEquals(body.deletedCycleIds, []);
 });
 
 for (
@@ -1385,6 +1552,165 @@ for (
     assertEquals(harness.loggerCalls, [[{ name: expectedName }]]);
   });
 }
+
+// ---------------------------------------------------------------------------
+// KD-4: routine/cycle tombstones on pull.
+// ---------------------------------------------------------------------------
+
+const TOMB_ROUTINE_A = "00000000-0000-4000-8000-000000000160";
+const TOMB_ROUTINE_B = "00000000-0000-4000-8000-000000000161";
+const TOMB_CYCLE_A = "00000000-0000-4000-8000-000000000162";
+
+function tombstoneRpcImpl(
+  rows: Array<{ entity: string; entity_id: string }>,
+  error: unknown = null,
+): AdminOptions["rpcImpl"] {
+  return (name, args) => {
+    if (name !== "get_sync_tombstones") return undefined;
+    if (error) return { data: null, error };
+    const ids = args.p_ids as string[] | null;
+    return {
+      data: rows
+        .filter((row) => row.entity === args.p_entity)
+        .filter((row) => ids === null || ids.includes(row.entity_id))
+        .map((row) => ({ ...row, deleted_at: "2026-07-15T00:00:00.000Z" })),
+      error: null,
+    };
+  };
+}
+
+function tombstoneCalls(harness: PullHarness): Array<Record<string, unknown>> {
+  return harness.adminCalls
+    .filter((call) => call.kind === "rpc" && call.name === "get_sync_tombstones")
+    .map((call) => call.args ?? {});
+}
+
+Deno.test("tombstones: shipping client (lastSync 0 + known ids) gets tombstoned ∩ known on the first page", async () => {
+  const harness = makeHarness(undefined, {
+    rpcImpl: tombstoneRpcImpl([
+      { entity: "routine", entity_id: TOMB_ROUTINE_A },
+      { entity: "cycle", entity_id: TOMB_CYCLE_A },
+    ]),
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    knownEntityIds: {
+      sessionIds: [],
+      routineIds: [TOMB_ROUTINE_A, TOMB_ROUTINE_B],
+      cycleIds: [TOMB_CYCLE_A],
+      badgeIds: [],
+      personalRecordIds: [],
+    },
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.deletedRoutineIds, [TOMB_ROUTINE_A]);
+  assertEquals(body.deletedCycleIds, [TOMB_CYCLE_A]);
+  assertEquals(tombstoneCalls(harness), [{
+    p_user_id: VALID_USER_ID,
+    p_entity: "routine",
+    p_ids: [TOMB_ROUTINE_A, TOMB_ROUTINE_B],
+    p_since: null,
+  }, {
+    p_user_id: VALID_USER_ID,
+    p_entity: "cycle",
+    p_ids: [TOMB_CYCLE_A],
+    p_since: null,
+  }]);
+});
+
+Deno.test("tombstones: real lastSync without known ids gets tombstones since lastSync minus the 2-minute overlap", async () => {
+  const lastSync = 1_784_000_000_000;
+  const harness = makeHarness(undefined, {
+    rpcImpl: tombstoneRpcImpl([
+      { entity: "routine", entity_id: TOMB_ROUTINE_B },
+    ]),
+  });
+  const response = await harness.handler(requestFromBody({
+    deviceId: "test-device",
+    lastSync,
+    profileId: VALID_PROFILE_ID,
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.deletedRoutineIds, [TOMB_ROUTINE_B]);
+  assertEquals(body.deletedCycleIds, []);
+  // Looks back 2 minutes past lastSync to absorb device/server clock skew.
+  const since = new Date(lastSync - 2 * 60 * 1000).toISOString();
+  assertEquals(tombstoneCalls(harness), [{
+    p_user_id: VALID_USER_ID,
+    p_entity: "routine",
+    p_ids: null,
+    p_since: since,
+  }, {
+    p_user_id: VALID_USER_ID,
+    p_entity: "cycle",
+    p_ids: null,
+    p_since: since,
+  }]);
+});
+
+Deno.test("tombstones: lastSync 0 without known ids asks for nothing", async () => {
+  const harness = makeHarness(undefined, {
+    rpcImpl: tombstoneRpcImpl([
+      { entity: "routine", entity_id: TOMB_ROUTINE_A },
+    ]),
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.deletedRoutineIds, []);
+  assertEquals(body.deletedCycleIds, []);
+  assertEquals(tombstoneCalls(harness), []);
+});
+
+Deno.test("tombstones: later pages carry empty delete lists and make no lookup", async () => {
+  const harness = makeHarness(undefined, {
+    rpcImpl: tombstoneRpcImpl([
+      { entity: "routine", entity_id: TOMB_ROUTINE_A },
+    ]),
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    cursor: validLaterCursor(),
+    knownEntityIds: {
+      sessionIds: [],
+      routineIds: [TOMB_ROUTINE_A],
+      cycleIds: [],
+      badgeIds: [],
+      personalRecordIds: [],
+    },
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.deletedRoutineIds, []);
+  assertEquals(body.deletedCycleIds, []);
+  assertEquals(tombstoneCalls(harness), []);
+});
+
+Deno.test("tombstones: a failed lookup fails the whole pull with a retryable 503", async () => {
+  const harness = makeHarness(undefined, {
+    rpcImpl: tombstoneRpcImpl([], { code: "57014", message: "timeout" }),
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    knownEntityIds: {
+      sessionIds: [],
+      routineIds: [TOMB_ROUTINE_A],
+      cycleIds: [],
+      badgeIds: [],
+      personalRecordIds: [],
+    },
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 503);
+  assertEquals(body.error, "Failed to fetch routine tombstones");
+});
 
 interface LocalPullFixture {
   admin: SupabaseClient;
@@ -1831,6 +2157,9 @@ Deno.test({
 Deno.test({
   name:
     "integration: pull subscription gate denies no row and FREE with 402 and allows EMBER",
+Deno.test({
+  name:
+    "integration: tombstones deleted routine and cycle reach the device that knows them, first page only",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
     const fixture = await createLocalPullFixture();
@@ -2236,11 +2565,588 @@ Deno.test({
         [fixture.ownerId, fixture.otherId],
       );
       await assertLocalPullFixtureClean(fixture);
+      const routineId = crypto.randomUUID();
+      const liveRoutineId = crypto.randomUUID();
+      const cycleId = crypto.randomUUID();
+      const routines = await fixture.admin.from("routines").insert([
+        { id: routineId, user_id: fixture.ownerId, name: "Deleted routine" },
+        { id: liveRoutineId, user_id: fixture.ownerId, name: "Live routine" },
+      ]);
+      if (routines.error) throw new Error("routine fixture failed");
+      const cycles = await fixture.admin.from("training_cycles").insert({
+        id: cycleId,
+        user_id: fixture.ownerId,
+        name: "Deleted cycle",
+      });
+      if (cycles.error) throw new Error("cycle fixture failed");
+      const pullStartedAt = Date.now() - 60_000;
+      const routineDelete = await fixture.admin.from("routines").delete().eq(
+        "id",
+        routineId,
+      );
+      if (routineDelete.error) throw new Error("routine delete failed");
+      const cycleDelete = await fixture.admin.from("training_cycles").delete()
+        .eq("id", cycleId);
+      if (cycleDelete.error) throw new Error("cycle delete failed");
+
+      const knownIds = {
+        sessionIds: [],
+        routineIds: [routineId, liveRoutineId],
+        cycleIds: [cycleId],
+        badgeIds: [],
+        personalRecordIds: [],
+      };
+      const ownerLogs: unknown[][] = [];
+      const ownerHandler = realPullHandler(fixture, fixture.ownerId, ownerLogs);
+
+      // Shipping client: lastSync 0 plus the ids it holds.
+      const first = await ownerHandler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.ownerProfileId,
+        knownEntityIds: knownIds,
+      }));
+      const firstBody = await json(first);
+      assertEquals(first.status, 200, JSON.stringify(firstBody));
+      assertEquals(firstBody.deletedRoutineIds, [routineId]);
+      assertEquals(firstBody.deletedCycleIds, [cycleId]);
+
+      // Later pages never repeat the lists.
+      const later = await ownerHandler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.ownerProfileId,
+        knownEntityIds: knownIds,
+        cursor: validLaterCursor(),
+      }));
+      const laterBody = await json(later);
+      assertEquals(later.status, 200);
+      assertEquals(laterBody.deletedRoutineIds, []);
+      assertEquals(laterBody.deletedCycleIds, []);
+
+      // Real-lastSync client without known ids: tombstones since lastSync.
+      const since = await ownerHandler(requestFromBody({
+        deviceId: "test-device",
+        lastSync: pullStartedAt,
+        profileId: fixture.ownerProfileId,
+      }));
+      const sinceBody = await json(since);
+      assertEquals(since.status, 200, JSON.stringify(sinceBody));
+      assertEquals(sinceBody.deletedRoutineIds, [routineId]);
+      assertEquals(sinceBody.deletedCycleIds, [cycleId]);
+      assertEquals(ownerLogs, []);
+
+      // Another user naming the same ids learns nothing.
+      const otherHandler = realPullHandler(fixture, fixture.otherId, []);
+      const cross = await otherHandler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.otherProfileId,
+        knownEntityIds: knownIds,
+      }));
+      const crossBody = await json(cross);
+      assertEquals(cross.status, 200);
+      assertEquals(crossBody.deletedRoutineIds, []);
+      assertEquals(crossBody.deletedCycleIds, []);
+    } finally {
+      const userIds = [fixture.ownerId, fixture.otherId];
+      await fixture.admin.from("routines").delete().in("user_id", userIds);
+      await deleteLocalPullFixtureRows(fixture.admin, userIds);
+      const tombstones = await fixture.admin.from("sync_tombstones").delete()
+        .in("user_id", userIds);
+      if (tombstones.error) throw new Error("tombstone cleanup failed");
+      await assertLocalPullFixtureClean(fixture);
+      const audit = await fixture.admin.from("sync_tombstones")
+        .select("user_id", { count: "exact", head: true })
+        .in("user_id", userIds);
+      if (audit.error) throw new Error("tombstone cleanup audit failed");
+      assertEquals(audit.count, 0);
+    }
+  },
+});
+
+// ─── lastSync request shapes against real SQL (PR 26) ──────────────────────
+// Every body below is the verbatim wire shape of the mobile client's
+// PortalSyncPullRequest (PortalApiClient.pullPortalPayload): kotlinx
+// encodeDefaults=true keeps lastSync and the five known-id lists,
+// explicitNulls=false drops a null cursor, and SyncManager pages at 100.
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+type ParityTable = "workout_sessions" | "routines" | "training_cycles";
+const PARITY_TABLES: ParityTable[] = [
+  "workout_sessions",
+  "routines",
+  "training_cycles",
+];
+const RESPONSE_KEY: Record<ParityTable, string> = {
+  workout_sessions: "sessions",
+  routines: "routines",
+  training_cycles: "cycles",
+};
+
+function emptyKnown(): Record<ParityTable, string[]> {
+  return { workout_sessions: [], routines: [], training_cycles: [] };
+}
+
+function mobilePullBody(
+  lastSync: number,
+  profileId: string,
+  known: Record<ParityTable, string[]>,
+  personalRecordIds: string[] = [],
+): Record<string, unknown> {
+  return {
+    deviceId: "pr26-contract-device",
+    lastSync,
+    profileId,
+    pageSize: 100,
+    knownEntityIds: {
+      sessionIds: known.workout_sessions,
+      routineIds: known.routines,
+      cycleIds: known.training_cycles,
+      badgeIds: [],
+      personalRecordIds,
+    },
+  };
+}
+
+async function insertPersonalRecord(
+  fixture: LocalPullFixture,
+  options: {
+    localProfileId: string | null;
+    updatedAtMs: number;
+    deleted?: boolean;
+  },
+): Promise<string> {
+  const id = crypto.randomUUID();
+  const updatedAt = new Date(options.updatedAtMs).toISOString();
+  const inserted = await fixture.admin.from("personal_records").insert({
+    id,
+    user_id: fixture.ownerId,
+    exercise_name: `pr26 lift ${id}`,
+    record_type: "MAX_WEIGHT",
+    value: 100,
+    local_profile_id: options.localProfileId,
+    updated_at: updatedAt,
+    deleted_at: options.deleted ? updatedAt : null,
+  });
+  if (inserted.error) {
+    throw new Error(`personal_records fixture insert failed: ${inserted.error.message}`);
+  }
+  return id;
+}
+
+function returnedPersonalRecords(
+  body: Record<string, unknown>,
+): Array<{ id: string; deletedAt: string | null }> {
+  const rows = body.personalRecords as Array<
+    { id: string; deletedAt: string | null }
+  >;
+  assert(Array.isArray(rows), "personalRecords");
+  return rows.map((row) => ({ id: row.id, deletedAt: row.deletedAt ?? null }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+async function insertParityRow(
+  fixture: LocalPullFixture,
+  table: ParityTable,
+  options: {
+    userId?: string;
+    localProfileId: string | null;
+    updatedAtMs: number;
+  },
+): Promise<string> {
+  const id = crypto.randomUUID();
+  const updatedAt = new Date(options.updatedAtMs).toISOString();
+  const row: Record<string, unknown> = {
+    id,
+    user_id: options.userId ?? fixture.ownerId,
+    name: `pr26 ${table}`,
+    updated_at: updatedAt,
+    local_profile_id: options.localProfileId,
+  };
+  // Keep the sessions started_at arm from leaking rows the test expects absent.
+  if (table === "workout_sessions") row.started_at = updatedAt;
+  const inserted = await fixture.admin.from(table).insert(row);
+  if (inserted.error) {
+    throw new Error(`${table} fixture insert failed: ${inserted.error.message}`);
+  }
+  return id;
+}
+
+/** A portal edit: a plain UPDATE, so the BEFORE UPDATE trigger stamps now(). */
+async function portalEdit(
+  fixture: LocalPullFixture,
+  table: ParityTable,
+  id: string,
+): Promise<void> {
+  const patch = table === "workout_sessions"
+    ? { notes: "edited on portal" }
+    : { description: "edited on portal" };
+  const updated = await fixture.admin.from(table).update(patch).eq("id", id);
+  if (updated.error) {
+    throw new Error(`${table} portal edit failed: ${updated.error.message}`);
+  }
+}
+
+async function ensureDefaultProfile(
+  fixture: LocalPullFixture,
+  userId: string,
+): Promise<void> {
+  const result = await fixture.admin.from("local_profiles").upsert({
+    user_id: userId,
+    id: "default",
+    name: "Default",
+    device_id: "server",
+  }, { onConflict: "user_id,id", ignoreDuplicates: true });
+  if (result.error) throw new Error("default profile fixture failed");
+}
+
+function returnedIds(
+  body: Record<string, unknown>,
+  table: ParityTable,
+): string[] {
+  const rows = body[RESPONSE_KEY[table]] as Array<{ id: string }>;
+  assert(Array.isArray(rows), RESPONSE_KEY[table]);
+  return rows.map((row) => row.id).sort();
+}
+
+async function pullOnce(
+  fixture: LocalPullFixture,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const logs: unknown[][] = [];
+  const response = await realPullHandler(fixture, fixture.ownerId, logs)(
+    requestFromBody(body),
+  );
+  const parsed = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(parsed));
+  assertEquals(parsed.hasMore, false);
+  assertEquals(logs, []);
+  return parsed;
+}
+
+Deno.test({
+  name:
+    "integration: shipping build shape (lastSync 0 + full known ids) returns every row",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      const now = Date.now();
+      const known = emptyKnown();
+      for (const table of PARITY_TABLES) {
+        known[table] = [
+          await insertParityRow(fixture, table, {
+            localProfileId: fixture.ownerProfileId,
+            updatedAtMs: now - 30 * DAY_MS,
+          }),
+          await insertParityRow(fixture, table, {
+            localProfileId: fixture.ownerProfileId,
+            updatedAtMs: now - HOUR_MS,
+          }),
+        ].sort();
+      }
+
+      // Today's behaviour, kept on purpose: with lastSync 0 every row is
+      // "stale", so even known rows come back (keeps #116 note edits flowing).
+      const body = await pullOnce(
+        fixture,
+        mobilePullBody(0, fixture.ownerProfileId, known),
+      );
+      for (const table of PARITY_TABLES) {
+        assertEquals(returnedIds(body, table), known[table], table);
+      }
+    } finally {
+      await deleteLocalPullFixtureRows(
+        fixture.admin,
+        [fixture.ownerId, fixture.otherId],
+      );
+      await assertLocalPullFixtureClean(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: real lastSync + known ids returns only new, portal-edited and overlap-window rows",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      const lastSync = Date.now() - HOUR_MS;
+      const profile = fixture.ownerProfileId;
+      const known = emptyKnown();
+      const expected = emptyKnown();
+      for (const table of PARITY_TABLES) {
+        const unchanged = await insertParityRow(fixture, table, {
+          localProfileId: profile,
+          updatedAtMs: lastSync - DAY_MS,
+        });
+        const justOutsideOverlap = await insertParityRow(fixture, table, {
+          localProfileId: profile,
+          updatedAtMs: lastSync - 3 * MINUTE_MS,
+        });
+        const insideOverlap = await insertParityRow(fixture, table, {
+          localProfileId: profile,
+          updatedAtMs: lastSync - MINUTE_MS,
+        });
+        const portalEdited = await insertParityRow(fixture, table, {
+          localProfileId: profile,
+          updatedAtMs: lastSync - DAY_MS,
+        });
+        await portalEdit(fixture, table, portalEdited);
+        const unknown = await insertParityRow(fixture, table, {
+          localProfileId: profile,
+          updatedAtMs: lastSync - DAY_MS,
+        });
+        known[table] = [
+          unchanged,
+          justOutsideOverlap,
+          insideOverlap,
+          portalEdited,
+        ];
+        expected[table] = [insideOverlap, portalEdited, unknown].sort();
+      }
+      // Tombstones-since query: a known PR deleted 1 minute before lastSync
+      // is re-delivered as a tombstone; one deleted 3 minutes before is not,
+      // and a known active PR is not re-sent.
+      const knownActivePr = await insertPersonalRecord(fixture, {
+        localProfileId: profile,
+        updatedAtMs: lastSync - DAY_MS,
+      });
+      const tombstoneOutsideOverlap = await insertPersonalRecord(fixture, {
+        localProfileId: profile,
+        updatedAtMs: lastSync - 3 * MINUTE_MS,
+        deleted: true,
+      });
+      const tombstoneInsideOverlapAt = lastSync - MINUTE_MS;
+      const tombstoneInsideOverlap = await insertPersonalRecord(fixture, {
+        localProfileId: profile,
+        updatedAtMs: tombstoneInsideOverlapAt,
+        deleted: true,
+      });
+
+      const body = await pullOnce(
+        fixture,
+        mobilePullBody(lastSync, profile, known, [
+          knownActivePr,
+          tombstoneOutsideOverlap,
+          tombstoneInsideOverlap,
+        ]),
+      );
+      for (const table of PARITY_TABLES) {
+        assertEquals(returnedIds(body, table), expected[table], table);
+      }
+      const personalRecords = returnedPersonalRecords(body);
+      assertEquals(personalRecords.map((row) => row.id), [
+        tombstoneInsideOverlap,
+      ]);
+      assert(personalRecords[0].deletedAt !== null);
+      assertEquals(
+        Date.parse(personalRecords[0].deletedAt as string),
+        tombstoneInsideOverlapAt,
+      );
+    } finally {
+      await deleteLocalPullFixtureRows(
+        fixture.admin,
+        [fixture.ownerId, fixture.otherId],
+      );
+      await assertLocalPullFixtureClean(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: real lastSync + empty known ids returns the whole default profile (sessions, routines, cycles, PRs) and nothing else",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      await ensureDefaultProfile(fixture, fixture.ownerId);
+      const lastSync = Date.now() - HOUR_MS;
+      const expected = emptyKnown();
+      for (const table of PARITY_TABLES) {
+        const nullSinceLastSync = await insertParityRow(fixture, table, {
+          localProfileId: null,
+          updatedAtMs: lastSync + 10 * MINUTE_MS,
+        });
+        const defaultSinceLastSync = await insertParityRow(fixture, table, {
+          localProfileId: "default",
+          updatedAtMs: lastSync + 10 * MINUTE_MS,
+        });
+        // A device holding no ids must receive its whole profile, not only
+        // rows since lastSync, or older rows would never reach it.
+        const defaultOld = await insertParityRow(fixture, table, {
+          localProfileId: "default",
+          updatedAtMs: lastSync - DAY_MS,
+        });
+        // Must never appear under "default": another local profile's row, and
+        // another user's NULL-profile row.
+        await insertParityRow(fixture, table, {
+          localProfileId: fixture.ownerProfileId,
+          updatedAtMs: lastSync + 10 * MINUTE_MS,
+        });
+        await insertParityRow(fixture, table, {
+          userId: fixture.otherId,
+          localProfileId: null,
+          updatedAtMs: lastSync + 10 * MINUTE_MS,
+        });
+        expected[table] = [nullSinceLastSync, defaultSinceLastSync, defaultOld]
+          .sort();
+      }
+      // Personal records follow the same rules through their RPC: the whole
+      // default profile (old rows too), no other profile, no tombstones.
+      const expectedPrs = [
+        await insertPersonalRecord(fixture, {
+          localProfileId: "default",
+          updatedAtMs: lastSync - DAY_MS,
+        }),
+        await insertPersonalRecord(fixture, {
+          localProfileId: null,
+          updatedAtMs: lastSync + 10 * MINUTE_MS,
+        }),
+      ].sort();
+      await insertPersonalRecord(fixture, {
+        localProfileId: fixture.ownerProfileId,
+        updatedAtMs: lastSync + 10 * MINUTE_MS,
+      });
+      await insertPersonalRecord(fixture, {
+        localProfileId: "default",
+        updatedAtMs: lastSync + 10 * MINUTE_MS,
+        deleted: true,
+      });
+
+      const body = await pullOnce(
+        fixture,
+        mobilePullBody(lastSync, "default", emptyKnown()),
+      );
+      for (const table of PARITY_TABLES) {
+        assertEquals(returnedIds(body, table), expected[table], table);
+      }
+      assertEquals(
+        returnedPersonalRecords(body).map((row) => row.id),
+        expectedPrs,
+      );
+    } finally {
+      await deleteLocalPullFixtureRows(
+        fixture.admin,
+        [fixture.ownerId, fixture.otherId],
+      );
+      await assertLocalPullFixtureClean(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: parity pull RPCs take p_last_sync_at and are executable by service_role only",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    assert(localIntegrationEnvironment);
+    const fixture = await createLocalPullFixture();
+    try {
+      const password = `pr26-${crypto.randomUUID()}`;
+      const updated = await fixture.admin.auth.admin.updateUserById(
+        fixture.ownerId,
+        { password },
+      );
+      if (updated.error) throw new Error("password fixture failed");
+      const clientOptions = {
+        auth: { persistSession: false, autoRefreshToken: false },
+      };
+      const anon = createClient(
+        localIntegrationEnvironment.url,
+        localIntegrationEnvironment.anonKey,
+        clientOptions,
+      );
+      const authenticated = createClient(
+        localIntegrationEnvironment.url,
+        localIntegrationEnvironment.anonKey,
+        clientOptions,
+      );
+      const email = (await fixture.admin.auth.admin.getUserById(fixture.ownerId))
+        .data.user?.email;
+      assert(email);
+      const signedIn = await authenticated.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signedIn.error) throw new Error("sign-in fixture failed");
+
+      for (const name of PARITY_RPCS) {
+        const args = {
+          p_user_id: fixture.ownerId,
+          p_known_ids: [],
+          p_profile_id: fixture.ownerProfileId,
+          p_last_sync_at: new Date().toISOString(),
+        };
+        const asService = await fixture.admin.rpc(name, args);
+        assertEquals(asService.error, null, `${name} as service_role`);
+        for (
+          const [role, client] of [
+            ["anon", anon],
+            ["authenticated", authenticated],
+          ] as const
+        ) {
+          const denied = await client.rpc(name, args);
+          assert(denied.error, `${name} must not be executable by ${role}`);
+          assertEquals(denied.error.code, "42501", `${name} as ${role}`);
+        }
+      }
+      await authenticated.auth.signOut();
+    } finally {
+      await deleteLocalPullFixtureRows(
+        fixture.admin,
+        [fixture.ownerId, fixture.otherId],
+      );
+      await assertLocalPullFixtureClean(fixture);
     }
   },
 });
 
 const OVERFLOW_SESSION_ID = "00000000-0000-4000-8000-0000000000aa";
+
+// KD-6 (PR 18): each pulled cycle carries the server updated_at verbatim.
+// PR 71 stores it and sends it back as the push's baseUpdatedAt.
+Deno.test("cycles: each cycle DTO carries the server updatedAt verbatim", async () => {
+  const cycleId = "00000000-0000-4000-8000-000000000180";
+  const storedUpdatedAt = "2026-07-16T02:00:00.123456+00:00";
+  const harness = makeHarness(undefined, {
+    rpcImpl: (name) => {
+      if (name !== "get_cycles_excluding_ids") return undefined;
+      return {
+        data: [{
+          id: cycleId,
+          user_id: VALID_USER_ID,
+          name: "Portal cycle",
+          description: null,
+          duration_weeks: 8,
+          workout_days: 3,
+          rest_days: 4,
+          current_week: 1,
+          status: "draft",
+          started_at: null,
+          last_used_at: null,
+          progression_settings: null,
+          deload_settings: null,
+          template_id: null,
+          updated_at: storedUpdatedAt,
+        }],
+        error: null,
+      };
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const cycles = body.cycles as Array<Record<string, unknown>>;
+  assertEquals(cycles.length, 1);
+  assertEquals(cycles[0].id, cycleId);
+  assertEquals(cycles[0].updatedAt, storedUpdatedAt);
+  assertEquals(cycles[0].durationWeeks, 8);
+});
 
 function sessionRpcRow(): Record<string, unknown> {
   return {
@@ -2367,7 +3273,7 @@ Deno.test("child paging: PAGE+1 then a non-Range error is generic 503", async ()
   assert(!JSON.stringify(body).includes("connection reset"));
 });
 
-Deno.test("external_activities hasMore is true when the 500-row cap is hit", async () => {
+Deno.test("external_activities hasMore is false when exactly 500 rows exist", async () => {
   const activities = Array.from({ length: 500 }, (_, i) => ({
     id: `act-${i}`,
     external_id: `ext-${i}`,
@@ -2391,7 +3297,863 @@ Deno.test("external_activities hasMore is true when the 500-row cap is hit", asy
   const response = await harness.handler(requestFromBody(validPullBody()));
   assertEquals(response.status, 200);
   const body = await json(response);
-  assertEquals(body.externalActivitiesHasMore, true);
+  assertEquals(body.externalActivitiesHasMore, false);
   assertEquals((body.externalActivities as unknown[]).length, 500);
 });
 
+const PULL_ROUTINE_ID = "00000000-0000-4000-8000-000000000040";
+
+function routineExerciseRow(
+  id: string,
+  durationSeconds: number | null,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...routineExerciseBase(id, durationSeconds),
+    ...overrides,
+  };
+}
+
+function routineExerciseBase(
+  id: string,
+  durationSeconds: number | null,
+): Record<string, unknown> {
+  return {
+    id,
+    routine_id: PULL_ROUTINE_ID,
+    exercise_id: null,
+    catalog: null,
+    name: "Plank",
+    muscle_group: "Core",
+    sets: 3,
+    reps: 10,
+    weight: 0,
+    rest_seconds: 60,
+    duration_seconds: durationSeconds,
+    mode: "OLD_SCHOOL",
+    order_index: 0,
+    superset_id: null,
+    superset_color: null,
+    superset_order: null,
+    per_set_weights: null,
+    per_set_rest: null,
+    per_set_reps: null,
+    is_amrap: false,
+    is_bodyweight: true,
+    pr_percentage: null,
+    rep_count_timing: null,
+    stop_at_position: null,
+    stall_detection: true,
+    eccentric_load: null,
+    echo_level: null,
+    per_set_echo_levels: null,
+    warmup_sets: null,
+    drop_set_enabled: false,
+    drop_set_min_weight_kg: null,
+  };
+}
+
+Deno.test("routine exercise DTO carries durationSeconds (timed and rep-based)", async () => {
+
+// ---------------------------------------------------------------------------
+// PR 25 review round 1, R-10 (critical). The pull must keep serving the
+// DEVICE-REPORTED shadow columns, never the server-derived ones: the
+// installed app merges this row with an unconditional server-wins
+// `INSERT OR REPLACE` (no max(), no gate) and the two sides do not mean the
+// same thing by these words, so serving derived values would rewrite
+// lifetime stats and badge progress on every build in the field.
+// ---------------------------------------------------------------------------
+Deno.test({
+  name:
+    "integration: the pull serves the device-reported shadow stats, not the derived ones",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      // One stored session: the DERIVED figures are 1 workout / 42 kg.
+      const session = await fixture.admin.from("workout_sessions").insert({
+        id: crypto.randomUUID(),
+        user_id: fixture.ownerId,
+        local_profile_id: fixture.ownerProfileId,
+        name: "derived session",
+        total_volume: 42,
+        duration_seconds: 120,
+        started_at: "2026-07-10T10:00:00.000Z",
+      });
+      if (session.error) throw new Error("session fixture insert failed");
+
+      // The phone reports something else entirely (its own profile-scoped
+      // count, and the machine total rather than the per-cable figure).
+      const pushed = await fixture.admin.rpc("upsert_gamification_stats_lww", {
+        p_rows: [{
+          user_id: fixture.ownerId,
+          device_total_workouts: 317,
+          device_total_reps: 1000,
+          device_total_volume_kg: 5000,
+          device_total_time_seconds: 6000,
+          device_current_streak: 9,
+          device_longest_streak: 30,
+          last_workout_at: "2026-07-10T10:00:00.000Z",
+        }],
+      });
+      if (pushed.error) throw new Error("stats LWW RPC failed");
+
+      const recomputed = await fixture.admin.rpc(
+        "recompute_gamification_stats",
+        { p_user_id: fixture.ownerId },
+      );
+      if (recomputed.error) throw new Error("recompute failed");
+Deno.test("external activities paginate a tied synced_at cluster without skips or duplicates", async () => {
+  const syncedAt = "2026-08-02T00:00:00.123456+00:00";
+  const activities = Array.from({ length: 750 }, (_, index) => ({
+    id: `60000000-0000-4000-8000-${index.toString().padStart(12, "0")}`,
+    external_id: `ext-${index}`,
+    provider: "strava",
+    name: `Run ${index}`,
+    activity_type: "Run",
+    started_at: "2026-08-01T00:00:00.000Z",
+    duration_seconds: 60,
+    distance_meters: 1000,
+    calories: 10,
+    avg_heart_rate: null,
+    max_heart_rate: null,
+    elevation_gain_meters: null,
+    raw_data: null,
+    synced_at: syncedAt,
+  }));
+  const activityQueries: Array<Array<{ name: string; args: unknown[] }>> = [];
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    fromImpl: (name, operations) => {
+      if (name !== "external_activities") return undefined;
+      activityQueries.push(structuredClone(operations));
+      const cursorFilter = operations.find((operation) => operation.name === "or");
+      const cursorId = cursorFilter
+        ? String(cursorFilter.args[0]).match(/id\.gt\.([0-9a-f-]+)\)/i)?.[1]
+        : undefined;
+      const startIndex = cursorId
+        ? activities.findIndex((activity) => activity.id === cursorId) + 1
+        : 0;
+      return {
+        data: activities.slice(startIndex, startIndex + 501),
+        error: null,
+      };
+    },
+  });
+
+  const firstResponse = await harness.handler(requestFromBody(validPullBody()));
+  const firstBody = await json(firstResponse);
+  assertEquals(firstResponse.status, 200);
+  assertEquals(firstBody.hasMore, true);
+  assertEquals(firstBody.externalActivitiesHasMore, true);
+  assertEquals((firstBody.externalActivities as unknown[]).length, 500);
+  assert(typeof firstBody.nextCursor === "string");
+
+  const secondResponse = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    cursor: firstBody.nextCursor,
+  }));
+  const secondBody = await json(secondResponse);
+  assertEquals(secondResponse.status, 200);
+  assertEquals(secondBody.hasMore, false);
+  assertEquals(secondBody.externalActivitiesHasMore, false);
+  assertEquals((secondBody.externalActivities as unknown[]).length, 250);
+
+  const receivedIds = [
+    ...(firstBody.externalActivities as Array<{ id: string }>),
+    ...(secondBody.externalActivities as Array<{ id: string }>),
+  ].map((activity) => activity.id);
+  assertEquals(receivedIds, activities.map((activity) => activity.id));
+  assertEquals(new Set(receivedIds).size, activities.length);
+  assertEquals(
+    activityQueries.map((operations) =>
+      operations.filter((operation) => operation.name === "order")
+    ),
+    [
+      [
+        { name: "order", args: ["synced_at", { ascending: true }] },
+        { name: "order", args: ["id", { ascending: true }] },
+      ],
+      [
+        { name: "order", args: ["synced_at", { ascending: true }] },
+        { name: "order", args: ["id", { ascending: true }] },
+      ],
+    ],
+  );
+  assertEquals(
+    activityQueries.map((operations) =>
+      operations.find((operation) => operation.name === "limit")?.args
+    ),
+    [[501], [501]],
+  );
+  assertEquals(
+    activityQueries[1]?.find((operation) => operation.name === "or")?.args,
+    [
+      `synced_at.gt.${syncedAt},and(synced_at.eq.${syncedAt},id.gt.${activities[499].id})`,
+    ],
+  );
+});
+
+// Mirror of the Kotlin ExternalActivitySyncDto in Project-Phoenix-MP
+// (shared/.../data/sync/PortalSyncDtos.kt). PortalWireJson has
+// ignoreUnknownKeys=true and explicitNulls=false but NOT coerceInputValues,
+// so a required field that is absent or null, or a non-nullable defaulted
+// field sent as JSON null, fails decoding of the whole pull response.
+const MOBILE_EXTERNAL_ACTIVITY_REQUIRED_STRINGS = [
+  "id",
+  "externalId",
+  "provider",
+  "name",
+  "startedAt",
+  "syncedAt",
+] as const;
+// "int" mirrors a Kotlin `Int`: kotlinx rejects fractional JSON numbers there.
+type MobileWireType = "string" | "number" | "int" | "boolean";
+const MOBILE_EXTERNAL_ACTIVITY_NON_NULLABLE_DEFAULTED: Record<
+  string,
+  MobileWireType
+> = {
+  activityType: "string",
+  durationSeconds: "int",
+};
+const MOBILE_EXTERNAL_ACTIVITY_NULLABLE_FIELDS: Record<
+  string,
+  MobileWireType
+> = {
+  distanceMeters: "number",
+  calories: "int",
+  avgHeartRate: "int",
+  maxHeartRate: "int",
+  elevationGainMeters: "number",
+  rawData: "string",
+};
+
+function matchesMobileWireType(value: unknown, type: MobileWireType): boolean {
+  if (type === "int") return Number.isInteger(value);
+  return typeof value === type;
+}
+
+// Asserts that non-nullable-with-default Kotlin fields are absent or of the
+// right type, never JSON null (PortalWireJson has no coerceInputValues).
+function assertNonNullableDefaulted(
+  dto: Record<string, unknown>,
+  fields: Record<string, MobileWireType>,
+): void {
+  for (const [field, type] of Object.entries(fields)) {
+    const value = dto[field];
+    assert(
+      value === undefined || matchesMobileWireType(value, type),
+      `${field} must be absent or a ${type}, never null`,
+    );
+  }
+}
+
+function assertDecodesAsMobileExternalActivity(
+  dto: Record<string, unknown>,
+): void {
+  for (const field of MOBILE_EXTERNAL_ACTIVITY_REQUIRED_STRINGS) {
+    const value = dto[field];
+    assert(
+      typeof value === "string" && value.length > 0,
+      `required ${field} must be a non-empty string`,
+    );
+  }
+  assertNonNullableDefaulted(
+    dto,
+    MOBILE_EXTERNAL_ACTIVITY_NON_NULLABLE_DEFAULTED,
+  );
+  for (
+    const [field, type] of Object.entries(
+      MOBILE_EXTERNAL_ACTIVITY_NULLABLE_FIELDS,
+    )
+  ) {
+    const value = dto[field];
+    assert(
+      value === undefined || value === null ||
+        matchesMobileWireType(value, type),
+      `${field} must be null or a ${type}`,
+    );
+  }
+  assert(
+    !Number.isNaN(Date.parse(dto.syncedAt as string)),
+    "syncedAt must be an ISO-8601 timestamp",
+  );
+  assert(
+    !Number.isNaN(Date.parse(dto.startedAt as string)),
+    "startedAt must be an ISO-8601 timestamp",
+  );
+}
+
+Deno.test("external activity DTOs always carry a non-empty ISO syncedAt and decode as the mobile DTO", async () => {
+  const base = {
+    external_id: "ext",
+    provider: "strava",
+    name: "Ride",
+    started_at: "2026-08-01T00:00:00+00:00",
+    distance_meters: null,
+    calories: null,
+    avg_heart_rate: null,
+    max_heart_rate: null,
+    elevation_gain_meters: null,
+    raw_data: { source: "fixture" },
+  };
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    fromPages: {
+      external_activities: [{
+        data: [
+          {
+            ...base,
+            id: "act-synced",
+            activity_type: "Ride",
+            duration_seconds: 120,
+            synced_at: "2026-08-02T00:00:00+00:00",
+            updated_at: "2026-08-03T00:00:00+00:00",
+          },
+          {
+            ...base,
+            id: "act-updated-only",
+            activity_type: null,
+            duration_seconds: null,
+            synced_at: null,
+            updated_at: "2026-08-03T00:00:00+00:00",
+          },
+          {
+            ...base,
+            id: "act-started-only",
+            activity_type: null,
+            duration_seconds: null,
+          },
+        ],
+        error: null,
+      }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  const dtos = body.externalActivities as Record<string, unknown>[];
+  assertEquals(dtos.length, 3);
+  for (const dto of dtos) assertDecodesAsMobileExternalActivity(dto);
+
+  const [synced, updatedOnly, startedOnly] = dtos;
+  assertEquals(synced.syncedAt, "2026-08-02T00:00:00+00:00");
+  assertEquals(synced.activityType, "Ride");
+  assertEquals(synced.durationSeconds, 120);
+  assertEquals(synced.rawData, JSON.stringify({ source: "fixture" }));
+  assertEquals(updatedOnly.syncedAt, "2026-08-03T00:00:00+00:00");
+  assertEquals(updatedOnly.activityType, "strength");
+  assertEquals(updatedOnly.durationSeconds, 0);
+  assertEquals(startedOnly.syncedAt, "2026-08-01T00:00:00+00:00");
+});
+
+Deno.test("mobile wire int mirror rejects fractional numbers for Kotlin Int fields", () => {
+  assert(matchesMobileWireType(60, "int"));
+  assert(!matchesMobileWireType(60.5, "int"));
+  assert(!matchesMobileWireType(null, "int"));
+  assert(matchesMobileWireType(60.5, "number"));
+});
+
+// Kotlin PullRoutineExerciseDto.isAmrap: Boolean = false,
+// PullRoutineExerciseDto.stallDetection: Boolean = true and
+// PullBadgeDto.badgeTier: String = "bronze" are non-nullable with defaults,
+// while routine_exercises.is_amrap / stall_detection and
+// earned_badges.badge_tier are nullable columns.
+const MOBILE_ROUTINE_EXERCISE_NON_NULLABLE_DEFAULTED: Record<
+  string,
+  MobileWireType
+> = {
+  isAmrap: "boolean",
+  stallDetection: "boolean",
+};
+const MOBILE_BADGE_NON_NULLABLE_DEFAULTED: Record<string, MobileWireType> = {
+  badgeTier: "string",
+};
+
+Deno.test("null routine exercise flags and badge tier are pulled as the mobile defaults, never null", async () => {
+  const routineId = "00000000-0000-4000-8000-0000000000a1";
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) => {
+      if (name === "get_routines_excluding_ids") {
+        return {
+          data: [{
+            id: PULL_ROUTINE_ID,
+            user_id: VALID_USER_ID,
+            name: "Timed routine",
+            description: "",
+            exercise_count: 2,
+            estimated_duration: 10,
+            times_completed: 0,
+            is_favorite: false,
+            updated_at: "2026-09-01T00:00:00.000Z",
+            id: routineId,
+            user_id: VALID_USER_ID,
+            name: "Null flags",
+            description: "",
+            exercise_count: 2,
+            estimated_duration: 0,
+            times_completed: 0,
+            is_favorite: false,
+            updated_at: "2026-08-01T00:00:00+00:00",
+          }],
+          error: null,
+        };
+      }
+      if (name === "get_badges_excluding_ids") {
+        return {
+          data: [
+            {
+              id: "00000000-0000-4000-8000-0000000000b1",
+              user_id: VALID_USER_ID,
+              badge_id: "first_workout",
+              badge_name: "First",
+              badge_description: null,
+              badge_tier: null,
+              earned_at: "2026-08-01T00:00:00+00:00",
+            },
+            {
+              id: "00000000-0000-4000-8000-0000000000b2",
+              user_id: VALID_USER_ID,
+              badge_id: "tenth_workout",
+              badge_name: "Tenth",
+              badge_description: null,
+              badge_tier: "gold",
+              earned_at: "2026-08-02T00:00:00+00:00",
+            },
+          ],
+          error: null,
+        };
+      }
+      return undefined;
+    },
+    fromPages: {
+      routine_exercises: [{
+        data: [
+          routineExerciseRow("00000000-0000-4000-8000-000000000041", 45),
+          routineExerciseRow("00000000-0000-4000-8000-000000000042", null),
+          {
+            id: "00000000-0000-4000-8000-0000000000c1",
+            routine_id: routineId,
+            name: "Row",
+            muscle_group: "Back",
+            sets: 3,
+            reps: 10,
+            weight: 20,
+            rest_seconds: 90,
+            mode: "OLD_SCHOOL",
+            order_index: 0,
+            is_amrap: null,
+            stall_detection: null,
+            catalog: null,
+          },
+          {
+            id: "00000000-0000-4000-8000-0000000000c2",
+            routine_id: routineId,
+            name: "Press",
+            muscle_group: "Chest",
+            sets: 3,
+            reps: 10,
+            weight: 20,
+            rest_seconds: 90,
+            mode: "OLD_SCHOOL",
+            order_index: 1,
+            is_amrap: true,
+            stall_detection: false,
+            catalog: null,
+          },
+        ],
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  const routines = body.routines as Array<{
+    exercises: Array<Record<string, unknown>>;
+  }>;
+  assertEquals(routines.length, 1);
+  assertEquals(routines[0].exercises[0].durationSeconds, 45);
+  assertEquals(routines[0].exercises[1].durationSeconds, null);
+});
+
+Deno.test("routine exercise DTO passes the stored settings through in mobile's keys", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) =>
+      name === "get_routines_excluding_ids"
+        ? {
+          data: [{
+            id: PULL_ROUTINE_ID,
+            user_id: VALID_USER_ID,
+            name: "Echo routine",
+            description: "",
+            exercise_count: 1,
+            estimated_duration: 10,
+            times_completed: 0,
+            is_favorite: false,
+            updated_at: "2026-09-01T00:00:00.000Z",
+          }],
+          error: null,
+        }
+        : undefined,
+    fromPages: {
+      routine_exercises: [{
+        data: [
+          routineExerciseRow("00000000-0000-4000-8000-000000000041", null, {
+            mode: "ECHO",
+            eccentric_load: "LOAD_120",
+            echo_level: "EPIC",
+            rep_count_timing: "BOTTOM",
+            stop_at_position: "TOP",
+            superset_id: "00000000-0000-4000-8000-000000000049",
+            superset_color: "amber",
+            superset_order: 0,
+          }),
+        ],
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+
+  const routines = body.routines as Array<Record<string, unknown>>;
+  assertEquals(routines.length, 1);
+  const exercises = routines[0].exercises as Array<Record<string, unknown>>;
+  assertEquals(exercises.length, 2);
+  for (const exercise of exercises) {
+    assertNonNullableDefaulted(
+      exercise,
+      MOBILE_ROUTINE_EXERCISE_NON_NULLABLE_DEFAULTED,
+    );
+  }
+  assertEquals(exercises[0].isAmrap, false);
+  assertEquals(exercises[0].stallDetection, true);
+  assertEquals(exercises[1].isAmrap, true);
+  assertEquals(exercises[1].stallDetection, false);
+
+  const badges = body.badges as Array<Record<string, unknown>>;
+  assertEquals(badges.length, 2);
+  for (const badge of badges) {
+    assertNonNullableDefaulted(badge, MOBILE_BADGE_NON_NULLABLE_DEFAULTED);
+  }
+  assertEquals(badges.map((badge) => badge.badgeTier), ["bronze", "gold"]);
+});
+
+Deno.test({
+  name:
+    "integration: pulled external activity from real SQL carries syncedAt and decodes as the mobile DTO",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    const activityId = crypto.randomUUID();
+    try {
+      const inserted = await fixture.admin.from("external_activities").insert({
+        id: activityId,
+        user_id: fixture.ownerId,
+        external_id: `pr72-${activityId}`,
+        provider: "strava",
+        name: "Integration ride",
+        started_at: "2026-08-01T00:00:00.000Z",
+        // activity_type / duration_seconds left NULL on purpose; synced_at
+        // takes its column DEFAULT NOW().
+      });
+      if (inserted.error) {
+        throw new Error(
+          `external activity fixture failed: ${inserted.error.code} ${inserted.error.message}`,
+        );
+      }
+
+      const logs: unknown[][] = [];
+      const handler = realPullHandler(fixture, fixture.ownerId, logs);
+      const response = await handler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.ownerProfileId,
+      }));
+      const body = await json(response);
+
+      assertEquals(response.status, 200);
+      assertEquals(logs, []);
+      // The device gets its OWN numbers back, byte for byte.
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).totalWorkouts,
+        317,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).totalVolumeKg,
+        5000,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).totalReps,
+        1000,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).totalTimeSeconds,
+        6000,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).currentStreak,
+        9,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).longestStreak,
+        30,
+      );
+
+      // …while the columns the PORTAL and the leaderboards read — exactly the
+      // select list in compute-rankings/index.ts and PR 56's snapshot — hold
+      // the derived values.
+      const stored = await fixture.admin.from("gamification_stats")
+        .select(
+          "user_id, total_volume_kg, total_workouts, longest_streak, current_streak",
+        )
+        .eq("user_id", fixture.ownerId)
+        .maybeSingle();
+      if (stored.error || !stored.data) throw new Error("stats read failed");
+      assertEquals(stored.data.total_workouts, 1);
+      assertEquals(stored.data.total_volume_kg, 42);
+      assertEquals(stored.data.longest_streak, 1);
+      assertEquals(stored.data.current_streak, 0);
+
+      // A row that was never device-reported must pull as null, not zeroes:
+      // mobile's `?.let` then leaves the phone's own lifetime stats alone.
+      const cleared = await fixture.admin.from("gamification_stats")
+        .update({
+          device_total_workouts: null,
+          device_total_reps: null,
+          device_total_volume_kg: null,
+          device_total_time_seconds: null,
+          device_current_streak: null,
+          device_longest_streak: null,
+        })
+        .eq("user_id", fixture.ownerId);
+      if (cleared.error) throw new Error("shadow column clear failed");
+
+      const secondResponse = await handler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.ownerProfileId,
+      }));
+      const secondBody = await json(secondResponse);
+      assertEquals(secondResponse.status, 200);
+      assertEquals(secondBody.gamificationStats, null);
+    } finally {
+      assertEquals(response.status, 200);
+      assertEquals(logs, []);
+      const dtos = body.externalActivities as Record<string, unknown>[];
+      const dto = dtos.find((candidate) => candidate.id === activityId);
+      assert(dto, "seeded external activity must be pulled");
+      assertDecodesAsMobileExternalActivity(dto);
+      assertEquals(dto.activityType, "strength");
+      assertEquals(dto.durationSeconds, 0);
+    } finally {
+      const deleted = await fixture.admin.from("external_activities").delete()
+        .eq("id", activityId);
+      await deleteLocalPullFixtureRows(fixture.admin, [
+        fixture.ownerId,
+        fixture.otherId,
+      ]);
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Deploy-order tolerance. This handler must be safe to deploy BEFORE
+// 20260920002500 is applied, so the pull side of the migration window is
+// closed: with the device_* columns absent, `select('*')` returns a row
+// without those keys, and on a pre-migration database the canonical columns
+// ARE the device-reported values (nothing derives them yet).
+// ---------------------------------------------------------------------------
+Deno.test("pull falls back to the canonical columns when device_* do not exist yet", async () => {
+  const harness = makeHarness(undefined, {
+    fromPages: {
+      gamification_stats: [{
+        data: {
+          id: "gs-1",
+          user_id: VALID_USER_ID,
+          total_workouts: 42,
+          total_reps: 400,
+          total_volume_kg: 1234,
+          total_time_seconds: 5000,
+          longest_streak: 12,
+          current_streak: 3,
+          updated_at: "2026-07-10T00:00:00.000Z",
+        },
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  const [exercise] = (body.routines as Array<{
+    exercises: Array<Record<string, unknown>>;
+  }>)[0].exercises;
+  assertEquals(
+    {
+      mode: exercise.mode,
+      eccentricLoad: exercise.eccentricLoad,
+      echoLevel: exercise.echoLevel,
+      repCountTiming: exercise.repCountTiming,
+      stopAtPosition: exercise.stopAtPosition,
+      supersetColor: exercise.supersetColor,
+      supersetOrder: exercise.supersetOrder,
+      durationSeconds: exercise.durationSeconds,
+    },
+    {
+      mode: "ECHO",
+      eccentricLoad: "LOAD_120",
+      echoLevel: "EPIC",
+      repCountTiming: "BOTTOM",
+      stopAtPosition: "TOP",
+      supersetColor: "amber",
+      supersetOrder: 0,
+      durationSeconds: null,
+    },
+  );
+});
+
+Deno.test("routine exercise durationSeconds on the real-lastSync (non-RPC) routines path", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    fromPages: {
+      routines: [{
+        data: [{
+          id: PULL_ROUTINE_ID,
+          user_id: VALID_USER_ID,
+          name: "Timed routine",
+          description: "",
+          exercise_count: 1,
+          estimated_duration: 10,
+          times_completed: 0,
+          is_favorite: false,
+          updated_at: "2026-09-01T00:00:00.000Z",
+        }],
+        error: null,
+      }],
+      routine_exercises: [{
+        data: [routineExerciseRow("00000000-0000-4000-8000-000000000041", 45)],
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.gamificationStats, {
+    id: "gs-1",
+    userId: VALID_USER_ID,
+    totalWorkouts: 42,
+    totalReps: 400,
+    totalVolumeKg: 1234,
+    longestStreak: 12,
+    currentStreak: 3,
+    totalTimeSeconds: 5000,
+    // No lastWorkoutAt key: the column does not exist on this database.
+    updatedAt: "2026-07-10T00:00:00.000Z",
+  });
+});
+
+Deno.test("pull emits null when the columns exist but nothing was device-reported", async () => {
+  const harness = makeHarness(undefined, {
+    fromPages: {
+      gamification_stats: [{
+        data: {
+          id: "gs-1",
+          user_id: VALID_USER_ID,
+          total_workouts: 42,
+          total_reps: 400,
+          total_volume_kg: 1234,
+          total_time_seconds: 5000,
+          longest_streak: 12,
+          current_streak: 3,
+          device_total_workouts: null,
+          device_total_reps: null,
+          device_total_volume_kg: null,
+          device_total_time_seconds: null,
+          device_current_streak: null,
+          device_longest_streak: null,
+          last_workout_at: null,
+          updated_at: "2026-07-10T00:00:00.000Z",
+        },
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    lastSync: 1_700_000_000_000,
+  }));
+  assertEquals(response.status, 200);
+  assert(
+    !harness.adminCalls.some((call) => call.name === "get_routines_excluding_ids"),
+    "expected the timestamp (non-RPC) routines path",
+  );
+  const body = await json(response);
+  const routines = body.routines as Array<{
+    exercises: Array<Record<string, unknown>>;
+  }>;
+  assertEquals(routines[0].exercises[0].durationSeconds, 45);
+});
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.gamificationStats, null);
+});
+
+// ---------------------------------------------------------------------------
+// R-10 (critical) guard that runs in the DEFAULT job. The real-SQL
+// "integration:" test above is gated on the local stack, and this branch has
+// no test:edge:integration script and no edge-integration.yml — PR 5's prefix
+// selector only picks it up at the verify merge — so without this the run's
+// most important fix is unguarded in the job CI actually runs today.
+// ---------------------------------------------------------------------------
+Deno.test("pull serves the device shadow stats, never the derived columns", async () => {
+  const harness = makeHarness(undefined, {
+    fromPages: {
+      gamification_stats: [{
+        data: {
+          id: "gs-1",
+          user_id: VALID_USER_ID,
+          // What the server derived from the rows it stores.
+          total_workouts: 1,
+          total_reps: 10,
+          total_volume_kg: 42,
+          total_time_seconds: 120,
+          longest_streak: 1,
+          current_streak: 0,
+          // What the phone reported. These are what it must get back.
+          device_total_workouts: 317,
+          device_total_reps: 1000,
+          device_total_volume_kg: 5000,
+          device_total_time_seconds: 6000,
+          device_current_streak: 9,
+          device_longest_streak: 30,
+          last_workout_at: "2026-07-10T10:00:00.000Z",
+          updated_at: "2026-07-10T00:00:00.000Z",
+        },
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.gamificationStats, {
+    id: "gs-1",
+    userId: VALID_USER_ID,
+    totalWorkouts: 317,
+    totalReps: 1000,
+    totalVolumeKg: 5000,
+    longestStreak: 30,
+    currentStreak: 9,
+    totalTimeSeconds: 6000,
+    lastWorkoutAt: "2026-07-10T10:00:00.000Z",
+    updatedAt: "2026-07-10T00:00:00.000Z",
+  });
+});
+      if (deleted.error) {
+        throw new Error(
+          `external activity cleanup failed: ${deleted.error.code} ${deleted.error.message}`,
+        );
+      }
+    }
+    await assertLocalPullFixtureClean(fixture);
+  },
+});
