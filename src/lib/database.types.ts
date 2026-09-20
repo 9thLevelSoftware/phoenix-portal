@@ -2029,6 +2029,27 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			sync_tombstones: {
+				Row: {
+					deleted_at: string;
+					entity: string;
+					entity_id: string;
+					user_id: string;
+				};
+				Insert: {
+					deleted_at?: string;
+					entity: string;
+					entity_id: string;
+					user_id: string;
+				};
+				Update: {
+					deleted_at?: string;
+					entity?: string;
+					entity_id?: string;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
 			telemetry_analysis: {
 				Row: {
 					analysis_type: string;
@@ -2915,6 +2936,19 @@ export type Database = {
 					warmup_reps: number;
 					working_reps: number;
 					workout_mode: string;
+				}[];
+			};
+			get_sync_tombstones: {
+				Args: {
+					p_entity?: string;
+					p_ids?: string[];
+					p_since?: string;
+					p_user_id: string;
+				};
+				Returns: {
+					deleted_at: string;
+					entity: string;
+					entity_id: string;
 				}[];
 			};
 			get_user_pr_rank: {
