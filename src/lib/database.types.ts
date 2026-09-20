@@ -2671,14 +2671,8 @@ export type Database = {
 				Args: { p_provider: string; p_timestamp: string; p_user_id: string };
 				Returns: undefined;
 			};
-			exercise_frequency: {
-				Args: { p_profile_id?: string };
-				Returns: Json;
-			};
-			exercise_names: {
-				Args: { p_profile_id?: string };
-				Returns: Json;
-			};
+			exercise_frequency: { Args: { p_profile_id?: string }; Returns: Json };
+			exercise_names: { Args: { p_profile_id?: string }; Returns: Json };
 			exercise_progress_series: {
 				Args: { p_exercise: string; p_limit?: number; p_profile_id?: string };
 				Returns: {
@@ -3090,10 +3084,7 @@ export type Database = {
 					server_revision: number;
 				}[];
 			};
-			personal_record_bests: {
-				Args: { p_profile_id?: string };
-				Returns: Json;
-			};
+			personal_record_bests: { Args: { p_profile_id?: string }; Returns: Json };
 			personal_record_history: {
 				Args: {
 					p_before?: string;
