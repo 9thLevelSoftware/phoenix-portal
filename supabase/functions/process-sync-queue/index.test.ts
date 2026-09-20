@@ -3,6 +3,7 @@ import { FakeDb, type Row } from "../_shared/testing/fakeSupabase.ts";
 import {
   createProcessSyncQueueHandler,
   type ProcessSyncQueueDependencies,
+  tasksPerProvider,
 } from "./index.ts";
 
 const SERVICE_ROLE_KEY = "test-service-role-key";
@@ -373,3 +374,80 @@ for (const provider of ["fitbit", "garmin"]) {
     await res.body?.cancel();
   });
 }
+
+// ---------------------------------------------------------------------------
+// Dispatch budget derived from the provider quotas (PR 52)
+// ---------------------------------------------------------------------------
+
+Deno.test("process-sync-queue: the per-pass budget comes from each provider's quota", () => {
+  // Strava: 800 reads/day over 288 five-minute passes = 2 (its 15-minute
+  // window would allow 26; the tightest window wins).
+  assertEquals(tasksPerProvider("strava"), 2);
+  // Garmin: 40/hour app-wide = 3 per pass.
+  assertEquals(tasksPerProvider("garmin"), 3);
+  // User-scoped quotas say nothing about how many users may run per pass.
+  assertEquals(tasksPerProvider("fitbit"), 5);
+  assertEquals(tasksPerProvider("hevy"), 5);
+  assertEquals(tasksPerProvider("liftosaur"), 5);
+  // An unknown provider falls back to the wall-clock ceiling.
+  assertEquals(tasksPerProvider("nordic-track"), 5);
+});
+
+Deno.test("process-sync-queue: a pass dispatches no more strava tasks than the quota allows", async () => {
+  const users = [
+    "00000000-0000-4000-8000-00000000000a",
+    "00000000-0000-4000-8000-00000000000b",
+    "00000000-0000-4000-8000-00000000000c",
+  ];
+  const h = harness(BASE_ENV, {
+    sync_queue: users.map((user, i) => ({
+      ...pendingRow(
+        `00000000-0000-4000-8000-00000000001${i}`,
+        "incremental",
+        `2026-09-1${i + 1}T00:00:00.000Z`,
+      ),
+      user_id: user,
+    })),
+    subscriptions: users.map((user) => ({ ...FLAME_SUBSCRIPTION, user_id: user })),
+    rate_limit_tracking: [],
+  });
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { processed: 2, failed: 0, skipped: 0 });
+  assertEquals(h.fetchCalls.length, 2);
+  // Oldest first; the third waits for the next pass.
+  assertEquals(
+    h.db.tables.sync_queue.map((r) => r.status),
+    ["completed", "completed", "pending"],
+  );
+});
+
+Deno.test("process-sync-queue: a row that left `processing` mid-run is not overwritten (R-7)", async () => {
+  for (const outcome of ["success", "failure"]) {
+    let db: FakeDb | null = null;
+    const h = harness(
+      BASE_ENV,
+      {
+        sync_queue: [pendingRow(TASK_ID, "incremental", "2026-09-19T00:00:00.000Z")],
+        subscriptions: [FLAME_SUBSCRIPTION],
+        rate_limit_tracking: [],
+      },
+      () => {
+        // While the provider sync runs, the row leaves `processing`: another
+        // pass reclaimed its expired lease, or a disconnect cancelled it.
+        db!.tables.sync_queue[0].status = "cancelled";
+        return new Response(
+          JSON.stringify(outcome === "success" ? { ok: true } : { error: "nope" }),
+          { status: outcome === "success" ? 200 : 500 },
+        );
+      },
+    );
+    db = h.db;
+
+    const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+    await res.body?.cancel();
+    assertEquals(h.db.tables.sync_queue[0].status, "cancelled", outcome);
+    assertEquals(h.db.tables.sync_queue[0].completed_at, null, outcome);
+  }
+});

@@ -5,8 +5,13 @@ import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCry
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 import {
 	completeSyncQueueEntry,
+	createSyncQueueEntry,
 	type DbClient,
 	heartbeatSyncQueueEntry,
+	noOwnedQueueRow,
+	type OwnedQueueRow,
+	releaseOwnedQueueRow,
+	syncAlreadyQueuedResponse,
 } from "../_shared/syncQueue.ts";
 
 /**
@@ -26,6 +31,11 @@ import {
  * process-sync-queue reclaims a liftosaur task after HEARTBEAT_LEASE_MS
  * (5 minutes) without a heartbeat. The longest silent window here is one
  * request (capped by PROVIDER_REQUEST_TIMEOUT_MS) or 100 record upserts.
+ *
+ * A browser-initiated run (user JWT, no `queue_id`) creates its OWN queue row
+ * instead, directly in `processing`, and owns it exactly the same way. A
+ * second concurrent sync loses the `sync_queue_one_active` race and is
+ * answered with 409 `sync_already_queued`.
  */
 
 const LIFTOSAUR_API_BASE = "https://www.liftosaur.com/api/v1";
@@ -118,6 +128,21 @@ async function liftosaurSync(
 	req: Request,
 	deps: LiftosaurSyncDependencies,
 ): Promise<Response> {
+	// A browser-initiated run owns the row it created: hand it back when the run
+	// ends badly, so the user's next manual sync is not refused with a 409 until
+	// the lease expires. Queue-dispatched rows deliberately stay `processing`
+	// for process-sync-queue to re-run (PR 51).
+	const owned: OwnedQueueRow = noOwnedQueueRow();
+	const response = await runLiftosaurSync(req, deps, owned);
+	if (!response.ok) await releaseOwnedQueueRow(owned);
+	return response;
+}
+
+async function runLiftosaurSync(
+	req: Request,
+	deps: LiftosaurSyncDependencies,
+	owned: OwnedQueueRow,
+): Promise<Response> {
 	const cors = getCorsHeaders(req);
 
 	// CORS preflight
@@ -176,10 +201,15 @@ async function liftosaurSync(
 		}
 
 		const { api_key, sync_type } = body;
-		const queueId = typeof body.queue_id === "string" ? body.queue_id : null;
 		const calledByQueueProcessor = !jwtUser;
-		// Only the queue path holds a lease on a sync_queue row.
-		const leaseQueueId = calledByQueueProcessor ? queueId : null;
+		// The dispatched row (queue path only): a browser caller's `queue_id` is
+		// ignored — it may name any row at all — and replaced by its own below.
+		const dispatchedQueueId =
+			calledByQueueProcessor && typeof body.queue_id === "string"
+				? body.queue_id
+				: null;
+		// The row this run owns and leases.
+		let ownedQueueId = dispatchedQueueId;
 
 		const supabase = deps.createClient(
 			deps.env("SUPABASE_URL")!,
@@ -188,11 +218,27 @@ async function liftosaurSync(
 
 		// Renew the lease immediately: the processor claimed this row before it
 		// called us, so the work below must not run on that claim's clock.
-		await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
+		await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 
 		// Subscription gate — FLAME or higher required for integrations
 		const gate = await requireSubscription(supabase, userId, "FLAME", cors);
 		if (!gate.allowed) return gate.response;
+
+		// Browser-initiated: take a queue row of our own so this run is visible
+		// to the portal, holds a lease, and blocks a concurrent duplicate sync.
+		if (!calledByQueueProcessor) {
+			const created = await createSyncQueueEntry(supabase, {
+				userId,
+				provider: "liftosaur",
+				syncType: typeof sync_type === "string" ? sync_type : "manual",
+				now: deps.now(),
+			});
+			if (created.conflict) return syncAlreadyQueuedResponse(cors);
+			ownedQueueId = created.queueId;
+			owned.supabase = supabase;
+			owned.queueId = ownedQueueId;
+			owned.userId = userId;
+		}
 
 		// If api_key provided, store it in oauth_tokens (server-only table)
 		if (api_key) {
@@ -340,7 +386,7 @@ async function liftosaurSync(
 				hasMore = result.data.hasMore;
 				cursor = result.data.nextCursor;
 				page++;
-				await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
+				await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 			}
 		} catch (fetchError) {
 			console.error("Liftosaur API fetch error:", fetchError);
@@ -381,7 +427,7 @@ async function liftosaurSync(
 		for (const record of allRecords) {
 			processedRecords++;
 			if (processedRecords % HEARTBEAT_EVERY_RECORDS === 0) {
-				await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
+				await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 			}
 			const meta = parseLiftoscriptMetadata(record.text);
 
@@ -454,18 +500,13 @@ async function liftosaurSync(
 			.eq("user_id", userId)
 			.eq("provider", "liftosaur");
 
-		// Complete only the queue row this run was dispatched for (or, for a
-		// browser run, at most the newest pending row of the same sync_type).
-		// Never sweep every pending row: a second queued task must still run.
-		if (queueId || sync_type) {
-			await completeSyncQueueEntry(supabase, {
-				userId,
-				provider: "liftosaur",
-				syncType: sync_type ?? "incremental",
-				queueId,
-				calledByQueueProcessor,
-			});
-		}
+		// Complete only the row this run owns. Never sweep every pending row:
+		// a second queued task (a kept `initial`) must still run.
+		await completeSyncQueueEntry(supabase, {
+			userId,
+			provider: "liftosaur",
+			queueId: ownedQueueId,
+		});
 
 		return new Response(
 			JSON.stringify({
