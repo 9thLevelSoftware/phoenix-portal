@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { routineExercisesSnapshotSchema } from "@/schemas/community";
 import {
 	CycleSnapshotPreview,
 	RoutineSnapshotPreview,
@@ -35,6 +36,9 @@ describe("CommunityContentPreview", () => {
 
 		expect(screen.getByText("Bench Press")).toBeInTheDocument();
 		expect(screen.getByText("Drop set")).toBeInTheDocument();
+		// Stored wire mode renders as its display label, not "OLD_SCHOOL".
+		expect(screen.getByText("Old School")).toBeInTheDocument();
+		expect(screen.queryByText("OLD_SCHOOL")).not.toBeInTheDocument();
 		expect(screen.getByText(/3 sets \/ 8 reps \/ 80 kg/i)).toBeInTheDocument();
 		expect(screen.getByText(/Weights:/i)).toBeInTheDocument();
 		expect(screen.getByText(/Rest: 90s between sets/i)).toBeInTheDocument();
@@ -129,6 +133,59 @@ describe("CommunityContentPreview", () => {
 		expect(
 			screen.getAllByText(/^\d\d$/).map((node) => node.textContent),
 		).toEqual(["01", "02", "03", "04"]);
+	});
+
+	it("renders a legacy snapshot's hex superset colour and labels settings", () => {
+		const exercises = routineExercisesSnapshotSchema.parse(
+			[0, 1].map((index) => ({
+				name: `Ex ${index}`,
+				mode: "ECHO",
+				order_index: index,
+				superset_id: "superset-a",
+				superset_order: index,
+				superset_color: "#F59E0B",
+				eccentric_load: index === 0 ? "LOAD_120" : "heavy",
+				echo_level: index === 0 ? "epic" : "high",
+				rep_count_timing: "BOTTOM",
+				stop_at_position: "Lockout",
+			})),
+		);
+		render(<RoutineSnapshotPreview exercises={exercises} />);
+
+		const group = document.querySelector<HTMLElement>(
+			"[style*='border-left-width']",
+		);
+		expect(group?.style.borderLeftColor).toBe("rgb(245, 158, 11)");
+		expect(screen.getByText("Eccentric 120%")).toBeInTheDocument();
+		expect(screen.getByText("Echo Epic")).toBeInTheDocument();
+		// Legacy words were the phone's defaults, so they don't show as settings.
+		expect(screen.queryByText(/heavy|high|Lockout/)).not.toBeInTheDocument();
+		expect(screen.getAllByText("Timing Bottom")).toHaveLength(2);
+		expect(screen.queryByText("Stop at top")).not.toBeInTheDocument();
+	});
+
+	it("renders a colour name (not valid CSS) as its hex", () => {
+		render(
+			<RoutineSnapshotPreview
+				exercises={[0, 1].map((index) => ({
+					name: `Ex ${index}`,
+					muscle_group: "Arms",
+					sets: 3,
+					reps: 10,
+					weight: 0,
+					rest_seconds: 60,
+					mode: "OLD_SCHOOL",
+					order_index: index,
+					superset_id: "superset-a",
+					superset_order: index,
+					superset_color: "amber",
+				}))}
+			/>,
+		);
+		const group = document.querySelector<HTMLElement>(
+			"[style*='border-left-width']",
+		);
+		expect(group?.style.borderLeftColor).toBe("rgb(245, 158, 11)");
 	});
 
 	it("renders cycle days, overrides, and embedded routine details", () => {
