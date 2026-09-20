@@ -637,9 +637,16 @@ async function paddleWebhooksHandler(
           `untracked_subscription_id=${untrackedSwitch.id}`,
           switchError ?? "guard rejected the write",
         );
-        // 500 so Paddle redelivers: the cancellation above recorded a
-        // synthetic event id, so the redelivery is not a duplicate and the
-        // switch is retried.
+        // 500 so the failure shows up in Paddle's delivery log and pages
+        // whoever owns [BILLING_ALERT].
+        //
+        // It does NOT retry the switch: the cancellation already advanced
+        // last_event_occurred_at to this event's occurred_at, so a redelivery
+        // is classified stale and returns before reaching this code. The row
+        // stays canceled until either the adopted subscription's own next
+        // Paddle event lands (foreign + stored not entitled -> adopted) or the
+        // portal's paddle-refresh-subscription runs. PR 68 owns the manual
+        // double-subscription resolution.
         return new Response(
           JSON.stringify({ error: "Failed to adopt live subscription" }),
           { status: 500, headers: responseHeaders },

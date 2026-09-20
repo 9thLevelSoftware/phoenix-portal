@@ -56,6 +56,8 @@ class FakeDb implements PaddleWebhooksDbClient {
   rpcError: unknown = null;
   /** Simulates losing the write-time ordering race to a concurrent delivery. */
   forceNotApplied = false;
+  /** 1-based index of the first rpc call that must fail (null: none). */
+  failRpcFrom: number | null = null;
 
   constructor(row: StoredRow | null = null) {
     this.row = row;
@@ -91,6 +93,9 @@ class FakeDb implements PaddleWebhooksDbClient {
 
   rpc(_fn: "apply_subscription_event", args: Record<string, unknown>) {
     this.rpcCalls.push(args);
+    if (this.failRpcFrom !== null && this.rpcCalls.length >= this.failRpcFrom) {
+      return Promise.resolve({ data: null, error: { message: "deadlock detected" } });
+    }
     if (this.rpcError) return Promise.resolve({ data: null, error: this.rpcError });
     if (this.forceNotApplied) return Promise.resolve({ data: false, error: null });
     const incoming = Date.parse(String(args.p_last_event_occurred_at));
@@ -749,4 +754,94 @@ Deno.test("paddle-webhooks: a cancellation with no other live subscription still
   assertEquals(db.rpcCalls.length, 1);
   assertEquals(db.rpcCalls[0]!.p_last_event_id, "evt_canceled");
   assertEquals(db.row?.status, "canceled");
+});
+
+Deno.test("paddle-webhooks: a failed adoption is 500, and the redelivery is stale rather than a retry", async () => {
+  const db = new FakeDb({
+    last_event_id: "evt_prev",
+    last_event_occurred_at: "2026-09-18T11:00:00.000Z",
+    tier: "EMBER",
+    paddle_subscription_id: "sub_a",
+    status: "active",
+    current_period_end: "2026-10-01T00:00:00.000Z",
+    cancel_at_period_end: false,
+  });
+  const liveB = () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          {
+            id: "sub_b",
+            customer_id: "ctm_01",
+            status: "active",
+            updated_at: "2026-09-18T11:55:00.000Z",
+            items: [{ price: { id: EMBER_PRICE }, quantity: 1 }],
+            current_billing_period: {
+              starts_at: "2026-09-18T00:00:00.000Z",
+              ends_at: "2026-10-18T00:00:00.000Z",
+            },
+            scheduled_change: null,
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  const cancelEvent = await subscriptionEvent({
+    eventId: "evt_a_canceled",
+    eventType: "subscription.canceled",
+    subscriptionId: "sub_a",
+    status: "canceled",
+    occurredAt: "2026-09-18T11:58:00.000Z",
+  });
+
+  // The adoption write fails after the cancellation has already been applied.
+  db.failRpcFrom = 2;
+  const { result: failed } = await captureConsoleError(async () =>
+    await makeHandler(db, {
+      PADDLE_API_KEY: "pdl_test_key",
+      PADDLE_ENVIRONMENT: "sandbox",
+    }, { listResponse: liveB })(await signedRequest(cancelEvent))
+  );
+
+  assertEquals(failed.status, 500);
+  assertEquals(await failed.json(), { error: "Failed to adopt live subscription" });
+  assertEquals(db.row?.status, "canceled");
+  assertEquals(db.row?.last_event_id, "cancel:sub_a:2026-09-18T11:58:00.000Z");
+
+  // Paddle redelivers. The cancellation already advanced
+  // last_event_occurred_at to this event's occurred_at, so the delivery is
+  // stale: the switch is NOT retried. Recovery is the adopted subscription's
+  // own next event (or paddle-refresh-subscription), not this redelivery.
+  db.failRpcFrom = null;
+  const rpcCallsBeforeRedelivery = db.rpcCalls.length;
+  const { result: redelivered } = await captureConsole(
+    "warn",
+    async () =>
+      await makeHandler(db, {
+        PADDLE_API_KEY: "pdl_test_key",
+        PADDLE_ENVIRONMENT: "sandbox",
+      }, { listResponse: liveB })(await signedRequest(cancelEvent)),
+  );
+
+  assertEquals(redelivered.status, 200);
+  assertEquals(await redelivered.json(), { received: true, stale: true });
+  assertEquals(db.rpcCalls.length, rpcCallsBeforeRedelivery);
+  assertEquals(db.row?.paddle_subscription_id, "sub_a");
+  assertEquals(db.row?.status, "canceled");
+
+  // The documented recovery: sub_b's own next event is adopted, because the
+  // stored row is no longer entitled.
+  const recovered = await makeHandler(db)(
+    await signedRequest(
+      await subscriptionEvent({
+        eventId: "evt_b_renewed",
+        subscriptionId: "sub_b",
+        status: "active",
+        occurredAt: "2026-09-18T12:05:00.000Z",
+      }),
+    ),
+  );
+  assertEquals(recovered.status, 200);
+  assertEquals(db.row?.paddle_subscription_id, "sub_b");
+  assertEquals(db.row?.status, "active");
 });
