@@ -431,6 +431,13 @@ VALUES (
     'strava'
 );
 
+INSERT INTO public.sync_tombstones (user_id, entity, entity_id)
+VALUES (
+    'a1a1a1a1-0000-4000-8000-00000000000a',
+    'routine',
+    'a1a1a1a1-0035-4000-8000-00000000000a'
+);
+
 INSERT INTO public.telemetry_analysis (id, set_id, user_id, analysis_type, result)
 VALUES (
     'a1a1a1a1-0031-4000-8000-00000000000a',
@@ -525,6 +532,7 @@ INSERT INTO rls_cases VALUES
     ('session_phase_statistics',  'id', 'a1a1a1a1-0028-4000-8000-00000000000a', 1, NULL, NULL, $s$concentric_kg_avg = 99$s$),
     ('subscription_events',       'id', 'a1a1a1a1-0029-4000-8000-00000000000a', NULL, NULL, NULL, $s$operation = 'UPDATE'$s$),
     ('sync_queue',                'id', 'a1a1a1a1-0030-4000-8000-00000000000a', 1, NULL, NULL, $s$provider = 'rls-probe'$s$),
+    ('sync_tombstones',           'entity_id', 'a1a1a1a1-0035-4000-8000-00000000000a', 1, NULL, NULL, $s$deleted_at = '2000-01-01T00:00:00Z'$s$),
     ('telemetry_analysis',        'id', 'a1a1a1a1-0031-4000-8000-00000000000a', 1, NULL, NULL, $s$result = '{}'::jsonb$s$),
     ('user_insights',             'id', 'a1a1a1a1-0032-4000-8000-00000000000a', 1, NULL, NULL, $s$title = 'rls-probe'$s$),
     ('user_onboarding',           'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$version_seen = 'rls-probe'$s$),
