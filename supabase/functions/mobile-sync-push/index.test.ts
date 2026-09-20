@@ -576,8 +576,7 @@ function makeHarness(
           ? () =>
             options.catalogBehavior!(catalogQuery) ??
               { data: [], error: null, count: 0 }
-          : undefined);
-      }, table === "personal_records" ? options.personalRecordsResult : undefined,
+          : undefined,
         options.subscriptionResult);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
@@ -3372,6 +3371,48 @@ interface CatalogIntegrationFixture {
 async function createCatalogIntegrationFixture(): Promise<
   CatalogIntegrationFixture
 > {
+  assert(localIntegrationEnvironment);
+  const admin = createClient(
+    localIntegrationEnvironment.url,
+    localIntegrationEnvironment.serviceRoleKey,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const suffix = crypto.randomUUID();
+  const createdUserIds: string[] = [];
+  try {
+    for (const role of ["owner", "other"]) {
+      const created = await admin.auth.admin.createUser({
+        email: `pr58-${role}-${suffix}@example.invalid`,
+        email_confirm: true,
+      });
+      if (created.error || !created.data.user) {
+        throw new Error(`${role} fixture creation failed`);
+      }
+      createdUserIds.push(created.data.user.id);
+    }
+    const subscription = await admin.from("subscriptions").insert({
+      user_id: createdUserIds[0],
+      tier: "EMBER",
+      status: "active",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+    });
+    if (subscription.error) {
+      throw new Error(`subscription fixture failed: ${subscription.error.message}`);
+    }
+    return {
+      admin,
+      ownerId: createdUserIds[0],
+      otherUserId: createdUserIds[1],
+      suffix,
+    };
+  } catch (error) {
+    for (const userId of createdUserIds) {
+      await admin.auth.admin.deleteUser(userId);
+    }
+    throw error;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Real-SQL subscription gate (replaces the deleted live FREE-user sync tests):
 // the real `subscriptions` table, service-role grants and RLS decide 402 vs
@@ -3411,38 +3452,6 @@ async function createGateFixture(
     localIntegrationEnvironment.serviceRoleKey,
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
-  const suffix = crypto.randomUUID();
-  const createdUserIds: string[] = [];
-  try {
-    for (const role of ["owner", "other"]) {
-      const created = await admin.auth.admin.createUser({
-        email: `pr58-${role}-${suffix}@example.invalid`,
-        email_confirm: true,
-      });
-      if (created.error || !created.data.user) {
-        throw new Error(`${role} fixture creation failed`);
-      }
-      createdUserIds.push(created.data.user.id);
-    }
-    const subscription = await admin.from("subscriptions").insert({
-      user_id: createdUserIds[0],
-      tier: "EMBER",
-      status: "active",
-      current_period_end: "2099-01-01T00:00:00.000Z",
-    });
-    if (subscription.error) {
-      throw new Error(`subscription fixture failed: ${subscription.error.message}`);
-    }
-    return {
-      admin,
-      ownerId: createdUserIds[0],
-      otherUserId: createdUserIds[1],
-      suffix,
-    };
-  } catch (error) {
-    for (const userId of createdUserIds) {
-      await admin.auth.admin.deleteUser(userId);
-    }
   const created = await admin.auth.admin.createUser({
     email: `pr6-gate-${crypto.randomUUID()}@example.invalid`,
     email_confirm: true,
@@ -3480,6 +3489,41 @@ function realPushHandler(
   fixture: CatalogIntegrationFixture,
   now: () => number = () => Date.now(),
 ): (request: Request) => Promise<Response> {
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      const admin = Object.create(fixture.admin) as SupabaseClient;
+      Object.assign(admin, {
+        channel() {
+          return {
+            subscribe(callback: (status: string) => void) {
+              callback("SUBSCRIBED");
+              return {};
+            },
+            async send() {
+              return "ok";
+            },
+          };
+        },
+        async removeChannel() {
+          return "ok";
+        },
+      });
+      return admin;
+    },
+    logOperationalFailure() {},
+    now,
+  });
+}
+
 // Real SQL, but the realtime broadcast is recorded instead of opening a
 // websocket (which would leak past the test).
 function realGatePushHandler(
@@ -3510,37 +3554,17 @@ function realGatePushHandler(
       return {
         auth: {
           async getUser() {
-            return { data: { user: { id: fixture.ownerId } }, error: null };
             return { data: { user: { id: fixture.userId } }, error: null };
           },
         },
       };
     },
     createAdminClient() {
-      // Real PostgREST and RPCs; the realtime broadcast is stubbed so the
-      // test leaves no open WebSocket behind.
-      const admin = Object.create(fixture.admin) as SupabaseClient;
-      Object.assign(admin, {
-        channel() {
-          return {
-            subscribe(callback: (status: string) => void) {
-              callback("SUBSCRIBED");
-              return {};
-            },
-            async send() {
-              return "ok";
-            },
-          };
-        },
-        async removeChannel() {
-          return "ok";
-        },
-      });
       return admin;
     },
-    logOperationalFailure() {},
-    now,
-  });
+    logOperationalFailure: () => {},
+    now: () => 1_784_167_200_000,
+  } as never);
 }
 
 function catalogProbeSession(
@@ -3775,12 +3799,9 @@ Deno.test({
       assertEquals(own.data[0].notes, "attacker");
     } finally {
       await cleanupCatalogIntegrationFixture(fixture);
-      return admin;
-    },
-    logOperationalFailure: () => {},
-    now: () => 1_784_167_200_000,
-  } as never);
-}
+    }
+  },
+});
 
 async function countGateSessions(
   fixture: GateFixture,
