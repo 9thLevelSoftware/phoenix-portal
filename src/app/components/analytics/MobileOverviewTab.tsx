@@ -32,6 +32,8 @@ export interface MobileOverviewTabProps {
 	insightsFeedItems: InsightItem[];
 	insightsPending: boolean;
 	insightsError?: boolean;
+	/** Server batch or browser fallback — never a mix (KD-14). */
+	insightsSource?: "server" | "local";
 }
 
 export default function MobileOverviewTab({
@@ -41,6 +43,7 @@ export default function MobileOverviewTab({
 	insightsFeedItems,
 	insightsPending,
 	insightsError = false,
+	insightsSource = "server",
 }: MobileOverviewTabProps) {
 	return (
 		<>
@@ -120,6 +123,7 @@ export default function MobileOverviewTab({
 					insights={insightsFeedItems}
 					loading={insightsPending}
 					isError={insightsError}
+					source={insightsSource}
 				/>
 			</MobileChartCard>
 		</>

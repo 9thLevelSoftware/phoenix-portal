@@ -12,6 +12,7 @@ import type { Recommendation } from "@/lib/recommendations";
 import type { MuscleRecovery } from "@/lib/sra-recovery";
 import { formatVolume, type WeightUnit } from "@/lib/units";
 import { BodyMuscleHeatmap } from "./BodyMuscleHeatmap";
+import { BodyMuscleMapStatus } from "./BodyMuscleMapStatus";
 
 const ExerciseDeepDive = lazy(() =>
 	import("./ExerciseDeepDive").then((m) => ({ default: m.ExerciseDeepDive })),
@@ -42,7 +43,9 @@ export interface BodyTabProps {
 	muscleGroupData: MuscleGroupEntry[];
 	muscleDonutOption: ChartOption | null;
 	muscleRadarData: Record<string, number>;
-	bodyMuscleModel: BodyMuscleFocusModel;
+	/** Null while the lazily loaded body-muscle map is still downloading. */
+	bodyMuscleModel: BodyMuscleFocusModel | null;
+	bodyMuscleMapFailed?: boolean;
 	weeklyVolume: Record<string, number>;
 	totalSessions: number;
 	muscleRecoveries: MuscleRecovery[];
@@ -61,6 +64,7 @@ export default function BodyTab({
 	muscleDonutOption,
 	muscleRadarData,
 	bodyMuscleModel,
+	bodyMuscleMapFailed = false,
 	weeklyVolume,
 	totalSessions,
 	muscleRecoveries,
@@ -73,7 +77,7 @@ export default function BodyTab({
 	const [bodySide, setBodySide] = useState<"front" | "back">("front");
 	const [selectedMuscleId, setSelectedMuscleId] = useState<string | null>(null);
 	const selectedMuscle = selectedMuscleId
-		? (bodyMuscleModel.muscleById[selectedMuscleId] ?? null)
+		? (bodyMuscleModel?.muscleById[selectedMuscleId] ?? null)
 		: null;
 	const selectedMuscleGroup = selectedMuscle
 		? toCanonicalMuscleGroup(selectedMuscle.group)
@@ -206,7 +210,9 @@ export default function BodyTab({
 				</div>
 				<div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-6">
 					<div>
-						{bodyMuscleModel.muscles.length > 0 ? (
+						{!bodyMuscleModel ? (
+							<BodyMuscleMapStatus failed={bodyMuscleMapFailed} />
+						) : bodyMuscleModel.muscles.length > 0 ? (
 							<BodyMuscleHeatmap
 								model={bodyMuscleModel}
 								side={bodySide}
@@ -237,7 +243,7 @@ export default function BodyTab({
 							<span>Low contribution</span>
 							<span>High contribution</span>
 						</div>
-						{bodyMuscleModel.estimatedExerciseCount > 0 && (
+						{bodyMuscleModel && bodyMuscleModel.estimatedExerciseCount > 0 && (
 							<p className="mt-3 text-xs text-muted-foreground text-center">
 								{bodyMuscleModel.estimatedExerciseCount} custom or unmatched{" "}
 								{bodyMuscleModel.estimatedExerciseCount === 1
@@ -250,7 +256,7 @@ export default function BodyTab({
 
 					<SelectedMuscleContribution
 						muscle={selectedMuscle}
-						topMuscles={bodyMuscleModel.muscles.slice(0, 8)}
+						topMuscles={bodyMuscleModel?.muscles.slice(0, 8) ?? []}
 						unit={unit}
 						onSelectMuscle={setSelectedMuscleId}
 					/>

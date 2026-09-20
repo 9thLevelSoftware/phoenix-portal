@@ -21,6 +21,11 @@ import {
 const USER_ID = "00000000-0000-4000-8000-00000000aaaa";
 const ROUTINE_COLUMNS = getUserDataTable("routines")!.columns;
 const ROUTINE_OPTIONAL = getUserDataTable("routines")!.optionalColumns ?? [];
+// `routines` has no optional columns any more (PR 16's migration added
+// `created_at`, so it is a migrated column). The drop-on-42703 retry needs a
+// table that still carries prod-only drift columns.
+const GOAL_COLUMNS = getUserDataTable("user_goals")!.columns;
+const GOAL_OPTIONAL = getUserDataTable("user_goals")!.optionalColumns ?? [];
 
 function request(
   body: unknown,
@@ -248,6 +253,7 @@ Deno.test("scopes by the JWT user id, selects explicit columns, and charges 600/
   assertEquals(recorded.from, ["routines"]);
   assertEquals(recorded.ops, [
     ["select", [[...ROUTINE_COLUMNS, ...ROUTINE_OPTIONAL].join(",")]],
+    ["select", [[...ROUTINE_COLUMNS, ...ROUTINE_OPTIONAL].join(","), { count: "exact" }]],
     ["eq", ["user_id", USER_ID]],
     ["gt", ["id", "00000000-0000-4000-8000-000000000001"]],
     ["order", ["id", { ascending: true }]],
@@ -270,6 +276,26 @@ Deno.test("prod-only optional columns are dropped when the database lacks them",
     { data: null, error: { code: "42703", message: "column routines.created_at does not exist" } },
     { data: [{ id: "r1" }], error: null },
     { data: [], error: null },
+  assert(GOAL_OPTIONAL.length > 0, "user_goals must still have an optional column");
+  const { handler, recorded } = doubleHandler([
+    {
+      data: null,
+      error: {
+        code: "42703",
+        message: `column user_goals.${GOAL_OPTIONAL[0]} does not exist`,
+      },
+    },
+    { data: [{ id: "g1" }], error: null, count: 1 },
+  ]);
+  const response = await handler(request({ table: "user_goals" }));
+  assertEquals(response.status, 200);
+  const selects = recorded.ops.filter(([name]) => name === "select").map(([, args]) => args[0]);
+  assertEquals(selects, [
+    [...GOAL_COLUMNS, ...GOAL_OPTIONAL].join(","),
+    GOAL_COLUMNS.join(","),
+  const { handler, recorded } = doubleHandler([
+    { data: null, error: { code: "42703", message: "column routines.created_at does not exist" } },
+    { data: [{ id: "r1" }], error: null, count: 1 },
   ]);
   const response = await handler(request({ table: "routines" }));
   assertEquals(response.status, 200);
@@ -304,6 +330,11 @@ Deno.test("parent-owned tables scope through an inner join on the parent owner",
     { data: [{ id: "r1", routine_id: "p1", routines: { user_id: USER_ID } }], error: null },
     { data: [], error: null },
   ]);
+  const { handler, recorded } = doubleHandler({
+    data: [{ id: "r1", routine_id: "p1", routines: { user_id: USER_ID } }],
+    error: null,
+    count: 1,
+  });
   const response = await handler(request({ table: "routine_exercises" }));
   assertEquals(response.status, 200);
   const columns = getUserDataTable("routine_exercises")!.columns.join(",");
@@ -314,6 +345,9 @@ Deno.test("parent-owned tables scope through an inner join on the parent owner",
   // The probe is scoped through the same inner join.
   const selects = recorded.ops.filter(([name]) => name === "select").map(([, args]) => args[0]);
   assertEquals(selects[1], "id,routines!routine_id!inner(user_id)");
+    ["select", [`${columns},routines!routine_id!inner(user_id)`, { count: "exact" }]],
+    ["eq", ["routines.user_id", USER_ID]],
+  ]);
   const body = await response.json();
   assertEquals(body.rows, [{ id: "r1", routine_id: "p1" }]);
   assertEquals(body.nextCursor, null);
@@ -334,6 +368,7 @@ Deno.test("composite keys page with a quoted row-value comparison", async () => 
   }));
   assertEquals(recorded.ops, [
     ["select", ["user_id,entity,entity_id,deleted_at"]],
+    ["select", ["user_id,entity,entity_id,deleted_at", { count: "exact" }]],
     ["eq", ["user_id", USER_ID]],
     ["or", ['entity.gt."cycle",and(entity.eq."cycle",entity_id.gt."e1")']],
     ["order", ["entity", { ascending: true }]],
@@ -367,6 +402,14 @@ Deno.test("nextCursor comes from a one-row probe after the last key, not the pag
 
   // Exactly 1000 rows: no trailing empty page.
   const exact = doubleHandler([{ data: idRows(1000), error: null }, probe(0)]);
+Deno.test("nextCursor comes from the remaining-row count, not the page length", async () => {
+  // More rows remain: cursor is the last key.
+  const more = doubleHandler({ data: idRows(1000), error: null, count: 2500 });
+  const moreBody = await (await more.handler(request({ table: "routines" }))).json();
+  assertEquals(moreBody.nextCursor, { id: "id-0999" });
+
+  // Exactly 1000 rows: no trailing empty page.
+  const exact = doubleHandler({ data: idRows(1000), error: null, count: 1000 });
   const exactBody = await (await exact.handler(request({ table: "routines" }))).json();
   assertEquals(exactBody.rows.length, 1000);
   assertEquals(exactBody.nextCursor, null);
@@ -387,6 +430,13 @@ Deno.test("nextCursor comes from a one-row probe after the last key, not the pag
     { data: null, error: { code: "57014", message: "timeout" } },
   ]);
   assertEquals((await failed.handler(request({ table: "routines" }))).status, 500);
+  const capped = doubleHandler({ data: idRows(500), error: null, count: 2500 });
+  const cappedBody = await (await capped.handler(request({ table: "routines" }))).json();
+  assertEquals(cappedBody.nextCursor, { id: "id-0499" });
+
+  // Empty table.
+  const empty = doubleHandler({ data: [], error: null, count: 0 });
+  assertEquals((await (await empty.handler(request({ table: "routines" }))).json()).nextCursor, null);
 });
 
 Deno.test("a mayBeAbsent table missing from the database is reported with tableMissing", async () => {

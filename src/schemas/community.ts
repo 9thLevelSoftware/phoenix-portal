@@ -1,4 +1,19 @@
 import { z } from "zod";
+import {
+	normalizeEccentricLoad,
+	toEchoLevel,
+	toRepCountTiming,
+	toStopAtPosition,
+	toSupersetColorName,
+} from "../../supabase/functions/_shared/workoutModes.ts";
+
+// Snapshots published before routine settings used mobile's vocabulary still
+// hold legacy portal values; read them as what the phone does with them.
+const nullableSetting = <T>(normalize: (value: unknown) => T | null) =>
+	z
+		.string()
+		.nullish()
+		.transform((value) => normalize(value));
 
 const difficultyEnum = z.enum(["Beginner", "Intermediate", "Advanced"]);
 const itemTypeEnum = z.enum(["routine", "cycle"]);
@@ -25,7 +40,7 @@ export const routineExerciseSnapshotSchema = z.object({
 	mode: z.string().default("OLD_SCHOOL"),
 	order_index: z.number().int().nonnegative().default(0),
 	superset_id: z.string().nullable().optional(),
-	superset_color: z.string().nullable().optional(),
+	superset_color: nullableSetting(toSupersetColorName),
 	superset_order: z.number().nullable().optional(),
 	per_set_weights: nullableUnknownSchema,
 	per_set_rest: nullableUnknownSchema,
@@ -34,11 +49,11 @@ export const routineExerciseSnapshotSchema = z.object({
 	is_amrap: z.boolean().nullable().optional().default(false),
 	is_bodyweight: z.boolean().nullable().optional().default(false),
 	pr_percentage: z.number().nullable().optional(),
-	rep_count_timing: z.string().nullable().optional(),
-	stop_at_position: z.string().nullable().optional(),
+	rep_count_timing: nullableSetting(toRepCountTiming),
+	stop_at_position: nullableSetting(toStopAtPosition),
 	stall_detection: z.boolean().nullable().optional().default(true),
-	eccentric_load: z.string().nullable().optional(),
-	echo_level: z.string().nullable().optional(),
+	eccentric_load: nullableSetting(normalizeEccentricLoad),
+	echo_level: nullableSetting(toEchoLevel),
 	warmup_sets: nullableUnknownSchema,
 	drop_set_enabled: z.boolean().nullable().optional().default(false),
 	drop_set_min_weight_kg: z.number().finite().nullable().optional(),

@@ -174,7 +174,7 @@ Set these in Vercel Dashboard → Project → Settings → Environment Variables
 | Variable                 | Value                                            | Environment                      |
 | ------------------------ | ------------------------------------------------ | -------------------------------- |
 | `VITE_SUPABASE_URL`      | `https://ilzlswmatadlnsuxatcv.supabase.co`       | Production, Preview, Development |
-| `VITE_SUPABASE_ANON_KEY` | `sb_publishable_UDrjasV6UJLm_IdIzGljoQ_YaRes4dQ` | Production, Preview, Development |
+| `VITE_SUPABASE_ANON_KEY` | `sb_publishable_YOUR_PUBLISHABLE_KEY_HERE` | Production, Preview, Development |
 | `VITE_SENTRY_DSN`        | *(your Sentry DSN, optional)*                    | Production                       |
 | `SENTRY_AUTH_TOKEN`      | *(your Sentry auth token, optional)*             | Production                       |
 | `SENTRY_ORG`             | `phoenix-portal`                                 | Production                       |

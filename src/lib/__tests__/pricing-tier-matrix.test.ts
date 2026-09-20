@@ -237,6 +237,17 @@ describe("KD-24 route × TIER_PRICING matrix", () => {
 			.filter((p) => p !== "*");
 		expect(gatedPaths.sort()).toEqual(Object.keys(routeFeature).sort());
 
+		// The OAuth completion landing (KD-13 / PR 47) is the one integrations
+		// route that must sit OUTSIDE the FLAME gate: `complete-oauth` re-checks
+		// the tier server-side, and a stale client tier must not swallow the
+		// callback before the POST. Assert the placement so it cannot drift into
+		// the gated block (where it would strand a legitimate connect) without a
+		// deliberate change here.
+		expect(routes).toContain('path="/integrations/callback"');
+		expect(routes.indexOf('path="/integrations/callback"')).toBeLessThan(
+			firstGated,
+		);
+
 		// Server-enforced FLAME features (RLS / Edge) stay FLAME in the matrix.
 		for (const feature of [
 			"challenges",

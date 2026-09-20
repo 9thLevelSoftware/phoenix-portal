@@ -56,6 +56,37 @@ export interface PushPayload {
 	profileId?: string | null;
 	profileName?: string | null;
 	allProfiles?: LocalProfileDto[] | null;
+	workoutDeletions?: WorkoutDeletionDto[];
+	ownershipTransfers?: OwnershipTransferDto[];
+	deletedCycles?: Array<{ id: string; updatedAt: string }>;
+}
+
+export interface WorkoutDeletionDto {
+	mutationId: string;
+	scope: "COMPONENT" | "WORKOUT";
+	portalSessionId: string;
+	componentSessionId?: string | null;
+	deletedAt: string;
+}
+
+export interface PulledWorkoutDeletionDto extends WorkoutDeletionDto {
+	profileId: string | null;
+}
+
+export interface OwnershipTransferDto {
+	mutationId: string;
+	sourceProfileId: string | null;
+	targetProfileId: string;
+	workoutSessionIds: string[];
+	routineIds: string[];
+	cycleIds: string[];
+	personalRecordIds: string[];
+}
+
+export interface OwnershipEventDto extends OwnershipTransferDto {
+	targetProfileName: string;
+	targetProfileColorIndex: number;
+	transferredAt: string;
 }
 
 /**
@@ -94,6 +125,8 @@ export interface PullResponse {
 	externalActivities: ExternalActivityResponseDto[];
 	externalActivitiesHasMore?: boolean;
 	customExercises?: CustomExerciseResponseDto[];
+	workoutDeletions: PulledWorkoutDeletionDto[];
+	ownershipEvents: OwnershipEventDto[];
 }
 
 /**
@@ -263,10 +296,24 @@ export interface CycleDto {
 	status: string;
 	startedAt: string | null;
 	lastUsedAt: string | null;
+	progressionSettingsPresent?: boolean;
 	progressionSettings?: string | null;
 	deloadSettings?: string | null;
 	templateId?: string | null;
+	progressStatePresent?: boolean;
+	progressState?: CycleProgressStateDto | null;
+	updatedAt?: string | null;
 	days: CycleDayDto[];
+}
+
+export interface CycleProgressStateDto {
+	currentDayNumber: number;
+	lastCompletedDate?: number | null;
+	cycleStartDate: number;
+	lastAdvancedAt?: number | null;
+	completedDays: number[];
+	missedDays: number[];
+	rotationCount: number;
 }
 
 export interface CycleDayDto {
@@ -280,6 +327,10 @@ export interface CycleDayDto {
 	restOverride: number | null;
 	restType: string | null;
 	notes: string | null;
+	echoLevelPresent?: boolean;
+	echoLevel?: string | null;
+	eccentricLoadPercentPresent?: boolean;
+	eccentricLoadPercent?: number | null;
 }
 
 export interface RpgAttributesDto {
@@ -712,7 +763,17 @@ function logLiveFailure(
 export async function callPushEndpoint(
 	payload: PushPayload,
 	authToken: string,
-): Promise<EdgeFunctionResult<{ success: boolean; syncTime?: number }>> {
+): Promise<
+	EdgeFunctionResult<{
+		success: boolean;
+		syncTime?: number;
+		acknowledgedWorkoutDeletionIds?: string[];
+		acknowledgedOwnershipTransferIds?: string[];
+		acknowledgedDeletedCycleIds?: string[];
+		acknowledgedWorkoutSessionIds?: string[];
+		acknowledgedCycleIds?: string[];
+	}>
+> {
 	if (isMockMode()) {
 		return mockPushEndpoint(payload, authToken);
 	}
