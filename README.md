@@ -108,8 +108,11 @@ npm run build
 # Run tests
 npm test
 
-# Type checking
+# Type checking (all tsconfig projects; fails on errors not in typecheck-baseline.json)
 npm run typecheck
+
+# Re-record the pre-existing type errors after fixing some (review the diff)
+npm run typecheck:baseline
 
 # E2E tests
 npm run test:e2e
