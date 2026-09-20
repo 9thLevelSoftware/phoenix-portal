@@ -219,6 +219,7 @@ describe("exerciseProgressOptions", () => {
 			await import("../progress");
 		const opts = exerciseProgressOptions("user-1", "Bench Press", "profile-1");
 		const rows = await opts.queryFn?.({} as never);
+		if (!rows) throw new Error("Expected exercise progress query to run");
 
 		expect(fromFn).not.toHaveBeenCalled();
 		expect(rpcCalls).toEqual([
@@ -252,6 +253,7 @@ describe("progressionWorkbenchOptions", () => {
 			await import("../progress");
 		const opts = progressionWorkbenchOptions("user-1", "profile-1");
 		const result = await opts.queryFn?.({} as never);
+		if (!result) throw new Error("Expected progression workbench query to run");
 
 		expect(opts.queryKey).toEqual(
 			queryKeys.progress.summary("user-1", "workbench", "profile-1"),
@@ -281,6 +283,7 @@ describe("progressionWorkbenchOptions", () => {
 		const result = await progressionWorkbenchOptions("user-1").queryFn?.(
 			{} as never,
 		);
+		if (!result) throw new Error("Expected progression workbench query to run");
 
 		const ids = result.progressRows.map((row) => row.id);
 		expect(ids).toContain(NEWEST.id);
@@ -297,6 +300,7 @@ describe("progressionWorkbenchOptions", () => {
 		const result = await progressionWorkbenchOptions("user-1").queryFn?.(
 			{} as never,
 		);
+		if (!result) throw new Error("Expected progression workbench query to run");
 
 		const row = result.progressRows[0];
 		expect(row.recorded_at).toBeInstanceOf(Date);
