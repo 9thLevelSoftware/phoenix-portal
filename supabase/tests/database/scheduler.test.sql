@@ -261,9 +261,14 @@ SELECT diag('database:scheduler-cron-jobs');
 -- this transaction; this fails loudly if the image cannot, so the job
 -- assertions below always execute.
 CREATE EXTENSION IF NOT EXISTS pg_cron;
+SELECT cron.schedule(
+    'sync-tombstones-retention',
+    '23 3 * * *',
+    'DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval ''180 days'''
+);
 SELECT lives_ok(
     $$ SELECT private.schedule_sync_queue_jobs() $$,
-    'schedule_sync_queue_jobs runs with pg_cron installed'
+    'schedule_sync_queue_jobs runs with pg_cron installed and removes legacy tombstone retention'
 );
 
 CREATE OR REPLACE FUNCTION pg_temp.scheduler_jobs() RETURNS TABLE(jobname text, schedule text, command text, active boolean, jobid bigint)
