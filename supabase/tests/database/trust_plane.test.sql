@@ -778,13 +778,16 @@ SELECT lives_ok(
     'service_role can call upsert_workout_session_lww'
 );
 
+-- total_workouts is server-derived from 20260920002500 on: the RPC accepts
+-- the call but ignores the counter, and current_streak (device-owned) lands.
 SELECT lives_ok(
     $sql$
         SELECT public.upsert_gamification_stats_lww(
             jsonb_build_array(jsonb_build_object(
                 'user_id', '44444444-4444-4444-8444-444444444444',
                 'total_workouts', 7,
-                'updated_at', now() + INTERVAL '1 minute'
+                'current_streak', 4,
+                'last_workout_at', now() + INTERVAL '1 minute'
             ))
         )
     $sql$,
@@ -797,7 +800,7 @@ SELECT lives_ok(
             jsonb_build_array(jsonb_build_object(
                 'user_id', '44444444-4444-4444-8444-444444444444',
                 'level', 3,
-                'updated_at', now() + INTERVAL '1 minute'
+                'last_workout_at', now() + INTERVAL '1 minute'
             ))
         )
     $sql$,
@@ -816,8 +819,15 @@ SELECT results_eq(
             (SELECT level FROM public.rpg_attributes
               WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid)::integer
     $sql$,
-    $values$ VALUES (30::numeric, 7, 3) $values$,
-    'service_role LWW writes landed'
+    $values$ VALUES (30::numeric, 5, 3) $values$,
+    'service_role LWW writes landed (total_workouts keeps the derived 5, not the pushed 7)'
+);
+
+SELECT is(
+    (SELECT current_streak FROM public.gamification_stats
+      WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid),
+    4,
+    'the device-owned current_streak from the same LWW call landed'
 );
 
 SELECT diag('database:trust-plane-session-children');

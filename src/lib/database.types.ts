@@ -669,6 +669,7 @@ export type Database = {
 					best_streak: number;
 					current_streak: number;
 					id: string;
+					last_workout_at: string | null;
 					longest_streak: number;
 					pr_count: number;
 					total_reps: number;
@@ -682,6 +683,7 @@ export type Database = {
 					best_streak?: number;
 					current_streak?: number;
 					id?: string;
+					last_workout_at?: string | null;
 					longest_streak?: number;
 					pr_count?: number;
 					total_reps?: number;
@@ -695,6 +697,7 @@ export type Database = {
 					best_streak?: number;
 					current_streak?: number;
 					id?: string;
+					last_workout_at?: string | null;
 					longest_streak?: number;
 					pr_count?: number;
 					total_reps?: number;
@@ -1505,6 +1508,7 @@ export type Database = {
 					consistency: number;
 					experience_points: number;
 					id: string;
+					last_workout_at: string | null;
 					level: number;
 					mastery: number;
 					power: number;
@@ -1518,6 +1522,7 @@ export type Database = {
 					consistency?: number;
 					experience_points?: number;
 					id?: string;
+					last_workout_at?: string | null;
 					level?: number;
 					mastery?: number;
 					power?: number;
@@ -1531,6 +1536,7 @@ export type Database = {
 					consistency?: number;
 					experience_points?: number;
 					id?: string;
+					last_workout_at?: string | null;
 					level?: number;
 					mastery?: number;
 					power?: number;
@@ -3000,6 +3006,10 @@ export type Database = {
 					rejection_reason: string;
 					server_revision: number;
 				}[];
+			};
+			recompute_gamification_stats: {
+				Args: { p_user_id: string };
+				Returns: undefined;
 			};
 			refresh_community_benchmarks: { Args: never; Returns: undefined };
 			refresh_hot_scores: { Args: never; Returns: undefined };

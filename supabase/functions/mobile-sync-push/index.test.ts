@@ -2435,6 +2435,146 @@ for (const testCase of malformedRpcCases) {
   });
 }
 
+const DEVICE_STATS = {
+  userId: VALID_USER_ID,
+  // A crafted device claim for every server-derived counter.
+  totalWorkouts: 10_000,
+  totalReps: 999_999,
+  totalVolumeKg: 8_888_888,
+  totalTimeSeconds: 777_777,
+  longestStreak: 7,
+  currentStreak: 3,
+};
+
+const DEVICE_RPG = {
+  userId: VALID_USER_ID,
+  strength: 11,
+  power: 12,
+  stamina: 13,
+  consistency: 14,
+  mastery: 15,
+  characterClass: "FORGE",
+  level: 4,
+  experiencePoints: 1234,
+};
+
+Deno.test("stats push sends only device-owned columns through the LWW RPCs", async () => {
+  const harness = makeHarness();
+  const body = validPushBody();
+  body.profileId = "default";
+  body.allProfiles = [{ id: "default", name: "Default", colorIndex: 0 }];
+  // Two workouts: the newest one is the last-workout date the write carries.
+  body.sessions = [
+    {
+      id: SESSION_ID,
+      userId: VALID_USER_ID,
+      name: "Older workout",
+      startedAt: "2026-07-09T08:00:00.000Z",
+    },
+    {
+      id: MISMATCH_ID,
+      userId: VALID_USER_ID,
+      name: "Newest workout",
+      startedAt: "2026-07-11T12:00:00.000Z",
+    },
+  ];
+  body.gamificationStats = DEVICE_STATS;
+  body.rpgAttributes = DEVICE_RPG;
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  const lastWorkoutAt = "2026-07-11T12:00:00.000Z";
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "upsert_gamification_stats_lww"
+    ).map((call) => call.args.p_rows),
+    [[{
+      user_id: VALID_USER_ID,
+      longest_streak: 7,
+      current_streak: 3,
+      last_workout_at: lastWorkoutAt,
+    }]],
+  );
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "upsert_rpg_attributes_lww"
+    ).map((call) => call.args.p_rows),
+    [[{
+      user_id: VALID_USER_ID,
+      strength: 11,
+      power: 12,
+      stamina: 13,
+      consistency: 14,
+      mastery: 15,
+      character_class: "FORGE",
+      level: 4,
+      experience_points: 1234,
+      last_workout_at: lastWorkoutAt,
+    }]],
+  );
+  // Both flag paths use the RPC; nothing writes these tables directly any
+  // more, so no server `new Date()` stamp reaches them either (F-070).
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "gamification_stats" || call.table === "rpg_attributes"
+    ),
+    [],
+  );
+});
+
+Deno.test("every push recomputes the server-derived counters, even without stats", async () => {
+  const harness = makeHarness();
+
+  const response = await harness.handler(requestFromBody(validPushBody()));
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "recompute_gamification_stats"
+    ),
+    [{
+      name: "recompute_gamification_stats",
+      args: { p_user_id: VALID_USER_ID },
+    }],
+  );
+});
+
+Deno.test("a stats-only push carries no last-workout date", async () => {
+  const harness = makeHarness();
+  const body = validPushBody();
+  body.gamificationStats = DEVICE_STATS;
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    harness.adminRpcCalls.find((call) =>
+      call.name === "upsert_gamification_stats_lww"
+    )?.args.p_rows,
+    [{
+      user_id: VALID_USER_ID,
+      longest_streak: 7,
+      current_streak: 3,
+      last_workout_at: null,
+    }],
+  );
+});
+
+Deno.test("a failed recompute fails the push", async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) =>
+      name === "recompute_gamification_stats"
+        ? { data: null, error: { message: "recompute boom" } }
+        : { data: [], error: null },
+  });
+
+  const response = await harness.handler(requestFromBody(validPushBody()));
+
+  assertEquals(response.status, 500);
+  assertEquals(harness.loggerCalls, [[{ name: "Error" }]]);
+});
+
 interface LocalIntegrationEnvironment {
   url: string;
   anonKey: string;
@@ -2962,4 +3102,226 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
     ).length,
     3,
   );
+});
+
+// ---------------------------------------------------------------------------
+// Real-SQL gamification derivation (PR 25). These run the handler against the
+// local Supabase stack, so the counters come out of the migrations and not a
+// double. The flag is read at module load, so both SYNC_LWW_ENABLED values are
+// covered by running the suite once per value.
+// ---------------------------------------------------------------------------
+
+/** The handler with the real service-role client; only realtime is stubbed. */
+function makeRealSqlHandler(
+  fixture: LocalIntegrationFixture,
+): (request: Request) => Promise<Response> {
+  const admin = {
+    from: (table: string) => fixture.admin.from(table),
+    rpc: (name: string, args?: Record<string, unknown>) =>
+      fixture.admin.rpc(name, args),
+    channel: () => ({
+      subscribe(callback: (status: string) => void) {
+        callback("SUBSCRIBED");
+        return {};
+      },
+      async send() {
+        return "ok";
+      },
+    }),
+    async removeChannel() {
+      return "ok";
+    },
+  };
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      return admin;
+    },
+    logOperationalFailure(value: { name: string }) {
+      console.error(value);
+    },
+    now: () => Date.now(),
+  } as never);
+}
+
+async function entitleLocalIntegrationFixture(
+  fixture: LocalIntegrationFixture,
+): Promise<void> {
+  const subscription = await fixture.admin.from("subscriptions").upsert({
+    user_id: fixture.ownerId,
+    tier: "EMBER",
+    status: "active",
+    current_period_end: "2099-01-01T00:00:00.000Z",
+  }, { onConflict: "user_id" });
+  if (subscription.error) throw new Error("subscription fixture creation failed");
+}
+
+function derivedSessionBody(
+  fixture: LocalIntegrationFixture,
+  sessions: Array<{ id: string; startedAt: string }>,
+  stats: Record<string, unknown> | null,
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    profileId: fixture.profileId,
+    allProfiles: [{
+      id: fixture.profileId,
+      name: "Task 7 integration profile",
+      colorIndex: 0,
+    }],
+    sessions: sessions.map((session, index) => {
+      const exerciseId = crypto.randomUUID();
+      return {
+        id: session.id,
+        userId: fixture.ownerId,
+        name: `Derived session ${index}`,
+        startedAt: session.startedAt,
+        durationSeconds: 60,
+        // Stored per cable and never doubled (KD-8).
+        totalVolume: 25,
+        setCount: 1,
+        exerciseCount: 1,
+        exercises: [{
+          id: exerciseId,
+          sessionId: session.id,
+          name: "Bench Press",
+          muscleGroup: "Chest",
+          sets: [{
+            id: crypto.randomUUID(),
+            exerciseId,
+            setNumber: 1,
+            targetReps: 10,
+            actualReps: 10,
+            weightKg: 25,
+          }],
+        }],
+      };
+    }),
+    gamificationStats: stats,
+  };
+}
+
+async function storedStats(
+  fixture: LocalIntegrationFixture,
+): Promise<Record<string, unknown>> {
+  const stored = await fixture.admin.from("gamification_stats")
+    .select(
+      "total_workouts,total_volume_kg,total_reps,total_time_seconds,pr_count,current_streak,longest_streak,best_streak",
+    )
+    .eq("user_id", fixture.ownerId)
+    .single();
+  if (stored.error) throw new Error("stats verification query failed");
+  return stored.data as Record<string, unknown>;
+}
+
+Deno.test({
+  name:
+    "integration: derived counters follow the stored sessions, not the pushed numbers",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      await entitleLocalIntegrationFixture(fixture);
+      const handler = makeRealSqlHandler(fixture);
+      const sessionIds = [
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+      ];
+      const deviceASessions = [
+        { id: sessionIds[0], startedAt: "2026-07-01T10:00:00.000Z" },
+        { id: sessionIds[1], startedAt: "2026-07-05T10:00:00.000Z" },
+        { id: sessionIds[2], startedAt: "2026-07-09T10:00:00.000Z" },
+      ];
+      const deviceAStats = {
+        total_workouts: 3,
+        total_volume_kg: 75,
+        total_reps: 30,
+        total_time_seconds: 180,
+        pr_count: 0,
+        current_streak: 5,
+        longest_streak: 20,
+        best_streak: 20,
+      };
+
+      const deviceA = await handler(requestFromBody(derivedSessionBody(
+        fixture,
+        deviceASessions,
+        {
+          userId: fixture.ownerId,
+          totalWorkouts: 3,
+          totalReps: 30,
+          totalVolumeKg: 75,
+          totalTimeSeconds: 180,
+          currentStreak: 5,
+          longestStreak: 20,
+        },
+      )));
+
+      assertEquals(deviceA.status, 200);
+      assertEquals(await storedStats(fixture), deviceAStats);
+
+      // Stale device B: fewer workouts, an older last workout, worse streaks.
+      const deviceB = await handler(requestFromBody(derivedSessionBody(
+        fixture,
+        deviceASessions.slice(0, 2),
+        {
+          userId: fixture.ownerId,
+          totalWorkouts: 2,
+          totalReps: 20,
+          totalVolumeKg: 50,
+          totalTimeSeconds: 120,
+          currentStreak: 1,
+          longestStreak: 2,
+        },
+      )));
+
+      assertEquals(deviceB.status, 200);
+      assertEquals(await storedStats(fixture), deviceAStats);
+
+      // A crafted push inflates nothing.
+      const crafted = await handler(requestFromBody(derivedSessionBody(
+        fixture,
+        [],
+        {
+          userId: fixture.ownerId,
+          totalWorkouts: 10_000,
+          totalReps: 100_000,
+          totalVolumeKg: 9_999_999,
+          totalTimeSeconds: 999_999,
+          currentStreak: 3,
+          longestStreak: 4,
+        },
+      )));
+
+      assertEquals(crafted.status, 200);
+      const afterCrafted = await storedStats(fixture);
+      assertEquals(afterCrafted.total_workouts, 3);
+      assertEquals(afterCrafted.total_volume_kg, 75);
+      assertEquals(afterCrafted.total_reps, 30);
+      assertEquals(afterCrafted.total_time_seconds, 180);
+      assertEquals(afterCrafted.best_streak, 20);
+
+      // Deleting a session lowers the totals, with no push involved.
+      const deleted = await fixture.admin.from("workout_sessions")
+        .delete()
+        .eq("id", sessionIds[0]);
+      if (deleted.error) throw new Error("session delete failed");
+      const afterDelete = await storedStats(fixture);
+      assertEquals(afterDelete.total_workouts, 2);
+      assertEquals(afterDelete.total_volume_kg, 50);
+      assertEquals(afterDelete.total_reps, 20);
+      assertEquals(afterDelete.total_time_seconds, 120);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
 });

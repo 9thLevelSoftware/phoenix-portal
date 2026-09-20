@@ -2520,6 +2520,21 @@ async function mobileSyncPushHandler(
     // =========================================================================
     // 8. Upsert rpg_attributes
     // =========================================================================
+    // Conflict key for the device-owned stats columns (F-070). The server
+    // stamp used to decide this, which made every push win against itself, so
+    // the write now carries the last workout it knows about: the newest
+    // session in this push. A push without sessions (older app versions,
+    // a stats-only push, a non-final history batch) carries null, which the
+    // RPCs treat as "no opinion" and accept.
+    const deviceLastWorkoutAt = ((): string | null => {
+      let newest = Number.NEGATIVE_INFINITY;
+      for (const session of payload.sessions) {
+        const startedAt = Date.parse(session.startedAt);
+        if (Number.isFinite(startedAt) && startedAt > newest) newest = startedAt;
+      }
+      return Number.isFinite(newest) ? new Date(newest).toISOString() : null;
+    })();
+
     if (payload.rpgAttributes) {
       const rpg = payload.rpgAttributes;
       // fix(audit #8): defensively coerce to Int before DB write. Mobile sends
@@ -2538,23 +2553,22 @@ async function mobileSyncPushHandler(
         character_class: rpg.characterClass,
         level: rpgInt(rpg.level, 1),
         experience_points: rpgInt(rpg.experiencePoints, 0),
-        updated_at: new Date().toISOString(),
+        // No `updated_at`: the RPC stamps the server clock, and the conflict
+        // compare runs on last_workout_at instead (F-070).
+        last_workout_at: deviceLastWorkoutAt,
       };
 
+      // Both flag paths go through the RPC: it is the only writer that knows
+      // which columns are device-owned.
+      const { data: lwwData, error: lwwErr } = await supabase.rpc(
+        'upsert_rpg_attributes_lww',
+        { p_rows: [rpgRow] },
+      );
+      if (lwwErr) throw new Error(`rpg_attributes LWW RPC failed: ${lwwErr.message}`);
       if (SYNC_LWW_ENABLED) {
-        const { data: lwwData, error: lwwErr } = await supabase.rpc(
-          'upsert_rpg_attributes_lww',
-          { p_rows: [rpgRow] },
-        );
-        if (lwwErr) throw new Error(`rpg_attributes LWW RPC failed: ${lwwErr.message}`);
         for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
           if (!rr.accepted) rejections.rpgAttributes.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
         }
-      } else {
-        const { error: rpgErr } = await supabase
-          .from('rpg_attributes')
-          .upsert(rpgRow, { onConflict: 'user_id' });
-        if (rpgErr) throw new Error(`rpg_attributes upsert failed: ${rpgErr.message}`);
       }
     }
 
@@ -2583,31 +2597,26 @@ async function mobileSyncPushHandler(
     // =========================================================================
     if (payload.gamificationStats) {
       const gs = payload.gamificationStats;
+      // Only the device-owned columns are sent. total_workouts, total_reps,
+      // total_volume_kg and total_time_seconds are server-derived
+      // (recompute_gamification_stats below), so a device claiming 10,000
+      // workouts changes nothing — the RPC ignores them too.
       const gsRow = {
         user_id: userId,
-        total_workouts: gs.totalWorkouts ?? 0,
-        total_reps: gs.totalReps ?? 0,
-        total_volume_kg: gs.totalVolumeKg ?? 0,
         longest_streak: gs.longestStreak ?? 0,
         current_streak: gs.currentStreak ?? 0,
-        total_time_seconds: gs.totalTimeSeconds ?? 0,
-        updated_at: new Date().toISOString(),
+        last_workout_at: deviceLastWorkoutAt,
       };
 
+      const { data: lwwData, error: lwwErr } = await supabase.rpc(
+        'upsert_gamification_stats_lww',
+        { p_rows: [gsRow] },
+      );
+      if (lwwErr) throw new Error(`gamification_stats LWW RPC failed: ${lwwErr.message}`);
       if (SYNC_LWW_ENABLED) {
-        const { data: lwwData, error: lwwErr } = await supabase.rpc(
-          'upsert_gamification_stats_lww',
-          { p_rows: [gsRow] },
-        );
-        if (lwwErr) throw new Error(`gamification_stats LWW RPC failed: ${lwwErr.message}`);
         for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
           if (!rr.accepted) rejections.gamificationStats.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
         }
-      } else {
-        const { error: gsErr } = await supabase
-          .from('gamification_stats')
-          .upsert(gsRow, { onConflict: 'user_id' });
-        if (gsErr) throw new Error(`gamification_stats upsert failed: ${gsErr.message}`);
       }
     }
 
@@ -2854,6 +2863,22 @@ async function mobileSyncPushHandler(
         JSON.stringify({ error: 'Sync temporarily unavailable' }),
         { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
+    }
+
+    // =========================================================================
+    // 14a. Recompute the server-derived gamification counters
+    // =========================================================================
+    // Runs on every push (both flag paths) whether or not this payload carried
+    // gamificationStats: sessions and personal_records that landed above are
+    // the source of the counters, so the totals follow the stored rows and
+    // never a device claim. Deletes are covered by the triggers in
+    // 20260920002500.
+    const { error: recomputeErr } = await supabase.rpc(
+      'recompute_gamification_stats',
+      { p_user_id: userId },
+    );
+    if (recomputeErr) {
+      throw new Error(`gamification_stats recompute failed: ${recomputeErr.message}`);
     }
 
     // =========================================================================
