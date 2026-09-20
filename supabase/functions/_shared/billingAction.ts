@@ -1,4 +1,7 @@
-import { isSubscriptionEntitled } from './subscriptionEntitlement.ts';
+import {
+  effectiveSubscriptionTier,
+  isSubscriptionEntitled,
+} from './subscriptionEntitlement.ts';
 
 /**
  * The single billing routing predicate (R-11).
@@ -37,6 +40,13 @@ export interface BillingActionRow {
   status?: string | null;
   current_period_end?: string | null;
   cancel_at_period_end?: boolean | null;
+  /**
+   * Stored tier. Required for `manage`: a row whose status is live but whose
+   * tier is FREE or unrecognised grants nothing, so calling it `manage` would
+   * leave the user with no access AND (via the 409 on signing) no way to buy
+   * any. Such a row is `refresh` — ask Paddle what is really going on.
+   */
+  tier?: string | null;
 }
 
 export interface BillingActionResult {
@@ -90,10 +100,15 @@ export function billingAction(
     };
   }
 
-  const entitled = isSubscriptionEntitled(status, row?.current_period_end ?? null, {
-    cancelAtPeriodEnd: Boolean(row?.cancel_at_period_end),
-    now,
-  });
+  // Entitlement means "grants a paid tier right now", not merely "the status
+  // and period look alive" — effectiveSubscriptionTier folds in the stored
+  // tier and fails closed on an unrecognised one.
+  const entitled = effectiveSubscriptionTier(
+    row?.tier,
+    status,
+    row?.current_period_end ?? null,
+    { cancelAtPeriodEnd: Boolean(row?.cancel_at_period_end), now },
+  ) !== 'FREE';
 
   if (!entitled) {
     return {
@@ -108,6 +123,8 @@ export function billingAction(
   return {
     action: 'manage',
     reason: status === 'past_due' ? 'payment_past_due' : 'entitled',
+    // Only an entitled (i.e. `manage`) past_due row asks for a new card; a
+    // refresh row has no plan worth saving yet.
     needsPaymentUpdate: status === 'past_due',
     entitled: true,
     paddleSubscriptionId,

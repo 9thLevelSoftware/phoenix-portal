@@ -190,6 +190,7 @@ export function useSubscription(): SubscriptionData {
 		? null
 		: billingAction({
 				paddle_subscription_id: data?.paddleSubscriptionId ?? null,
+				tier: rawTier,
 				status,
 				current_period_end: currentPeriodEnd,
 				cancel_at_period_end: cancelAtPeriodEnd,

@@ -97,7 +97,7 @@ async function paddleCheckoutCustomDataHandler(
 
     const { data: sub, error: subError } = await deps.createAdminClient()
       .from("subscriptions")
-      .select("paddle_subscription_id, status, current_period_end, cancel_at_period_end")
+      .select("paddle_subscription_id, tier, status, current_period_end, cancel_at_period_end")
       .eq("user_id", user.id)
       .maybeSingle();
 

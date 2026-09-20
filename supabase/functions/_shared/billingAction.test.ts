@@ -32,6 +32,7 @@ const SUBSCRIPTION_ID = 'sub_01';
 function rowFor(testCase: EntitlementCase, paddleSubscriptionId: string | null) {
   return {
     paddle_subscription_id: paddleSubscriptionId,
+    tier: testCase.tier,
     status: testCase.status,
     current_period_end: testCase.periodEndOffsetSeconds === null
       ? null
@@ -50,17 +51,24 @@ Deno.test('billingAction: every fixture state maps to exactly one action', () =>
       `${testCase.id}: unexpected action ${withSubscription.action}`,
     );
 
-    // `manage` is exactly the entitled set, whatever the stored tier says: the
-    // tier only decides WHICH plan, never whether there is one to manage.
+    // `manage` is exactly the entitled set, and entitlement is the shared
+    // fixture's own verdict — tier included. A live-looking row whose tier
+    // grants nothing must NOT be `manage`, or the user would have no access
+    // and, via the 409 on signing, no way to buy any (general-2 R-5).
     assertEquals(
       withSubscription.action === 'manage',
       withSubscription.entitled,
       `${testCase.id}: manage must equal entitled`,
     );
     assertEquals(
+      withSubscription.entitled,
+      testCase.expectedTier !== 'FREE',
+      `${testCase.id}: entitled must match the shared entitlement fixture`,
+    );
+    assertEquals(
       withSubscription.needsPaymentUpdate,
-      testCase.status === 'past_due',
-      `${testCase.id}: needsPaymentUpdate is the past_due set`,
+      testCase.status === 'past_due' && testCase.expectedTier !== 'FREE',
+      `${testCase.id}: only an entitled past_due row asks for a new card`,
     );
 
     // Without a stored Paddle subscription id there is nothing to manage or
@@ -103,6 +111,7 @@ Deno.test('billingAction: past_due keeps access and asks for a new card', () => 
   const result = billingAction(
     {
       paddle_subscription_id: SUBSCRIPTION_ID,
+      tier: 'FLAME',
       status: 'past_due',
       // 10 days past the period end: Paddle is still retrying.
       current_period_end: '2026-05-07T12:00:00Z',
@@ -122,6 +131,7 @@ Deno.test('billingAction: active with the period ended refreshes, never checks o
   const result = billingAction(
     {
       paddle_subscription_id: SUBSCRIPTION_ID,
+      tier: 'FLAME',
       status: 'active',
       // Past the 48h renewal grace: the renewal webhook is very late.
       current_period_end: '2026-05-01T00:00:00Z',
@@ -141,6 +151,7 @@ Deno.test('billingAction: a canceled subscription is the only stored state that 
     const result = billingAction(
       {
         paddle_subscription_id: SUBSCRIPTION_ID,
+        tier: 'FLAME',
         status,
         current_period_end: '2026-06-01T00:00:00Z',
         cancel_at_period_end: false,

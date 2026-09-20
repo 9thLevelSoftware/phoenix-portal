@@ -551,10 +551,27 @@ async function paddleWebhooksHandler(
         excludeSubscriptionId: event.data.id,
       });
       if (liveSubscriptions === null) {
-        console.warn(
-          `[Paddle] Could not check for an untracked subscription before cancelling ${event.data.id}`,
+        // Paddle could not be asked (429, 5xx, timeout). Applying the
+        // cancellation now would downgrade a customer who may still be
+        // paying, and leave them on a `canceled` row — which billingAction
+        // maps to `checkout`, i.e. an invitation to open another
+        // subscription. Refuse the delivery instead: the row keeps its
+        // current (entitled) state and Paddle redelivers, at which point the
+        // listing is retried. If Paddle never recovers, the stale-refresh
+        // path re-reads this subscription and writes the cancellation.
+        console.error(
+          "[BILLING_ALERT] untracked_subscription_lookup_failed:",
+          `event_id=${event.event_id}`,
+          `user_id=${userId}`,
+          `canceling_subscription_id=${event.data.id}`,
+          "reason=could not list the customer's other subscriptions",
         );
-      } else if (liveSubscriptions.length > 0) {
+        return new Response(
+          JSON.stringify({ error: "Could not check for a live subscription" }),
+          { status: 500, headers: responseHeaders },
+        );
+      }
+      if (liveSubscriptions.length > 0) {
         const candidate = liveSubscriptions[0]!;
 
         // AUTHORIZATION, not just identification. Sharing a Paddle customer
@@ -679,6 +696,32 @@ async function paddleWebhooksHandler(
     }
 
     if (applied === false) {
+      // `false` now means "stale OR refused by the untracked-subscription
+      // guard". Tell them apart: the guard firing means a concurrent
+      // delivery re-pointed the row between our read and our write, which is
+      // worth an alert; a lost ordering race is routine.
+      const writtenSubscriptionId =
+        (applyPayload.paddle_subscription_id as string | null) ?? null;
+      const storedSubscriptionId =
+        existingSubscription?.paddle_subscription_id ?? null;
+      if (
+        storedSubscriptionId &&
+        writtenSubscriptionId &&
+        writtenSubscriptionId !== storedSubscriptionId
+      ) {
+        console.error(
+          "[BILLING_ALERT] subscription_guard_rejected_write:",
+          `event_id=${event.event_id}`,
+          `user_id=${userId}`,
+          `attempted_subscription_id=${writtenSubscriptionId}`,
+          `tracked_subscription_id=${storedSubscriptionId}`,
+          untrackedSwitch ? "path=untracked_switch" : "path=direct",
+        );
+        return new Response(
+          JSON.stringify({ received: true, ignored: "untracked_subscription" }),
+          { status: 200, headers: responseHeaders },
+        );
+      }
       // A concurrent, newer event won the ordering race at write time.
       console.warn(
         `[Paddle] Skipped stale event ${event.event_id} at write time (lost ordering race)`,

@@ -279,6 +279,7 @@ describe("Paddle webhook security helpers", () => {
 		const now = new Date("2026-05-17T12:00:00Z");
 		const pastDue = {
 			paddle_subscription_id: "sub_1",
+			tier: "FLAME",
 			status: "past_due",
 			current_period_end: "2026-05-07T12:00:00Z",
 			cancel_at_period_end: false,
