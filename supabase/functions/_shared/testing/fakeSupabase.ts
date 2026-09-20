@@ -7,7 +7,10 @@
 
 export type Row = Record<string, unknown>;
 type Filter = (row: Row) => boolean;
-type Result = { data: unknown; error: { message: string } | null };
+type Result = {
+  data: unknown;
+  error: { message: string; code?: string } | null;
+};
 
 export class FakeDb {
   tables: Record<string, Row[]>;
@@ -129,13 +132,98 @@ export class FakeQuery implements PromiseLike<Result> {
 }
 
 /**
+ * In-memory stand-in for the `public.check_rate_limit` RPC
+ * (supabase/migrations/20260420133000_check_rate_limit_rpc.sql), backed by the
+ * FakeDb's `rate_limit_tracking` rows so handler tests exercise the real
+ * `_shared/rateLimit.ts` helper instead of stubbing it out.
+ *
+ * Mirrors the SQL: first request in a window inserts, an expired window resets
+ * to 1, a full window returns allowed=false with a ceil()'d retry-after of at
+ * least 1 second, otherwise the counter increments.
+ */
+function checkRateLimitRpc(db: FakeDb, args: Row, now: Date): Result {
+  const key = args.p_key as string;
+  const userId = args.p_user_id as string;
+  const maxRequests = args.p_max_requests as number;
+  const windowMs = (args.p_window_seconds as number) * 1000;
+  const nowMs = now.getTime();
+  const iso = now.toISOString();
+  const rows = db.rows('rate_limit_tracking');
+  const row = rows.find((r) => r.key === key && r.user_id === userId);
+  const allow = (remaining: number): Result => ({
+    data: [{ allowed: true, remaining, retry_after_seconds: null }],
+    error: null,
+  });
+
+  if (!row) {
+    rows.push({
+      id: crypto.randomUUID(),
+      key,
+      user_id: userId,
+      provider: key,
+      requests_this_window: 1,
+      window_started_at: iso,
+      last_request_at: iso,
+      last_reset_at: null,
+    });
+    return allow(Math.max(maxRequests - 1, 0));
+  }
+
+  const windowStart = Date.parse(row.window_started_at as string);
+  if (windowStart < nowMs - windowMs) {
+    row.requests_this_window = 1;
+    row.window_started_at = iso;
+    row.last_request_at = iso;
+    row.last_reset_at = iso;
+    return allow(Math.max(maxRequests - 1, 0));
+  }
+
+  const used = row.requests_this_window as number;
+  if (used >= maxRequests) {
+    return {
+      data: [{
+        allowed: false,
+        remaining: 0,
+        retry_after_seconds: Math.max(
+          Math.ceil((windowStart + windowMs - nowMs) / 1000),
+          1,
+        ),
+      }],
+      error: null,
+    };
+  }
+
+  row.requests_this_window = used + 1;
+  row.last_request_at = iso;
+  return allow(Math.max(maxRequests - (used + 1), 0));
+}
+
+/**
  * A client whose `auth.getUser()` resolves to `userId` (the browser JWT path)
  * or, by default, to no user at all (the service-role path).
+ *
+ * `now` drives the RPC doubles, so a test can advance a virtual clock past a
+ * rate-limit window without sleeping.
  */
-export function fakeClient(db: FakeDb, userId: string | null = null) {
+export function fakeClient(
+  db: FakeDb,
+  userId: string | null = null,
+  now: () => Date = () => new Date(),
+) {
   const user = userId === null ? null : { id: userId };
   return {
     from: (table: string) => db.from(table),
     auth: { getUser: () => Promise.resolve({ data: { user }, error: null }) },
+    rpc: (fn: string, args: Row = {}): Promise<Result> => {
+      if (fn === 'check_rate_limit') {
+        return Promise.resolve(checkRateLimitRpc(db, args, now()));
+      }
+      // Postgres' "function does not exist" — callers that have a fallback
+      // path take it, the rest fail closed.
+      return Promise.resolve({
+        data: null,
+        error: { code: '42883', message: `function public.${fn} does not exist` },
+      });
+    },
   };
 }

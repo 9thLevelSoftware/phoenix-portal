@@ -3,11 +3,8 @@ import { backOff } from 'npm:exponential-backoff@3.1.1';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { dailyRateLimitKey } from '../_shared/providerRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
-import {
-  type EnvReader,
-  hasValidCronSecret,
-  timingSafeEqualString,
-} from '../_shared/cronSecret.ts';
+import { type EnvReader, hasValidCronSecret } from '../_shared/cronSecret.ts';
+import { timingSafeEqualString } from '../_shared/timingSafe.ts';
 
 /**
  * Loose Supabase client type for helper signatures. The bare
@@ -420,12 +417,24 @@ async function processSyncQueue(
         // SQ-03: Re-queue on retryable statuses (429, 502, 503, 504), mark failed otherwise
         // SQ-04: If retries exhausted, mark permanently_failed regardless of status code
         let nextStatus: string;
-        let errorMessage = err.message;
+        // `err.message` is the provider sync function's response body (see
+        // callSyncFunction). sync_queue.error_message is readable by the user
+        // through RLS and rendered in the UI, so only a stable code goes in;
+        // the body itself is logged here and nowhere else.
+        console.error(
+          `[SYNC_QUEUE] Task ${task.id} (${task.provider}) failed`,
+          `status=${err.status ?? 'none'}`,
+          err.message,
+        );
+        const failureCode = err.status === undefined
+          ? 'provider_sync_failed'
+          : `provider_sync_http_${err.status}`;
+        let errorMessage = failureCode;
 
         if (err.status !== undefined && RETRYABLE_STATUSES.includes(err.status)) {
           if (nextRetryCount >= MAX_RETRIES) {
             nextStatus = 'permanently_failed';
-            errorMessage = `Max retries (${MAX_RETRIES}) exceeded. Last error: ${err.message}`;
+            errorMessage = `max_retries_exceeded: ${failureCode}`;
             console.warn(`[SYNC_QUEUE] Task ${task.id} permanently failed after ${MAX_RETRIES} retries`);
           } else {
             nextStatus = 'pending';

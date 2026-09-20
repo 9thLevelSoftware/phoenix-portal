@@ -373,3 +373,62 @@ for (const provider of ["fitbit", "garmin"]) {
     await res.body?.cancel();
   });
 }
+
+// Text a provider sync function might return in its body. sync_queue rows are
+// browser-readable through RLS and rendered by the SPA, so nothing from a
+// provider (or from Postgres) may be copied into `error_message`.
+const UPSTREAM_BODY = JSON.stringify({
+  error: "Failed to fetch Strava activities",
+  details: "PROVIDER-BODY-MARKER: athlete 1234 token ABCDEF",
+});
+
+Deno.test("process-sync-queue: a provider error body never reaches sync_queue.error_message", async () => {
+  const h = harness(
+    BASE_ENV,
+    {
+      sync_queue: [pendingRow(TASK_ID, "manual", "2026-09-19T00:00:00.000Z")],
+      subscriptions: [FLAME_SUBSCRIPTION],
+      rate_limit_tracking: [],
+    },
+    // 500 is not retryable, so this fails on the first attempt (no backOff).
+    () => new Response(UPSTREAM_BODY, { status: 500 }),
+  );
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(await res.json(), { processed: 0, failed: 1, skipped: 0 });
+
+  const task = h.db.tables.sync_queue[0];
+  assertEquals(task.status, "failed");
+  assertEquals(task.error_message, "provider_sync_http_500");
+  assert(
+    !String(task.error_message).includes("PROVIDER-BODY-MARKER"),
+    `provider body leaked into error_message: ${task.error_message}`,
+  );
+});
+
+Deno.test("process-sync-queue: the exhausted-retries message is a code, not the provider body", async () => {
+  const h = harness(
+    BASE_ENV,
+    {
+      sync_queue: [
+        pendingRow(TASK_ID, "manual", "2026-09-19T00:00:00.000Z", {
+          retry_count: 9, // MAX_RETRIES - 1: this pass exhausts them.
+        }),
+      ],
+      subscriptions: [FLAME_SUBSCRIPTION],
+      rate_limit_tracking: [],
+    },
+    () => new Response(UPSTREAM_BODY, { status: 502 }),
+  );
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(await res.json(), { processed: 0, failed: 1, skipped: 0 });
+
+  const task = h.db.tables.sync_queue[0];
+  assertEquals(task.status, "permanently_failed");
+  assertEquals(task.error_message, "max_retries_exceeded: provider_sync_http_502");
+  assert(
+    !String(task.error_message).includes("PROVIDER-BODY-MARKER"),
+    `provider body leaked into error_message: ${task.error_message}`,
+  );
+});

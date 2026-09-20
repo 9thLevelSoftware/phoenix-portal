@@ -2,8 +2,14 @@ import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { errorMessage } from '../_shared/errorMessage.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import { nextWatermark } from '../_shared/syncWatermark.ts';
+import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
+
+/** Manual (browser-initiated) syncs allowed per user per window. */
+const MANUAL_SYNC_MAX_REQUESTS = 3;
+const MANUAL_SYNC_WINDOW_SECONDS = 900;
 
 /**
  * Loose Supabase client type for helper signatures. Annotating helpers with the
@@ -331,10 +337,13 @@ Deno.serve(async (req) => {
       // Browser-initiated: use JWT-verified user ID, ignore body.user_id
       userId = jwtUser.id;
     } else {
-      // Not a valid user JWT -- must be service-role call from process-sync-queue
-      // Verify the caller is actually using the service role key
-      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-      const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
+      // Not a valid user JWT -- must be service-role call from process-sync-queue.
+      // Verify the caller is actually using the service role key, in constant
+      // time so the comparison leaks neither the key's bytes nor its length.
+      const isServiceRole = isServiceRoleBearer(
+        authHeader,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+      );
 
       if (!isServiceRole || !body.user_id) {
         return new Response(
@@ -353,6 +362,21 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    // Manual syncs are browser-initiated and spend Fitbit API budget, so cap
+    // them per user. Keyed on the JWT-verified id: an unauthenticated caller
+    // never reaches this point, so nobody can spend another user's budget.
+    // The queue path (service role) is exempt — process-sync-queue has its own
+    // per-provider budget, tracked under the separate `fitbit` key.
+    if (jwtUser) {
+      const rateCheck = await checkRateLimit(supabase, {
+        key: 'fitbit-sync',
+        userId,
+        maxRequests: MANUAL_SYNC_MAX_REQUESTS,
+        windowSeconds: MANUAL_SYNC_WINDOW_SECONDS,
+      }, cors);
+      if (!rateCheck.allowed) return rateCheck.response!;
+    }
 
     // Subscription gate — FLAME or higher required for integrations
     const gate = await requireSubscription(supabase, userId, 'FLAME', cors);

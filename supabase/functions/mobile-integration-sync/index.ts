@@ -569,9 +569,15 @@ Deno.serve(async (req) => {
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
+    // The thrown message can carry DB internals or provider text; it is
+    // logged here and summarised to the caller as a stable code.
     console.error('mobile-integration-sync error:', err);
     return new Response(
-      JSON.stringify({ status: 'error', error: (err as Error).message ?? 'Internal server error' }),
+      JSON.stringify({
+        status: 'error',
+        error: 'Internal server error',
+        code: 'internal_error',
+      }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }

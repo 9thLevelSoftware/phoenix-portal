@@ -12,12 +12,18 @@ import {
   type HevyWorkout,
 } from '../_shared/hevySync.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
   completeSyncQueueEntry,
   type DbClient,
   heartbeatSyncQueueEntry,
 } from '../_shared/syncQueue.ts';
+import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
+
+/** Manual (browser-initiated) syncs allowed per user per window. */
+const MANUAL_SYNC_MAX_REQUESTS = 3;
+const MANUAL_SYNC_WINDOW_SECONDS = 900;
 
 /**
  * Hevy Sync Edge Function
@@ -111,10 +117,13 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
       // Browser-initiated: use JWT-verified user ID, ignore body.user_id
       userId = jwtUser.id;
     } else {
-      // Not a valid user JWT -- must be service-role call from process-sync-queue
-      // Verify the caller is actually using the service role key
-      const serviceRoleKey = deps.env('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-      const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
+      // Not a valid user JWT -- must be service-role call from process-sync-queue.
+      // Verify the caller is actually using the service role key, in constant
+      // time so the comparison leaks neither the key's bytes nor its length.
+      const isServiceRole = isServiceRoleBearer(
+        authHeader,
+        deps.env('SUPABASE_SERVICE_ROLE_KEY'),
+      );
 
       if (!isServiceRole || !body.user_id) {
         return new Response(
@@ -135,6 +144,21 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
       deps.env('SUPABASE_URL')!,
       deps.env('SUPABASE_SERVICE_ROLE_KEY')!
     );
+
+    // Manual syncs are browser-initiated and spend Hevy API budget, so cap
+    // them per user. Keyed on the JWT-verified id: an unauthenticated caller
+    // never reaches this point, so nobody can spend another user's budget.
+    // The queue path (service role) is exempt — process-sync-queue has its own
+    // per-provider budget, tracked under the separate `hevy` key.
+    if (jwtUser) {
+      const rateCheck = await checkRateLimit(supabase, {
+        key: 'hevy-sync',
+        userId,
+        maxRequests: MANUAL_SYNC_MAX_REQUESTS,
+        windowSeconds: MANUAL_SYNC_WINDOW_SECONDS,
+      }, cors);
+      if (!rateCheck.allowed) return rateCheck.response!;
+    }
 
     // Renew the lease immediately: the processor claimed this row before it
     // called us, so the work below must not run on that claim's clock.

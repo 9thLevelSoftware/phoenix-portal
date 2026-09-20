@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createStravaSyncHandler } from "./index.ts";
 import { FakeDb, fakeClient, type Row } from "../_shared/testing/fakeSupabase.ts";
 
@@ -232,8 +232,11 @@ function queueHarness(
   const heartbeats: string[] = [];
   const fetchUrls: string[] = [];
   let activityChunk = 0;
+  // Virtual clock: tests that never advance it behave exactly as before.
+  let clockMs = NOW;
+  const now = () => new Date(clockMs);
   const client = {
-    ...fakeClient(db, options.jwtUserId ?? null),
+    ...fakeClient(db, options.jwtUserId ?? null, now),
     from: (table: string) => {
       const query = db.from(table);
       const upsert = query.upsert.bind(query);
@@ -285,7 +288,7 @@ function queueHarness(
       fetchUrls.push(url.toString());
       return Promise.resolve(route(url));
     }) as typeof fetch,
-    now: () => new Date(NOW),
+    now,
   });
   const call = (body: Record<string, unknown>) =>
     handler(
@@ -300,7 +303,10 @@ function queueHarness(
         body: JSON.stringify({ user_id: USER_ID, ...body }),
       }),
     );
-  return { db, upserts, heartbeats, fetchUrls, call };
+  const advance = (ms: number) => {
+    clockMs += ms;
+  };
+  return { db, upserts, heartbeats, fetchUrls, call, advance };
 }
 
 function expiredTokenTables(): Record<string, Row[]> {
@@ -516,8 +522,16 @@ Deno.test("strava-sync: a failed chunk counts its rows, withholds the watermark 
 
   const res = await h.call({ sync_type: "incremental", queue_id: QUEUE_ID });
   assertEquals(res.status, 502);
+  const text = await res.clone().text();
+  // The driver's message ("upsert failed") is logged, never returned: the
+  // processor copies this body into sync_queue.error_message, which is
+  // browser-readable.
+  assert(!text.includes("upsert failed"), `driver message leaked: ${text}`);
   const body = await res.json();
   assertEquals(body.error, "Failed to persist 100 of 250 activities");
+  assertEquals(body.code, "persist_failed");
+  assertEquals(body.errors, undefined);
+  assertEquals(body.failed_count, 100);
   assertEquals(body.synced_count, 150);
   assertEquals(integrationOf(h).last_sync_at, T0);
   assertEquals(integrationOf(h).status, "connected");
@@ -569,4 +583,73 @@ Deno.test("strava-sync: a browser (JWT) run holds no lease and cannot complete a
   assertEquals(h.db.rows("sync_queue")[0].status, "processing");
   assertEquals(h.db.rows("sync_queue")[1].status, "completed");
   assertEquals(h.heartbeats, []);
+});
+
+Deno.test("strava-sync: a browser sync is capped at 3 per 15 minutes", async () => {
+  const tables = baseTables(T0, HISTORY);
+  const h = queueHarness(tables, () => json([]), { jwtUserId: USER_ID });
+
+  // Three manual syncs inside one window are all served.
+  for (const attempt of [1, 2, 3]) {
+    const res = await h.call({ sync_type: "manual" });
+    assertEquals(res.status, 200, `attempt ${attempt}: ${await res.clone().text()}`);
+  }
+  assertEquals(h.db.rows("rate_limit_tracking").length, 1);
+  assertEquals(h.db.rows("rate_limit_tracking")[0].key, "strava-sync");
+  assertEquals(h.db.rows("rate_limit_tracking")[0].requests_this_window, 3);
+
+  // The fourth is refused before any Strava request is made.
+  const fetchesBefore = h.fetchUrls.length;
+  const limited = await h.call({ sync_type: "manual" });
+  assertEquals(limited.status, 429);
+  assertEquals(limited.headers.get("Retry-After"), "900");
+  assertEquals(await limited.json(), {
+    error: "rate_limit_exceeded",
+    message: "Too many requests. Try again in 900 seconds.",
+    retryAfterSeconds: 900,
+  });
+  assertEquals(h.fetchUrls.length, fetchesBefore);
+
+  // The window rolls over and the next sync is served again.
+  h.advance(900_001);
+  const afterWindow = await h.call({ sync_type: "manual" });
+  assertEquals(afterWindow.status, 200, await afterWindow.clone().text());
+  assertEquals(h.db.rows("rate_limit_tracking")[0].requests_this_window, 1);
+});
+
+Deno.test("strava-sync: the queue (service-role) path is not capped by the manual limit", async () => {
+  const tables = baseTables(T0, HISTORY);
+  const h = queueHarness(tables, () => json([]));
+
+  for (const attempt of [1, 2, 3, 4, 5]) {
+    const res = await h.call({ sync_type: "incremental" });
+    assertEquals(res.status, 200, `attempt ${attempt}: ${await res.clone().text()}`);
+  }
+  // Nothing was charged to the manual bucket.
+  assertEquals(h.db.rows("rate_limit_tracking"), []);
+});
+
+Deno.test("strava-sync: a provider error body is never echoed to the caller", async () => {
+  // Text that must never leave the server: the processor copies this
+  // handler's response body into sync_queue.error_message.
+  const upstream = JSON.stringify({
+    message: "Resource Not Found",
+    errors: [{ resource: "Athlete", field: "id", code: "PROVIDER-BODY-MARKER" }],
+  });
+  const tables = baseTables(T0, HISTORY);
+  const h = queueHarness(tables, () => new Response(upstream, { status: 500 }));
+
+  const res = await h.call({ sync_type: "incremental" });
+  assertEquals(res.status, 502);
+  const text = await res.clone().text();
+  assert(
+    !text.includes("PROVIDER-BODY-MARKER") && !text.includes("Resource Not Found"),
+    `provider body leaked into the response: ${text}`,
+  );
+  assertEquals(await res.json(), {
+    error: "Failed to fetch Strava activities",
+    code: "provider_fetch_failed_500",
+  });
+  // Nothing from the body reached the browser-readable integration card.
+  assertEquals(integrationOf(h).error_message ?? null, null);
 });
