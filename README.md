@@ -57,7 +57,7 @@ Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil
 
 ## Subscription Tiers
 
-Single matrix matching `src/lib/pricing.ts` and `src/app/routes/index.tsx`. Ember is not sold leaderboards.
+Single matrix matching `src/lib/pricing.ts` and `src/lib/tierMatrix.ts` (read by `src/app/routes/index.tsx`). Ember is not sold leaderboards.
 
 | Tier        | Monthly | Annual  | Access                                                                                          |
 | ----------- | ------- | ------- | ----------------------------------------------------------------------------------------------- |
@@ -65,6 +65,12 @@ Single matrix matching `src/lib/pricing.ts` and `src/app/routes/index.tsx`. Embe
 | **EMBER**   | $5      | $49/yr  | Cloud sync, dashboard, history, session detail, goals, recovery                                 |
 | **FLAME**   | $15     | $149/yr | Analytics, community, routines, cycles, integrations (Strava/Hevy/Liftosaur), leaderboards, challenges, compare, session replay |
 | **INFERNO** | $25     | $249/yr | Advanced biomechanics (force, VBT, ROM, SRA, form). Purchasable; inner INFERNO gates stay.      |
+
+Route gates read their tiers from `FEATURE_MIN_TIER` in `src/lib/tierMatrix.ts`. Route gates are UX only; what the server enforces is:
+
+- **EMBER (server-enforced):** cloud sync (`mobile-sync-push`, `mobile-sync-pull`) and browser writes to workout sessions, records and local profiles (RLS).
+- **FLAME (server-enforced):** browser INSERT/UPDATE on shared routines/cycles, votes, comments, saved items, follows, challenge participation, integrations, the sync queue, and portal routine/cycle authoring (`routines`, `routine_exercises`, `training_cycles`, `cycle_days`) via RLS; the `import_shared_routine` / `import_shared_cycle` RPCs; `initiate-oauth`, the integration sync Edge Functions and leaderboards (`compute-rankings`). Deleting what you published or joined (comments, shares, votes, follows, saved items, challenge participation) carries no tier check in RLS, and every portal mutation that removes one of those rows is a real `DELETE` — including comment removal, which is a hard delete with a row check, not a soft-delete `UPDATE`. So a downgrade never blocks removal, at the API or in the mutations. The community and challenge *screens* are still FLAME-gated, so a downgraded user has no portal page to remove from (follow-up: a withdraw-only view for lapsed plans). Routines and cycles pushed from the mobile app stay EMBER (service-role push).
+- **Browser-only gates:** analytics, compare, session replay and INFERNO biomechanics are computed from data the user can already read.
 
 Fitbit and Garmin Connect stay `comingSoon` in the UI until developer-program approval. Do not treat README as a Connect un-block.
 

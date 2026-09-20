@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Database, Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
+import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
@@ -67,6 +68,18 @@ export function useVote() {
 					queryKey: queryKeys.community.votes(user.id),
 				});
 			}
+		},
+
+		onError: (error: Error) => {
+			console.error("[useVote] failed:", error);
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
+			toast.error("Failed to register your vote. Please try again.");
 		},
 	});
 }
@@ -607,6 +620,15 @@ export function useSaveItem() {
 
 		onError: (error: Error) => {
 			console.error("[useSaveItem] failed:", error);
+			// import_shared_routine / import_shared_cycle raise FLAME_REQUIRED
+			// (P0001) below FLAME, which a generic toast hides.
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
 			toast.error("Failed to save content. Please try again.");
 		},
 	});

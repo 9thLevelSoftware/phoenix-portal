@@ -2,6 +2,11 @@
 --
 -- Users A and B are both EMBER; C has no subscription row (FREE). A owns one
 -- fixture row in every private user-owned relation listed in rls_cases.
+-- Users A and B are both FLAME, so every owner write policy (including the
+-- FLAME-gated ones from 20260920000900) has a positive control; C has no
+-- subscription row (FREE). A owns one fixture row in every private
+-- user-owned relation listed in rls_cases. Tier denials live in
+-- trust_plane.test.sql (EMBER) and tier_matrix.test.sql (FLAME).
 --
 -- Coverage guard: every public table must have RLS enabled, and every public
 -- relation with a user_id column must be either in rls_cases or on the
@@ -32,6 +37,8 @@
 --
 -- Fixtures are inserted as postgres (bypassing the EMBER-gated INSERT
 -- policies, which trust_plane.test.sql covers).
+-- Fixtures are inserted as postgres (bypassing the tier-gated INSERT
+-- policies, which trust_plane.test.sql and tier_matrix.test.sql cover).
 
 BEGIN;
 
@@ -183,11 +190,13 @@ VALUES
         'a1a1a1a1-5555-4000-8000-00000000000a'::uuid,
         'a1a1a1a1-0000-4000-8000-00000000000a'::uuid,
         'EMBER', 'active', now() + INTERVAL '30 days'
+        'FLAME', 'active', now() + INTERVAL '30 days'
     ),
     (
         'b2b2b2b2-5555-4000-8000-00000000000b'::uuid,
         'b2b2b2b2-0000-4000-8000-00000000000b'::uuid,
         'EMBER', 'active', now() + INTERVAL '30 days'
+        'FLAME', 'active', now() + INTERVAL '30 days'
     );
 
 INSERT INTO public.workout_sessions (id, user_id)
@@ -552,6 +561,7 @@ INSERT INTO rls_owner_chain VALUES ('routine_exercises'), ('cycle_days');
 -- Triggers create rows for every new auth user (e.g. a default local
 -- profile). Remove B's and C's so that, during the blind probes, B and anon
 -- own nothing in any case relation (B's subscription stays: it makes B EMBER).
+-- own nothing in any case relation (B's subscription stays: it makes B FLAME).
 DO $cleanup$
 DECLARE
     rel text;
@@ -680,6 +690,7 @@ SELECT is(
         ) others
         WHERE others.n > 0
           -- B's subscription is needed for EMBER; no client UPDATE/DELETE
+          -- B's subscription is needed for FLAME; no client UPDATE/DELETE
           -- policy may ever match it, so the blind probe still expects 0.
           AND rc.table_name <> 'subscriptions'
     ),
@@ -995,6 +1006,9 @@ SELECT is(
     public.user_has_min_tier('FLAME'),
     false,
     'A still does not hold FLAME after the attempts'
+    public.user_has_min_tier('INFERNO'),
+    false,
+    'A still does not hold INFERNO after the attempts'
 );
 
 RESET ROLE;
