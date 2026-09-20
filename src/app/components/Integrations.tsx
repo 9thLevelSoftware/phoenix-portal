@@ -51,10 +51,18 @@ export function Integrations() {
 			setSearchParams({}, { replace: true });
 		}
 		if (error) {
-			toast.error(`Connection failed: ${error}`);
+			// `/integrations/callback` (KD-13) redirects here with the server's
+			// slug. A tier denial gets the one shared message and a billing
+			// refetch, exactly like a failed connect attempt on this page.
+			if (error === "subscription_required") {
+				toast.error(TIER_DENIED_MESSAGE);
+				void refetchSubscription();
+			} else {
+				toast.error(`Connection failed: ${error}`);
+			}
 			setSearchParams({}, { replace: true });
 		}
-	}, [searchParams, setSearchParams]);
+	}, [searchParams, setSearchParams, refetchSubscription]);
 
 	const { data: integrations } = useQuery({
 		...integrationsOptions(userId),

@@ -174,4 +174,38 @@ describe("buildProgressionWorkbenchModel", () => {
 		expect(model.selectedExercise?.plateauRisk).toBe("low");
 		expect(model.selectedExercise?.recommendation.kind).toBe("load");
 	});
+
+	it("suggests a 1.25 kg per-cable step on the stored per-cable max (never doubled)", () => {
+		const model = buildProgressionWorkbenchModel({
+			progressRows: [
+				{
+					id: "p7",
+					user_id: "u1",
+					exercise_name: "Row",
+					session_id: "s7",
+					recorded_at: new Date("2026-04-01T00:00:00Z"),
+					max_weight_kg: 20,
+					total_volume_kg: 400,
+					estimated_1rm_kg: 25,
+					max_reps: 8,
+					set_count: 3,
+				},
+			],
+			records: [],
+			selectedExercise: "Row",
+			phaseFilter: "all",
+			unit: "kg",
+			now: new Date("2026-06-05T00:00:00Z"),
+		});
+
+		const recommendation = model.selectedExercise?.recommendation;
+		expect(recommendation?.kind).toBe("load");
+		expect(recommendation?.label).toBe("Add 1.25 kg per cable");
+		// 20 + 1.25 = 21.25 -> 21.3 kg per cable (not 41.25 or 22.5)
+		expect(recommendation?.description).toBe(
+			"Recent trend supports testing about 21.3 kg per cable next time.",
+		);
+		expect(model.selectedExercise?.currentOneRm).toBe(25);
+		expect(model.selectedExercise?.points[0]?.maxWeight).toBe(20);
+	});
 });

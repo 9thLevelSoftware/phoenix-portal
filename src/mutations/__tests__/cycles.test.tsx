@@ -351,16 +351,16 @@ describe("useDeleteCycle", () => {
 
 	it("deletes cycle successfully when cycle exists", async () => {
 		const { useDeleteCycle } = await import("../cycles");
-
-		const eqSecond = vi.fn(() => ({
-			select: vi.fn(() => ({
-				maybeSingle: vi
-					.fn()
-					.mockResolvedValue({ data: { id: "cycle-1" }, error: null }),
-			})),
-		}));
-		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
-		mockChain.delete.mockImplementation(() => ({ eq: eqFirst }));
+		rpc.mockResolvedValue({
+			data: [
+				{
+					id: "cycle-1",
+					accepted: true,
+					server_updated_at: "2026-09-20T12:00:00Z",
+				},
+			],
+			error: null,
+		});
 
 		const { queryClient, wrapper } = createWrapper();
 		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
@@ -371,28 +371,33 @@ describe("useDeleteCycle", () => {
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		expect(from).toHaveBeenCalledWith("training_cycles");
+		expect(rpc).toHaveBeenCalledWith(
+			"delete_training_cycle_lww",
+			expect.objectContaining({ p_cycle_id: "cycle-1" }),
+		);
 		expect(mockToast.success).toHaveBeenCalledWith("Training cycle deleted");
 		expect(invalidateSpy).toHaveBeenCalledWith({
 			queryKey: queryKeys.cycles.all,
 		});
 	});
 
-	it("throws error when cycle does not exist (no-op delete)", async () => {
+	it("throws a conflict when a newer server edit rejects deletion", async () => {
 		const { useDeleteCycle } = await import("../cycles");
-
-		const eqSecond = vi.fn(() => ({
-			select: vi.fn(() => ({
-				maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
-			})),
-		}));
-		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
-		mockChain.delete.mockImplementation(() => ({ eq: eqFirst }));
+		rpc.mockResolvedValue({
+			data: [
+				{
+					id: "cycle-1",
+					accepted: false,
+					server_updated_at: "2099-01-01T00:00:00Z",
+				},
+			],
+			error: null,
+		});
 
 		const { wrapper } = createWrapper();
 		const { result } = renderHook(() => useDeleteCycle(), { wrapper });
 
-		result.current.mutate("nonexistent-cycle");
+		result.current.mutate("cycle-1");
 
 		await waitFor(() => expect(result.current.isError).toBe(true));
 
@@ -400,20 +405,16 @@ describe("useDeleteCycle", () => {
 			"Failed to delete training cycle. Please try again.",
 		);
 		expect(result.current.error?.message).toContain(
-			"Cycle not found or you don't have permission",
+			"changed on another device",
 		);
 	});
 
 	it("throws error when user lacks permission to delete cycle", async () => {
 		const { useDeleteCycle } = await import("../cycles");
-
-		const eqSecond = vi.fn(() => ({
-			select: vi.fn(() => ({
-				maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
-			})),
-		}));
-		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
-		mockChain.delete.mockImplementation(() => ({ eq: eqFirst }));
+		rpc.mockResolvedValue({
+			data: null,
+			error: { message: "forbidden", code: "42501" },
+		});
 
 		const { wrapper } = createWrapper();
 		const { result } = renderHook(() => useDeleteCycle(), { wrapper });
@@ -429,17 +430,10 @@ describe("useDeleteCycle", () => {
 
 	it("shows user-friendly error on database error", async () => {
 		const { useDeleteCycle } = await import("../cycles");
-
-		const maybeSingle = vi.fn(() =>
-			Promise.resolve({
-				data: null,
-				error: { message: "permission denied for table", code: "42501" },
-			}),
-		);
-		const select = vi.fn(() => ({ maybeSingle }));
-		const eqSecond = vi.fn(() => ({ select }));
-		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
-		mockChain.delete.mockImplementation(() => ({ eq: eqFirst }));
+		rpc.mockResolvedValue({
+			data: null,
+			error: { message: "permission denied for function", code: "42501" },
+		});
 
 		const { wrapper } = createWrapper();
 		const { result } = renderHook(() => useDeleteCycle(), { wrapper });

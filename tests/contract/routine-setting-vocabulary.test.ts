@@ -228,6 +228,7 @@ describe("routine setting vocabulary contract", () => {
 		ECCENTRIC_LOADS,
 	)("eccentric option %s reaches mobile as its percentage", (load) => {
 		const [row] = toRoutineExerciseRows([
+		const [row] = toRoutineExerciseRows("r", [
 			builderExercise({ eccentric_load: load }),
 		]);
 		expect(row.eccentric_load).toBe(load);
@@ -238,6 +239,7 @@ describe("routine setting vocabulary contract", () => {
 
 	it.each(ECHO_LEVELS)("echo option %s reaches mobile as itself", (level) => {
 		const [row] = toRoutineExerciseRows([
+		const [row] = toRoutineExerciseRows("r", [
 			builderExercise({ echo_level: level }),
 		]);
 		expect(mobileEchoLevel(row.echo_level ?? null)).toBe(
@@ -247,6 +249,7 @@ describe("routine setting vocabulary contract", () => {
 
 	it.each(REP_COUNT_TIMINGS)("timing option %s reaches mobile", (timing) => {
 		const [row] = toRoutineExerciseRows([
+		const [row] = toRoutineExerciseRows("r", [
 			builderExercise({ rep_count_timing: timing }),
 		]);
 		expect(mobileRepCountTiming(row.rep_count_timing ?? null)).toBe(timing);
@@ -254,6 +257,7 @@ describe("routine setting vocabulary contract", () => {
 
 	it("stop at TOP reaches mobile; unset does not stop", () => {
 		const [top, none] = toRoutineExerciseRows([
+		const [top, none] = toRoutineExerciseRows("r", [
 			builderExercise({ stop_at_position: "TOP" }),
 			builderExercise({ stop_at_position: null }),
 		]);
@@ -265,6 +269,7 @@ describe("routine setting vocabulary contract", () => {
 		SUPERSET_COLOR_NAMES.map((name, index) => [name, index] as const),
 	)("superset colour %s reaches mobile as index %i and renders its hex", (name, index) => {
 		const [row] = toRoutineExerciseRows([
+		const [row] = toRoutineExerciseRows("r", [
 			builderExercise({ superset_color: name }),
 		]);
 		expect(mobileSupersetColorIndex(row.superset_color ?? null)).toBe(
@@ -276,6 +281,7 @@ describe("routine setting vocabulary contract", () => {
 
 	it("writer stores legacy values as the phone's defaults and keeps off-list numbers", () => {
 		const [row] = toRoutineExerciseRows([
+		const [row] = toRoutineExerciseRows("r", [
 			builderExercise({
 				eccentric_load: "heavy",
 				echo_level: "low",
@@ -293,6 +299,7 @@ describe("routine setting vocabulary contract", () => {
 			superset_color: "pink",
 		});
 		const [, offList] = toRoutineExerciseRows([
+		const [, offList] = toRoutineExerciseRows("r", [
 			builderExercise({}),
 			builderExercise({ eccentric_load: "LOAD_25" }),
 		]);

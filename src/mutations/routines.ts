@@ -5,7 +5,6 @@ import { supabase } from "@/lib/supabase";
 import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import {
 	normalizeEccentricLoad,
@@ -15,6 +14,7 @@ import {
 	toSupersetColorName,
 	toWireMode,
 } from "../../supabase/functions/_shared/workoutModes.ts";
+import { toWireMode } from "../../supabase/functions/_shared/workoutModes.ts";
 
 function estimatedRoutineDurationSeconds(
 	exercises: RoutineExerciseInput[],
@@ -27,16 +27,9 @@ function estimatedRoutineDurationSeconds(
 }
 
 function normalizePerSetWeights(per: unknown): Json | null {
+	// The builder collects per_set_weights per cable, like `weight`, which is
+	// exactly what is stored (KD-8). No conversion.
 	if (per == null) return null;
-	// UI collects per_set_weights in the same "total weight" units as the
-	// single `weight` field (which is divided by WEIGHT_MULTIPLIER before
-	// storage). Divide array entries by the same multiplier so the stored
-	// per-cable representation stays consistent.
-	if (Array.isArray(per)) {
-		return per.map((x) =>
-			typeof x === "number" ? x / WEIGHT_MULTIPLIER : x,
-		) as Json;
-	}
 	return per as Json;
 }
 
@@ -112,6 +105,8 @@ export function toRoutineExerciseRows(
 	preservedModes: readonly string[] = [],
 	{ withIds = false }: { withIds?: boolean } = {},
 ): RoutineExerciseRow[] {
+	routineId: string,
+): RoutineExerciseInsert[] {
 	return exercises.map((ex, i) => ({
 		// Only on update, and only when the exercise already has a row: the
 		// create RPC ignores payload ids, so sending them there would be
@@ -122,7 +117,7 @@ export function toRoutineExerciseRows(
 		exercise_id: ex.exercise_id ?? null,
 		sets: ex.sets,
 		reps: ex.reps,
-		weight: ex.weight / WEIGHT_MULTIPLIER,
+		weight: ex.weight, // per cable, stored as entered (KD-8)
 		rest_seconds: ex.rest_seconds,
 		duration_seconds: ex.duration_seconds ?? null,
 		mode: requireWireMode(ex.mode, preservedModes),
@@ -144,10 +139,7 @@ export function toRoutineExerciseRows(
 		eccentric_load: normalizeEccentricLoad(ex.eccentric_load),
 		echo_level: toEchoLevel(ex.echo_level),
 		drop_set_enabled: ex.drop_set_enabled ?? false,
-		drop_set_min_weight_kg:
-			ex.drop_set_min_weight_kg == null
-				? null
-				: ex.drop_set_min_weight_kg / WEIGHT_MULTIPLIER,
+		drop_set_min_weight_kg: ex.drop_set_min_weight_kg ?? null,
 	}));
 }
 
@@ -177,6 +169,9 @@ export function useSaveRoutine() {
 			// `toRoutineExerciseRows` rejects an unknown mode, and it runs before
 			// the call, so nothing is written for one.
 			const exercises = toRoutineExerciseRows(input.exercises);
+			// Validate modes before the parent insert so an unknown mode can't
+			// leave an orphaned routine row behind.
+			for (const ex of input.exercises) requireWireMode(ex.mode);
 
 			const { data: routineId, error } = await supabase.rpc(
 				"create_routine_with_exercises",
@@ -311,6 +306,7 @@ export function useUpdateRoutine() {
 						...row,
 						routine_id: input.routineId,
 					})) as unknown as Json,
+					) as unknown as Json,
 				},
 			);
 

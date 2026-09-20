@@ -205,6 +205,17 @@ describe("useSaveRoutine", () => {
 				return Promise.resolve({ data: "routine-1", error: null });
 			},
 		);
+		mockSelectSingle.mockResolvedValue({
+			data: { id: "routine-1" },
+			error: null,
+		});
+		mockChain.insert.mockImplementation((rows: unknown) => {
+			if (Array.isArray(rows)) {
+				exerciseRows = rows as Array<Record<string, unknown>>;
+				return Promise.resolve({ error: null });
+			}
+			return { select: vi.fn(() => ({ single: mockSelectSingle })) };
+		});
 
 		const { wrapper } = createWrapper();
 		const { result } = renderHook(() => useSaveRoutine(), { wrapper });
@@ -225,6 +236,7 @@ describe("useSaveRoutine", () => {
 	});
 
 	it("rejects an unknown mode before calling the create RPC", async () => {
+	it("rejects an unknown mode before inserting the routine", async () => {
 		const { useSaveRoutine } = await import("../routines");
 
 		const { wrapper } = createWrapper();
@@ -411,10 +423,104 @@ describe("useUpdateRoutine", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(exerciseRows).toHaveLength(1);
-		expect(exerciseRows[0]?.weight).toBe(baseExercise.weight / 2);
-		// per_set_weights must follow the same per-cable halving as `weight` so
-		// the stored and displayed values round-trip consistently.
-		expect(exerciseRows[0]?.per_set_weights).toEqual([25, 27.5, 30]);
+		// The builder collects per-cable weights, which is what is stored (KD-8):
+		// no halving on write.
+		expect(exerciseRows[0]?.weight).toBe(baseExercise.weight);
+		expect(exerciseRows[0]?.per_set_weights).toEqual([50, 55, 60]);
+	});
+
+	it("round-trips a per-cable weight: enter 20, store 20, read back 20", async () => {
+		const { useUpdateRoutine } = await import("../routines");
+		const { routineExerciseSchema } = await import("@/schemas/transforms");
+		let exerciseRows: Array<Record<string, unknown>> = [];
+
+		rpc.mockImplementation(
+			(_fn: string, args: { p_exercises: Array<Record<string, unknown>> }) => {
+				exerciseRows = args.p_exercises;
+				return Promise.resolve({ data: "routine-1", error: null });
+			},
+		);
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateRoutine(), { wrapper });
+
+		result.current.mutate({
+			routineId: "routine-1",
+			name: "Per-cable Routine",
+			exercises: [
+				{
+					...baseExercise,
+					weight: 20,
+					per_set_weights: [20, 20, 20],
+					drop_set_enabled: true,
+					drop_set_min_weight_kg: 10,
+				},
+			],
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+		const stored = exerciseRows[0];
+		expect(stored?.weight).toBe(20);
+		expect(stored?.per_set_weights).toEqual([20, 20, 20]);
+		expect(stored?.drop_set_min_weight_kg).toBe(10);
+
+		const readBack = routineExerciseSchema.parse({
+			...stored,
+			id: "00000000-0000-4000-a000-000000000001",
+			routine_id: "00000000-0000-4000-a000-000000000002",
+			created_at: "2026-01-15T08:00:00Z",
+		});
+		expect(readBack.weight).toBe(20);
+		expect(readBack.per_set_weights).toEqual([20, 20, 20]);
+		expect(readBack.drop_set_min_weight_kg).toBe(10);
+	});
+
+	it("sends wire-name modes through the update RPC and keeps preserved unknown modes", async () => {
+		const { useUpdateRoutine } = await import("../routines");
+		let exerciseRows: Array<Record<string, unknown>> = [];
+
+		rpc.mockImplementation(
+			(_fn: string, args: { p_exercises: Array<Record<string, unknown>> }) => {
+				exerciseRows = args.p_exercises;
+				return Promise.resolve({ data: "routine-1", error: null });
+			},
+		);
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateRoutine(), { wrapper });
+
+		result.current.mutate({
+			routineId: "routine-1",
+			name: "Updated Routine",
+			exercises: [
+				{ ...baseExercise, mode: "Echo" },
+				{ ...baseExercise, mode: "FUTURE_MODE", order_index: 1 },
+			],
+			preservedModes: ["FUTURE_MODE"],
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+		expect(exerciseRows.map((row) => row.mode)).toEqual([
+			"ECHO",
+			"FUTURE_MODE",
+		]);
+	});
+
+	it("rejects an unknown, non-preserved mode before calling the update RPC", async () => {
+		const { useUpdateRoutine } = await import("../routines");
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateRoutine(), { wrapper });
+
+		result.current.mutate({
+			routineId: "routine-1",
+			name: "Updated Routine",
+			exercises: [{ ...baseExercise, mode: "eccentric" }],
+		});
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+		expect(rpc).not.toHaveBeenCalled();
 	});
 
 	it("sends wire-name modes through the update RPC and keeps preserved unknown modes", async () => {

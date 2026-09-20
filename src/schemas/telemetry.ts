@@ -1,21 +1,16 @@
 import { z } from "zod";
 
-// Per-cable to total weight conversion (independent copy -- see transforms.ts rationale)
-const WEIGHT_MULTIPLIER = 2;
-const weightTransform = z
-	.number()
-	.transform((perCable) => perCable * WEIGHT_MULTIPLIER);
+// Loads are per cable, as stored and as the phone shows them (KD-8). No
+// conversion happens here; see src/lib/units/loadDisplay.ts.
+const perCableWeight = z.number();
 
-// Nullable per-cable weight: applies the same x2 display multiplier, but
-// preserves null/absent (legacy rows with no velocity-based 1RM) as null so the
-// UI can hide the metric entirely.
-const nullableWeightTransform = z
+// Nullable per-cable weight: preserves null/absent (legacy rows with no
+// velocity-based 1RM) as null so the UI can hide the metric entirely.
+const nullablePerCableWeight = z
 	.number()
 	.nullable()
 	.optional()
-	.transform((perCable) =>
-		perCable == null ? null : perCable * WEIGHT_MULTIPLIER,
-	);
+	.transform((perCable) => perCable ?? null);
 
 // --- Telemetry Point ---
 
@@ -62,12 +57,12 @@ export const exerciseProgressSchema = z.object({
 	exercise_name: z.string(),
 	session_id: z.string().uuid(),
 	recorded_at: z.coerce.date(),
-	max_weight_kg: weightTransform,
-	total_volume_kg: weightTransform,
-	estimated_1rm_kg: weightTransform,
+	max_weight_kg: perCableWeight,
+	total_volume_kg: perCableWeight,
+	estimated_1rm_kg: perCableWeight,
 	// Velocity-based (VBT) 1RM — distinct from the rep-based estimated_1rm_kg.
 	// Nullable; null when the row predates VBT capture. Issue #517 Phase 6.
-	velocity_estimated_1rm_kg: nullableWeightTransform,
+	velocity_estimated_1rm_kg: nullablePerCableWeight,
 	max_reps: z.number().finite().nonnegative(),
 	set_count: z.number().finite().nonnegative(),
 });

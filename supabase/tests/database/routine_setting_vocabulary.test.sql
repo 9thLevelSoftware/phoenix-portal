@@ -207,6 +207,7 @@ SELECT ok(
 -- authoring is FLAME since 20260920000900_flame_write_policies.sql, so an
 -- EMBER fixture here would be refused by the INSERT policy before the
 -- trigger ever ran.
+-- A real SPA-shaped write: authenticated FLAME user through RLS.
 INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
 VALUES (
     'a2a2a2a2-0000-4000-8000-000000000011'::uuid,
