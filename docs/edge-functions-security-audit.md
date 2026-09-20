@@ -1,5 +1,12 @@
 # Phoenix Portal Edge Functions Security Audit Report
 
+> **HISTORICAL — 2026-03-28, not HEAD.** This is a dated audit covering 19
+> Edge Functions. Do not read its per-function findings or fix status as
+> describing this tree. Re-derive current behaviour from the code,
+> `supabase/config.toml`, `supabase/migrations/`, and CI. Which functions skip
+> the gateway JWT check, and what authenticates them instead, is stated in a
+> comment above each `verify_jwt = false` block in `supabase/config.toml`.
+
 **Audit Date:** 2026-03-28  
 **Functions Reviewed:** 19 Supabase Edge Functions  
 **Auditor:** Security Review Subagent  

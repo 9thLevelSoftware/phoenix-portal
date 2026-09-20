@@ -248,6 +248,8 @@ export type Database = {
 					cycle_id: string;
 					day_number: number;
 					day_type: string;
+					eccentric_load_percent: number | null;
+					echo_level: string | null;
 					id: string;
 					notes: string | null;
 					rep_modifier: number;
@@ -260,6 +262,8 @@ export type Database = {
 					cycle_id: string;
 					day_number: number;
 					day_type?: string;
+					eccentric_load_percent?: number | null;
+					echo_level?: string | null;
 					id?: string;
 					notes?: string | null;
 					rep_modifier?: number;
@@ -272,6 +276,8 @@ export type Database = {
 					cycle_id?: string;
 					day_number?: number;
 					day_type?: string;
+					eccentric_load_percent?: number | null;
+					echo_level?: string | null;
 					id?: string;
 					notes?: string | null;
 					rep_modifier?: number;
@@ -668,7 +674,14 @@ export type Database = {
 				Row: {
 					best_streak: number;
 					current_streak: number;
+					device_current_streak: number | null;
+					device_longest_streak: number | null;
+					device_total_reps: number | null;
+					device_total_time_seconds: number | null;
+					device_total_volume_kg: number | null;
+					device_total_workouts: number | null;
 					id: string;
+					last_workout_at: string | null;
 					longest_streak: number;
 					pr_count: number;
 					total_reps: number;
@@ -681,7 +694,14 @@ export type Database = {
 				Insert: {
 					best_streak?: number;
 					current_streak?: number;
+					device_current_streak?: number | null;
+					device_longest_streak?: number | null;
+					device_total_reps?: number | null;
+					device_total_time_seconds?: number | null;
+					device_total_volume_kg?: number | null;
+					device_total_workouts?: number | null;
 					id?: string;
+					last_workout_at?: string | null;
 					longest_streak?: number;
 					pr_count?: number;
 					total_reps?: number;
@@ -694,7 +714,14 @@ export type Database = {
 				Update: {
 					best_streak?: number;
 					current_streak?: number;
+					device_current_streak?: number | null;
+					device_longest_streak?: number | null;
+					device_total_reps?: number | null;
+					device_total_time_seconds?: number | null;
+					device_total_volume_kg?: number | null;
+					device_total_workouts?: number | null;
 					id?: string;
+					last_workout_at?: string | null;
 					longest_streak?: number;
 					pr_count?: number;
 					total_reps?: number;
@@ -1445,7 +1472,6 @@ export type Database = {
 			};
 			routines: {
 				Row: {
-					client_updated_at: string | null;
 					created_at: string | null;
 					description: string;
 					estimated_duration: number;
@@ -1461,7 +1487,6 @@ export type Database = {
 					user_id: string;
 				};
 				Insert: {
-					client_updated_at?: string | null;
 					created_at?: string | null;
 					description?: string;
 					estimated_duration?: number;
@@ -1477,7 +1502,6 @@ export type Database = {
 					user_id: string;
 				};
 				Update: {
-					client_updated_at?: string | null;
 					created_at?: string | null;
 					description?: string;
 					estimated_duration?: number;
@@ -1508,6 +1532,7 @@ export type Database = {
 					consistency: number;
 					experience_points: number;
 					id: string;
+					last_workout_at: string | null;
 					level: number;
 					mastery: number;
 					power: number;
@@ -1521,6 +1546,7 @@ export type Database = {
 					consistency?: number;
 					experience_points?: number;
 					id?: string;
+					last_workout_at?: string | null;
 					level?: number;
 					mastery?: number;
 					power?: number;
@@ -1534,6 +1560,7 @@ export type Database = {
 					consistency?: number;
 					experience_points?: number;
 					id?: string;
+					last_workout_at?: string | null;
 					level?: number;
 					mastery?: number;
 					power?: number;
@@ -1883,7 +1910,6 @@ export type Database = {
 					id: string;
 					last_event_id: string | null;
 					last_event_occurred_at: string | null;
-					note: string | null;
 					operation: string;
 					paddle_customer_id: string | null;
 					paddle_subscription_id: string | null;
@@ -1905,12 +1931,11 @@ export type Database = {
 					id?: string;
 					last_event_id?: string | null;
 					last_event_occurred_at?: string | null;
-					note?: string | null;
 					operation: string;
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
 					price_id?: string | null;
-					row_snapshot?: Json;
+					row_snapshot: Json;
 					status?: string | null;
 					subscription_created_at?: string | null;
 					subscription_row_id?: string | null;
@@ -1927,7 +1952,6 @@ export type Database = {
 					id?: string;
 					last_event_id?: string | null;
 					last_event_occurred_at?: string | null;
-					note?: string | null;
 					operation?: string;
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
@@ -2100,6 +2124,7 @@ export type Database = {
 					portal_duration_set_at: string | null;
 					portal_edited_at: string | null;
 					progression_settings: Json | null;
+					progress_state: Json | null;
 					rest_days: number;
 					started_at: string | null;
 					status: string;
@@ -2121,6 +2146,7 @@ export type Database = {
 					portal_duration_set_at?: string | null;
 					portal_edited_at?: string | null;
 					progression_settings?: Json | null;
+					progress_state?: Json | null;
 					rest_days?: number;
 					started_at?: string | null;
 					status?: string;
@@ -2142,6 +2168,7 @@ export type Database = {
 					portal_duration_set_at?: string | null;
 					portal_edited_at?: string | null;
 					progression_settings?: Json | null;
+					progress_state?: Json | null;
 					rest_days?: number;
 					started_at?: string | null;
 					status?: string;
@@ -2631,7 +2658,47 @@ export type Database = {
 			};
 		};
 		Functions: {
-			apply_subscription_event: {
+			verify_profile_recovery_source: {
+				Args: {
+					p_source_profile_id: string | null;
+					p_workout_session_ids: string[];
+					p_routine_ids: string[];
+					p_cycle_ids: string[];
+					p_personal_record_ids: string[];
+					p_proof_workout_session_ids: string[];
+					p_proof_routine_ids: string[];
+					p_proof_cycle_ids: string[];
+					p_proof_personal_record_ids: string[];
+				};
+				Returns: {
+					verified: boolean;
+					authenticated_owner_user_id: string | null;
+					verified_proof_count: number;
+				}[];
+			};
+			delete_training_cycle_lww: {
+				Args: {
+					p_cycle_id: string;
+					p_updated_at: string;
+				};
+				Returns: {
+					id: string;
+					accepted: boolean;
+					server_updated_at: string | null;
+				}[];
+			};
+			delete_workout_with_tombstone: {
+				Args: {
+					p_component_session_id: string | null;
+					p_deleted_at: string;
+					p_mutation_id: string;
+					p_portal_session_id: string;
+					p_profile_id: string | null;
+					p_scope: string;
+				};
+				Returns: { mutation_id: string }[];
+			};
+			update_routine_with_exercises: {
 				Args: {
 					p_cancel_at_period_end: boolean;
 					p_current_period_end: string;
@@ -2659,6 +2726,18 @@ export type Database = {
 					allowed: boolean;
 					remaining: number;
 					retry_after_seconds: number;
+				}[];
+			};
+			derive_gamification_stats: {
+				Args: { p_user_id: string };
+				Returns: {
+					current_streak: number;
+					longest_streak: number;
+					pr_count: number;
+					total_reps: number;
+					total_time_seconds: number;
+					total_volume_kg: number;
+					total_workouts: number;
 				}[];
 			};
 			detect_plateaus: {
@@ -3032,23 +3111,12 @@ export type Database = {
 				Returns: undefined;
 			};
 			jsonb_redact_token_keys: { Args: { data: Json }; Returns: Json };
-			kotlin_to_long_or_null: { Args: { p_value: string }; Returns: number };
 			local_profile_preference_section_canonical: {
 				Args: {
 					p_row: Database["public"]["Tables"]["local_profile_preferences"]["Row"];
 					p_section: string;
 				};
 				Returns: Json;
-			};
-			merge_training_cycles_from_push: {
-				Args: { p_cycles: Json; p_use_lww: boolean; p_user_id: string };
-				Returns: {
-					accepted: boolean;
-					client_updated_at: string;
-					id: string;
-					server_updated_at: string;
-					structure_applied: boolean;
-				}[];
 			};
 			mutate_local_profile_preference_section: {
 				Args: {
@@ -3066,22 +3134,11 @@ export type Database = {
 					server_revision: number;
 				}[];
 			};
-			normalize_cycle_progression_settings: {
-				Args: { p_settings: Json };
-				Returns: Json;
+			recompute_all_gamification_stats: { Args: never; Returns: number };
+			recompute_gamification_stats: {
+				Args: { p_user_id: string };
+				Returns: undefined;
 			};
-			normalize_eccentric_load: { Args: { p_value: string }; Returns: string };
-			normalize_echo_level: { Args: { p_value: string }; Returns: string };
-			normalize_rep_count_timing: {
-				Args: { p_value: string };
-				Returns: string;
-			};
-			normalize_stop_at_position: {
-				Args: { p_value: string };
-				Returns: string;
-			};
-			normalize_superset_color: { Args: { p_value: string }; Returns: string };
-			normalize_workout_mode: { Args: { p_mode: string }; Returns: string };
 			refresh_community_benchmarks: { Args: never; Returns: undefined };
 			refresh_hot_scores: { Args: never; Returns: undefined };
 			replace_session_children: {
@@ -3107,7 +3164,7 @@ export type Database = {
 				Args: { p_default: number; p_key: string; p_obj: Json };
 				Returns: number;
 			};
-			subscription_tier_for: { Args: { p_user_id: string }; Returns: string };
+			seed_device_gamification_stats: { Args: never; Returns: number };
 			update_cycle_with_days: {
 				Args: {
 					p_cycle_id: string;
