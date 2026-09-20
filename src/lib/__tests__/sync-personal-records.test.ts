@@ -12,6 +12,7 @@ import {
 	partitionPersonalRecordRowsByExerciseCatalogValidity,
 	partitionPersonalRecordRowsByLocalProfileValidity,
 	partitionPersonalRecordRowsBySessionValidity,
+	personalRecordDerivedIdentityKey,
 	personalRecordIdentityKey,
 	resolveDedicatedRecordLocalProfileId,
 	shouldRepairDedicatedRecordLocalProfilesForPush,
@@ -86,6 +87,7 @@ function basePersonalRecordRow(exerciseName: string) {
 		session_id: null,
 		achieved_at: "2026-04-20T12:00:00.000Z",
 		workout_phase: "COMBINED",
+		source: "set_derived" as const,
 	};
 }
 
@@ -262,6 +264,7 @@ describe("buildDedicatedPersonalRecordRows", () => {
 				updated_at: "2026-04-21T12:30:00.000Z",
 				deleted_at: "2026-04-21T12:31:00.000Z",
 				workout_phase: "CONCENTRIC",
+				source: "dedicated",
 			},
 		]);
 	});
@@ -388,6 +391,14 @@ describe("personalRecordIdentityKey", () => {
 				...baseRecord,
 				exercise_id: "curl-dumbbell",
 			}),
+		);
+	});
+
+	it("treats an empty-string exercise ID as absent, like the SQL identity index", () => {
+		expect(
+			personalRecordDerivedIdentityKey({ ...baseRecord, exercise_id: "" }),
+		).toBe(
+			personalRecordDerivedIdentityKey({ ...baseRecord, exercise_id: null }),
 		);
 	});
 
