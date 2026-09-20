@@ -130,6 +130,10 @@ jobs:
           diff -u "$dir/expected_dry_run.txt" "$RUNNER_TEMP/dry_run.txt"
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260920003100_scheduler_and_sync_queue_cron.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$dir/check.sql"
+          # seed.sql drops sync_queue unique indexes to load duplicate fixtures,
+          # and re-applying 003100 overwrites the PR-52 client-insert guard.
+          # Restore the production shape before pgTAP.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260920005200_sync_queue_pending_unique.sql
 
       # Full pgTAP suite (every file in supabase/tests/database/): definer
       # grant guard, dashboard capture, cross-user RLS isolation, trust plane,
