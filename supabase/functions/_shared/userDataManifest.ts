@@ -474,10 +474,10 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"last_used_at",
 			"tags",
 			"is_favorite",
+			"created_at",
 			"updated_at",
 			"local_profile_id",
 		],
-		{ optionalColumns: ["created_at"] },
 	),
 	{
 		table: "routine_exercises",
