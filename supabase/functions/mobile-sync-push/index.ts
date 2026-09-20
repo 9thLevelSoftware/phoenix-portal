@@ -637,19 +637,30 @@ interface CycleDto {
   userId: string;
   name: string;
   description: string | null;
-  durationWeeks: number;
+  durationWeeks: number | null;
   workoutDays: number;
   restDays: number;
   currentWeek: number;
-  status: string;
+  status: string | null;
   startedAt: string | null;
   lastUsedAt: string | null;
   /** ISO 8601 last-write timestamp for LWW gate. Optional for backward compat. */
   updatedAt?: string | null;
+  /**
+   * KD-6: the server `updatedAt` this device last received for the cycle
+   * (from a pull or a push response's `cycleVersions`). Absent on older
+   * builds, which keep the legacy structure rules.
+   */
+  baseUpdatedAt?: string | null;
   progressionSettings: string | null;
   deloadSettings: string | null;
   templateId?: string | null;
   days: CycleDayDto[];
+}
+
+/** One row of merge_training_cycles_from_push. */
+interface CycleMergeRow extends LwwUpsertRow {
+  structure_applied: boolean;
 }
 
 interface CycleDayDto {
@@ -1663,10 +1674,12 @@ async function mobileSyncPushHandler(
 
     // =========================================================================
     // LWW reject tracking. When SYNC_LWW_ENABLED is false, these remain empty
-    // and no filtering is applied. When true, the push handler routes each
-    // shared-edit entity upsert through its `upsert_<entity>_lww` RPC and
-    // uses the accepted-id sets to filter child-table upserts so orphan child
-    // rows are not created under rejected parents.
+    // and no filtering is applied (exception: `cycles` also lists a cycle the
+    // merge RPC refused as another user's or concurrently deleted). When
+    // true, the push handler routes each shared-edit entity upsert through
+    // its `upsert_<entity>_lww` RPC (cycles: merge_training_cycles_from_push)
+    // and uses the accepted-id sets to filter child-table upserts so orphan
+    // child rows are not created under rejected parents.
     // =========================================================================
     const rejections = {
       sessions: [] as EntityRejection[],
@@ -1690,7 +1703,7 @@ async function mobileSyncPushHandler(
     // cleared the LWW gate).
     let acceptedSessionIds: Set<string> | null = null;
     let acceptedRoutineIds: Set<string> | null = null;
-    let acceptedCycleIds: Set<string> | null = null;
+    // Cycles: the merge RPC applies the LWW gate to cycle_days itself (KD-6).
 
     const childAllowed = <T>(parentSet: Set<string> | null, parentId: string): boolean =>
       parentSet === null || parentSet.has(parentId);
@@ -1707,6 +1720,9 @@ async function mobileSyncPushHandler(
     // Runs for both SYNC_LWW_ENABLED values, before any routine/cycle write.
     // =========================================================================
     const skippedDeleted = { routines: [] as string[], cycles: [] as string[] };
+    // KD-6: stored updated_at of each cycle whose pushed structure was
+    // applied. The device keeps it as the cycle's next baseUpdatedAt.
+    const cycleVersions: Record<string, string> = {};
     // Race guard (R-4): a portal delete that lands between this lookup and
     // the upsert below would be undone by the upsert, and
     // get_sync_tombstones hides tombstones of rows that are live again, so
@@ -2666,86 +2682,15 @@ async function mobileSyncPushHandler(
     }
 
     // =========================================================================
-    // 7c. Upsert training_cycles + upsert cycle_days (safe replace pattern)
-    //     cycle_days has UNIQUE(cycle_id, day_number), so upsert on that
-    //     constraint instead of delete+insert.
+    // 7c. Merge training_cycles + cycle_days in SQL (KD-6)
+    //     One service-role RPC upserts the cycles and their days and removes
+    //     orphan days, for both SYNC_LWW_ENABLED values. It keeps portal
+    //     config the phone doesn't know about (deload, progression keys,
+    //     rest_type, duration), ignores a stale structure (portal edited the
+    //     cycle after the device's baseUpdatedAt), and skips no-op writes.
     // =========================================================================
     if (liveCycles.length > 0) {
-      const cycleRows = liveCycles.map((c) => ({
-        id: c.id,
-        user_id: userId,
-        local_profile_id: localProfileId,
-        name: c.name,
-        description: c.description ?? '',
-        duration_weeks: c.durationWeeks ?? 4,
-        workout_days: c.workoutDays ?? 0,
-        rest_days: c.restDays ?? 0,
-        current_week: c.currentWeek ?? 1,
-        status: c.status ?? 'draft',
-        started_at: c.startedAt,
-        last_used_at: c.lastUsedAt,
-        progression_settings: safeJsonParse(c.progressionSettings),
-        deload_settings: safeJsonParse(c.deloadSettings),
-        template_id: c.templateId ?? null,
-        updated_at: c.updatedAt ?? null,
-      }));
-
       // Ownership of every cycle id was verified once in directOwnerChecks.
-
-      if (SYNC_LWW_ENABLED) {
-        const rows = cycleRows.map((r) => ({
-          ...r,
-          updated_at: r.updated_at ?? new Date().toISOString(),
-        }));
-        const { data: lwwData, error: lwwErr } = await supabase.rpc(
-          'upsert_training_cycle_lww',
-          { p_rows: rows },
-        );
-        if (lwwErr) throw new Error(`training_cycles LWW RPC failed: ${lwwErr.message}`);
-        acceptedCycleIds = new Set<string>();
-        for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
-          if (rr.accepted) acceptedCycleIds.add(rr.id);
-          else rejections.cycles.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
-        }
-        cyclesUpserted = acceptedCycleIds.size;
-      } else {
-        // Legacy server-wins upsert still needs to preserve an existing
-        // template_id when older mobile builds omit or null the field.
-        const cycleIdsMissingTemplateId = cycleRows
-          .filter((row) => row.template_id == null)
-          .map((row) => row.id);
-        if (cycleIdsMissingTemplateId.length > 0) {
-          const existingTemplateIds = new Map<string, string>();
-          const chunkSize = 100;
-          for (let i = 0; i < cycleIdsMissingTemplateId.length; i += chunkSize) {
-            const chunk = cycleIdsMissingTemplateId.slice(i, i + chunkSize);
-            const { data: existingCycles, error: existingCyclesErr } = await supabase
-              .from('training_cycles')
-              .select('id, template_id')
-              .eq('user_id', userId)
-              .in('id', chunk);
-            if (existingCyclesErr) {
-              throw new Error(`training_cycles template_id probe failed: ${existingCyclesErr.message}`);
-            }
-            for (const row of existingCycles ?? []) {
-              if (typeof row.id === 'string' && typeof row.template_id === 'string') {
-                existingTemplateIds.set(row.id, row.template_id);
-              }
-            }
-          }
-          for (const row of cycleRows) {
-            if (row.template_id == null) {
-              row.template_id = existingTemplateIds.get(row.id) ?? null;
-            }
-          }
-        }
-
-        const { error: cycErr } = await supabase
-          .from('training_cycles')
-          .upsert(cycleRows, { onConflict: 'id' });
-        if (cycErr) throw new Error(`training_cycles upsert failed: ${cycErr.message}`);
-        cyclesUpserted = cycleRows.length;
-      }
 
       // KD-4 / R-24: decided here, after this push's own routine writes (7)
       // and deletes (7a). A day keeps its routine only when that routine
@@ -2778,27 +2723,42 @@ async function mobileSyncPushHandler(
         return null;
       };
 
-      // Upsert days using the UNIQUE(cycle_id, day_number) constraint.
-      // When LWW is enabled, skip days whose parent cycle was rejected.
-      const dayRows = liveCycles
-        .filter((c) => childAllowed(acceptedCycleIds, c.id))
-        .flatMap((c) =>
-          c.days.map((d) => ({
-            // Do not upsert id when conflict target is (cycle_id, day_number).
-            // If a client reuses an id across different day rows, Postgres can
-            // still raise duplicate key on cycle_days_pkey before conflict
-            // resolution for the composite unique key.
-            cycle_id: d.cycleId,
-            day_number: d.dayNumber,
-            day_type: d.dayType ?? 'workout',
-            routine_id: dayRoutineId(d.routineId),
-            weight_adjustment: d.weightAdjustment ?? 0,
-            rep_modifier: d.repModifier ?? 0,
-            rest_override: d.restOverride,
-            rest_type: d.restType,
-            notes: d.notes,
-          })),
-        );
+      const cycleRows = liveCycles.map((c) => ({
+        id: c.id,
+        user_id: userId,
+        local_profile_id: localProfileId,
+        name: c.name,
+        // Absent/null description, duration and status pass through as NULL:
+        // the merge keeps the stored value, and its INSERT applies defaults.
+        description: c.description ?? null,
+        duration_weeks: c.durationWeeks ?? null,
+        workout_days: c.workoutDays ?? 0,
+        rest_days: c.restDays ?? 0,
+        current_week: c.currentWeek ?? 1,
+        status: c.status ?? null,
+        started_at: c.startedAt,
+        last_used_at: c.lastUsedAt,
+        progression_settings: safeJsonParse(c.progressionSettings),
+        deload_settings: safeJsonParse(c.deloadSettings),
+        template_id: c.templateId ?? null,
+        // LWW compares this. Older builds may omit it: LWW falls back to
+        // now() as before; without LWW the merge inserts now().
+        updated_at: c.updatedAt ?? (SYNC_LWW_ENABLED ? new Date().toISOString() : null),
+        base_updated_at: c.baseUpdatedAt ?? null,
+        days: c.days.map((d) => ({
+          // No id: the conflict target is (cycle_id, day_number). A client
+          // reusing an id across day rows would otherwise hit cycle_days_pkey.
+          cycle_id: d.cycleId,
+          day_number: d.dayNumber,
+          day_type: d.dayType ?? 'workout',
+          routine_id: dayRoutineId(d.routineId),
+          weight_adjustment: d.weightAdjustment ?? 0,
+          rep_modifier: d.repModifier ?? 0,
+          rest_override: d.restOverride,
+          rest_type: d.restType,
+          notes: d.notes,
+        })),
+      }));
       if (clearedDeletedRefs.size > 0 || clearedMissingRefs.size > 0) {
         console.warn(
           `cycle_days routine references set to NULL: ${clearedDeletedRefs.size} deleted ` +
@@ -2809,25 +2769,28 @@ async function mobileSyncPushHandler(
         );
       }
 
-      if (dayRows.length > 0) {
-        const { error: dayErr } = await supabase
-          .from('cycle_days')
-          .upsert(dayRows, { onConflict: 'cycle_id,day_number' });
-        if (dayErr) throw new Error(`cycle_days upsert failed: ${dayErr.message}`);
+      // PR 22: the merge is transactional, so an RPC error rolls its own
+      // writes back but leaves this push's earlier writes in place — a
+      // partial write. Answer 503 partial_write_retry so the device retries.
+      const { data: mergeData, error: mergeErr } = await supabase.rpc(
+        'merge_training_cycles_from_push',
+        { p_user_id: userId, p_cycles: cycleRows, p_use_lww: SYNC_LWW_ENABLED },
+      );
+      if (mergeErr) throw new PartialWriteRetryError('training_cycles merge RPC', mergeErr);
+      const acceptedIds = new Set<string>();
+      for (const row of (Array.isArray(mergeData) ? mergeData : []) as CycleMergeRow[]) {
+        if (row.accepted) {
+          acceptedIds.add(row.id);
+          // A stale structure was not applied: the device must pull the
+          // portal version before it may use this version as its base.
+          if (row.structure_applied && row.server_updated_at) {
+            cycleVersions[row.id] = row.server_updated_at;
+          }
+        } else {
+          rejections.cycles.push({ id: row.id, serverUpdatedAt: row.server_updated_at });
+        }
       }
-
-      // Remove orphan days: day_numbers beyond the cycle's current day count
-      for (const cycle of liveCycles.filter(c => childAllowed(acceptedCycleIds, c.id))) {
-        const maxDayNumber = cycle.days.length > 0
-          ? Math.max(...cycle.days.map((d) => d.dayNumber))
-          : -1;
-        const { error: orphanErr } = await supabase
-          .from('cycle_days')
-          .delete()
-          .eq('cycle_id', cycle.id)
-          .gt('day_number', maxDayNumber);
-        if (orphanErr) console.warn(`cycle_days orphan cleanup warning for ${cycle.id}:`, orphanErr.message);
-      }
+      cyclesUpserted = acceptedIds.size;
 
       // R-4 race guard: undo a re-create of a cycle deleted meanwhile.
       const racedCycleIds = await reDeleteRacedTombstones(
@@ -2838,6 +2801,7 @@ async function mobileSyncPushHandler(
       if (racedCycleIds.length > 0) {
         skippedDeleted.cycles.push(...racedCycleIds);
         cyclesUpserted = Math.max(0, cyclesUpserted - racedCycleIds.length);
+        for (const racedId of racedCycleIds) delete cycleVersions[racedId];
       }
     }
 
@@ -3249,6 +3213,11 @@ async function mobileSyncPushHandler(
         // server (tombstoned) and therefore not re-created. New response key;
         // older builds ignore it.
         skippedDeleted,
+        // KD-6: {cycleId: stored updated_at} for cycles whose pushed
+        // structure was applied. A cycle missing here (stale structure,
+        // LWW-rejected, deleted) must be pulled before its base advances.
+        // New response key; older builds ignore it.
+        cycleVersions,
         ...(preferenceEnvelope.present ? { profilePreferencesAccepted: true } : {}),
         canonicalProfilePreferenceSections,
         profilePreferenceRejections,

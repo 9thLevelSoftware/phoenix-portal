@@ -2433,6 +2433,47 @@ Deno.test({
 
 const OVERFLOW_SESSION_ID = "00000000-0000-4000-8000-0000000000aa";
 
+// KD-6 (PR 18): each pulled cycle carries the server updated_at verbatim.
+// PR 71 stores it and sends it back as the push's baseUpdatedAt.
+Deno.test("cycles: each cycle DTO carries the server updatedAt verbatim", async () => {
+  const cycleId = "00000000-0000-4000-8000-000000000180";
+  const storedUpdatedAt = "2026-07-16T02:00:00.123456+00:00";
+  const harness = makeHarness(undefined, {
+    rpcImpl: (name) => {
+      if (name !== "get_cycles_excluding_ids") return undefined;
+      return {
+        data: [{
+          id: cycleId,
+          user_id: VALID_USER_ID,
+          name: "Portal cycle",
+          description: null,
+          duration_weeks: 8,
+          workout_days: 3,
+          rest_days: 4,
+          current_week: 1,
+          status: "draft",
+          started_at: null,
+          last_used_at: null,
+          progression_settings: null,
+          deload_settings: null,
+          template_id: null,
+          updated_at: storedUpdatedAt,
+        }],
+        error: null,
+      };
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const cycles = body.cycles as Array<Record<string, unknown>>;
+  assertEquals(cycles.length, 1);
+  assertEquals(cycles[0].id, cycleId);
+  assertEquals(cycles[0].updatedAt, storedUpdatedAt);
+  assertEquals(cycles[0].durationWeeks, 8);
+});
+
 function sessionRpcRow(): Record<string, unknown> {
   return {
     id: OVERFLOW_SESSION_ID,

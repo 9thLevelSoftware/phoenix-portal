@@ -1076,6 +1076,10 @@ async function mobileSyncPullHandler(
           progressionSettings: c.progression_settings != null ? JSON.stringify(c.progression_settings) : null,
           deloadSettings: c.deload_settings != null ? JSON.stringify(c.deload_settings) : null,
           templateId: c.template_id ?? null,
+          // KD-6: the server updated_at, verbatim (full precision ISO
+          // string). The device sends it back as baseUpdatedAt on push.
+          // New key; older builds ignore it.
+          updatedAt: c.updated_at != null ? String(c.updated_at) : null,
           days: cDays.map((d) => ({
             id: d.id,
             cycleId: d.cycle_id,
