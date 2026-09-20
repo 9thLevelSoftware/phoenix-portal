@@ -1,14 +1,50 @@
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
+import { resolvePaddleCancelRequest } from "../_shared/paddleSubscriptionUpdate.ts";
 
-// Service-role client for DB queries (bypasses RLS)
-const supabaseAdmin = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-);
+/** Anything with `get(key)`, e.g. `Deno.env`. */
+export interface EnvReader {
+  get(key: string): string | undefined;
+}
 
-Deno.serve(async (req) => {
+export interface PaddleCancelSubscriptionHandlerDependencies {
+  /** User-scoped client used only for `auth.getUser()`. */
+  createAuthClient(authorization: string): Pick<SupabaseClient, "auth">;
+  /** Service-role client for DB queries (bypasses RLS). */
+  createAdminClient(): SupabaseClient;
+  /** Paddle API fetch. */
+  fetch: typeof fetch;
+  env: EnvReader;
+  now(): Date;
+}
+
+function defaultPaddleCancelSubscriptionHandlerDependencies(): PaddleCancelSubscriptionHandlerDependencies {
+  return {
+    createAuthClient(authorization: string) {
+      return createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: authorization } } },
+      );
+    },
+    createAdminClient() {
+      return createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+    },
+    fetch: (input, init) => fetch(input, init),
+    env: Deno.env,
+    now: () => new Date(),
+  };
+}
+
+async function paddleCancelSubscriptionHandler(
+  req: Request,
+  deps: PaddleCancelSubscriptionHandlerDependencies,
+): Promise<Response> {
+  const supabaseAdmin = deps.createAdminClient();
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -32,11 +68,7 @@ Deno.serve(async (req) => {
         { status: 401, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
+    const supabase = deps.createAuthClient(authHeader);
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -79,19 +111,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!["active", "trialing"].includes(sub.status)) {
+    // active/trialing: cancel at period end. past_due (keeps access during
+    // Paddle's retry window): cancel immediately. See resolvePaddleCancelRequest.
+    const cancelRequest = resolvePaddleCancelRequest(sub.status);
+    if (!cancelRequest.allowed) {
       return new Response(
         JSON.stringify({ error: "No active subscription found" }),
         { status: 400, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
 
-    // Call Paddle API to cancel the subscription at period end
-    const paddleEnv = Deno.env.get("PADDLE_ENVIRONMENT") ?? "production";
+    // Call Paddle API to cancel the subscription
+    const paddleEnv = deps.env.get("PADDLE_ENVIRONMENT") ?? "production";
     const baseUrl = paddleEnv === "sandbox"
       ? "https://sandbox-api.paddle.com"
       : "https://api.paddle.com";
-    const apiKey = Deno.env.get("PADDLE_API_KEY");
+    const apiKey = deps.env.get("PADDLE_API_KEY");
 
     if (!apiKey) {
       console.error("PADDLE_API_KEY is not set");
@@ -101,7 +136,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const paddleResponse = await fetch(
+    const paddleResponse = await deps.fetch(
       `${baseUrl}/subscriptions/${sub.paddle_subscription_id}/cancel`,
       {
         method: "POST",
@@ -109,7 +144,7 @@ Deno.serve(async (req) => {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ effective_from: "next_billing_period" }),
+        body: JSON.stringify({ effective_from: cancelRequest.effectiveFrom }),
       },
     );
 
@@ -125,14 +160,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Persist the scheduled cancellation locally so the UI reflects it before
-    // the webhook arrives (and even if the webhook is delayed/failing). The
-    // webhook still reconciles the authoritative state later.
+    // Persist the cancellation (scheduled, or immediate for past_due) locally
+    // so the UI reflects it before the webhook arrives (and even if the
+    // webhook is delayed/failing). The webhook still reconciles the
+    // authoritative state later.
     const { error: updateError } = await supabaseAdmin
       .from("subscriptions")
       .update({
-        cancel_at_period_end: true,
-        updated_at: new Date().toISOString(),
+        ...cancelRequest.localPatch,
+        updated_at: deps.now().toISOString(),
       })
       .eq("user_id", user.id);
 
@@ -146,7 +182,11 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, cancelAtPeriodEnd: true }),
+      JSON.stringify({
+        success: true,
+        cancelAtPeriodEnd: cancelRequest.effectiveFrom === "next_billing_period",
+        canceledImmediately: cancelRequest.effectiveFrom === "immediately",
+      }),
       { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
     );
   } catch (err) {
@@ -156,4 +196,14 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
     );
   }
-});
+}
+
+export function createPaddleCancelSubscriptionHandler(
+  deps: PaddleCancelSubscriptionHandlerDependencies = defaultPaddleCancelSubscriptionHandlerDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => paddleCancelSubscriptionHandler(req, deps);
+}
+
+if (import.meta.main) {
+  Deno.serve(createPaddleCancelSubscriptionHandler());
+}

@@ -225,7 +225,7 @@ VALUES
         '77777777-7777-4777-8777-777777777777'::uuid,
         'EMBER',
         'active',
-        now() - INTERVAL '1 day'
+        now() - INTERVAL '3 days'
     )
 ON CONFLICT (user_id) DO UPDATE
 SET tier = EXCLUDED.tier,
@@ -258,7 +258,7 @@ SELECT pg_temp.assert_exception(
         )
     $sql$,
     'P0001',
-    'EMBER_REQUIRED',
+    'FLAME_REQUIRED',
     'FREE JWT cannot import_shared_routine'
 );
 
@@ -269,7 +269,7 @@ SELECT pg_temp.assert_exception(
         )
     $sql$,
     'P0001',
-    'EMBER_REQUIRED',
+    'FLAME_REQUIRED',
     'FREE JWT cannot import_shared_cycle'
 );
 
