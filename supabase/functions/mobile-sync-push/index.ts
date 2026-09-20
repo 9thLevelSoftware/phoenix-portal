@@ -2839,6 +2839,11 @@ async function mobileSyncPushHandler(
     let externalActivityIds: string[] = [];
     let externalActivityKeys: ExternalActivityAckDto[] = [];
     if (externalActivities.length > 0) {
+      // NF-10: synced_at is the pull's delta cursor (`synced_at > lastSync`,
+      // where lastSync is a server syncTime), so it must be server time.
+      // The client's `syncedAt` is ignored: a device clock or an older
+      // local timestamp would hide the activity from other devices' pulls.
+      const serverSyncedAt = new Date(dependencies.now()).toISOString();
       const activityRows = activitiesWithIds.map((a) => ({
         id: a.id,
         user_id: userId,
@@ -2856,7 +2861,7 @@ async function mobileSyncPushHandler(
         raw_data: a.rawData
           ? redactTokenShapedJson(safeJsonParse(a.rawData))
           : null,
-        synced_at: a.syncedAt ?? new Date().toISOString(),
+        synced_at: serverSyncedAt,
         updated_at: new Date().toISOString(),
       }));
 
