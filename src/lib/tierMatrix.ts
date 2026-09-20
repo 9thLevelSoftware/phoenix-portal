@@ -4,8 +4,11 @@ type PaidTier = Exclude<SubscriptionTier, "FREE">;
 
 /**
  * Minimum subscription tier per portal feature. `src/app/routes/index.tsx`
- * reads every route gate from this map, and
- * `src/lib/__tests__/pricing-tier-matrix.test.ts` checks the two agree.
+ * reads every route gate from this map, the INFERNO biomechanics gates inside
+ * Analytics (`analytics/PerformanceTab.tsx`,
+ * `analytics/MobilePerformanceTab.tsx`) and the `/biomechanics` page
+ * (`Biomechanics.tsx`) read `biomechanics` from it, and
+ * `src/lib/__tests__/pricing-tier-matrix.test.ts` checks they all agree.
  *
  * The route gates are UX only. What the server enforces:
  *   - EMBER: cloud sync (mobile-sync-push / mobile-sync-pull) and workout,
@@ -15,9 +18,10 @@ type PaidTier = Exclude<SubscriptionTier, "FREE">;
  *     20260920000900_flame_write_policies.sql), the import RPCs, OAuth start
  *     (initiate-oauth) and the integration sync / rankings Edge Functions.
  *     Routines and cycles pushed from mobile stay EMBER (service-role push).
- *   - Analytics, compare, session replay and biomechanics (INFERNO) are gated
- *     in the browser only; they are computed from data the user can already
- *     read.
+ *   - Analytics, compare, session replay and biomechanics (INFERNO — force
+ *     curves, VBT, ROM, SRA, form) are gated in the browser only; they are
+ *     computed from data the user can already read. Session replay without
+ *     force curves stays FLAME.
  */
 export const FEATURE_MIN_TIER = {
 	dashboard: "EMBER",
