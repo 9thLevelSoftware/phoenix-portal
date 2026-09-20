@@ -162,6 +162,7 @@ describe("KD-24 route × TIER_PRICING matrix", () => {
 		);
 		expect(sessionReplay).not.toMatch(/requiredTier="/);
 		expect(FEATURE_MIN_TIER.sessionReplay).toBe("FLAME");
+		expect(sessionReplay).toMatch(/requiredTier="FLAME"/);
 		// Force curves / VBT / ROM / SRA are INFERNO; session replay without
 		// them stays FLAME.
 		expect(performanceTab).toMatch(

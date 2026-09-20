@@ -13,6 +13,7 @@
 -- subscription-tier section below asserts that A cannot raise its own tier —
 -- so tier_matrix.test.sql section 6 owns the INFERNO positive control and
 -- this file asserts the FLAME denial plus the usual B / C isolation.
+-- trust_plane.test.sql (EMBER) and tier_matrix.test.sql (FLAME).
 --
 -- Coverage guard: every public table must have RLS enabled, and every public
 -- relation with a user_id column must be either in rls_cases or on the
@@ -504,6 +505,8 @@ INSERT INTO rls_cases VALUES
     ('rep_summaries',             'id', 'a1a1a1a1-0004-4000-8000-00000000000a', 1, NULL, NULL, $s$rep_number = 99$s$),
     ('rep_telemetry',             'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 0, NULL, NULL, $s$timestamp_ms = 99$s$),
     ('telemetry_points',          'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 0, NULL, NULL, $s$timestamp_ms = 99$s$),
+    ('rep_telemetry',             'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 1, NULL, NULL, $s$timestamp_ms = 99$s$),
+    ('telemetry_points',          'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 1, NULL, NULL, $s$timestamp_ms = 99$s$),
     ('routines',                  'id', 'a1a1a1a1-0006-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
     ('routine_exercises',         'id', 'a1a1a1a1-0007-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
     ('training_cycles',           'id', 'a1a1a1a1-0008-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
@@ -519,6 +522,7 @@ INSERT INTO rls_cases VALUES
     ('earned_badges',             'id', 'a1a1a1a1-0018-4000-8000-00000000000a', 1, NULL, 1,    $s$badge_name = 'rls-probe'$s$),
     ('exercise_catalog',          'id', 'rls-custom-exercise-a',                1, 1,    1,    $s$display_name = 'rls-probe'$s$),
     ('exercise_signatures',       'id', 'a1a1a1a1-0019-4000-8000-00000000000a', 0, NULL, NULL, $s$exercise_id = 'rls-probe'$s$),
+    ('exercise_signatures',       'id', 'a1a1a1a1-0019-4000-8000-00000000000a', 1, NULL, NULL, $s$exercise_id = 'rls-probe'$s$),
     ('external_activities',       'id', 'a1a1a1a1-0020-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
     ('gamification_stats',        'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$pr_count = 99$s$),
     ('goal_snapshots',            'id', 'a1a1a1a1-0021-4000-8000-00000000000a', 1, NULL, NULL, $s$progress_pct = 99$s$),
@@ -534,6 +538,7 @@ INSERT INTO rls_cases VALUES
     ('rpg_attributes',            'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$level = 99$s$),
     ('saved_community_items',     'id', 'a1a1a1a1-0026-4000-8000-00000000000a', 1, NULL, 1,    $s$item_type = 'cycle'$s$),
     ('session_phase_statistics',  'id', 'a1a1a1a1-0028-4000-8000-00000000000a', 0, NULL, NULL, $s$concentric_kg_avg = 99$s$),
+    ('session_phase_statistics',  'id', 'a1a1a1a1-0028-4000-8000-00000000000a', 1, NULL, NULL, $s$concentric_kg_avg = 99$s$),
     ('subscription_events',       'id', 'a1a1a1a1-0029-4000-8000-00000000000a', NULL, NULL, NULL, $s$operation = 'UPDATE'$s$),
     ('sync_queue',                'id', 'a1a1a1a1-0030-4000-8000-00000000000a', 1, NULL, NULL, $s$provider = 'rls-probe'$s$),
     ('telemetry_analysis',        'id', 'a1a1a1a1-0031-4000-8000-00000000000a', 1, NULL, NULL, $s$result = '{}'::jsonb$s$),
@@ -555,6 +560,9 @@ INSERT INTO rls_inferno_gated VALUES
     ('vbt_assessments'),
     ('session_phase_statistics'),
     ('exercise_signatures');
+
+    ('vbt_assessments',           'id', 'a1a1a1a1-0033-4000-8000-00000000000a', 1, NULL, NULL, $s$estimated_1rm_kg = 99$s$),
+    ('wearable_daily_summaries',  'id', 'a1a1a1a1-0034-4000-8000-00000000000a', 1, NULL, NULL, $s$provider = 'rls-probe'$s$);
 
 -- Public relations with a user_id column that are readable by design and
 -- therefore not isolation cases:
