@@ -11,6 +11,8 @@
 --   authenticated: import_shared_routine, import_shared_cycle,
 --                  workout_current_streak, user_has_min_tier,
 --                  user_subscription_tier
+--                  user_subscription_tier, request_account_deletion
+--                  (added by 20260920003200)
 --   anon:          none. Every policy that calls a tier helper is
 --                  INSERT/UPDATE/DELETE with an auth.uid() ownership
 --                  conjunct; asserted below. (The migration and the prod
@@ -49,6 +51,7 @@ SELECT set_eq(
         VALUES
             ('import_shared_cycle(uuid, text)'::text, 'authenticated'::text),
             ('import_shared_routine(uuid, text)', 'authenticated'),
+            ('request_account_deletion()', 'authenticated'),
             ('user_has_min_tier(text)', 'authenticated'),
             ('user_subscription_tier()', 'authenticated'),
             ('workout_current_streak(uuid)', 'authenticated')
