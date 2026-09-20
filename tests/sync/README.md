@@ -123,8 +123,10 @@ with the service client's `auth.admin.createUser` API and confirms their email
 without invoking public sign-up. Each user receives one active EMBER
 subscription with a future period end before the anon client signs in for the
 real user session. Tests that intentionally exercise the absent/FREE gate pass
-`{ seedSubscription: false }`; this exception is used only by the validation
-gate tests and the training-cycle test that inserts its own EMBER row.
+`{ seedSubscription: false }`; this exception is used only by the harness
+live test and the training-cycle test that inserts its own EMBER row. (The
+push/pull subscription deny paths are pinned by the Deno handler tests under
+`supabase/functions/`, not by live sync tests.)
 
 The live workflow enables sanitized failure labels for non-OK push/pull
 responses and runs an always-run cleanup after the live test step. Cleanup
@@ -212,10 +214,12 @@ console.log('Stored session:', stored);
 ### 4. Check for transform issues
 
 ```typescript
-// Compare raw DB value to transformed display
+// Loads are per cable end to end; the portal never doubles them.
+// A total is derived only by src/lib/units/loadDisplay.ts when the
+// exercise's cable count is known.
 const rawWeight = 50; // Per-cable
-const displayWeight = rawWeight * 2; // WEIGHT_MULTIPLIER
 expect(pulledSet.weightKg).toBe(rawWeight); // DB stores per-cable
+expect(toLoadDisplay(rawWeight, null)).toEqual({ perCableKg: 50, totalKg: null });
 ```
 
 ### 5. Validate DTO structure
@@ -237,7 +241,7 @@ These values MUST match between mobile and portal:
 
 | Transform           | Mobile                | Portal              | Notes                              |
 | ------------------- | --------------------- | ------------------- | ---------------------------------- |
-| Weight multiplier   | x1 (stores per-cable) | x2 (displays total) | `WEIGHT_MULTIPLIER = 2`            |
+| Weight display      | per cable             | per cable first; total = per cable x cable_count only when known | `src/lib/units/loadDisplay.ts` |
 | Velocity: EXPLOSIVE | >= 1.0 m/s            | >= 1.0 m/s          |                                    |
 | Velocity: FAST      | >= 0.75 m/s           | >= 0.75 m/s         |                                    |
 | Velocity: MODERATE  | >= 0.5 m/s            | >= 0.5 m/s          |                                    |

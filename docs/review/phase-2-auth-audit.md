@@ -1,5 +1,13 @@
 # Phase 2.2 -- Edge Function Authentication Audit
 
+> **HISTORICAL — 2026-03-18, not HEAD.** This is a dated snapshot of
+> `beta-readiness-review` covering 18 Edge Functions. Do not read its
+> per-function protections as describing this tree. Re-derive current
+> behaviour from the code, `supabase/config.toml`, `supabase/migrations/`, and
+> CI. Which functions skip the gateway JWT check, and what authenticates them
+> instead, is stated in a comment above each `verify_jwt = false` block in
+> `supabase/config.toml`.
+
 **Date:** 2026-03-18
 **Auditor:** Security Engineer (automated)
 **Scope:** All 18 Supabase Edge Functions in `supabase/functions/`

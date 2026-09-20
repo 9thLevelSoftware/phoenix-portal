@@ -305,6 +305,45 @@ describe("BodyTab detailed muscle map", () => {
 		expect(screen.getByText("Custom Press")).toBeInTheDocument();
 		expect(screen.getByText(/estimated mapping/i)).toBeInTheDocument();
 	});
+
+	const baseProps = {
+		muscleGroupData: [{ name: "Chest", value: 100, color: "#FF6B35" }],
+		muscleDonutOption: { series: [] },
+		muscleRadarData: { Chest: 100 },
+		weeklyVolume: { Chest: 2 },
+		totalSessions: 1,
+		muscleRecoveries: [],
+		recommendations: [],
+		exercisesByMuscle: {},
+		userId: "user-1",
+		unit: "kg" as const,
+	};
+
+	it("renders the rest of the tab while only the heatmap waits for the body map", () => {
+		renderWithProviders(<BodyTab {...baseProps} bodyMuscleModel={null} />);
+
+		expect(
+			screen.getByRole("status", { name: /loading body map/i }),
+		).toBeInTheDocument();
+		expect(screen.queryByTestId("body-muscle-heatmap")).not.toBeInTheDocument();
+		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+		// Non-heatmap sections do not depend on the map and still render.
+		expect(screen.getByText("Ranked muscle contributions")).toBeInTheDocument();
+	});
+
+	it("shows a scoped alert when the body map fails to load", () => {
+		renderWithProviders(
+			<BodyTab {...baseProps} bodyMuscleModel={null} bodyMuscleMapFailed />,
+		);
+
+		expect(screen.getByRole("alert")).toHaveTextContent(
+			/couldn't load the body map/i,
+		);
+		expect(
+			screen.queryByRole("status", { name: /loading body map/i }),
+		).not.toBeInTheDocument();
+		expect(screen.getByText("Ranked muscle contributions")).toBeInTheDocument();
+	});
 });
 
 describe("ReplayIntelligencePanel", () => {
@@ -459,9 +498,25 @@ describe("ProgressionWorkbench", () => {
 		expect(screen.getByText("Progression Workbench")).toBeInTheDocument();
 		expect(screen.getAllByText("Squat").length).toBeGreaterThanOrEqual(1);
 		expect(screen.getByText("Add 2.5 kg")).toBeInTheDocument();
+		// KD-8: the headline 1RM is a per-cable load and must say so. Nothing
+		// else guards this label (the progress e2e does not reach it).
+		expect(screen.getByText("162 kg per cable")).toBeInTheDocument();
+		expect(screen.getByText("current 1RM")).toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: /bench press/i }));
 		expect(onSelect).toHaveBeenCalledWith("Bench Press");
+	});
+
+	it("labels the current 1RM per cable in the display unit", () => {
+		renderWithProviders(
+			<ProgressionWorkbench
+				model={progressionModel}
+				unit="lbs"
+				onSelectExercise={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByText("162 lbs per cable")).toBeInTheDocument();
 	});
 
 	it("renders no-history state", () => {
