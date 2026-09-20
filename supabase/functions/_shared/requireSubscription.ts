@@ -1,5 +1,5 @@
-import { type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
-import { isSubscriptionEntitled, type SubscriptionStatus } from './subscriptionEntitlement.ts';
+import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2';
+import { effectiveSubscriptionTier } from './subscriptionEntitlement.ts';
 
 /**
  * Subscription tier hierarchy.
@@ -14,8 +14,8 @@ const TIER_LEVEL: Record<string, number> = {
 
 export type SubscriptionTier = 'FREE' | 'EMBER' | 'FLAME' | 'INFERNO';
 
-const KNOWN_TIERS = new Set<SubscriptionTier>(['FREE', 'EMBER', 'FLAME', 'INFERNO']);
-const KNOWN_STATUSES = new Set<SubscriptionStatus>([
+const KNOWN_TIERS = new Set<string>(['FREE', 'EMBER', 'FLAME', 'INFERNO']);
+const KNOWN_STATUSES = new Set<string>([
   'active',
   'past_due',
   'canceled',
@@ -44,9 +44,11 @@ function configurationError(corsHeaders: Record<string, string>): Response {
 /**
  * Check whether a user meets the minimum subscription tier.
  *
- * Returns `{ allowed: true, tier }` if the user's active/trialing subscription
+ * Returns `{ allowed: true, tier }` if the user's effective tier (shared
+ * entitlement predicate, see subscriptionEntitlement.ts)
  * is at or above `minimumTier`, or `{ allowed: false, tier, response }` with a
- * ready-made 402 Response if not.
+ * ready-made 402 Response if not. A failed lookup or a row with an unknown
+ * tier/status gets a retryable 503 instead.
  *
  * Usage:
  * ```ts
@@ -59,13 +61,14 @@ export async function requireSubscription(
   userId: string,
   minimumTier: SubscriptionTier,
   corsHeaders: Record<string, string>,
+  now: Date = new Date(),
 ): Promise<
   | { allowed: true; tier: SubscriptionTier }
   | { allowed: false; tier: SubscriptionTier; response: Response }
 > {
   const { data: subscription, error } = await supabase
     .from('subscriptions')
-    .select('tier, status, current_period_end')
+    .select('tier, status, current_period_end, cancel_at_period_end')
     .eq('user_id', userId)
     .maybeSingle();
 
@@ -79,16 +82,18 @@ export async function requireSubscription(
     return { allowed: false, tier: 'FREE', response: configurationError(corsHeaders) };
   }
 
-  // fix(F329): Validate DB-stored tier/status against known sets before
-  // computing entitlement. Schema drift (legacy PHOENIX/ELITE tiers, a new
-  // Paddle status, etc.) must not silently map to level 0 or leak an invalid
-  // typed value through the allowed branch.
+  // The effective tier comes from the shared entitlement predicate (parity
+  // with SQL subscription_tier_for and the SPA; fixture:
+  // tests/fixtures/entitlement-cases.json).
+  //
+  // fix(F329) / design: an unknown tier or status (schema drift, legacy
+  // PHOENIX/ELITE, a new Paddle status) is corrupt data, not a billing state:
+  // fail closed with a retryable 503 and log it, rather than showing an
+  // upgrade prompt. (SQL subscription_tier_for and the SPA map unknown values
+  // to FREE instead; both deny access.)
   const rawTierValue = subscription?.tier ?? 'FREE';
   const rawStatusValue = subscription?.status ?? 'none';
-  if (
-    !KNOWN_TIERS.has(rawTierValue as SubscriptionTier) ||
-    !KNOWN_STATUSES.has(rawStatusValue as SubscriptionStatus)
-  ) {
+  if (!KNOWN_TIERS.has(rawTierValue) || !KNOWN_STATUSES.has(rawStatusValue)) {
     console.error(
       '[requireSubscription] unknown tier/status in subscriptions row:',
       { tier: rawTierValue, status: rawStatusValue },
@@ -96,10 +101,12 @@ export async function requireSubscription(
     return { allowed: false, tier: 'FREE', response: configurationError(corsHeaders) };
   }
 
-  const rawTier = rawTierValue as SubscriptionTier;
-  const status = rawStatusValue as SubscriptionStatus;
-  const entitled = isSubscriptionEntitled(status, subscription?.current_period_end ?? null);
-  const tier: SubscriptionTier = entitled ? rawTier : 'FREE';
+  const tier = effectiveSubscriptionTier(
+    rawTierValue,
+    rawStatusValue,
+    subscription?.current_period_end ?? null,
+    { cancelAtPeriodEnd: Boolean(subscription?.cancel_at_period_end), now },
+  );
   const userLevel = TIER_LEVEL[tier] ?? 0;
   const requiredLevel = TIER_LEVEL[minimumTier] ?? 0;
 

@@ -409,6 +409,8 @@ function permissiveQuery(
   table: string,
   onWrite: (method: string, payload: unknown) => void,
   terminalResult: { data: unknown; error: unknown; count?: number } = {
+  onWrite: (method: string, args: unknown[]) => void,
+  terminalResult: TerminalResult = {
     data: [],
     error: null,
     count: 0,
@@ -433,11 +435,16 @@ function permissiveQuery(
     "delete",
     "returns",
   ];
+  const operations: QueryOperation[] = [];
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
       if (method === "neq") ownershipProbe = true;
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method, args[0]);
+      operations.push({ name: method, args });
+      if (method === "neq") ownershipProbe = true;
+      if (["insert", "upsert", "update", "delete"].includes(method)) {
+        onWrite(method, args);
       }
       return query;
     };
@@ -461,10 +468,23 @@ function permissiveQuery(
     reject?: (reason: unknown) => unknown,
   ) =>
     Promise.resolve(
-      ownershipProbe ? { data: [], error: null, count: 0 } : terminalResult,
+      ownershipProbe
+        ? { data: [], error: null, count: 0 }
+        : typeof terminalResult === "function"
+        ? terminalResult(operations)
+        : terminalResult,
     ).then(resolve, reject);
   return query;
 }
+
+interface QueryOperation {
+  name: string;
+  args: unknown[];
+}
+
+type TerminalResult =
+  | { data: unknown; error: unknown; count?: number }
+  | ((operations: QueryOperation[]) => { data: unknown; error: unknown });
 
 interface PushHarness {
   handler: (request: Request) => Promise<Response>;
@@ -475,6 +495,7 @@ interface PushHarness {
   adminFromCalls: string[];
   adminWriteCalls: Array<{ table: string; method: string }>;
   adminWritePayloads: Array<{ table: string; method: string; payload: unknown }>;
+  adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
   loggerCalls: unknown[][];
   operationEvents: string[];
   channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
@@ -488,6 +509,11 @@ function makeHarness(
     rpcBehavior?: RpcBehavior;
     /** Result of the get_personal_record_identity_candidates probe RPC. */
     personalRecordsResult?: { data: unknown; error: unknown };
+    /**
+     * Terminal result for reads/writes on these tables (e.g. probes); a
+     * function receives the chained operations (select/in/... with args).
+     */
+    tableResults?: Record<string, TerminalResult>;
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -500,6 +526,8 @@ function makeHarness(
   const adminWritePayloads: Array<
     { table: string; method: string; payload: unknown }
   > = [];
+  const adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }> =
+    [];
   const loggerCalls: unknown[][] = [];
   const operationEvents: string[] = [];
   const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
@@ -514,6 +542,13 @@ function makeHarness(
         adminWritePayloads.push({ table, method, payload });
         operationEvents.push(`write:${table}:${method}`);
       });
+      return permissiveQuery(table, (method, args) => {
+        adminWriteCalls.push({ table, method });
+        adminWriteArgs.push({ table, method, args });
+        operationEvents.push(`write:${table}:${method}`);
+      }, table === "personal_records"
+        ? options.personalRecordsResult
+        : options.tableResults?.[table]);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -605,6 +640,7 @@ function makeHarness(
     adminFromCalls,
     adminWriteCalls,
     adminWritePayloads,
+    adminWriteArgs,
     loggerCalls,
     operationEvents,
     channelCalls,
@@ -3465,6 +3501,455 @@ Deno.test({
       await fixture.admin.from("personal_records")
         .delete()
         .in("user_id", [fixture.ownerId, fixture.otherUserId]);
+// ---------------------------------------------------------------------------
+// PR 20 (F-009): replace_session_children keeps stored telemetry when a
+// session is re-pushed without it. Real SQL against the local stack.
+// Key rule: tier 1 = stable exercise row id + set_number; tier 2 (only for
+// exercise ids absent on the other side) = identity + order_index +
+// set_number; both unique on old and new side.
+// Current mobile wire shape (PortalSyncAdapter.kt): one set per exercise with
+// set_number 1, exercise id = stable mobile session id, fresh set ids per push.
+// ---------------------------------------------------------------------------
+
+interface ChildPushExercise {
+  /** Exercise row id; stable across pushes on current mobile. */
+  id: string;
+  catalogId: string | null;
+  name: string;
+  orderIndex: number;
+  /** One entry per set: set_number and how many telemetry samples to send. */
+  sets: Array<{ setNumber: number; telemetry: number }>;
+}
+
+interface ChildPushResult {
+  /** setIds[exerciseIndex][setIndex] */
+  setIds: string[][];
+  preserved: number;
+}
+
+async function createTelemetrySession(
+  fixture: LocalIntegrationFixture,
+): Promise<string> {
+  const sessionId = crypto.randomUUID();
+  const inserted = await fixture.admin.from("workout_sessions").insert({
+    id: sessionId,
+    user_id: fixture.ownerId,
+    started_at: new Date().toISOString(),
+  });
+  if (inserted.error) throw new Error("session fixture creation failed");
+  return sessionId;
+}
+
+async function pushSessionChildren(
+  fixture: LocalIntegrationFixture,
+  sessionId: string,
+  exercises: ChildPushExercise[],
+): Promise<ChildPushResult> {
+  const exerciseRows: Record<string, unknown>[] = [];
+  const setRows: Record<string, unknown>[] = [];
+  const telemetryRows: Record<string, unknown>[] = [];
+  const setIds: string[][] = [];
+  for (const exercise of exercises) {
+    exerciseRows.push({
+      id: exercise.id,
+      session_id: sessionId,
+      user_id: fixture.ownerId,
+      name: exercise.name,
+      exercise_id: exercise.catalogId,
+      muscle_group: "General",
+      order_index: exercise.orderIndex,
+    });
+    const ids: string[] = [];
+    for (const set of exercise.sets) {
+      const setId = crypto.randomUUID();
+      ids.push(setId);
+      setRows.push({
+        id: setId,
+        exercise_id: exercise.id,
+        user_id: fixture.ownerId,
+        set_number: set.setNumber,
+        target_reps: 10,
+        actual_reps: 10,
+        weight_kg: 20,
+        rpe: null,
+        is_pr: false,
+        notes: null,
+        workout_mode: "OLD_SCHOOL",
+      });
+      for (let i = 0; i < set.telemetry; i++) {
+        telemetryRows.push({
+          id: crypto.randomUUID(),
+          set_id: setId,
+          user_id: fixture.ownerId,
+          timestamp_ms: i * 10,
+          force_n: 100 + i,
+          velocity_mps: 0.5,
+          position_mm: 250,
+          cable: "A",
+        });
+      }
+    }
+    setIds.push(ids);
+  }
+  const result = await fixture.admin.rpc("replace_session_children", {
+    p_user_id: fixture.ownerId,
+    p_session_ids: [sessionId],
+    p_exercises: exerciseRows,
+    p_sets: setRows,
+    p_rep_summaries: [],
+    p_rep_telemetry: telemetryRows,
+  });
+  if (result.error) {
+    throw new Error(`replace_session_children failed: ${result.error.message}`);
+  }
+  const data = result.data as Record<string, unknown>;
+  return { setIds, preserved: Number(data.rep_telemetry_preserved) };
+}
+
+/** Sorted telemetry ids per set id, for the given set ids. */
+async function telemetryIdsBySet(
+  fixture: LocalIntegrationFixture,
+  setIds: string[],
+): Promise<Record<string, string[]>> {
+  const rows = await fixture.admin.from("rep_telemetry")
+    .select("id,set_id")
+    .in("set_id", setIds);
+  if (rows.error) throw new Error("telemetry verification query failed");
+  const bySet: Record<string, string[]> = {};
+  for (const setId of setIds) bySet[setId] = [];
+  for (const row of rows.data as Array<{ id: string; set_id: string }>) {
+    bySet[row.set_id].push(row.id);
+  }
+  for (const setId of setIds) bySet[setId].sort();
+  return bySet;
+}
+
+/** Telemetry rows owned by the fixture user (one session per test). */
+async function telemetryCount(
+  fixture: LocalIntegrationFixture,
+): Promise<number> {
+  const rows = await fixture.admin.from("rep_telemetry")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", fixture.ownerId);
+  if (rows.error || rows.count === null) {
+    throw new Error("telemetry count query failed");
+  }
+  return rows.count;
+}
+
+Deno.test({
+  name:
+    "integration: mobile-shaped re-push without telemetry keeps each repeated set's telemetry; new telemetry replaces; removed set loses only its own",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const sessionId = await createTelemetrySession(fixture);
+      // Three sets of the same catalog exercise = three portal exercises with
+      // stable ids, one set each numbered 1.
+      const exerciseIds = [
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+      ];
+      const routine = (
+        telemetry: number[],
+        keep = [0, 1, 2],
+      ): ChildPushExercise[] =>
+        keep.map((index, orderIndex) => ({
+          id: exerciseIds[index],
+          catalogId: null,
+          name: "Bench Press",
+          orderIndex,
+          sets: [{ setNumber: 1, telemetry: telemetry[index] }],
+        }));
+
+      const first = await pushSessionChildren(
+        fixture,
+        sessionId,
+        routine([2, 1, 3]),
+      );
+      const firstBySet = await telemetryIdsBySet(fixture, first.setIds.flat());
+      assertEquals(await telemetryCount(fixture), 6);
+
+      // Re-push without telemetry: count unchanged, each set keeps its own.
+      const second = await pushSessionChildren(
+        fixture,
+        sessionId,
+        routine([0, 0, 0]),
+      );
+      assertEquals(second.preserved, 6);
+      assertEquals(await telemetryCount(fixture), 6);
+      const secondBySet = await telemetryIdsBySet(
+        fixture,
+        second.setIds.flat(),
+      );
+      for (let i = 0; i < 3; i++) {
+        assertEquals(
+          secondBySet[second.setIds[i][0]],
+          firstBySet[first.setIds[i][0]],
+        );
+      }
+
+      // New telemetry for the middle set replaces only its curve.
+      const third = await pushSessionChildren(
+        fixture,
+        sessionId,
+        routine([0, 4, 0]),
+      );
+      const thirdBySet = await telemetryIdsBySet(fixture, third.setIds.flat());
+      assertEquals(thirdBySet[third.setIds[1][0]].length, 4);
+      assertEquals(
+        thirdBySet[third.setIds[0][0]],
+        firstBySet[first.setIds[0][0]],
+      );
+      assertEquals(
+        thirdBySet[third.setIds[2][0]],
+        firstBySet[first.setIds[2][0]],
+      );
+      assertEquals(await telemetryCount(fixture), 9);
+
+      // Middle set deleted on mobile: the third exercise moves to
+      // order_index 1 and still keeps its curve by stable id.
+      const fourth = await pushSessionChildren(
+        fixture,
+        sessionId,
+        routine([0, 0, 0], [0, 2]),
+      );
+      const fourthBySet = await telemetryIdsBySet(
+        fixture,
+        fourth.setIds.flat(),
+      );
+      assertEquals(
+        fourthBySet[fourth.setIds[0][0]],
+        firstBySet[first.setIds[0][0]],
+      );
+      assertEquals(
+        fourthBySet[fourth.setIds[1][0]],
+        firstBySet[first.setIds[2][0]],
+      );
+      assertEquals(await telemetryCount(fixture), 5);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: legacy regenerated exercise ids re-link only on a unique identity and position",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const sessionId = await createTelemetrySession(fixture);
+      const legacy = (telemetry: number): ChildPushExercise[] => [
+        // Same exercise twice, both defaulted to order_index 0: ambiguous.
+        {
+          id: crypto.randomUUID(),
+          catalogId: null,
+          name: "Bench Press",
+          orderIndex: 0,
+          sets: [{ setNumber: 1, telemetry }],
+        },
+        {
+          id: crypto.randomUUID(),
+          catalogId: null,
+          name: "bench press ",
+          orderIndex: 0,
+          sets: [{ setNumber: 1, telemetry }],
+        },
+        // Unique identity + position: re-linked.
+        {
+          id: crypto.randomUUID(),
+          catalogId: null,
+          name: "Cable Row",
+          orderIndex: 1,
+          sets: [{ setNumber: 1, telemetry }],
+        },
+      ];
+      const first = await pushSessionChildren(fixture, sessionId, legacy(2));
+      const firstBySet = await telemetryIdsBySet(fixture, first.setIds.flat());
+      assertEquals(await telemetryCount(fixture), 6);
+
+      const repush = await pushSessionChildren(fixture, sessionId, legacy(0));
+      assertEquals(repush.preserved, 2);
+      assertEquals(await telemetryCount(fixture), 2);
+      const repushBySet = await telemetryIdsBySet(
+        fixture,
+        repush.setIds.flat(),
+      );
+      assertEquals(
+        repushBySet[repush.setIds[2][0]],
+        firstBySet[first.setIds[2][0]],
+      );
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+/**
+ * The real push handler wired to the local stack: every table read/write and
+ * RPC goes to real SQL through the service-role client; only auth (fixed to
+ * the fixture owner) and the realtime broadcast are stubbed.
+ */
+function makeRealSqlPushHandler(
+  fixture: LocalIntegrationFixture,
+): (req: Request) => Promise<Response> {
+  const admin = {
+    from: (table: string) => fixture.admin.from(table),
+    rpc: (name: string, args: Record<string, unknown> = {}) =>
+      fixture.admin.rpc(name, args),
+    channel() {
+      return {
+        subscribe(callback: (status: string) => void) {
+          callback("SUBSCRIBED");
+          return {};
+        },
+        async send() {
+          return "ok";
+        },
+      };
+    },
+    async removeChannel() {
+      return "ok";
+    },
+  };
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      return admin;
+    },
+    logOperationalFailure: () => {},
+    now: () => Date.now(),
+  } as never);
+}
+
+Deno.test({
+  name:
+    "integration: handler re-push with regenerated set ids and no telemetry keeps stored telemetry",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const subscription = await fixture.admin.from("subscriptions").insert({
+        user_id: fixture.ownerId,
+        tier: "INFERNO",
+        status: "active",
+        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      if (subscription.error) {
+        throw new Error("subscription fixture creation failed");
+      }
+      const catalog = await fixture.admin.from("exercise_catalog")
+        .select("id,name")
+        .eq("is_custom", false)
+        .limit(1)
+        .single();
+      if (catalog.error) throw new Error("catalog lookup failed");
+      const catalogName = (catalog.data as { name: string }).name;
+      const catalogId = (catalog.data as { id: string }).id;
+
+      // Mobile shape: routine session, one set per exercise numbered 1,
+      // stable exercise ids; the catalog exercise is repeated and resolved by
+      // name on the server, the custom one stays name-only.
+      const sessionId = crypto.randomUUID();
+      const exercises = [
+        { id: crypto.randomUUID(), name: catalogName },
+        { id: crypto.randomUUID(), name: catalogName },
+        { id: crypto.randomUUID(), name: "PR20 Custom Pulldown" },
+      ];
+      const buildBody = (withTelemetry: boolean) => {
+        const setIds = exercises.map(() => crypto.randomUUID());
+        const telemetry = withTelemetry
+          ? setIds.flatMap((setId, index) =>
+            Array.from({ length: index + 1 }, (_, sample) => ({
+              id: crypto.randomUUID(),
+              setId,
+              timestampMs: sample * 10,
+              forceN: 100 + sample,
+              velocityMps: 0.5,
+              positionMm: 250,
+              cable: "A",
+            }))
+          )
+          : [];
+        return {
+          setIds,
+          body: {
+            ...validPushBody(),
+            profileId: fixture.profileId,
+            sessions: [{
+              id: sessionId,
+              userId: fixture.ownerId,
+              name: "PR20 routine",
+              startedAt: "2026-09-18T10:00:00.000Z",
+              updatedAt: new Date().toISOString(),
+              exercises: exercises.map((exercise, index) => ({
+                id: exercise.id,
+                sessionId,
+                exerciseId: null,
+                name: exercise.name,
+                orderIndex: index,
+                sets: [{
+                  id: setIds[index],
+                  exerciseId: exercise.id,
+                  setNumber: 1,
+                  targetReps: 10,
+                  actualReps: 10,
+                  weightKg: 20,
+                  workoutMode: "OLD_SCHOOL",
+                  repSummaries: [],
+                }],
+              })),
+            }],
+            telemetry,
+          },
+        };
+      };
+
+      const handler = makeRealSqlPushHandler(fixture);
+      const first = buildBody(true);
+      const firstResponse = await handler(requestFromBody(first.body));
+      assertEquals(firstResponse.status, 200, await firstResponse.text());
+      const firstBySet = await telemetryIdsBySet(fixture, first.setIds);
+      assertEquals(
+        first.setIds.map((setId) => firstBySet[setId].length),
+        [1, 2, 3],
+      );
+      const stored = await fixture.admin.from("exercises")
+        .select("id,exercise_id")
+        .eq("session_id", sessionId);
+      if (stored.error) throw new Error("exercise verification failed");
+      const storedCatalogIds = new Map(
+        (stored.data as Array<{ id: string; exercise_id: string | null }>)
+          .map((row) => [row.id, row.exercise_id]),
+      );
+      assertEquals(storedCatalogIds.get(exercises[0].id), catalogId);
+      assertEquals(storedCatalogIds.get(exercises[1].id), catalogId);
+      assertEquals(storedCatalogIds.get(exercises[2].id), null);
+
+      const second = buildBody(false);
+      const secondResponse = await handler(requestFromBody(second.body));
+      assertEquals(secondResponse.status, 200, await secondResponse.text());
+      assertEquals(await telemetryCount(fixture), 6);
+      const secondBySet = await telemetryIdsBySet(fixture, second.setIds);
+      for (let i = 0; i < exercises.length; i++) {
+        assertEquals(
+          secondBySet[second.setIds[i]],
+          firstBySet[first.setIds[i]],
+        );
+      }
+    } finally {
       await cleanupLocalIntegrationFixture(fixture);
     }
   },
@@ -3624,3 +4109,196 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
     3,
   );
 });
+
+// ─── routine exercise durationSeconds (KD-2: nested, optional) ───────────────
+
+const TIMED_ROUTINE_EXERCISE_ID = "00000000-0000-4000-8000-000000000022";
+
+/**
+ * A routine exercise exactly as the shipping mobile build serializes
+ * PortalRoutineExerciseSyncDto (Project-Phoenix-MP PortalSyncDtos.kt:213-249,
+ * PortalWireJson encodeDefaults=true / explicitNulls=false, values from
+ * PortalSyncAdapter.kt:570-620). It has no durationSeconds key.
+ */
+function currentMobileRoutineExercise(id: string): Record<string, unknown> {
+  return {
+    id,
+    routineId: ROUTINE_ID,
+    exerciseId: "Plank",
+    name: "Plank",
+    displayName: "Plank",
+    muscleGroup: "Core",
+    exerciseEquipment: "",
+    sets: 3,
+    reps: 10,
+    weight: 0.0,
+    restSeconds: 60,
+    mode: "ECHO",
+    orderIndex: 0,
+    perSetWeights: "[0.0,0.0,0.0]",
+    perSetRest: "[60,60,60]",
+    isAmrap: false,
+    isBodyweight: true,
+    repCountTiming: "TOP",
+    stopAtPosition: "TOP",
+    stallDetection: true,
+    eccentricLoad: "LOAD_100",
+    echoLevel: "HARDER",
+    perSetEchoLevels: '["HARDER","HARDER","HARDER"]',
+    warmupSets: "[]",
+    rackBehaviorOverrides: "{}",
+    dropSetEnabled: false,
+  };
+}
+
+function routinePushBody(
+  exercises: Record<string, unknown>[],
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    profileId: "default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    routines: [{
+      id: ROUTINE_ID,
+      userId: VALID_USER_ID,
+      name: "Timed routine",
+      description: "",
+      exerciseCount: exercises.length,
+      estimatedDuration: 0,
+      timesCompleted: 0,
+      isFavorite: false,
+      exercises,
+    }],
+  };
+}
+
+function routineExerciseUpsertRows(
+  harness: PushHarness,
+): Array<Record<string, unknown>> {
+  const upserts = harness.adminWriteArgs.filter((call) =>
+    call.table === "routine_exercises" && call.method === "upsert"
+  );
+  assertEquals(upserts.length, 1);
+  return upserts[0].args[0] as Array<Record<string, unknown>>;
+}
+
+Deno.test("current mobile routine exercise shape (no durationSeconds) is 200 and leaves duration untouched", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(
+    requestFromBody(routinePushBody([
+      currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
+    ])),
+  );
+
+  assertEquals(response.status, 200);
+  const [row] = routineExerciseUpsertRows(harness);
+  assertEquals(row.id, ROUTINE_EXERCISE_ID);
+  assertEquals(row.eccentric_load, "LOAD_100");
+  // The column is not in the upsert at all, so a stored duration survives.
+  assertEquals("duration_seconds" in row, false);
+});
+
+/**
+ * A routine_exercises stand-in that honours the probe's `.select(columns)`
+ * and `.in("id", ids)`: it returns only the requested rows, projected to the
+ * requested columns. Writes resolve empty.
+ */
+function storedRoutineExercises(
+  stored: Array<Record<string, unknown>>,
+): TerminalResult {
+  return (operations) => {
+    const select = operations.find((op) => op.name === "select");
+    const inIds = operations.find((op) => op.name === "in");
+    if (!select || !inIds) return { data: [], error: null };
+    const columns = String(select.args[0]).split(",").map((c) => c.trim());
+    const ids = inIds.args[1] as string[];
+    return {
+      data: stored
+        .filter((row) => ids.includes(row.id as string))
+        .map((row) =>
+          Object.fromEntries(
+            columns.filter((c) => c in row).map((c) => [c, row[c]]),
+          )
+        ),
+      error: null,
+    };
+  };
+}
+
+for (
+  const omitter of [
+    {
+      label: "current mobile shape (drop-set fields omitted)",
+      fields: {},
+    },
+    {
+      // needsDropSetExistingRow(e) is false here, so only the duration
+      // predicate decides whether this row is probed.
+      label: "explicit drop-set fields",
+      fields: { dropSetEnabled: false, dropSetMinWeightKg: null },
+    },
+  ]
+) {
+  Deno.test(`routine exercise without durationSeconds keeps its stored duration in a mixed batch: ${omitter.label}`, async () => {
+    const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+      tableResults: {
+        routine_exercises: storedRoutineExercises([{
+          id: ROUTINE_EXERCISE_ID,
+          drop_set_enabled: false,
+          drop_set_min_weight_kg: null,
+          duration_seconds: 45,
+        }]),
+      },
+    });
+    const timed = {
+      ...currentMobileRoutineExercise(TIMED_ROUTINE_EXERCISE_ID),
+      orderIndex: 1,
+      durationSeconds: 30,
+      dropSetEnabled: false,
+      dropSetMinWeightKg: null,
+    };
+    const response = await harness.handler(
+      requestFromBody(routinePushBody([
+        { ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID), ...omitter.fields },
+        timed,
+      ])),
+    );
+
+    assertEquals(response.status, 200);
+    const rows = routineExerciseUpsertRows(harness);
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    // Omitted: filled from the stored row, never NULLed by the batch key union.
+    assertEquals(byId.get(ROUTINE_EXERCISE_ID)?.duration_seconds, 45);
+    // Sent: stored as given.
+    assertEquals(byId.get(TIMED_ROUTINE_EXERCISE_ID)?.duration_seconds, 30);
+  });
+}
+
+Deno.test("routine exercise durationSeconds null clears the duration", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(
+    requestFromBody(routinePushBody([{
+      ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
+      durationSeconds: null,
+    }])),
+  );
+
+  assertEquals(response.status, 200);
+  const [row] = routineExerciseUpsertRows(harness);
+  assertEquals(row.duration_seconds, null);
+});
+
+for (const bad of [-1, 1.5, "45", 2_147_483_648]) {
+  Deno.test(`routine exercise durationSeconds ${JSON.stringify(bad)} is rejected before privileges`, async () => {
+    const harness = makeHarness();
+    const response = await harness.handler(
+      requestFromBody(routinePushBody([{
+        ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
+        durationSeconds: bad,
+      }])),
+    );
+
+    assertEquals(response.status, 400);
+    assertNoPrivilegedActivity(harness);
+  });
+}
