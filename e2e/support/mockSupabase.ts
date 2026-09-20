@@ -319,6 +319,36 @@ export async function installMockSupabase(
 				.sort((a, b) => a.week_start.localeCompare(b.week_start));
 		}
 
+		if (fn === "personal_record_history") {
+			const limit = Math.min(Math.max(Number(args.p_limit ?? 200), 1), 1000);
+			const before = args.p_before as string | undefined;
+			const beforeId = args.p_before_id as string | undefined;
+			const rows = state.personalRecords
+				.filter(
+					(record) =>
+						!record.deleted_at &&
+						(!profileId ||
+							String(record.local_profile_id ?? "") === profileId),
+				)
+				.sort((a, b) => {
+					const byDate = String(b.achieved_at).localeCompare(
+						String(a.achieved_at),
+					);
+					return byDate !== 0
+						? byDate
+						: String(b.id).localeCompare(String(a.id));
+				})
+				.filter((record) => {
+					if (!before || !beforeId) return true;
+					const byDate = String(record.achieved_at).localeCompare(before);
+					return (
+						byDate < 0 ||
+						(byDate === 0 && String(record.id).localeCompare(beforeId) < 0)
+					);
+				});
+			return rows.slice(0, limit);
+		}
+
 		if (fn === "profile_workout_stats") {
 			const sessions = sessionsForProfile(profileId);
 			const utcDays = [

@@ -93,7 +93,24 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 	});
 }
 
-/** Strength progress (exercise-specific 1RM trends for line chart) */
+/**
+ * How many personal-record events the phase-aware strength chart reads.
+ *
+ * `personal_record_history` clamps its own limit to 1,000, so this is "the
+ * newest 1,000 PR events" — an explicit, documented bound. The previous
+ * implementation selected every record ASCENDING with no limit, so PostgREST's
+ * `max_rows` silently dropped the NEWEST ones — the chart stopped moving once
+ * a user passed about 1,000 PR events (F-034).
+ */
+const STRENGTH_PROGRESS_RECORD_LIMIT = 1000;
+
+/**
+ * Strength progress (phase-aware personal-record trends for the line chart).
+ *
+ * Read through `personal_record_history`, which is newest-first and excludes
+ * tombstones in SQL. `exercise_progress` cannot serve this chart: it has no
+ * `workout_phase`, which is the dimension the chart is built on.
+ */
 export function strengthProgressOptions(
 	userId: string,
 	profileId?: string | null,
@@ -105,21 +122,19 @@ export function strengthProgressOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			let query = supabase
-				.from("personal_records")
-				.select(STRENGTH_PROGRESS_WITH_CATALOG_SELECT)
-				.eq("user_id", userId)
-				.is("deleted_at", null);
-
-			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
-			}
-
-			const { data, error } = await query.order("achieved_at", {
-				ascending: true,
-			});
+			const { data, error } = await supabase
+				.rpc("personal_record_history", {
+					p_limit: STRENGTH_PROGRESS_RECORD_LIMIT,
+					// Generated types mark defaulted arguments optional: omit them
+					// rather than passing null.
+					...(profileId ? { p_profile_id: profileId } : {}),
+				})
+				.select(STRENGTH_PROGRESS_WITH_CATALOG_SELECT);
 			if (error) throw error;
-			return resolvePersonalRecordDisplayNames(data, userId);
+
+			// The RPC orders achieved_at DESC; the chart plots time ascending.
+			const ascending = [...(data ?? [])].reverse();
+			return resolvePersonalRecordDisplayNames(ascending, userId);
 		},
 	});
 }

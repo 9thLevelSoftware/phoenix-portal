@@ -18,6 +18,7 @@ function buildChain(terminal: { data: unknown; error: unknown }) {
 let chain: ReturnType<typeof buildChain>;
 const fromFn = vi.fn(() => chain);
 const rpcFn = vi.fn();
+const rpcSelectFn = vi.fn();
 
 vi.mock("@/lib/supabase", () => ({
 	supabase: {
@@ -26,8 +27,20 @@ vi.mock("@/lib/supabase", () => ({
 	},
 }));
 
+/**
+ * `supabase.rpc(...)` is awaited directly by most queries and chained with
+ * `.select(...)` by the ones that need the catalog embed, so the mock result is
+ * both thenable and chainable.
+ */
 function mockRpc(result: { data: unknown; error: unknown }) {
-	rpcFn.mockResolvedValue(result);
+	rpcSelectFn.mockResolvedValue(result);
+	rpcFn.mockImplementation(() => {
+		const settled = Promise.resolve(result) as Promise<typeof result> & {
+			select: (...args: unknown[]) => unknown;
+		};
+		settled.select = (...args: unknown[]) => rpcSelectFn(...args);
+		return settled;
+	});
 }
 
 /** Pin the "browser" zone so the assertions cannot pass by accident in UTC CI. */
@@ -273,12 +286,13 @@ describe("muscleGroupOptions", () => {
 
 describe("strengthProgressOptions", () => {
 	beforeEach(() => {
+		vi.restoreAllMocks();
 		vi.clearAllMocks();
 		fromFn.mockImplementation(() => chain);
 	});
 
 	it("uses analytics.summary query key with strength-progress", async () => {
-		chain = buildChain({ data: [], error: null });
+		mockRpc({ data: [], error: null });
 		const { strengthProgressOptions } = await import("../analytics");
 		const opts = strengthProgressOptions("user-1");
 		expect(opts.queryKey).toEqual(
@@ -286,42 +300,74 @@ describe("strengthProgressOptions", () => {
 		);
 	});
 
-	it("returns personal record data for strength chart", async () => {
-		const raw = [
-			{
-				exercise_name: "Bench Press",
-				record_type: "MAX_WEIGHT",
-				workout_phase: "CONCENTRIC",
-				value: 100,
-				achieved_at: "2026-03-01T00:00:00Z",
-			},
-		];
-		chain = buildChain({ data: raw, error: null });
+	it("reads the NEWEST records through the keyset RPC, ascending for the chart", async () => {
+		// The old read was an unbounded ASCENDING select on personal_records, so
+		// PostgREST's 1,000-row cap dropped the newest PRs first (F-034). The RPC
+		// is newest-first with an explicit limit and excludes tombstones in SQL.
+		mockRpc({
+			data: [
+				{
+					exercise_name: "Bench Press",
+					record_type: "MAX_WEIGHT",
+					workout_phase: "CONCENTRIC",
+					value: 120,
+					achieved_at: "2026-03-05T00:00:00Z",
+				},
+				{
+					exercise_name: "Bench Press",
+					record_type: "MAX_WEIGHT",
+					workout_phase: "CONCENTRIC",
+					value: 100,
+					achieved_at: "2026-03-01T00:00:00Z",
+				},
+			],
+			error: null,
+		});
+
 		const { strengthProgressOptions } = await import("../analytics");
-		const opts = strengthProgressOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
-		expect(chain.is).toHaveBeenCalledWith("deleted_at", null);
-		expect(result).toHaveLength(1);
-		expect(result[0].exercise_name).toBe("Bench Press");
+		const result = await strengthProgressOptions(
+			"user-1",
+			"profile-1",
+		).queryFn?.({} as never);
+
+		expect(rpcFn).toHaveBeenCalledTimes(1);
+		expect(rpcFn).toHaveBeenCalledWith("personal_record_history", {
+			p_limit: 1000,
+			p_profile_id: "profile-1",
+		});
+		expect(fromFn).not.toHaveBeenCalled();
+		expect(result).toHaveLength(2);
+		expect(result.map((r: { value: number }) => r.value)).toEqual([100, 120]);
+	});
+
+	it("omits the profile argument instead of passing null", async () => {
+		mockRpc({ data: [], error: null });
+		const { strengthProgressOptions } = await import("../analytics");
+		await strengthProgressOptions("user-1", null).queryFn?.({} as never);
+		expect(rpcFn).toHaveBeenCalledWith("personal_record_history", {
+			p_limit: 1000,
+		});
 	});
 
 	it("uses catalog display names for strength PR rows whose exercise_name is a catalog ID", async () => {
-		const raw = [
-			{
-				exercise_name: "Barbell_Curl",
-				exercise_id: "Barbell_Curl",
-				record_type: "MAX_WEIGHT",
-				workout_phase: "CONCENTRIC",
-				value: 40,
-				achieved_at: "2026-03-01T00:00:00Z",
-				catalog: {
-					id: "Barbell_Curl",
-					name: "Bayesian Curl",
-					display_name: "Bayesian Curl (Handles)",
+		mockRpc({
+			data: [
+				{
+					exercise_name: "Barbell_Curl",
+					exercise_id: "Barbell_Curl",
+					record_type: "MAX_WEIGHT",
+					workout_phase: "CONCENTRIC",
+					value: 40,
+					achieved_at: "2026-03-01T00:00:00Z",
+					catalog: {
+						id: "Barbell_Curl",
+						name: "Bayesian Curl",
+						display_name: "Bayesian Curl (Handles)",
+					},
 				},
-			},
-		];
-		chain = buildChain({ data: raw, error: null });
+			],
+			error: null,
+		});
 		const { strengthProgressOptions } = await import("../analytics");
 		const opts = strengthProgressOptions("user-1");
 		const result = await opts.queryFn?.({} as never);
@@ -345,7 +391,7 @@ describe("strengthProgressOptions", () => {
 				achieved_at: "2026-03-01T00:00:00Z",
 			};
 		});
-		const recordsChain = buildChain({ data: records, error: null });
+		mockRpc({ data: records, error: null });
 		const exercisesChain = buildChain({
 			data: [
 				{
@@ -359,11 +405,9 @@ describe("strengthProgressOptions", () => {
 			error: null,
 		});
 
-		let callCount = 0;
 		fromFn.mockImplementation((table: unknown) => {
-			callCount++;
-			expect(table).toBe(callCount === 1 ? "personal_records" : "exercises");
-			return callCount === 1 ? recordsChain : exercisesChain;
+			expect(table).toBe("exercises");
+			return exercisesChain;
 		});
 
 		const { strengthProgressOptions } = await import("../analytics");
@@ -373,24 +417,24 @@ describe("strengthProgressOptions", () => {
 
 		expect(exercisesChain.in).not.toHaveBeenCalled();
 		expect(exercisesChain.eq).toHaveBeenCalledWith("user_id", "user-1");
-		expect(result[7].exercise_name).toBe("Bench Press");
+		// Reversed to ascending, so row 7 of the RPC page is 1200 - 1 - 7 here.
+		expect(result[1192].exercise_name).toBe("Bench Press");
 	});
 
 	it("selects record type and workout phase for phase-aware strength charts", async () => {
-		chain = buildChain({ data: [], error: null });
+		mockRpc({ data: [], error: null });
 		const { strengthProgressOptions } = await import("../analytics");
 		const opts = strengthProgressOptions("user-1");
 		await opts.queryFn?.({} as never);
-		expect(chain.select).toHaveBeenCalledWith(
+		// exercise_progress has no workout_phase, so this chart keeps reading
+		// personal_records — with the catalog embed on the RPC result.
+		expect(rpcSelectFn).toHaveBeenCalledWith(
 			"exercise_name, exercise_id, session_id, record_type, workout_phase, value, achieved_at, catalog:exercise_catalog(id, name, display_name)",
 		);
 	});
 
 	it("throws on Supabase error", async () => {
-		chain = buildChain({
-			data: null,
-			error: { message: "query error" },
-		});
+		mockRpc({ data: null, error: { message: "query error" } });
 		const { strengthProgressOptions } = await import("../analytics");
 		const opts = strengthProgressOptions("user-1");
 		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
