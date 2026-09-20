@@ -15,7 +15,6 @@ import { createMobileSyncPushHandler } from "./index.ts";
 import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 import { SYNC_LWW_ENABLED } from "../_shared/flags.ts";
-import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 
 interface ByteGoldens {
   version: number;
@@ -408,16 +407,20 @@ function streamingRawRequest(
   });
 }
 
-type TableResultValue = { data: unknown; error: unknown; count?: number };
-/** A fixed result, or one chosen from the query's `.eq()` filters. */
-type TableResult =
-  | TableResultValue
-  | ((eqFilters: Record<string, unknown>) => TableResultValue);
+interface QueryOperation {
+  name: string;
+  args: unknown[];
+}
+
+type QueryContext = QueryOperation[] & Record<string, unknown>;
+type TerminalResultValue = { data: unknown; error: unknown; count?: number };
+type TerminalResult =
+  | TerminalResultValue
+  | ((context: QueryContext) => TerminalResultValue);
 
 function permissiveQuery(
   table: string,
   onWrite: (method: string, args: unknown[]) => void,
-  terminalResult: TableResult = {
   terminalResult: TerminalResult = {
     data: [],
     error: null,
@@ -426,7 +429,6 @@ function permissiveQuery(
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
-  const eqFilters: Record<string, unknown> = {};
   const chainMethods = [
     "select",
     "eq",
@@ -446,12 +448,12 @@ function permissiveQuery(
     "delete",
     "returns",
   ];
-  const operations: QueryOperation[] = [];
+  const operations = [] as unknown as QueryContext;
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
       operations.push({ name: method, args });
       if (method === "neq") ownershipProbe = true;
-      if (method === "eq") eqFilters[String(args[0])] = args[1];
+      if (method === "eq") operations[String(args[0])] = args[1];
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method, args);
       }
@@ -480,21 +482,11 @@ function permissiveQuery(
       ownershipProbe
         ? { data: [], error: null, count: 0 }
         : typeof terminalResult === "function"
-        ? terminalResult(eqFilters)
         ? terminalResult(operations)
         : terminalResult,
     ).then(resolve, reject);
   return query;
 }
-
-interface QueryOperation {
-  name: string;
-  args: unknown[];
-}
-
-type TerminalResult =
-  | { data: unknown; error: unknown; count?: number }
-  | ((operations: QueryOperation[]) => { data: unknown; error: unknown });
 
 interface PushHarness {
   handler: (request: Request) => Promise<Response>;
@@ -517,7 +509,6 @@ function makeHarness(
     channelError?: unknown;
     rpcBehavior?: RpcBehavior;
     personalRecordsResult?: { data: unknown; error: unknown };
-    tableResults?: Record<string, TableResult>;
     /**
      * Terminal result for reads/writes on these tables (e.g. probes); a
      * function receives the chained operations (select/in/... with args).
@@ -532,9 +523,6 @@ function makeHarness(
     [];
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
-  const adminWriteArgs: Array<
-    { table: string; method: string; args: unknown[] }
-  > = [];
   const adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }> =
     [];
   const loggerCalls: unknown[][] = [];
@@ -557,13 +545,6 @@ function makeHarness(
           ? options.personalRecordsResult
           : options.tableResults?.[table],
       );
-      return permissiveQuery(table, (method, args) => {
-        adminWriteCalls.push({ table, method });
-        adminWriteArgs.push({ table, method, args });
-        operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records"
-        ? options.personalRecordsResult
-        : options.tableResults?.[table]);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -5257,6 +5238,10 @@ function lwwClockPush(
       isFavorite: false,
       updatedAt,
       exercises: [],
+    }],
+  };
+}
+
 // ─── routine exercise durationSeconds (KD-2: nested, optional) ───────────────
 
 const TIMED_ROUTINE_EXERCISE_ID = "00000000-0000-4000-8000-000000000022";
