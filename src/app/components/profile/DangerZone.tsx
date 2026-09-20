@@ -27,8 +27,6 @@ import {
 	useRequestDeletion,
 } from "@/mutations/account";
 
-const DELETION_GRACE_DAYS = 30;
-
 /**
  * DangerZone — Account deletion UI for the Profile settings tab.
  *
@@ -66,8 +64,31 @@ export function DangerZone() {
 		);
 	}
 
+	// The purge has started: process_due claimed the row (status 'executing')
+	// and the account is being deleted right now. Nothing can be offered here —
+	// the cancel UPDATE only matches 'pending', and the request RPC answers
+	// 'already_executing'. Without this branch the row (whose scheduled_for is
+	// already past) would render State C, i.e. "Delete Now" / "Cancel Deletion"
+	// buttons that cannot do anything.
+	if (deletionRequest?.status === "executing") {
+		return (
+			<Card className="border-red-900/50 bg-surface-2">
+				<CardHeader>
+					<CardTitle className="flex items-center gap-2 text-red-400">
+						<Loader2 className="h-5 w-5 animate-spin" />
+						Deletion In Progress
+					</CardTitle>
+					<CardDescription className="text-red-300/80">
+						Your account is being deleted now. This can no longer be cancelled.
+						You will be signed out when it completes.
+					</CardDescription>
+				</CardHeader>
+			</Card>
+		);
+	}
+
 	// Determine current state
-	const hasPendingRequest = !!deletionRequest;
+	const hasPendingRequest = deletionRequest?.status === "pending";
 	const scheduledFor = deletionRequest
 		? new Date(deletionRequest.scheduled_for)
 		: null;
@@ -84,20 +105,14 @@ export function DangerZone() {
 			)
 		: 0;
 
-	const formatDate = (date: Date) =>
-		date.toLocaleDateString("en-US", {
-			year: "numeric",
-			month: "long",
-			day: "numeric",
-		});
-
 	// Format the scheduled date
-	const scheduledDateStr = scheduledFor ? formatDate(scheduledFor) : "";
-
-	// Date a request made now would be carried out (30-day grace period).
-	const proposedDeletionDateStr = formatDate(
-		new Date(now.getTime() + DELETION_GRACE_DAYS * 24 * 60 * 60 * 1000),
-	);
+	const scheduledDateStr = scheduledFor
+		? scheduledFor.toLocaleDateString("en-US", {
+				year: "numeric",
+				month: "long",
+				day: "numeric",
+			})
+		: "";
 
 	// =========================================================================
 	// State C: Grace period expired — user can execute deletion or cancel
@@ -268,23 +283,11 @@ export function DangerZone() {
 						<AlertDialogTitle className="text-red-400">
 							Are you sure?
 						</AlertDialogTitle>
-						<AlertDialogDescription asChild>
-							<div className="space-y-2">
-								<p>
-									Your account will be permanently deleted on{" "}
-									<span className="font-medium text-foreground">
-										{proposedDeletionDateStr}
-									</span>
-									. Until then you can cancel this request. On that date all
-									your data is deleted, your subscription is cancelled, and your
-									community posts are anonymized.
-								</p>
-								<p>
-									Billing stops on {proposedDeletionDateStr}. A subscription
-									renewal that falls before that date is still charged unless
-									you cancel your plan first.
-								</p>
-							</div>
+						<AlertDialogDescription>
+							This will schedule your account for permanent deletion in 30 days.
+							During this period you can still cancel. After 30 days, all your
+							data will be permanently deleted, your subscription will be
+							cancelled, and your community posts will be anonymized.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

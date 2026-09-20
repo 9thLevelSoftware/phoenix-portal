@@ -119,6 +119,25 @@ SELECT ok(
     'authenticated keeps the UPDATE (status, cancelled_at) grant for cancel'
 );
 
+-- The "RPC is the only write path" guarantee must not rest on the absence of
+-- a DELETE policy alone (review R-13): the grant is gone too.
+SELECT ok(
+    NOT EXISTS (
+        SELECT 1
+        FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'deletion_requests'
+          AND cmd = 'DELETE'
+    ),
+    'deletion_requests has no DELETE policy'
+);
+
+SELECT ok(
+    NOT has_table_privilege('authenticated', 'public.deletion_requests', 'DELETE')
+    AND NOT has_table_privilege('anon', 'public.deletion_requests', 'DELETE'),
+    'authenticated and anon have no DELETE privilege on deletion_requests'
+);
+
 SELECT ok(
     NOT EXISTS (
         SELECT 1 FROM pg_policies
@@ -313,6 +332,10 @@ SELECT results_eq(
     'FREE JWT can SELECT own routine_exercises without EMBER'
 );
 
+-- Pre-existing guard: this one was already 42501 before PR 33, via the
+-- INSERT (user_id) column grant from 20260823120000 — it pins that narrow
+-- grant, not the revoke. The probe below is the PR 33 guard: it uses only the
+-- column the old grant allowed, so it can only pass once INSERT is revoked.
 SELECT pg_temp.assert_sqlstate(
     $sql$
         INSERT INTO public.deletion_requests (
@@ -339,6 +362,17 @@ SELECT pg_temp.assert_sqlstate(
     $sql$,
     '42501',
     'authenticated cannot INSERT its own deletion_requests row directly (RPC only)'
+);
+
+-- DELETE is revoked, so the attempt fails at permission-check time rather
+-- than quietly matching zero rows under RLS.
+SELECT pg_temp.assert_sqlstate(
+    $sql$
+        DELETE FROM public.deletion_requests
+         WHERE user_id = '33333333-3333-4333-8333-333333333333'::uuid
+    $sql$,
+    '42501',
+    'authenticated cannot DELETE its own deletion_requests row'
 );
 
 RESET ROLE;
