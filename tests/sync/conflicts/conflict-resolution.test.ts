@@ -19,9 +19,7 @@ import {
 	createMinimalPushPayload,
 	createTestUser,
 	generateTestId,
-	type PushPayload,
 	type RoutineDto,
-	type RoutineExerciseDto,
 	type SessionDto,
 } from "../helpers/edge-function-harness";
 import { resetMockStore } from "../helpers/mock-edge-functions";
@@ -200,8 +198,6 @@ describe("Conflict Resolution Integration Tests", () => {
 		it("should handle identical timestamps (last sync wins)", async () => {
 			// Two routines with the same updatedAt timestamp
 			const routineId = generateTestId();
-			const timestamp = new Date().toISOString();
-
 			const routine1: RoutineDto = {
 				id: routineId,
 				userId: testUser.id,
@@ -258,9 +254,6 @@ describe("Conflict Resolution Integration Tests", () => {
 				createMinimalPushPayload(testUser.id, { routines: [routine1] }),
 				testUser.accessToken,
 			);
-
-			// Record sync time
-			const syncTime = Date.now();
 
 			// Wait briefly to ensure timestamp difference
 			await new Promise((resolve) => setTimeout(resolve, 100));
@@ -485,9 +478,6 @@ describe("Conflict Resolution Integration Tests", () => {
 			// Pull and verify only one is active
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const activeCycles = pullResult.data!.cycles.filter(
-				(c) => c.status === "active",
-			);
 			// In a proper implementation, only the last-activated cycle should be active
 			// The mock may not enforce this, but the test validates the expected pattern
 			expect(pullResult.success).toBe(true);
