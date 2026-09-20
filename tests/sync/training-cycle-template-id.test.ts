@@ -17,6 +17,8 @@ setupSyncTests();
 
 const LWW_RPC_MIGRATION = "20260707130000_update_lww_rpc_template_id.sql";
 const PULL_RPC_MIGRATION = "20260707140000_update_pull_rpc_template_id.sql";
+const CYCLE_MERGE_MIGRATION =
+	"20260920001800_merge_training_cycles_from_push.sql";
 const CYCLE_PULL_SIGNATURE =
 	"public.get_cycles_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ)";
 const MOBILE_SYNC_PUSH_SOURCE = "supabase/functions/mobile-sync-push/index.ts";
@@ -84,18 +86,24 @@ describe("Training cycle template_id migration safeguards", () => {
 });
 
 describe("Training cycle template_id push handling", () => {
-	it("chunks the legacy template_id preservation probe before PostgREST in filters", () => {
+	// KD-6 (PR 18): both flag paths merge cycles in SQL, so the old
+	// Edge-side template_id probe is gone and the merge keeps a stored
+	// template_id when the push omits or nulls it.
+	it("preserves template_id in the SQL cycle merge used by both flag paths", () => {
 		const source = readSource(MOBILE_SYNC_PUSH_SOURCE);
-		const lookupBlock = source.slice(
-			source.indexOf("const cycleIdsMissingTemplateId ="),
-			source.indexOf("const { error: cycErr } = await supabase"),
+		expect(source).toContain("'merge_training_cycles_from_push'");
+		expect(source).not.toContain("cycleIdsMissingTemplateId");
+		expect(source).not.toMatch(
+			/\.from\(\s*['"]training_cycles['"]\s*\)\s*\.upsert\(/,
 		);
 
-		expect(lookupBlock).toContain("const chunkSize = 100;");
-		expect(lookupBlock).toMatch(
-			/for\s*\(\s*let\s+i\s*=\s*0;\s*i\s*<\s*cycleIdsMissingTemplateId\.length;\s*i\s*\+=\s*chunkSize\s*\)/,
+		const sql = readMigration(CYCLE_MERGE_MIGRATION);
+		expect(sql).toMatch(
+			/n_template_id\s*:=\s*COALESCE\s*\(\s*rec\.template_id\s*,\s*v_existing\.template_id\s*\)/i,
 		);
-		expect(lookupBlock).toContain(".in('id', chunk)");
+		expect(sql).toMatch(
+			/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.upsert_training_cycle_lww[\s\S]*merge_training_cycles_from_push/i,
+		);
 	});
 
 	liveIt(
