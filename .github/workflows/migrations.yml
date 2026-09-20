@@ -4,11 +4,15 @@ name: Migrations
 # Boots a fresh Supabase stack, applies every migration file in order,
 # and fails if any statement errors. A clean apply proves the migrations
 # folder is self-consistent and can regenerate prod schema from scratch.
+# Then runs the full pgTAP suite and checks that the generated
+# src/lib/database.types.ts matches the migrated schema.
 #
 # Out of scope: diff vs live prod. That gate requires prod credentials
 # in CI and is tracked as a follow-up. See CLAUDE.md -> "Migration
 # Workflow Discipline".
 
+# Keep the two path lists identical: everything the apply, the pgTAP suite
+# or the types check depends on.
 on:
   pull_request:
     paths:
@@ -17,13 +21,32 @@ on:
       - "supabase/config.toml"
       - "supabase/tests/**"
       - "scripts/ci/sync-queue-triage/**"
+      - "src/lib/database.types.ts"
+      - "scripts/gen-types.mjs"
+      - "scripts/supabase-cli.mjs"
+      - ".supabase-cli-version"
+      - "package.json"
+      - "package-lock.json"
+      - "biome.json"
+      - ".nvmrc"
       - ".github/workflows/migrations.yml"
   push:
     branches: [main]
     paths:
       - "supabase/migrations/**"
+      - "supabase/seed.sql"
+      - "supabase/config.toml"
       - "supabase/tests/**"
       - "scripts/ci/sync-queue-triage/**"
+      - "src/lib/database.types.ts"
+      - "scripts/gen-types.mjs"
+      - "scripts/supabase-cli.mjs"
+      - ".supabase-cli-version"
+      - "package.json"
+      - "package-lock.json"
+      - "biome.json"
+      - ".nvmrc"
+      - ".github/workflows/migrations.yml"
 
 permissions:
   contents: read
@@ -40,10 +63,18 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
+      # Single source for the CLI version: .supabase-cli-version (also read
+      # by scripts/supabase-cli.mjs and scripts/gen-types.mjs, which refuses
+      # to generate types with any other version).
+      - name: Read pinned Supabase CLI version
+        id: cli
+        shell: bash
+        run: echo "version=$(tr -d '[:space:]' < .supabase-cli-version)" >> "$GITHUB_OUTPUT"
+
       - name: Install Supabase CLI
         uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
         with:
-          version: 2.76.9
+          version: ${{ steps.cli.outputs.version }}
 
       # Neutralize seed.sql for the clean-apply check. This job only verifies
       # that every migration applies cleanly from an empty DB; it should NOT
@@ -61,6 +92,7 @@ jobs:
         run: supabase start --ignore-health-check
 
       - name: Reset DB and apply all migrations
+        id: reset
         run: supabase db reset --no-seed
 
       - name: List applied migrations
@@ -71,8 +103,10 @@ jobs:
         run: |
           # Any migration file not tracked as applied by the local CLI
           # after db reset indicates a rejection or silent skip.
-          file_count=$(ls -1 supabase/migrations/*.sql 2>/dev/null | wc -l)
-          applied_count=$(supabase migration list --local 2>/dev/null | grep -E '^\s*[0-9]+' | wc -l)
+          set -o pipefail
+          file_count=$(find supabase/migrations -maxdepth 1 -name '*.sql' | wc -l)
+          applied_count=$(supabase migration list --local --output-format json \
+            | jq '[.migrations[] | select(.remote != null and .remote != "")] | length')
           echo "files=$file_count applied=$applied_count"
           if [ "$file_count" -ne "$applied_count" ]; then
             echo "::error::Migration file count ($file_count) != applied count ($applied_count). Drift between supabase/migrations and schema_migrations."
@@ -97,15 +131,31 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260920003100_scheduler_and_sync_queue_cron.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$dir/check.sql"
 
-      # SECURITY DEFINER grant guard: fails if any definer function in public
-      # is executable by anon/authenticated outside the browser allow-list,
-      # or lacks a pinned search_path. The full pgTAP suite is enabled
-      # separately; this runs the guard file plus the PR 2 dashboard-capture
-      # file (acceptance for 20260920000200), the PR 31 scheduler file
-      # (acceptance for 20260920003100) and the PR 35 due-deletion file
-      # (acceptance for 20260920003500).
-      - name: pgTAP definer function grant guard, dashboard capture, scheduler and due deletion
-        run: supabase test db supabase/tests/database/definer_function_grants.test.sql supabase/tests/database/dashboard_capture.test.sql supabase/tests/database/scheduler.test.sql supabase/tests/database/due_deletion.test.sql
+      # Full pgTAP suite (every file in supabase/tests/database/): definer
+      # grant guard, dashboard capture, cross-user RLS isolation, trust plane,
+      # profile preferences. Locally: `npm run test:db`.
+      - name: pgTAP suite
+        run: supabase test db
+
+      # Generated-types drift check. It also runs when the pgTAP suite
+      # failed (as long as the migrations applied), so a PR sees both
+      # results in one run. On failure the step prints the diff and the
+      # regenerate commands (npm run gen:types:local).
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        if: ${{ !cancelled() && steps.reset.outcome == 'success' }}
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies (Biome for type normalization)
+        if: ${{ !cancelled() && steps.reset.outcome == 'success' }}
+        run: npm ci --ignore-scripts
+
+      - name: Check database.types.ts matches migrated schema
+        if: ${{ !cancelled() && steps.reset.outcome == 'success' }}
+        env:
+          SUPABASE_BIN: supabase
+        run: npm run gen:types:check
 
       - name: Stop stack
         if: always()
