@@ -166,6 +166,9 @@ function isParityMode(body: PullRequest): boolean {
 
 // ─── Pagination Configuration ───────────────────────────────────────
 
+/** Look-back applied to since-mode tombstone lookups (client-clock skew). */
+const TOMBSTONE_SINCE_OVERLAP_MS = 2 * 60 * 1000;
+
 const DEFAULT_PAGE_SIZE = 75;
 const MAX_PAGE_SIZE = 300;
 
@@ -848,11 +851,23 @@ async function mobileSyncPullHandler(
           workoutMode: ws.workout_mode,
           routineSessionId: ws.routine_session_id,
           notes: ws.notes ?? null,
-          // Phase 3.3 (audit item #1): server-canonical updatedAt for the
+          // Phase 3.3 (audit item #1): the canonical LWW key for the
           // mobile-side LWW pull merge gate. Mobile parses this via
           // kotlin.time.Instant in PortalPullAdapter and feeds it to
           // SyncRepository.mergeSessionsLww as the per-session timestamp.
-          updatedAt: ws.updated_at ?? null,
+          //
+          // KD-5 / review R-4: this is `client_updated_at` — the device
+          // clock for a mobile-authored version, now() for a portal edit —
+          // NOT the server write clock `updated_at`. Mobile stamps each
+          // session it pushes with its own currentTimeMillis() and then
+          // accepts a pulled row when incomingTs >= existingTs, so reporting
+          // the server clock made a device whose clock trails the DB
+          // overwrite its own just-pushed session with this lossy
+          // projection. The pull CURSOR and the ordering stay on
+          // `updated_at` (see the cursor built from `sessionsRaw` above), so
+          // delta pulls remain server-clock ordered. The fallback covers
+          // rows written before 20260920002100's backfill.
+          updatedAt: ws.client_updated_at ?? ws.updated_at ?? null,
           avgVelocityMps: ws.avg_velocity_mps,
           avgAsymmetryPct: ws.avg_asymmetry_pct,
           velocityLossPct: ws.velocity_loss_pct,
@@ -1048,6 +1063,9 @@ async function mobileSyncPullHandler(
             warmupSets: re.warmup_sets ?? null,
             dropSetEnabled: re.drop_set_enabled ?? false,
             dropSetMinWeightKg: re.drop_set_min_weight_kg ?? null,
+            // Timed exercises (null = rep-based). A response key, so shipping
+            // mobile builds ignore it (PortalWireJson ignoreUnknownKeys).
+            durationSeconds: re.duration_seconds ?? null,
           })),
         };
       });
@@ -1157,6 +1175,10 @@ async function mobileSyncPullHandler(
           progressionSettings: c.progression_settings != null ? JSON.stringify(c.progression_settings) : null,
           deloadSettings: c.deload_settings != null ? JSON.stringify(c.deload_settings) : null,
           templateId: c.template_id ?? null,
+          // KD-6: the server updated_at, verbatim (full precision ISO
+          // string). The device sends it back as baseUpdatedAt on push.
+          // New key; older builds ignore it.
+          updatedAt: c.updated_at != null ? String(c.updated_at) : null,
           days: cDays.map((d) => ({
             id: d.id,
             cycleId: d.cycle_id,
@@ -1508,6 +1530,71 @@ async function mobileSyncPullHandler(
     }
 
     // =========================================================================
+    // 6b. Routine/cycle deletes (KD-4), first page only.
+    //     Routines and cycles are hard-deleted; a trigger records each delete
+    //     in sync_tombstones. The device learns of a delete through the ids it
+    //     says it holds (tombstoned ∩ knownEntityIds), which works for the
+    //     shipping client that always sends lastSync=0. A client that sends no
+    //     known ids but a real lastSync gets the tombstones recorded since
+    //     then. New response keys; older builds ignore them.
+    //
+    //     Since-mode compares the server clock (deleted_at) with the client's
+    //     lastSync, so it looks back TOMBSTONE_SINCE_OVERLAP_MS further (the
+    //     same 2-minute overlap R-14 / PR 26 applies to the stale arm). A
+    //     delete may be reported twice; deleting locally is idempotent.
+    //     Residual risk: a device whose clock runs more than the overlap
+    //     ahead of the server (or that stores a local time instead of the
+    //     server syncTime) can miss a delete in since-mode. Known-ids mode,
+    //     which the shipping client uses, has no clock dependency.
+    //     Reported ids may include ones the device never held (e.g. a portal
+    //     create-rollback delete); clients treat them as "delete if present".
+    // =========================================================================
+    let deletedRoutineIds: string[] = [];
+    let deletedCycleIds: string[] = [];
+    if (cursor === null) {
+      const lastSyncMs = body.lastSync ?? 0;
+      const tombstonesSinceISO = lastSyncMs > 0
+        ? new Date(Math.max(0, lastSyncMs - TOMBSTONE_SINCE_OVERLAP_MS)).toISOString()
+        : null;
+      const fetchTombstonedIds = async (
+        entity: 'routine' | 'cycle',
+        knownIds: string[],
+      ): Promise<{ ids: string[] } | { error: { code?: string; message?: string } }> => {
+        let args: { p_ids: string[] | null; p_since: string | null };
+        if (knownIds.length > 0) args = { p_ids: knownIds, p_since: null };
+        else if (tombstonesSinceISO !== null) args = { p_ids: null, p_since: tombstonesSinceISO };
+        else return { ids: [] };
+        const { data, error } = await supabase.rpc('get_sync_tombstones', {
+          p_user_id: userId,
+          p_entity: entity,
+          ...args,
+        });
+        if (error) return { error };
+        const ids = new Set<string>();
+        for (const row of (Array.isArray(data) ? data : []) as Array<{ entity_id?: unknown }>) {
+          if (typeof row.entity_id === 'string') ids.add(row.entity_id);
+        }
+        return { ids: [...ids] };
+      };
+      const routineTombstones = await fetchTombstonedIds(
+        'routine',
+        uuidParityIds(body.knownEntityIds?.routineIds),
+      );
+      if ('error' in routineTombstones) {
+        return readFailure('routine tombstones', routineTombstones.error, cors);
+      }
+      const cycleTombstones = await fetchTombstonedIds(
+        'cycle',
+        uuidParityIds(body.knownEntityIds?.cycleIds),
+      );
+      if ('error' in cycleTombstones) {
+        return readFailure('cycle tombstones', cycleTombstones.error, cors);
+      }
+      deletedRoutineIds = routineTombstones.ids;
+      deletedCycleIds = cycleTombstones.ids;
+    }
+
+    // =========================================================================
     // 7. Return paginated response with cursor metadata
     // =========================================================================
     const response = {
@@ -1527,6 +1614,8 @@ async function mobileSyncPullHandler(
       externalActivities: externalActivityDtos,
       externalActivitiesHasMore,
       customExercises: customExerciseDtos,
+      deletedRoutineIds,
+      deletedCycleIds,
       ...(profilePreferenceSections === undefined
         ? {}
         : { profilePreferenceSections }),

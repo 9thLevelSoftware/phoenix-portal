@@ -31,9 +31,15 @@ interface PaddleCheckoutSettings {
 }
 
 interface PaddleCheckoutOpenConfig {
-	items: PaddleCheckoutItem[];
-	customData: PaddleCheckoutCustomData;
-	customer: PaddleCheckoutCustomer;
+	items?: PaddleCheckoutItem[];
+	customData?: PaddleCheckoutCustomData;
+	customer?: PaddleCheckoutCustomer;
+	/**
+	 * Opens an existing Paddle transaction instead of a new purchase — used
+	 * for the update-payment-method transaction of a past-due subscription.
+	 * Mutually exclusive with `items`.
+	 */
+	transactionId?: string;
 	settings?: PaddleCheckoutSettings;
 }
 
@@ -181,6 +187,60 @@ export interface OpenCheckoutOptions {
 }
 
 /**
+ * Checkout signing was refused. Carries the server's `code` so the caller can
+ * react — notably `existing_subscription` (409), which means the stored row
+ * has moved on and the CTA needs re-reading.
+ */
+export class CheckoutSigningError extends Error {
+	readonly code: string | undefined;
+
+	constructor(message: string, code?: string) {
+		super(message);
+		this.name = "CheckoutSigningError";
+		this.code = code;
+	}
+}
+
+export interface OpenUpdatePaymentMethodOptions {
+	/** Transaction id from paddle-update-subscription's `update_payment` action. */
+	transactionId: string;
+	onSuccess?: (event: PaddleEvent) => void;
+	onClose?: () => void;
+}
+
+/**
+ * Opens the Paddle overlay for an existing transaction.
+ *
+ * This is the past-due "update your card" flow: it updates the payment method
+ * on the subscription the user already has, and never creates a second one
+ * (F-022). No custom_data signing is involved — the transaction already
+ * belongs to the subscription.
+ */
+export async function openUpdatePaymentMethodCheckout({
+	transactionId,
+	onSuccess,
+	onClose,
+}: OpenUpdatePaymentMethodOptions): Promise<void> {
+	activeCallbacks = { onSuccess, onClose };
+
+	if (!initialized) {
+		await initializePaddle();
+	}
+
+	if (!window.Paddle) {
+		throw new Error("Billing checkout is unavailable. Please try again.");
+	}
+
+	window.Paddle.Checkout.open({
+		transactionId,
+		settings: {
+			theme: "dark",
+			displayMode: "overlay",
+		},
+	});
+}
+
+/**
  * Opens a Paddle checkout overlay for the given price.
  *
  * Automatically loads and initializes the SDK if it hasn't been already.
@@ -210,14 +270,34 @@ export async function openCheckout({
 		return;
 	}
 
-	const { data: signedPayload, error: signError } =
-		await supabase.functions.invoke<{
-			custom_data: PaddleCheckoutCustomData;
-		}>("paddle-checkout-custom-data", { method: "POST" });
+	const {
+		data: signedPayload,
+		error: signError,
+		response: signResponse,
+	} = await supabase.functions.invoke<{
+		custom_data: PaddleCheckoutCustomData;
+	}>("paddle-checkout-custom-data", { method: "POST" });
 	if (signError || !signedPayload?.custom_data) {
-		throw new Error(
-			signError?.message ??
+		// supabase-js turns any non-2xx into the generic "Edge Function
+		// returned a non-2xx status code", which would hide the 409
+		// `existing_subscription` message the server took care to write. Read
+		// the body instead, and let the caller refresh the CTA.
+		let serverMessage: string | undefined;
+		let serverCode: string | undefined;
+		if (signResponse) {
+			try {
+				const body = await signResponse.clone().json();
+				if (typeof body?.message === "string") serverMessage = body.message;
+				if (typeof body?.code === "string") serverCode = body.code;
+			} catch {
+				// Fall through to the generic message below.
+			}
+		}
+		throw new CheckoutSigningError(
+			serverMessage ??
+				signError?.message ??
 				"Billing checkout signing is unavailable. Please try again.",
+			serverCode,
 		);
 	}
 	if (signedPayload.custom_data.user_id !== userId) {

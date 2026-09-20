@@ -16,6 +16,13 @@ interface SubscriptionRow {
 	price_id: string | null;
 	current_period_end: string | null;
 	cancel_at_period_end: boolean;
+	/**
+	 * A paid mock user has a real Paddle subscription, so `billingAction`
+	 * (src/hooks/useSubscription.ts) routes them to `manage` — the path a live
+	 * subscriber is actually on. Without it every paid e2e user would be routed
+	 * to `checkout`.
+	 */
+	paddle_subscription_id: string | null;
 }
 
 interface IntegrationRow {
@@ -139,6 +146,7 @@ export async function installMockSupabase(
 						price_id: MONTHLY_PRICE_IDS[options.tier],
 						current_period_end: futureBillingPeriodEnd,
 						cancel_at_period_end: false,
+						paddle_subscription_id: "sub_e2e_01",
 					} satisfies SubscriptionRow)
 				: null,
 		integrations: options.integrations ?? [],

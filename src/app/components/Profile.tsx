@@ -54,6 +54,7 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PHOENIX } from "@/lib/colors";
+import { cancelSuccessMessage } from "@/lib/paddle";
 import { supabase } from "@/lib/supabase";
 import { formatVolume, type WeightUnit } from "@/lib/units";
 import { useUpdateProfile } from "@/mutations/profile";
@@ -111,8 +112,15 @@ export function formatProfileVolume(
 export function Profile() {
 	const { user, signOut } = useAuth();
 	const userId = user?.id ?? "";
-	const { tier, currentPeriodEnd, cancelAtPeriodEnd, isEntitled, isStale } =
-		useSubscription();
+	const {
+		tier,
+		status: subscriptionStatus,
+		currentPeriodEnd,
+		cancelAtPeriodEnd,
+		isEntitled,
+		isStale,
+		needsPaymentUpdate,
+	} = useSubscription();
 	const { activeProfileId } = useProfileFilterStore();
 	const queryClient = useQueryClient();
 	const [confirmCancel, setConfirmCancel] = useState(false);
@@ -124,16 +132,14 @@ export function Profile() {
 	const handleCancelSubscription = async () => {
 		setIsCanceling(true);
 		try {
-			const { error } = await supabase.functions.invoke(
-				"paddle-cancel-subscription",
-			);
+			const { data, error } = await supabase.functions.invoke<{
+				canceledImmediately?: boolean;
+			}>("paddle-cancel-subscription");
 			if (error) {
 				toast.error(error.message || "Failed to cancel subscription");
 				return;
 			}
-			toast.success(
-				"Subscription canceled. You'll retain access until the end of your billing period.",
-			);
+			toast.success(cancelSuccessMessage(data));
 			if (user) {
 				queryClient.invalidateQueries({
 					queryKey: queryKeys.subscription.byUser(user.id),
@@ -428,10 +434,29 @@ export function Profile() {
 									<div className="text-white font-medium">
 										{PLAN_LABELS[subscriptionDisplayTier]}
 									</div>
-									{isStale && (
-										<div className="text-sm text-muted-foreground">
-											Subscription expired. Refreshing billing status...
+									{/*
+									 * A failed payment must be visible DURING Paddle's retry
+									 * window, which is exactly when `isStale` is still false
+									 * for a past_due row (it only flips
+									 * PAST_DUE_REFRESH_AFTER_DAYS past the period end). Gate
+									 * this on the billing action instead, so the user is told
+									 * while they can still act on it (R-33, plan-alignment
+									 * R-41).
+									 */}
+									{needsPaymentUpdate ? (
+										<div
+											className="text-sm text-warning"
+											data-testid="profile-past-due-notice"
+										>
+											Your last payment failed — update your card to keep your
+											plan.
 										</div>
+									) : (
+										isStale && (
+											<div className="text-sm text-muted-foreground">
+												Subscription expired. Refreshing billing status...
+											</div>
+										)
 									)}
 									{isEntitled && currentPeriodEnd && (
 										<div className="text-sm text-muted-foreground">
@@ -448,8 +473,17 @@ export function Profile() {
 									</Button>
 								) : (
 									<>
-										<Button asChild variant="outline" size="sm">
-											<Link to="/pricing">Manage Plan</Link>
+										<Button
+											asChild
+											variant={needsPaymentUpdate ? "cta" : "outline"}
+											size="sm"
+										>
+											{/* The full update-payment flow lives on the billing
+											    page; point at it rather than duplicating the
+											    Paddle transaction handling here. */}
+											<Link to="/pricing">
+												{needsPaymentUpdate ? "Update payment" : "Manage Plan"}
+											</Link>
 										</Button>
 										{canCancel && (
 											<Button
@@ -1100,12 +1134,18 @@ export function Profile() {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Cancel subscription?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Your subscription will remain active until the end of your current
-							billing period
-							{currentPeriodEnd
-								? ` (${format(new Date(currentPeriodEnd), "MMM d, yyyy")})`
-								: ""}
-							. After that, you'll be downgraded to the Free plan.
+							{subscriptionStatus === "past_due" ? (
+								"Your last payment failed, so canceling ends your paid access immediately and moves you to the Free plan."
+							) : (
+								<>
+									Your subscription will remain active until the end of your
+									current billing period
+									{currentPeriodEnd
+										? ` (${format(new Date(currentPeriodEnd), "MMM d, yyyy")})`
+										: ""}
+									. After that, you'll be downgraded to the Free plan.
+								</>
+							)}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
