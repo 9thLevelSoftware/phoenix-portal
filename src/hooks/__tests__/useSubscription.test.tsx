@@ -19,6 +19,8 @@ let mockSubscriptionRow: {
 	price_id: string | null;
 	current_period_end: string | null;
 	cancel_at_period_end: boolean;
+	updated_at?: string | null;
+	paddle_subscription_id?: string | null;
 } | null = null;
 let mockSubscriptionError: { message: string } | null = null;
 
@@ -188,7 +190,7 @@ describe("useSubscription effective tier", () => {
 		expect(result.current.rawTier).toBe("FLAME");
 	});
 
-	it("downgrades effective tier to FREE when status is 'past_due'", async () => {
+	it("keeps the paid tier while status is 'past_due' (Paddle retry window)", async () => {
 		mockSubscriptionRow = {
 			tier: "EMBER",
 			status: "past_due",
@@ -203,9 +205,70 @@ describe("useSubscription effective tier", () => {
 
 		await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-		expect(result.current.tier).toBe("FREE");
-		expect(result.current.isPremium).toBe(false);
+		expect(result.current.tier).toBe("EMBER");
+		expect(result.current.isPremium).toBe(true);
 		expect(result.current.rawTier).toBe("EMBER");
+		// Period ended long ago: stale, so the portal asks Paddle for a refresh
+		// (heals a lost cancel/pause webhook) while access keeps the past_due rule.
+		expect(result.current.isStale).toBe(true);
+	});
+
+	it("is not stale for a recent past_due row with no period end", async () => {
+		mockSubscriptionRow = {
+			tier: "FLAME",
+			status: "past_due",
+			price_id: "pri_flame_monthly",
+			current_period_end: null,
+			cancel_at_period_end: false,
+			updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+		};
+
+		const { result } = renderHook(() => useSubscription(), {
+			wrapper: createWrapper(),
+		});
+
+		await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+		expect(result.current.tier).toBe("FLAME");
+		expect(result.current.isStale).toBe(false);
+	});
+
+	it("is stale for a past_due row with no period end unchanged for over 3 days", async () => {
+		mockSubscriptionRow = {
+			tier: "FLAME",
+			status: "past_due",
+			price_id: "pri_flame_monthly",
+			current_period_end: null,
+			cancel_at_period_end: false,
+			updated_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+		};
+
+		const { result } = renderHook(() => useSubscription(), {
+			wrapper: createWrapper(),
+		});
+
+		await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+		expect(result.current.tier).toBe("FLAME");
+		expect(result.current.isStale).toBe(true);
+	});
+
+	it("gives a scheduled cancellation no renewal grace", async () => {
+		mockSubscriptionRow = {
+			tier: "FLAME",
+			status: "active",
+			price_id: "pri_flame_monthly",
+			current_period_end: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+			cancel_at_period_end: true,
+		};
+
+		const { result } = renderHook(() => useSubscription(), {
+			wrapper: createWrapper(),
+		});
+
+		await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+		expect(result.current.tier).toBe("FREE");
 	});
 
 	it("downgrades effective tier to FREE when status is 'incomplete'", async () => {
@@ -279,5 +342,141 @@ describe("useSubscription effective tier", () => {
 		} finally {
 			vi.unstubAllGlobals();
 		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Billing action derivation (tests review R-1)
+//
+// PricingPlans.test.tsx mocks this whole hook and feeds `billingAction` in as
+// a literal, so nothing there exercises the derivation: replacing it with a
+// hardcoded `"checkout"` left the entire vitest suite green while a past_due
+// user's pricing page called openCheckout — the headline bug this PR exists
+// to prevent. These drive the REAL hook against stored rows.
+// ---------------------------------------------------------------------------
+
+describe("useSubscription billing action", () => {
+	beforeEach(() => {
+		mockSubscriptionError = null;
+		mockSubscriptionRow = null;
+	});
+
+	async function derive() {
+		const { result } = renderHook(() => useSubscription(), {
+			wrapper: createWrapper(),
+		});
+		await waitFor(() => expect(result.current.isLoading).toBe(false));
+		return result;
+	}
+
+	it("routes a past_due subscriber to manage, never to a checkout", async () => {
+		mockSubscriptionRow = {
+			tier: "FLAME",
+			status: "past_due",
+			price_id: "pri_flame_monthly",
+			// 10 days past the period end: Paddle is still retrying.
+			current_period_end: "2020-01-01T00:00:00Z",
+			cancel_at_period_end: false,
+			paddle_subscription_id: "sub_1",
+		};
+
+		const result = await derive();
+
+		// Access is kept (binding user decision, R-33)...
+		expect(result.current.isEntitled).toBe(true);
+		expect(result.current.tier).toBe("FLAME");
+		// ...and the CTA must not be a checkout: paddle-checkout-custom-data
+		// would refuse to sign it with 409.
+		expect(result.current.billingAction).toBe("manage");
+		expect(result.current.needsPaymentUpdate).toBe(true);
+	});
+
+	it("routes an active subscription whose period ended to refresh, not checkout", async () => {
+		mockSubscriptionRow = {
+			tier: "FLAME",
+			status: "active",
+			price_id: "pri_flame_monthly",
+			current_period_end: "2020-01-01T00:00:00Z",
+			cancel_at_period_end: false,
+			paddle_subscription_id: "sub_1",
+		};
+
+		const result = await derive();
+
+		expect(result.current.billingAction).toBe("refresh");
+		expect(result.current.needsPaymentUpdate).toBe(false);
+		expect(result.current.isEntitled).toBe(false);
+	});
+
+	it("only allows a checkout with no subscription, or a canceled one", async () => {
+		for (const [row, expected] of [
+			[null, "checkout"],
+			[
+				{
+					tier: "FLAME" as SubscriptionTier,
+					status: "canceled" as SubscriptionStatus,
+					price_id: "pri_flame_monthly",
+					current_period_end: "2999-04-01T00:00:00Z",
+					cancel_at_period_end: false,
+					paddle_subscription_id: "sub_1",
+				},
+				"checkout",
+			],
+			[
+				{
+					tier: "FLAME" as SubscriptionTier,
+					status: "active" as SubscriptionStatus,
+					price_id: "pri_flame_monthly",
+					current_period_end: "2999-04-01T00:00:00Z",
+					cancel_at_period_end: false,
+					paddle_subscription_id: "sub_1",
+				},
+				"manage",
+			],
+			[
+				// A live subscription id whose tier grants nothing: no access,
+				// but a checkout would be refused, so it must be a refresh.
+				{
+					tier: "FREE" as SubscriptionTier,
+					status: "active" as SubscriptionStatus,
+					price_id: null,
+					current_period_end: "2999-04-01T00:00:00Z",
+					cancel_at_period_end: false,
+					paddle_subscription_id: "sub_1",
+				},
+				"refresh",
+			],
+			[
+				// A paid row that Paddle never linked: nothing to manage.
+				{
+					tier: "FLAME" as SubscriptionTier,
+					status: "active" as SubscriptionStatus,
+					price_id: "pri_flame_monthly",
+					current_period_end: "2999-04-01T00:00:00Z",
+					cancel_at_period_end: false,
+					paddle_subscription_id: null,
+				},
+				"checkout",
+			],
+		] as const) {
+			mockSubscriptionRow = row;
+			const result = await derive();
+			expect(
+				result.current.billingAction,
+				`${row?.status ?? "no row"} / ${row?.tier ?? "-"} / ${
+					row?.paddle_subscription_id ?? "no id"
+				}`,
+			).toBe(expected);
+		}
+	});
+
+	it("never offers a checkout while billing status is unavailable", async () => {
+		// An outage must not read as "no subscription, go buy one".
+		mockSubscriptionError = { message: "network down" };
+
+		const result = await derive();
+
+		expect(result.current.isError).toBe(true);
+		expect(result.current.billingAction).not.toBe("checkout");
 	});
 });
