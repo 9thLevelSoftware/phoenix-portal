@@ -876,6 +876,100 @@ never accidentally targets a deleted project.
 
 ---
 
+## 9. Pre-Apply Check: 20260920007600 (Prod Schema Drift Reconciliation)
+
+`supabase/migrations/20260920007600_reconcile_prod_schema_drift.sql` is the one
+migration in this set whose behaviour depends on production's current catalog,
+and the two pieces of evidence available in the repo disagree about it. **Run
+the read-only check below before `supabase db push` and record the result in
+`prod-evidence.md`.** It is a plain `SELECT` against `information_schema`: it
+takes no locks and changes nothing.
+
+### Required read-only pre-apply query
+
+```sql
+SELECT table_name, column_name, data_type, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND (table_name, column_name) IN (
+    ('routines',          'created_at'),
+    ('routines',          'updated_at'),
+    ('training_cycles',   'updated_at'),
+    ('routine_exercises', 'per_set_echo_levels'),
+    ('profiles',          'digest_frequency'),
+    ('profiles',          'digest_last_sent_at'),
+    ('profiles',          'feature_flags'),
+    ('user_goals',        'last_snapshot_at')
+  )
+ORDER BY table_name, column_name;
+```
+
+### What each outcome means
+
+| Result | What the migration does | Action |
+| --- | --- | --- |
+| `routines.created_at` / `routines.updated_at` / `training_cycles.updated_at` all `is_nullable = NO` | Section 2 is skipped entirely. No lock, no `UPDATE`. | Push normally. |
+| Any of those three is `is_nullable = YES` | Section 2 **runs on production**: it backfills the NULL rows, then takes `ACCESS EXCLUSIVE` plus a full verification scan on that table for `SET NOT NULL`, under `lock_timeout = '5s'`. | Push in a maintenance window. A lock timeout aborts the whole push cleanly (single transaction, nothing partially applied) -- retry when the table is quiet. The backfill runs with the row triggers suppressed, so `updated_at` does not move and devices do **not** re-pull those routines. |
+| `routine_exercises.per_set_echo_levels` `data_type = jsonb` | Section 1 is skipped. | Push normally. |
+| `data_type = json` or `text` | Section 1 **runs on production**: `ALTER COLUMN ... TYPE jsonb USING to_jsonb(...)`, i.e. `ACCESS EXCLUSIVE` plus a table rewrite. Semantically correct in both cases (mobile stores a JSON *string*; `to_jsonb` preserves it, `::jsonb` would not). | Push in a maintenance window. The generated types cannot tell `json` from `jsonb`, which is why this check exists. |
+| The four `profiles` / `user_goals` columns all present | Section 3 is skipped. | Push normally, **and** paste the `data_type` / `column_default` values into `prod-evidence.md`: the repo's values for them are transcribed from the 2026-04-20 audit DDL (`ad2eb6b`) and have never been catalog-verified. If they differ from what the migration ships, open a follow-up -- the `ADD COLUMN IF NOT EXISTS` branches can never correct an existing column. |
+| Any of them missing | Section 3 adds it with the reconstructed type/default. | Push normally. |
+
+### What changes on production regardless of the answer
+
+- **Section 4** revokes `TRUNCATE`, `REFERENCES` and `TRIGGER` from `anon` and
+  `authenticated` on every table in `public`, and in the default privileges of
+  every grantor role the migration role can alter.
+- **Section 6** replaces `profiles`' table-wide `INSERT`/`UPDATE` grant for
+  `authenticated` with a column list, so `feature_flags`, `digest_frequency`,
+  `digest_last_sent_at` and `stripe_customer_id` stop being client-writable.
+- **Section 7** revokes all client privileges on `oauth_tokens` and
+  `oauth_states` (service-role only; RLS was previously the only barrier).
+- **Section 5** re-asserts the SECURITY DEFINER function grants. This is a
+  converging rewrite, not a no-op: it re-grants `request_account_deletion()`,
+  which `20260920000100`'s allow-list does not contain.
+
+### Ordering constraint
+
+`20260920007600` must be applied **with or before** any replay of
+`20260920000100`. Only 007600's allow-list contains
+`public.request_account_deletion()`; a 000100 replay on its own revokes
+`authenticated`'s `EXECUTE` on it.
+
+### Post-apply verification (read-only)
+
+```sql
+-- Expect zero rows: no client TRUNCATE/REFERENCES/TRIGGER anywhere in public.
+SELECT c.oid::regclass::text, r.rolname, pr.priv
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(rolname)
+CROSS JOIN (VALUES ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) AS pr(priv)
+WHERE n.nspname = 'public'
+  AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+  AND has_table_privilege(r.rolname, c.oid, pr.priv);
+
+-- Expect all false: the OAuth tables and the server-owned profile columns.
+SELECT has_table_privilege('authenticated', 'public.oauth_tokens', 'SELECT')  AS oauth_tokens_select,
+       has_table_privilege('authenticated', 'public.oauth_states', 'SELECT')  AS oauth_states_select,
+       has_table_privilege('authenticated', 'public.profiles', 'UPDATE')      AS profiles_table_update,
+       has_column_privilege('authenticated', 'public.profiles', 'feature_flags', 'UPDATE') AS feature_flags_update;
+```
+
+### Known residual (not fixable from a `db push`)
+
+`supabase_admin`'s default privileges in schema `public` still grant
+`TRUNCATE`, `REFERENCES` and `TRIGGER` to `anon` and `authenticated`, so a
+table created by Supabase platform tooling running as `supabase_admin` gets
+them. `postgres` is not a member of `supabase_admin`, so
+`ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin` fails with `42501` -- the
+migration attempts it, catches the error and reports it as a `residual:`
+NOTICE. Every table in `public` today is `postgres`-owned. The same default
+grants also remain in the `storage` and `supabase_functions` schemas, which is
+out of scope: those tables are owned by `supabase_storage_admin` /
+`supabase_functions_admin` and storage-api re-grants them on every upgrade.
+Keep the project's API "Exposed schemas" setting at `public, graphql_public`.
+
 ## Related Runbooks
 
 - [Billing Incident Response](billing-incident-response.md) -- manual fixes,
