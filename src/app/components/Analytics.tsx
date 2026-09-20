@@ -44,7 +44,7 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
-import { buildBodyMuscleFocusModel } from "@/lib/body-muscle-analytics";
+import { useBodyMuscleAnalytics } from "@/hooks/useBodyMuscleAnalytics";
 import { PHOENIX } from "@/lib/colors";
 import { getExerciseProfile } from "@/lib/exercise-muscles";
 import { downloadCSV } from "@/lib/export/csv";
@@ -311,6 +311,57 @@ function mapServerInsight(
 		description: normalizedDescription,
 		recommendation: item.recommendation as string | undefined,
 		metric,
+	};
+}
+
+/**
+ * KD-14 precedence: the feed shows a FRESH server batch or the browser
+ * fallback, never a mix, so the two can never contradict each other and no
+ * item can be listed twice.
+ *
+ * A server row counts only while `expires_at` is in the future.
+ * `insightsOptions` already filters on it in SQL; repeating it here means a
+ * query result cached across the 36-hour boundary flips to the fallback
+ * instead of presenting a stale batch as current, and it keeps the whole rule
+ * in one testable place. Server items keep the server row's `id`.
+ */
+export function selectInsightsFeed(
+	serverRows: unknown,
+	localInsights: Array<{
+		type: Insight["type"];
+		title: string;
+		description: string;
+	}>,
+	unit: WeightUnit,
+	now: number = Date.now(),
+): { items: InsightItem[]; source: "server" | "local" } {
+	const fresh = Array.isArray(serverRows)
+		? (serverRows as Array<Record<string, unknown>>).filter((item) => {
+				const expiresAt = item.expires_at;
+				return typeof expiresAt === "string" && Date.parse(expiresAt) > now;
+			})
+		: [];
+
+	if (fresh.length > 0) {
+		return {
+			items: fresh.map((item) => mapServerInsight(item, unit)),
+			source: "server",
+		};
+	}
+
+	return {
+		items: localInsights.map((i, idx) => ({
+			id: `local-${idx}`,
+			type:
+				i.type === "positive"
+					? ("success" as const)
+					: i.type === "warning"
+						? ("warning" as const)
+						: ("info" as const),
+			title: i.title,
+			description: i.description,
+		})),
+		source: "local",
 	};
 }
 
@@ -641,9 +692,17 @@ export function Analytics() {
 		() => computeWeeklyVolume(exerciseSessionData),
 		[exerciseSessionData],
 	);
+	// The body-muscle map is ~1.7 MB, so it is fetched only once the Body tab
+	// opens. The tab's own chunk loads in parallel and renders immediately;
+	// only its heatmap section waits for (or reports failure of) the map.
+	const { analytics: bodyMuscleAnalytics, failed: bodyMuscleMapFailed } =
+		useBodyMuscleAnalytics(activeTab === "body");
 	const bodyMuscleModel = useMemo(
-		() => buildBodyMuscleFocusModel(bodyIntelData ?? []),
-		[bodyIntelData],
+		() =>
+			bodyMuscleAnalytics
+				? bodyMuscleAnalytics.buildBodyMuscleFocusModel(bodyIntelData ?? [])
+				: null,
+		[bodyMuscleAnalytics, bodyIntelData],
 	);
 
 	// Group exercises by primary muscle group for ExerciseDeepDive
@@ -1083,31 +1142,11 @@ export function Analytics() {
 		};
 	}, [volumeData, unit]);
 
-	// --- Insights feed data (from server or local fallback) ---
-	const insightsFeedItems: InsightItem[] = useMemo(() => {
-		// If we have server-generated insights, use them
-		if (
-			insightsData &&
-			Array.isArray(insightsData) &&
-			insightsData.length > 0
-		) {
-			return insightsData.map((item: Record<string, unknown>) =>
-				mapServerInsight(item, unit),
-			);
-		}
-		// Fallback: convert local insights to InsightsFeed format
-		return insights.map((i, idx) => ({
-			id: `local-${idx}`,
-			type:
-				i.type === "positive"
-					? ("success" as const)
-					: i.type === "warning"
-						? ("warning" as const)
-						: ("info" as const),
-			title: i.title,
-			description: i.description,
-		}));
-	}, [insightsData, insights, unit]);
+	// --- Insights feed: a fresh server batch OR local, never both (KD-14) ---
+	const { items: insightsFeedItems, source: insightsSource } = useMemo(
+		() => selectInsightsFeed(insightsData, insights, unit),
+		[insightsData, insights, unit],
+	);
 
 	// --- Muscle radar data ---
 	const muscleRadarData = useMemo(() => {
@@ -1444,6 +1483,7 @@ export function Analytics() {
 										insightsFeedItems={insightsFeedItems}
 										insightsPending={insightsPending}
 										insightsError={insightsError}
+										insightsSource={insightsSource}
 									/>
 								</Suspense>
 							)}
@@ -1473,6 +1513,7 @@ export function Analytics() {
 										mobileMusclData={mobileMusclData}
 										weeklyVolume={weeklyVolume}
 										bodyMuscleModel={bodyMuscleModel}
+										bodyMuscleMapFailed={bodyMuscleMapFailed}
 										totalSessions={totalSessions}
 										muscleRecoveries={muscleRecoveries}
 										recommendations={recommendations}
@@ -1674,6 +1715,7 @@ export function Analytics() {
 											insightsFeedItems={insightsFeedItems}
 											insightsPending={insightsPending}
 											insightsError={insightsError}
+											insightsSource={insightsSource}
 										/>
 									</Suspense>
 								</TabsContent>
@@ -1708,6 +1750,7 @@ export function Analytics() {
 											muscleDonutOption={muscleDonutOption}
 											muscleRadarData={muscleRadarData}
 											bodyMuscleModel={bodyMuscleModel}
+											bodyMuscleMapFailed={bodyMuscleMapFailed}
 											weeklyVolume={weeklyVolume}
 											totalSessions={totalSessions}
 											muscleRecoveries={muscleRecoveries}

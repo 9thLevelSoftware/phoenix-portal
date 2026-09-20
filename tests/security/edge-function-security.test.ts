@@ -1,6 +1,12 @@
-import { readFileSync } from "node:fs";
+import { globSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+	billingAction,
+	EXISTING_SUBSCRIPTION_HTTP_STATUS,
+	existingSubscriptionResponseBody,
+	mayOpenNewCheckout,
+} from "../../supabase/functions/_shared/billingAction.ts";
 import {
 	buildGarminWebhookPersistRow,
 	extractGarminProviderUserId,
@@ -16,13 +22,58 @@ import {
 	parsePaddlePaidTier,
 } from "../../supabase/functions/_shared/paddlePriceIds.ts";
 import { buildSubscriptionUpsertFromPaddleState } from "../../supabase/functions/_shared/paddleSubscriptionState.ts";
-import { buildPaddleSubscriptionPatch } from "../../supabase/functions/_shared/paddleSubscriptionUpdate.ts";
+import {
+	buildPaddleSubscriptionPatch,
+	decidePlanChangeGate,
+	PAYMENT_PAST_DUE_HTTP_STATUS,
+	paymentPastDueResponseBody,
+	resolvePaddleCancelRequest,
+} from "../../supabase/functions/_shared/paddleSubscriptionUpdate.ts";
 import {
 	classifyPaddleEventOrder,
 	evaluatePaddleCustomDataTrust,
 	verifyPaddleCustomDataSignature,
 } from "../../supabase/functions/_shared/paddleWebhookSecurity.ts";
-import { isSubscriptionEntitled } from "../../supabase/functions/_shared/subscriptionEntitlement.ts";
+import { requireSubscription } from "../../supabase/functions/_shared/requireSubscription.ts";
+import {
+	ENTITLEMENT_GRACE_HOURS,
+	isSubscriptionEntitled,
+} from "../../supabase/functions/_shared/subscriptionEntitlement.ts";
+
+type EntitlementCase = {
+	id: string;
+	status: string;
+	tier: string;
+	periodEndOffsetSeconds: number | null;
+	cancelAtPeriodEnd: boolean;
+	expectedTier: string;
+};
+
+type FakeSubscriptionRow = {
+	tier: string;
+	status: string;
+	current_period_end: string | null;
+	cancel_at_period_end: boolean;
+} | null;
+
+/** Minimal stand-in for the service-role client requireSubscription queries. */
+function fakeSubscriptionClient(row: FakeSubscriptionRow) {
+	const query = {
+		select: () => query,
+		eq: () => query,
+		maybeSingle: async () => ({ data: row, error: null }),
+	};
+	return { from: () => query } as unknown as Parameters<
+		typeof requireSubscription
+	>[0];
+}
+
+const entitlementFixture = JSON.parse(
+	readFileSync(
+		join(process.cwd(), "tests/fixtures/entitlement-cases.json"),
+		"utf8",
+	),
+) as { graceHours: number; cases: EntitlementCase[] };
 
 describe("Paddle webhook security helpers", () => {
 	it("requires valid signed custom_data for the Paddle user id", async () => {
@@ -110,22 +161,221 @@ describe("Paddle webhook security helpers", () => {
 	it("denies Edge entitlements when the billing period is expired or missing", () => {
 		const now = new Date("2026-05-17T12:00:00Z");
 
-		expect(isSubscriptionEntitled("active", "2026-06-17T00:00:00Z", now)).toBe(
-			true,
-		);
 		expect(
-			isSubscriptionEntitled("trialing", "2026-06-17T00:00:00Z", now),
+			isSubscriptionEntitled("active", "2026-06-17T00:00:00Z", { now }),
 		).toBe(true);
-		expect(isSubscriptionEntitled("active", "2026-04-17T00:00:00Z", now)).toBe(
-			false,
-		);
-		expect(isSubscriptionEntitled("active", "2026-05-17T12:00:00Z", now)).toBe(
-			false,
-		);
-		expect(isSubscriptionEntitled("active", null, now)).toBe(false);
 		expect(
-			isSubscriptionEntitled("canceled", "2026-06-17T00:00:00Z", now),
+			isSubscriptionEntitled("trialing", "2026-06-17T00:00:00Z", { now }),
+		).toBe(true);
+		expect(
+			isSubscriptionEntitled("active", "2026-04-17T00:00:00Z", { now }),
 		).toBe(false);
+		expect(
+			isSubscriptionEntitled("trialing", "2026-05-17T12:00:00Z", { now }),
+		).toBe(false);
+		expect(isSubscriptionEntitled("active", null, { now })).toBe(false);
+		expect(
+			isSubscriptionEntitled("canceled", "2026-06-17T00:00:00Z", { now }),
+		).toBe(false);
+		// Paddle retry window: past_due keeps access even 10 days past period end.
+		expect(
+			isSubscriptionEntitled("past_due", "2026-05-07T12:00:00Z", { now }),
+		).toBe(true);
+	});
+
+	it("uses the shared entitlement fixture's grace window", () => {
+		expect(ENTITLEMENT_GRACE_HOURS).toBe(entitlementFixture.graceHours);
+	});
+
+	// Runs the fixture through the production Edge gate (requireSubscription
+	// with a fake subscriptions row), so a change to either half of its tier
+	// computation fails here. Deliberate difference: rows with an unknown tier
+	// or status are corrupt data, which Edge refuses with 503 (design.md),
+	// while SQL and the client map them to FREE. Both deny access.
+	it.each(
+		entitlementFixture.cases,
+	)("Edge requireSubscription fixture: $id -> $expectedTier", async (c) => {
+		const now = new Date("2026-05-17T12:00:00Z");
+		const periodEnd =
+			c.periodEndOffsetSeconds === null
+				? null
+				: new Date(
+						now.getTime() + c.periodEndOffsetSeconds * 1000,
+					).toISOString();
+		const gate = await requireSubscription(
+			fakeSubscriptionClient({
+				tier: c.tier,
+				status: c.status,
+				current_period_end: periodEnd,
+				cancel_at_period_end: c.cancelAtPeriodEnd,
+			}),
+			"user-1",
+			"EMBER",
+			{},
+			now,
+		);
+		const unknownValue =
+			!["FREE", "EMBER", "FLAME", "INFERNO"].includes(c.tier) ||
+			![
+				"active",
+				"past_due",
+				"canceled",
+				"trialing",
+				"incomplete",
+				"none",
+			].includes(c.status);
+		expect(gate.tier).toBe(c.expectedTier);
+		expect(gate.allowed).toBe(c.expectedTier !== "FREE");
+		if (!gate.allowed) {
+			expect(gate.response.status).toBe(unknownValue ? 503 : 402);
+		}
+	});
+
+	it("refuses unknown tiers and statuses with 503 (corrupt data), not 402", async () => {
+		const now = new Date("2026-05-17T12:00:00Z");
+		for (const row of [
+			{
+				tier: "PHOENIX",
+				status: "active",
+				current_period_end: "2026-06-17T00:00:00Z",
+				cancel_at_period_end: false,
+			},
+			{
+				tier: "FLAME",
+				status: "paused",
+				current_period_end: "2026-06-17T00:00:00Z",
+				cancel_at_period_end: false,
+			},
+		]) {
+			const gate = await requireSubscription(
+				fakeSubscriptionClient(row),
+				"user-1",
+				"EMBER",
+				{},
+				now,
+			);
+			expect(gate.allowed).toBe(false);
+			expect(gate.tier).toBe("FREE");
+			if (!gate.allowed) {
+				expect(gate.response.status).toBe(503);
+				expect(await gate.response.json()).toMatchObject({
+					error: "subscription_unavailable",
+				});
+			}
+		}
+	});
+
+	it("treats a missing subscription row as FREE with 402", async () => {
+		const gate = await requireSubscription(
+			fakeSubscriptionClient(null),
+			"user-1",
+			"EMBER",
+			{},
+		);
+		expect(gate.allowed).toBe(false);
+		if (!gate.allowed) {
+			expect(gate.response.status).toBe(402);
+		}
+	});
+
+	it("refuses plan changes for past_due with 409 payment_past_due, not checkout", () => {
+		const now = new Date("2026-05-17T12:00:00Z");
+		const pastDue = {
+			paddle_subscription_id: "sub_1",
+	it("routes past_due to manage-with-a-card-update, never to a new checkout", () => {
+			tier: "FLAME",
+			status: "past_due",
+			current_period_end: "2026-05-07T12:00:00Z",
+			cancel_at_period_end: false,
+		};
+		expect(decidePlanChangeGate(pastDue, now)).toEqual({
+			action: "payment_past_due",
+		});
+		expect(PAYMENT_PAST_DUE_HTTP_STATUS).toBe(409);
+		const body = paymentPastDueResponseBody();
+		expect(body.code).toBe("payment_past_due");
+		expect(body.message).toMatch(/payment method/i);
+
+		expect(
+			decidePlanChangeGate(
+		expect(billingAction(pastDue, now)).toEqual({
+			action: "manage",
+			reason: "payment_past_due",
+			needsPaymentUpdate: true,
+			entitled: true,
+			paddleSubscriptionId: "sub_1",
+		expect(mayOpenNewCheckout(billingAction(pastDue, now))).toBe(false);
+		expect(EXISTING_SUBSCRIPTION_HTTP_STATUS).toBe(409);
+		const body = existingSubscriptionResponseBody(billingAction(pastDue, now));
+		expect(body.code).toBe("existing_subscription");
+			billingAction(
+				{
+					...pastDue,
+					status: "active",
+					current_period_end: "2026-06-17T00:00:00Z",
+				},
+				now,
+			),
+		).toEqual({ action: "proceed", paddleSubscriptionId: "sub_1" });
+		expect(
+			decidePlanChangeGate(
+			).action,
+		).toBe("manage");
+		// Canceled is the ONLY stored state that may open a new checkout.
+			billingAction(
+				{
+					...pastDue,
+					status: "canceled",
+					current_period_end: "2026-06-17T00:00:00Z",
+				},
+				now,
+			),
+		).toEqual({
+			action: "checkout_required",
+			reason: "inactive_or_expired_subscription",
+		});
+		expect(decidePlanChangeGate(null, now)).toEqual({
+			action: "checkout_required",
+			reason: "missing_subscription",
+		});
+		expect(
+			decidePlanChangeGate({ ...pastDue, paddle_subscription_id: null }, now),
+		).toEqual({ action: "checkout_required", reason: "missing_subscription" });
+		).toMatchObject({ action: "checkout", reason: "canceled_subscription" });
+		expect(billingAction(null, now)).toMatchObject({
+			action: "checkout",
+			reason: "no_subscription",
+			billingAction({ ...pastDue, paddle_subscription_id: null }, now),
+		).toMatchObject({ action: "checkout", reason: "no_subscription" });
+		// A live subscription whose stored state lapsed refreshes, it does not
+		// check out — signing would refuse it with 409 (F-022).
+			billingAction(
+				{
+					...pastDue,
+					status: "active",
+					current_period_end: "2026-05-01T00:00:00Z",
+				},
+				now,
+			),
+		).toMatchObject({ action: "refresh", reason: "entitlement_lapsed" });
+	});
+
+	it("lets past_due users cancel immediately and others at period end", () => {
+		expect(resolvePaddleCancelRequest("past_due")).toEqual({
+			allowed: true,
+			effectiveFrom: "immediately",
+			localPatch: { status: "canceled", cancel_at_period_end: false },
+		});
+		for (const status of ["active", "trialing"]) {
+			expect(resolvePaddleCancelRequest(status)).toEqual({
+				allowed: true,
+				effectiveFrom: "next_billing_period",
+				localPatch: { cancel_at_period_end: true },
+			});
+		}
+		for (const status of ["canceled", "incomplete", "none", null]) {
+			expect(resolvePaddleCancelRequest(status)).toEqual({ allowed: false });
+		}
 	});
 
 	it("builds Paddle update bodies for switches, downgrades, and uncancel actions", () => {
@@ -140,6 +390,7 @@ describe("Paddle webhook security helpers", () => {
 			body: {
 				items: [{ price_id: "pri_ember_monthly", quantity: 1 }],
 				proration_billing_mode: "prorated_immediately",
+				on_payment_failure: "prevent_change",
 			},
 		});
 
@@ -154,6 +405,7 @@ describe("Paddle webhook security helpers", () => {
 			body: {
 				items: [{ price_id: "pri_flame_annual", quantity: 1 }],
 				proration_billing_mode: "prorated_immediately",
+				on_payment_failure: "prevent_change",
 				scheduled_change: null,
 			},
 		});
@@ -164,7 +416,10 @@ describe("Paddle webhook security helpers", () => {
 				"pri_flame_monthly",
 				true,
 			),
-		).toEqual({ action: "uncancel", body: { scheduled_change: null } });
+		).toEqual({
+			action: "uncancel",
+			body: { scheduled_change: null, on_payment_failure: "prevent_change" },
+		});
 	});
 
 	it("resolves server-side Paddle plan selections for subscription updates", () => {
@@ -494,5 +749,71 @@ describe("Garmin webhook identity helpers", () => {
 			laps: [{ distance: 400 }],
 		});
 		expect(JSON.stringify(row.raw_data)).not.toMatch(/token/i);
+	});
+});
+
+describe("SPA -> Edge _shared import boundary", () => {
+	// src/hooks/useSubscription.ts imports the shared billing predicate by
+	// relative path so the CTA and the server cannot disagree (R-11). The
+	// directory it opens onto is full of modules that read secrets, and one
+	// careless re-export would put a service-role code path or a secret name
+	// into dist/. Pin the boundary to the reviewed shared modules, none of which
+	// may contain a server-only token.
+	const SPA_REACHABLE_SHARED_MODULES = [
+		"billingAction.ts",
+		"subscriptionEntitlement.ts",
+		"workoutModes.ts",
+	];
+
+	function readShared(file: string) {
+		return readFileSync(
+			join(process.cwd(), "supabase/functions/_shared", file),
+			"utf8",
+		);
+	}
+
+	it("only reviewed Edge shared modules are imported from src/", () => {
+		const sources = globSync("src/**/*.{ts,tsx}", { cwd: process.cwd() });
+		const sharedImports = new Set<string>();
+		for (const file of sources) {
+			// The tests may import anything; only shipped code matters.
+			if (/__tests__|\.test\.tsx?$/.test(file)) continue;
+			const source = readFileSync(join(process.cwd(), file), "utf8");
+			// Quote-agnostic, and covers `import … from`, `export … from` and
+			// dynamic `import(...)`. `supabase/functions/**` is outside
+			// biome.json's files.includes, so quote style there is unenforced
+			// and already mixed — a single-quote-only matcher would miss a
+			// real violation.
+			for (const [, path] of source.matchAll(
+				/(?:from|import)\s*\(?\s*["'][^"']*supabase\/functions\/_shared\/([\w.-]+)["']/g,
+			)) {
+				sharedImports.add(path);
+			}
+		}
+		// Not vacuous: useSubscription really does import the predicate, so a
+		// broken matcher fails here instead of passing with an empty set.
+		expect([...sharedImports]).toContain("billingAction.ts");
+		for (const imported of sharedImports) {
+			expect(SPA_REACHABLE_SHARED_MODULES).toContain(imported);
+		}
+	});
+
+	it("the SPA-reachable shared modules contain no server-only code", () => {
+		for (const file of SPA_REACHABLE_SHARED_MODULES) {
+			const source = readShared(file);
+			expect(source, `${file} must not touch Deno`).not.toMatch(/\bDeno\./);
+			expect(source, `${file} must not name a secret`).not.toMatch(
+				/SERVICE_ROLE|_SECRET|API_KEY|createClient/,
+			);
+			// ...and it must not re-open the door by importing or re-exporting
+			// anything else from _shared. Quote-agnostic, and covers
+			// `export … from` and dynamic `import(...)` as well as a plain
+			// import — a single-quote-only matcher missed all three.
+			for (const [, imported] of source.matchAll(
+				/(?:from|import)\s*\(?\s*["']\.\/([\w.-]+)["']/g,
+			)) {
+				expect(SPA_REACHABLE_SHARED_MODULES).toContain(imported);
+			}
+		}
 	});
 });

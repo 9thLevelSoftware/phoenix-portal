@@ -2,6 +2,7 @@ import { type ComponentType, lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import { NotFound } from "@/app/components/NotFound";
 import { PageLoading } from "@/app/components/PageLoading";
+import { FEATURE_MIN_TIER } from "@/lib/tierMatrix";
 import { AppLayout } from "./AppLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { SubscribedRoute } from "./SubscribedRoute";
@@ -22,7 +23,12 @@ function lazyWithReload<T extends ComponentType<unknown>>(
 				msg.includes("loading chunk") ||
 				msg.includes("loading css chunk");
 
-			if (isChunkError) {
+			// Offline, the chunk just isn't cached yet: a reload cannot help, so
+			// let the error boundary show the offline message instead.
+			const offline =
+				typeof navigator !== "undefined" && navigator.onLine === false;
+
+			if (isChunkError && !offline) {
 				const key = "phoenix-chunk-reload";
 				// sessionStorage can throw in private/blocked-storage contexts.
 				// Fall back to a best-effort reload so recovery still happens.
@@ -141,6 +147,11 @@ const Integrations = lazyWithReload(() =>
 		default: m.Integrations,
 	})),
 );
+const IntegrationsCallback = lazyWithReload(() =>
+	import("@/app/components/IntegrationsCallback").then((m) => ({
+		default: m.IntegrationsCallback,
+	})),
+);
 const ComparisonView = lazyWithReload(() =>
 	import("@/app/components/ComparisonView").then((m) => ({
 		default: m.ComparisonView,
@@ -176,22 +187,88 @@ export function AppRoutes() {
 						{/* Ungated — accessible to all authenticated users */}
 						<Route path="/profile" element={<Profile />} />
 						<Route path="/pricing" element={<PricingPlans />} />
+						{/* OAuth completion landing (KD-13). Authenticated but
+						    deliberately NOT behind the FLAME route gate: the tier
+						    is re-checked server-side by `complete-oauth`, and a
+						    stale client tier must not swallow the callback before
+						    the POST is even made. Live since PR 48 — `strava-oauth`
+						    relays the provider's response here. A signed-out
+						    browser is sent to `/` by ProtectedRoute and the flow
+						    restarts; see IntegrationsCallback's header. */}
+						    the POST is even made. Dormant — nothing redirects
+						    here until PR 48 cuts the providers over. */}
+						<Route
+							path="/integrations/callback"
+							element={<IntegrationsCallback />}
+						/>
 
-						{/* EMBER tier — cloud backup, history, dashboard */}
-						<Route element={<SubscribedRoute requiredTier="EMBER" />}>
+						{/* Gated routes — tiers come from FEATURE_MIN_TIER (src/lib/tierMatrix.ts) */}
+						<Route
+							element={
+								<SubscribedRoute requiredTier={FEATURE_MIN_TIER.dashboard} />
+							}
+						>
 							<Route path="/dashboard" element={<Dashboard />} />
+						</Route>
+						<Route
+							element={
+								<SubscribedRoute requiredTier={FEATURE_MIN_TIER.history} />
+							}
+						>
 							<Route path="/history" element={<WorkoutHistory />} />
 							<Route path="/history/:sessionId" element={<SessionDetail />} />
+						</Route>
+						<Route
+							element={
+								<SubscribedRoute requiredTier={FEATURE_MIN_TIER.goals} />
+							}
+						>
 							<Route path="/goals" element={<Goals />} />
+						</Route>
+						<Route
+							element={
+								<SubscribedRoute requiredTier={FEATURE_MIN_TIER.recovery} />
+							}
+						>
 							<Route path="/recovery" element={<Recovery />} />
 						</Route>
-
-						{/* FLAME tier — analytics, community, social, integrations */}
-						<Route element={<SubscribedRoute requiredTier="FLAME" />}>
+						<Route
+							element={
+								<SubscribedRoute requiredTier={FEATURE_MIN_TIER.challenges} />
+							}
+						>
 							<Route path="/challenges" element={<Challenges />} />
+						</Route>
+						<Route
+							element={
+								<SubscribedRoute requiredTier={FEATURE_MIN_TIER.analytics} />
+							}
+						>
 							<Route path="/analytics" element={<Analytics />} />
+							<Route
+								path="/biomechanics"
+								element={<Navigate to="/analytics?tab=biomechanics" replace />}
+							/>
+						</Route>
+						<Route
+							element={
+								<SubscribedRoute requiredTier={FEATURE_MIN_TIER.community} />
+							}
+						>
 							<Route path="/community" element={<Community />} />
+						</Route>
+						<Route
+							element={
+								<SubscribedRoute requiredTier={FEATURE_MIN_TIER.leaderboard} />
+							}
+						>
 							<Route path="/leaderboard" element={<Leaderboard />} />
+						</Route>
+						<Route
+							element={
+								<SubscribedRoute requiredTier={FEATURE_MIN_TIER.routines} />
+							}
+						>
 							<Route path="/routines" element={<RoutinesEnhanced />} />
 							<Route path="/routines/new" element={<RoutineBuilder />} />
 							<Route
@@ -199,19 +276,38 @@ export function AppRoutes() {
 								element={<RoutineDetail />}
 							/>
 							<Route path="/routines/:routineId" element={<RoutineBuilder />} />
+						</Route>
+						<Route
+							element={
+								<SubscribedRoute requiredTier={FEATURE_MIN_TIER.cycles} />
+							}
+						>
 							<Route path="/cycles" element={<TrainingCycles />} />
 							<Route path="/cycles/new" element={<CycleBuilder />} />
 							<Route path="/cycles/:cycleId" element={<CycleBuilder />} />
-							<Route path="/compare" element={<ComparisonView />} />
-							<Route path="/integrations" element={<Integrations />} />
-							<Route
-								path="/biomechanics"
-								element={<Navigate to="/analytics?tab=biomechanics" replace />}
-							/>
 						</Route>
-
-						{/* FLAME tier — session replay (KD-9; Inferno differentiator is biomechanics) */}
-						<Route element={<SubscribedRoute requiredTier="FLAME" />}>
+						<Route
+							element={
+								<SubscribedRoute requiredTier={FEATURE_MIN_TIER.compare} />
+							}
+						>
+							<Route path="/compare" element={<ComparisonView />} />
+						</Route>
+						<Route
+							element={
+								<SubscribedRoute requiredTier={FEATURE_MIN_TIER.integrations} />
+							}
+						>
+							<Route path="/integrations" element={<Integrations />} />
+						</Route>
+						{/* Session replay (KD-9; Inferno differentiator is biomechanics) */}
+						<Route
+							element={
+								<SubscribedRoute
+									requiredTier={FEATURE_MIN_TIER.sessionReplay}
+								/>
+							}
+						>
 							<Route path="/replay/:sessionId" element={<SessionReplay />} />
 						</Route>
 

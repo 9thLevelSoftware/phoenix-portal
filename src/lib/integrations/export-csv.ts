@@ -1,6 +1,6 @@
 import { escapeCSVField } from "@/lib/export/csv-security";
 import { supabase } from "@/lib/supabase";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
+import { toLoadDisplay } from "@/lib/units/loadDisplay";
 
 // =============================================================================
 // Export Phoenix workouts as Strong-compatible CSV
@@ -10,6 +10,11 @@ import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 // Strong CSV columns:
 //   Date, Workout Name, Duration, Exercise Name, Set Order,
 //   Weight, Reps, Distance, Seconds, Notes, Workout Notes
+// followed by two trailing Phoenix columns (importers map columns by header):
+//   weight_per_cable_kg, weight_total_kg
+// `Weight` is the per-cable load in the chosen unit, as the phone shows it.
+// `weight_total_kg` is per-cable x the exercise's cable count, and is blank
+// when the cable count is unknown (never assume 2 cables; KD-8).
 // =============================================================================
 
 /** Kilograms to pounds conversion factor */
@@ -28,6 +33,7 @@ interface RawExercise {
 	session_id: string;
 	name: string;
 	order_index: number;
+	cable_count?: number | null;
 }
 
 interface RawSet {
@@ -51,6 +57,8 @@ interface CSVRow {
 	Seconds: number;
 	Notes: string;
 	"Workout Notes": string;
+	weight_per_cable_kg: number;
+	weight_total_kg: number | "";
 }
 
 /**
@@ -94,8 +102,9 @@ export interface ExportResult {
  * Queries sessions, exercises, and sets from Supabase, flattens to
  * one-row-per-set, and formats as CSV with Strong column headers.
  *
- * Weight values are converted from per-cable (DB storage) to total
- * (display weight = per-cable x 2), then optionally to lbs if requested.
+ * `Weight` is the per-cable value as stored (and as the phone shows it),
+ * optionally converted to lbs. Totals appear only in `weight_total_kg`, and
+ * only when the exercise's cable count is known.
  */
 export async function exportWorkoutsAsCSV(
 	userId: string,
@@ -119,7 +128,7 @@ export async function exportWorkoutsAsCSV(
 	// 2. Fetch all exercises for those sessions
 	const { data: exercises, error: exerciseError } = await supabase
 		.from("exercises")
-		.select("id, session_id, name, order_index")
+		.select("id, session_id, name, order_index, cable_count")
 		.in("session_id", sessionIds)
 		.order("order_index", { ascending: true });
 	if (exerciseError) throw exerciseError;
@@ -171,8 +180,9 @@ export async function exportWorkoutsAsCSV(
 			const exerciseSets = setsByExercise.get(exercise.id) ?? [];
 
 			for (const set of exerciseSets) {
-				// Convert per-cable weight to total, then optionally to lbs
-				let weight = set.weight_kg * WEIGHT_MULTIPLIER;
+				// Per-cable weight as stored, optionally converted to lbs
+				const load = toLoadDisplay(set.weight_kg, exercise.cable_count);
+				let weight = load.perCableKg;
 				if (weightUnit === "lbs") {
 					weight = Math.round(weight * KG_TO_LBS * 100) / 100;
 				} else {
@@ -191,6 +201,9 @@ export async function exportWorkoutsAsCSV(
 					Seconds: 0,
 					Notes: set.notes ?? "",
 					"Workout Notes": session.notes ?? "",
+					weight_per_cable_kg: Math.round(load.perCableKg * 100) / 100,
+					weight_total_kg:
+						load.totalKg == null ? "" : Math.round(load.totalKg * 100) / 100,
 				});
 			}
 		}
@@ -209,6 +222,8 @@ export async function exportWorkoutsAsCSV(
 		"Seconds",
 		"Notes",
 		"Workout Notes",
+		"weight_per_cable_kg",
+		"weight_total_kg",
 	];
 
 	const lines = [headers.join(",")];

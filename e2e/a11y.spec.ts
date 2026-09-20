@@ -64,6 +64,10 @@ test.describe("WCAG Accessibility Audit - Public Pages", () => {
 
 test.describe("WCAG Accessibility Audit - Authenticated Pages", () => {
 	test.beforeEach(async ({ page }) => {
+		// Keep the audit from sampling Sonner's opacity transition while a toast
+		// is being removed. The reduced-motion stylesheet preserves the final
+		// colors, so axe still evaluates their real contrast.
+		await page.emulateMedia({ reducedMotion: "reduce" });
 		await mockAuthenticatedApp(page, { tier: "FLAME" });
 	});
 

@@ -7,6 +7,11 @@
 --   per-session bound of 50000 stash + payload rows.
 -- PR 24: optional p_progress (7th argument, DEFAULT NULL) replaces the
 --   sessions' exercise_progress; session_id lookups are indexed.
+-- PR 28: exercises.cable_count (1, 2 or NULL = unknown) is stored from the
+--   exercise JSON's cable_count key; the signature is unchanged, so exactly
+--   one overload remains. The session-117 sequence below pins all final-body
+--   behaviours in the same calls: telemetry kept on a re-push without it,
+--   progress rows replaced, cable_count inserted.
 BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
@@ -30,18 +35,34 @@ SELECT is(
 SELECT ok(
     NOT has_function_privilege('anon',
         'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
+        'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
     'anon cannot execute replace_session_children'
 );
 
 SELECT ok(
     NOT has_function_privilege('authenticated',
         'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
+        'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
     'authenticated cannot execute replace_session_children'
 );
 
 SELECT ok(
     has_function_privilege('service_role',
         'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
+    'service_role can execute replace_session_children'
+);
+
+SELECT diag('database:exercises-cable-count-column');
+
+SELECT has_column('public', 'exercises', 'cable_count', 'exercises.cable_count exists');
+SELECT col_type_is('public', 'exercises', 'cable_count', 'smallint',
+    'exercises.cable_count is smallint');
+SELECT col_is_null('public', 'exercises', 'cable_count',
+    'exercises.cable_count is nullable (NULL = unknown)');
+SELECT col_hasnt_default('public', 'exercises', 'cable_count',
+    'exercises.cable_count has no default (never assumed to be 2)');
+
+        'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
     'service_role can execute replace_session_children'
 );
 
@@ -67,12 +88,22 @@ CREATE FUNCTION pg_temp.uid() RETURNS UUID LANGUAGE sql IMMUTABLE AS $$
     SELECT '20200000-0000-4000-8000-000000000001'::uuid
 $$;
 
+-- p_cable NULL omits the cable_count key entirely (today's mobile shape).
+CREATE FUNCTION pg_temp.ex(p_id INT, p_session INT, p_catalog TEXT, p_name TEXT, p_order INT,
+                           p_cable INT DEFAULT NULL)
 CREATE FUNCTION pg_temp.ex(p_id INT, p_session INT, p_catalog TEXT, p_name TEXT, p_order INT)
 RETURNS JSONB LANGUAGE sql AS $$
     SELECT jsonb_build_object(
         'id', pg_temp.u(p_id), 'session_id', pg_temp.u(p_session),
         'user_id', pg_temp.uid(), 'name', p_name, 'exercise_id', p_catalog,
         'muscle_group', 'General', 'order_index', p_order)
+        || CASE WHEN p_cable IS NULL THEN '{}'::jsonb
+                ELSE jsonb_build_object('cable_count', p_cable) END
+$$;
+
+-- Stored cable_count of one exercise row.
+CREATE FUNCTION pg_temp.cable_of(p_id INT) RETURNS SMALLINT LANGUAGE sql AS $$
+    SELECT cable_count FROM public.exercises WHERE id = pg_temp.u(p_id)
 $$;
 
 CREATE FUNCTION pg_temp.st(p_id INT, p_exercise INT, p_number INT)
@@ -612,7 +643,7 @@ VALUES (pg_temp.uid(), 'Other Session Lift', pg_temp.u(118), 70, 80),
 -- First push of 117: two exercises, telemetry on the first set.
 SELECT is(
     pg_temp.push_p(117,
-        jsonb_build_array(pg_temp.ex(241, 117, NULL, 'Cable Row A', 0),
+        jsonb_build_array(pg_temp.ex(241, 117, NULL, 'Cable Row A', 0, 1),
                           pg_temp.ex(242, 117, NULL, 'Cable Row B', 1)),
         jsonb_build_array(pg_temp.st(24101, 241, 1), pg_temp.st(24201, 242, 1)),
         jsonb_build_array(pg_temp.tm(24111, 24101, 1), pg_temp.tm(24112, 24101, 2)),
@@ -625,12 +656,15 @@ SELECT is(
 SELECT is(pg_temp.prog_of(117),
     ARRAY['Cable Row A:20:26.67', 'Cable Row B:40:50'],
     'first push stores the supplied progress');
+SELECT is(pg_temp.cable_of(241), 1::smallint, 'cable_count 1 is stored');
+SELECT is(pg_temp.cable_of(242), NULL::smallint,
+    'an exercise without a cable_count key stores NULL (unknown), not 2');
 
 -- Edit: new weights and estimates, no telemetry (PR 20 must still keep it).
 SELECT is(
     pg_temp.push_p(117,
-        jsonb_build_array(pg_temp.ex(241, 117, NULL, 'Cable Row A', 0),
-                          pg_temp.ex(242, 117, NULL, 'Cable Row B', 1)),
+        jsonb_build_array(pg_temp.ex(241, 117, NULL, 'Cable Row A', 0, 1),
+                          pg_temp.ex(242, 117, NULL, 'Cable Row B', 1, 2)),
         jsonb_build_array(pg_temp.st(24102, 241, 1), pg_temp.st(24202, 242, 1)),
         '[]'::jsonb,
         jsonb_build_array(pg_temp.pg(117, 'Cable Row A', 30, 40),
@@ -644,6 +678,8 @@ SELECT is(pg_temp.tel_on(24102), ARRAY[pg_temp.u(24111), pg_temp.u(24112)],
 SELECT is(pg_temp.prog_of(117),
     ARRAY['Cable Row A:30:40', 'Cable Row B:44:55'],
     'an edited session replaces max_weight_kg and estimated_1rm_kg (no stale rows)');
+SELECT is(ARRAY[pg_temp.cable_of(241), pg_temp.cable_of(242)], ARRAY[1, 2]::smallint[],
+    'the same re-push stores cable_count (kept 1; NULL -> 2)');
 
 -- Remove exercise B.
 SELECT pg_temp.push_p(117,
@@ -673,6 +709,22 @@ SELECT pg_temp.push(117,
     '[]'::jsonb);
 SELECT is(pg_temp.prog_of(117), ARRAY['Cable Row A:30:40'],
     'a call without p_progress does not touch exercise_progress');
+SELECT is(pg_temp.cable_of(241), NULL::smallint,
+    'a re-push without cable_count stores NULL (last push wins, like every exercise column)');
+
+SELECT diag('database:cable-count-outside-1-2-is-rejected');
+
+SELECT throws_ok(
+    format('SELECT public.replace_session_children(%L::uuid, ARRAY[%L::uuid], %L::jsonb, %L::jsonb, %L::jsonb, %L::jsonb)',
+           pg_temp.uid(), pg_temp.u(117),
+           jsonb_build_array(pg_temp.ex(241, 117, NULL, 'Cable Row A', 0, 3)),
+           '[]', '[]', '[]'),
+    '23514', NULL,
+    'cable_count 3 violates the CHECK and rolls back the call');
+SELECT is(
+    (SELECT count(*)::int FROM public.exercises WHERE id = pg_temp.u(241)),
+    1,
+    'the rejected call left the stored exercise in place');
 
 -- Supplied rows outside p_session_ids or for another user are ignored.
 SELECT is(

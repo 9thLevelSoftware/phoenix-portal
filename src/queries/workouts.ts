@@ -17,7 +17,7 @@ import {
 
 /**
  * Paginated workout session list for a user.
- * Returns Zod-transformed WorkoutSession[] (weights doubled, dates as Date, duration as minutes).
+ * Returns Zod-transformed WorkoutSession[] (per-cable weights, dates as Date, duration as minutes).
  */
 export const WORKOUTS_PAGE_SIZE = 50;
 
@@ -169,7 +169,7 @@ export function dashboardStatsOptions(
 
 /**
  * Most recent personal records for the dashboard PR widget.
- * Returns Zod-transformed PersonalRecord[] (weights doubled, dates as Date).
+ * Returns Zod-transformed PersonalRecord[] (per-cable weights, dates as Date).
  */
 export function recentPRsOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
@@ -201,45 +201,48 @@ export function recentPRsOptions(userId: string, profileId?: string | null) {
 	});
 }
 
+type RawSessionTree = {
+	exercises?: (Record<string, unknown> & {
+		sets?: (Record<string, unknown> & {
+			rep_summaries?: { set_id: string; mean_velocity_mps: number | null }[];
+		})[];
+	})[];
+};
+
+/**
+ * Split an embedded `workout_sessions -> exercises -> sets` row into flat
+ * raw arrays so each level can be parsed with its existing Zod schema.
+ */
+function flattenSessionTree(row: unknown) {
+	const tree = (row ?? {}) as RawSessionTree;
+	const exercises = tree.exercises ?? [];
+	const sets = exercises.flatMap((exercise) => exercise.sets ?? []);
+	const reps = sets.flatMap((set) => set.rep_summaries ?? []);
+	return { exercises, sets, reps };
+}
+
 /**
  * Full session detail with exercises and sets.
- * Fetches session metadata, exercises, and sets in three queries,
- * then assembles them into a nested structure.
+ * Fetches the session, its exercises and their sets in one embedded select,
+ * then parses each level with Zod and assembles the nested structure.
  */
 export function sessionDetailOptions(sessionId: string) {
 	return queryOptions({
 		queryKey: queryKeys.workouts.detail(sessionId),
 		queryFn: async () => {
-			// Fetch session metadata
-			const { data: session, error: sessionError } = await supabase
+			const { data: session, error } = await supabase
 				.from("workout_sessions")
-				.select("*")
+				.select("*, exercises(*, sets(*))")
 				.eq("id", sessionId)
+				.order("order_index", { ascending: true, referencedTable: "exercises" })
+				.order("set_number", {
+					ascending: true,
+					referencedTable: "exercises.sets",
+				})
 				.single();
-			if (sessionError) throw sessionError;
+			if (error) throw error;
 
-			// Fetch exercises for this session
-			const { data: exercises, error: exercisesError } = await supabase
-				.from("exercises")
-				.select("*")
-				.eq("session_id", sessionId)
-				.order("order_index", { ascending: true });
-			if (exercisesError) throw exercisesError;
-
-			// Fetch sets for all exercises in this session. Skip the query entirely
-			// for sessions with zero exercises: `exercise_id` is a UUID column, so a
-			// sentinel like `_none_` in an `in` filter is rejected as invalid UUID.
-			const exerciseIds = exercises.map((e: { id: string }) => e.id);
-			let sets: unknown[] = [];
-			if (exerciseIds.length > 0) {
-				const { data, error: setsError } = await supabase
-					.from("sets")
-					.select("*")
-					.in("exercise_id", exerciseIds)
-					.order("set_number", { ascending: true });
-				if (setsError) throw setsError;
-				sets = data ?? [];
-			}
+			const { exercises, sets } = flattenSessionTree(session);
 
 			// Parse with Zod and assemble
 			const parsedSession = workoutSessionSchema.parse(session);
@@ -263,54 +266,28 @@ export function sessionDetailOptions(sessionId: string) {
 }
 
 /**
- * Extended session detail that also fetches rep summaries for velocity data.
+ * Extended session detail that also includes rep summaries for velocity data.
  * Returns a SessionSummary ready for the comparison engine.
  */
 export function comparisonDetailOptions(sessionId: string) {
 	return queryOptions({
 		queryKey: queryKeys.workouts.comparison(sessionId, "detail"),
 		queryFn: async (): Promise<SessionSummary> => {
-			// Re-use sessionDetailOptions data structure
-			const { data: session, error: sessionError } = await supabase
+			const { data: session, error } = await supabase
 				.from("workout_sessions")
-				.select("*")
+				.select(
+					"*, exercises(*, sets(*, rep_summaries(set_id, mean_velocity_mps)))",
+				)
 				.eq("id", sessionId)
+				.order("order_index", { ascending: true, referencedTable: "exercises" })
+				.order("set_number", {
+					ascending: true,
+					referencedTable: "exercises.sets",
+				})
 				.single();
-			if (sessionError) throw sessionError;
+			if (error) throw error;
 
-			const { data: exercises, error: exercisesError } = await supabase
-				.from("exercises")
-				.select("*")
-				.eq("session_id", sessionId)
-				.order("order_index", { ascending: true });
-			if (exercisesError) throw exercisesError;
-
-			const exerciseIds = exercises.map((e: { id: string }) => e.id);
-
-			// Skip the sets query for empty sessions: `exercise_id` is a UUID column,
-			// so a `_none_` sentinel in an `in` filter is rejected as invalid UUID.
-			let sets: { id: string; exercise_id: string }[] = [];
-			if (exerciseIds.length > 0) {
-				const { data, error: setsError } = await supabase
-					.from("sets")
-					.select("*")
-					.in("exercise_id", exerciseIds)
-					.order("set_number", { ascending: true });
-				if (setsError) throw setsError;
-				sets = (data ?? []) as { id: string; exercise_id: string }[];
-			}
-
-			// Fetch rep summaries for velocity data
-			const setIds = sets.map((s: { id: string }) => s.id);
-			let reps: { set_id: string; mean_velocity_mps: number | null }[] = [];
-			if (setIds.length > 0) {
-				const { data: repData, error: repError } = await supabase
-					.from("rep_summaries")
-					.select("set_id, mean_velocity_mps")
-					.in("set_id", setIds);
-				if (repError) throw repError;
-				reps = repData ?? [];
-			}
+			const { exercises, sets, reps } = flattenSessionTree(session);
 
 			// Parse with Zod
 			const parsedSession = workoutSessionSchema.parse(session);

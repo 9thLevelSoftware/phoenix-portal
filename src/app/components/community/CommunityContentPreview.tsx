@@ -1,12 +1,22 @@
 import { Calendar, Clock, Dumbbell, Repeat } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { formatWeight, type WeightUnit } from "@/lib/units";
+import { formatLoad as formatPerCableLoad } from "@/lib/units/loadDisplay";
 import type {
 	CycleSnapshot,
 	EmbeddedRoutineSnapshot,
 	RoutineExerciseSnapshot,
 } from "@/schemas/community";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
+import {
+	eccentricLoadLabel,
+	echoLevelLabel,
+	repCountTimingLabel,
+	supersetColorHex,
+	toWireMode,
+	workoutModeLabel,
+} from "../../../../supabase/functions/_shared/workoutModes.ts";
+import { workoutModeLabel } from "../../../../supabase/functions/_shared/workoutModes.ts";
 
 function orderedExercises(exercises: RoutineExerciseSnapshot[]) {
 	return [...exercises].sort((a, b) => a.order_index - b.order_index);
@@ -27,7 +37,8 @@ function formatStoredDurationMinutes(duration: number | null | undefined) {
 
 function formatLoad(exercise: RoutineExerciseSnapshot, unit: WeightUnit) {
 	if (exercise.is_bodyweight) return "Bodyweight";
-	return formatWeight((exercise.weight ?? 0) * WEIGHT_MULTIPLIER, unit);
+	// Routine weights are per cable; routines carry no cable count (KD-8).
+	return formatPerCableLoad(exercise.weight, null, unit);
 }
 
 function formatPrescription(
@@ -45,14 +56,22 @@ function formatPrescription(
 }
 
 function exerciseBadges(exercise: RoutineExerciseSnapshot) {
+	const isEcho = toWireMode(exercise.mode) === "ECHO";
 	return [
-		exercise.mode,
+		workoutModeLabel(exercise.mode),
 		exercise.is_amrap ? "AMRAP" : null,
 		exercise.is_bodyweight ? "Bodyweight" : null,
-		exercise.eccentric_load ? `Eccentric ${exercise.eccentric_load}` : null,
-		exercise.echo_level ? `Echo ${exercise.echo_level}` : null,
-		exercise.rep_count_timing ? `Timing ${exercise.rep_count_timing}` : null,
-		exercise.stop_at_position ? `Stop ${exercise.stop_at_position}` : null,
+		// Eccentric load and echo level only apply in Echo mode on the phone.
+		isEcho && exercise.eccentric_load
+			? `Eccentric ${eccentricLoadLabel(exercise.eccentric_load)}`
+			: null,
+		isEcho && exercise.echo_level
+			? `Echo ${echoLevelLabel(exercise.echo_level)}`
+			: null,
+		exercise.rep_count_timing
+			? `Timing ${repCountTimingLabel(exercise.rep_count_timing)}`
+			: null,
+		exercise.stop_at_position === "TOP" ? "Stop at top" : null,
 		exercise.stall_detection === false ? "Stall off" : null,
 		exercise.drop_set_enabled ? "Drop set" : null,
 	].filter(Boolean) as string[];
@@ -60,9 +79,7 @@ function exerciseBadges(exercise: RoutineExerciseSnapshot) {
 
 function perSetRows(exercise: RoutineExerciseSnapshot, unit: WeightUnit) {
 	const weights = asPrimitiveArray(exercise.per_set_weights).map((value) =>
-		typeof value === "number"
-			? formatWeight(value * WEIGHT_MULTIPLIER, unit)
-			: String(value),
+		typeof value === "number" ? formatWeight(value, unit) : String(value),
 	);
 	const reps = asPrimitiveArray(exercise.per_set_reps).map(String);
 	const rest = asPrimitiveArray(exercise.per_set_rest).map((value) =>
@@ -71,7 +88,7 @@ function perSetRows(exercise: RoutineExerciseSnapshot, unit: WeightUnit) {
 	const echoLevels = asPrimitiveArray(exercise.per_set_echo_levels).map(String);
 
 	return [
-		weights.length ? `Weights: ${weights.join(", ")}` : null,
+		weights.length ? `Weights per cable: ${weights.join(", ")}` : null,
 		reps.length ? `Reps: ${reps.join(", ")}` : null,
 		rest.length ? `Rest: ${rest.join(", ")}` : null,
 		echoLevels.length ? `Echo: ${echoLevels.join(", ")}` : null,
@@ -220,7 +237,7 @@ export function RoutineSnapshotPreview({
 							key={item.id}
 							className="rounded-lg border border-secondary bg-background/30 p-3"
 							style={{
-								borderLeftColor: item.color ?? undefined,
+								borderLeftColor: supersetColorHex(item.color),
 								borderLeftWidth: 4,
 							}}
 						>

@@ -1,10 +1,38 @@
 /**
- * Mock Edge Function Implementations
+ * Mock Edge Function Implementations — a fixture harness, NOT a sync oracle
  *
  * Provides mock implementations of mobile-sync-push and mobile-sync-pull
  * for CI environments without Supabase access.
  *
  * Enable mocks by setting MOCK_EDGE_FUNCTIONS=true environment variable.
+ *
+ * ## What this mock deliberately does NOT model
+ *
+ * One global in-memory store, keyed by entity id only. It has:
+ * - no user scoping (the store has no user column; any non-empty bearer token
+ *   is accepted, and `createTestUser()` ids never reach the store)
+ * - no profile scoping (`profileId` on a push or pull is ignored entirely)
+ * - no LWW: `Map.set` means the last push in *arrival order* wins, which is
+ *   not what `upsert_*_lww` does (it compares timestamps and can reject)
+ * - no per-row delta: a pull returns every stored row whenever
+ *   `lastPushTime > lastSync`
+ * - no cursor or pageSize handling, no tombstones, no tier gate, no rate
+ *   limit, no size caps, no weight transform, no telemetry, no RLS
+ *
+ * ## The rule for tests that use it
+ *
+ * Assert only things the harness and the fixtures are genuinely responsible
+ * for: that a payload of a given shape survives push → pull with its fields
+ * and nesting intact. Never write an assertion whose subject is one of the
+ * behaviours listed above — it would restate this file, and it would stay
+ * green while the corresponding server behaviour was deleted. In particular,
+ * `expect(result.success).toBe(true)` is not an assertion about sync.
+ *
+ * Server behaviour belongs in the real-handler suites
+ * (`supabase/functions/mobile-sync-{push,pull}/index.test.ts`,
+ * `npm run test:edge`), or, when it needs real SQL, in an
+ * `integration: `-prefixed case there (`npm run test:edge:integration`).
+ * See `tests/sync/BASELINE.md` for the current list of unproven invariants.
  */
 
 import { CHILD_PAGE_SIZE } from "../../../supabase/functions/_shared/pagedByParent.ts";
@@ -19,6 +47,8 @@ import type {
 	BadgeResponseDto,
 	CycleResponseDto,
 	EdgeFunctionResult,
+	OwnershipEventDto,
+	PulledWorkoutDeletionDto,
 	PullResponse,
 	PushPayload,
 	RoutineResponseDto,
@@ -46,6 +76,9 @@ interface MockStore {
 	routines: Map<string, RoutineResponseDto>;
 	cycles: Map<string, CycleResponseDto>;
 	badges: Map<string, BadgeResponseDto>; // keyed by `userId:badgeId` for union merge
+	workoutDeletions: Map<string, PulledWorkoutDeletionDto>;
+	ownershipEvents: Map<string, OwnershipEventDto>;
+	operationBodies: Map<string, string>;
 	lastPushTime: number;
 }
 
@@ -54,6 +87,9 @@ const mockStore: MockStore = {
 	routines: new Map(),
 	cycles: new Map(),
 	badges: new Map(),
+	workoutDeletions: new Map(),
+	ownershipEvents: new Map(),
+	operationBodies: new Map(),
 	lastPushTime: 0,
 };
 
@@ -101,6 +137,9 @@ export function resetMockStore(): void {
 	mockStore.routines.clear();
 	mockStore.cycles.clear();
 	mockStore.badges.clear();
+	mockStore.workoutDeletions.clear();
+	mockStore.ownershipEvents.clear();
+	mockStore.operationBodies.clear();
 	mockStore.lastPushTime = 0;
 	mockChildPageSize = CHILD_PAGE_SIZE;
 }
@@ -119,7 +158,15 @@ export function resetMockStore(): void {
 export function mockPushEndpoint(
 	payload: PushPayload,
 	authToken: string,
-): EdgeFunctionResult<{ success: boolean; syncTime?: number }> {
+): EdgeFunctionResult<{
+	success: boolean;
+	syncTime?: number;
+	acknowledgedWorkoutDeletionIds?: string[];
+	acknowledgedOwnershipTransferIds?: string[];
+	acknowledgedDeletedCycleIds?: string[];
+	acknowledgedWorkoutSessionIds?: string[];
+	acknowledgedCycleIds?: string[];
+}> {
 	// Check for injected batch failure first (simulates server-side batch processing)
 	const sessionCount = payload.sessions?.length ?? 0;
 	const batchError = checkBatchFailure(sessionCount);
@@ -192,13 +239,93 @@ export function mockPushEndpoint(
 		};
 	}
 
+	const mutationReuse = (mutationId: string, body: unknown): boolean => {
+		const canonical = JSON.stringify(body);
+		const prior = mockStore.operationBodies.get(mutationId);
+		if (prior !== undefined && prior !== canonical) return true;
+		mockStore.operationBodies.set(mutationId, canonical);
+		return false;
+	};
+	for (const transfer of payload.ownershipTransfers ?? []) {
+		if (mutationReuse(transfer.mutationId, transfer)) {
+			return {
+				success: false,
+				status: 409,
+				error: { message: "ownership_mutation_id_reuse" },
+			};
+		}
+		const target = payload.allProfiles?.find(
+			(profile) => profile.id === transfer.targetProfileId,
+		);
+		mockStore.ownershipEvents.set(transfer.mutationId, {
+			...transfer,
+			targetProfileName: target?.name ?? "Profile",
+			targetProfileColorIndex: target?.colorIndex ?? 0,
+			transferredAt: new Date().toISOString(),
+		});
+	}
+	for (const deletion of payload.workoutDeletions ?? []) {
+		if (mutationReuse(deletion.mutationId, deletion)) {
+			return {
+				success: false,
+				status: 409,
+				error: { message: "workout_deletion_mutation_id_reuse" },
+			};
+		}
+		mockStore.workoutDeletions.set(deletion.mutationId, {
+			...deletion,
+			profileId: payload.profileId ?? null,
+		});
+		for (const [id, session] of mockStore.sessions) {
+			if (deletion.scope === "WORKOUT" && id === deletion.portalSessionId) {
+				mockStore.sessions.delete(id);
+			} else if (
+				deletion.scope === "COMPONENT" &&
+				id === deletion.portalSessionId
+			) {
+				mockStore.sessions.set(id, {
+					...session,
+					exercises: session.exercises.filter(
+						(exercise) => exercise.id !== deletion.componentSessionId,
+					),
+				});
+			}
+		}
+	}
+
+	const acknowledgedWorkoutSessionIds: string[] = [];
 	// Store sessions
 	if (payload.sessions) {
 		for (const session of payload.sessions) {
+			const portalSessionId = session.routineSessionId ?? session.id;
+			const blockedParent = [...mockStore.workoutDeletions.values()].some(
+				(deletion) =>
+					deletion.scope === "WORKOUT" &&
+					deletion.portalSessionId === portalSessionId,
+			);
+			if (blockedParent) continue;
+			const activeExercises = session.exercises.filter(
+				(exercise) =>
+					![...mockStore.workoutDeletions.values()].some(
+						(deletion) =>
+							deletion.portalSessionId === portalSessionId &&
+							(deletion.scope === "WORKOUT" ||
+								deletion.componentSessionId === exercise.id),
+					),
+			);
+			const existing = mockStore.sessions.get(session.id);
+			const incomingIds = new Set(
+				activeExercises.map((exercise) => exercise.id),
+			);
 			// Transform to response format
 			const responseSession: SessionResponseDto = {
 				...session,
-				exercises: session.exercises.map((ex) => ({
+				exercises: [
+					...(existing?.exercises ?? []).filter(
+						(exercise) => !incomingIds.has(exercise.id),
+					),
+					...activeExercises,
+				].map((ex) => ({
 					...ex,
 					sets: ex.sets.map((set) => ({
 						...set,
@@ -207,6 +334,7 @@ export function mockPushEndpoint(
 				})),
 			};
 			mockStore.sessions.set(session.id, responseSession);
+			acknowledgedWorkoutSessionIds.push(session.id);
 		}
 	}
 
@@ -217,10 +345,16 @@ export function mockPushEndpoint(
 		}
 	}
 
+	for (const deleted of payload.deletedCycles ?? []) {
+		mockStore.cycles.delete(deleted.id);
+	}
+
+	const acknowledgedCycleIds: string[] = [];
 	// Store cycles
 	if (payload.cycles) {
 		for (const cycle of payload.cycles) {
 			mockStore.cycles.set(cycle.id, cycle as CycleResponseDto);
+			acknowledgedCycleIds.push(cycle.id);
 		}
 	}
 
@@ -260,6 +394,17 @@ export function mockPushEndpoint(
 		data: {
 			success: true,
 			syncTime,
+			acknowledgedWorkoutDeletionIds: (payload.workoutDeletions ?? []).map(
+				(item) => item.mutationId,
+			),
+			acknowledgedOwnershipTransferIds: (payload.ownershipTransfers ?? []).map(
+				(item) => item.mutationId,
+			),
+			acknowledgedDeletedCycleIds: (payload.deletedCycles ?? []).map(
+				(item) => item.id,
+			),
+			acknowledgedWorkoutSessionIds,
+			acknowledgedCycleIds,
 		},
 	};
 }
@@ -273,7 +418,7 @@ export function mockPushEndpoint(
 export function mockPullEndpoint(
 	lastSync: number,
 	authToken: string,
-	options?: { deviceId?: string; profileId?: string },
+	_options?: { deviceId?: string; profileId?: string },
 ): EdgeFunctionResult<PullResponse> {
 	// Validate auth token
 	if (!authToken || authToken === "") {
@@ -348,6 +493,8 @@ export function mockPullEndpoint(
 		externalActivities: [],
 		externalActivitiesHasMore: false,
 		customExercises: [],
+		workoutDeletions: [...mockStore.workoutDeletions.values()],
+		ownershipEvents: [...mockStore.ownershipEvents.values()],
 	};
 
 	return {
