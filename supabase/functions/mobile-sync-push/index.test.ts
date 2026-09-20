@@ -8246,10 +8246,10 @@ async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
     const subscription = await admin.from("subscriptions").insert({
       user_id: createdUserIds[0],
   const email = `pr16-owner-${suffix}@example.invalid`;
-  const password = `pw-${suffix}`;
+  const tempUserPass = `pw-${suffix}`;
   const owner = await admin.auth.admin.createUser({
     email,
-    password,
+    password: tempUserPass,
     email_confirm: true,
   });
   if (owner.error || !owner.data.user) {
@@ -8277,7 +8277,7 @@ async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
       await admin.auth.admin.deleteUser(userId);
     }
     if (subscription.error) throw new Error("subscription fixture failed");
-    return { admin, ownerId, email, password };
+    return { admin, ownerId, email, password: tempUserPass };
   } catch (error) {
     await deleteTombstonePushFixture(admin, [ownerId]);
     throw error;

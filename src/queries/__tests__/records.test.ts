@@ -415,6 +415,15 @@ describe("personalRecordsOptions", () => {
 		});
 		fromFn.mockImplementation(() => chain);
 
+		const { personalRecordsOptions } = await import("../records");
+		const opts = personalRecordsOptions("user-1");
+		const result = await opts.queryFn?.({} as never);
+
+		// Scoped by user_id: the session id list used to grow with the PR count
+		// and blew the GET URL limit (F-035).
+		expect(exercisesChain.in).not.toHaveBeenCalled();
+		expect(exercisesChain.eq).toHaveBeenCalledWith("user_id", "user-1");
+		expect(result[0].exercise_name).toBe("Cable Curl (Handles)");
 		const page = await firstPage();
 		expect(fromFn).toHaveBeenCalledWith("exercises");
 		expect(page?.records[0].exercise_name).toBe("Seated Row");

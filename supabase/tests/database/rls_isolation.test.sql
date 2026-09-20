@@ -1,5 +1,9 @@
 -- Cross-user RLS isolation.
 --
+-- Users A and B are both FLAME (owner write policies are FLAME-gated since
+-- 20260920000900); C has no subscription row (FREE). A owns one
+-- fixture row in every private user-owned relation listed in rls_cases. Tier
+-- denials live in trust_plane.test.sql (EMBER) and tier_matrix.test.sql (FLAME).
 -- Users A and B are both FLAME, so every owner write policy (including the
 -- FLAME-gated ones from 20260920000900) has a positive control; C has no
 -- subscription row (FREE). A owns one fixture row in every private
@@ -699,6 +703,7 @@ SELECT is(
             ))[1]::text::integer AS n
         ) others
         WHERE others.n > 0
+          -- B's subscription is needed for owner-tier positive controls; no client UPDATE/DELETE
           -- B's subscription is needed for FLAME; no client UPDATE/DELETE
           -- B's subscription is needed for EMBER; no client UPDATE/DELETE
           -- policy may ever match it, so the blind probe still expects 0.

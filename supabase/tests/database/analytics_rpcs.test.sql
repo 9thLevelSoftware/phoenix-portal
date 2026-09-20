@@ -292,6 +292,18 @@ SELECT diag('database:analytics-rpcs-owner');
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.act_as('a4040404-0000-4000-8000-00000000000a');
 
+-- exercise_frequency: one row per name, distinct sessions, latest
+-- non-General raw group.
+SELECT results_eq(
+    $$SELECT exercise_name, muscle_group, sessions FROM public.exercise_frequency()$$,
+    $$VALUES ('Bench Press'::text, 'Chest'::text, 3),
+             ('Plank'::text, 'General'::text, 1),
+             ('Row'::text, 'Back'::text, 1)$$,
+    'exercise_frequency: one row per name, distinct sessions (s2 double counted once), latest non-General group'
+);
+
+SELECT results_eq(
+    $$SELECT exercise_name, muscle_group, sessions FROM public.exercise_frequency('p2')$$,
 -- exercise_frequency: scalar JSON envelope, distinct sessions, latest
 -- non-General raw group.
 SELECT results_eq(
@@ -314,12 +326,14 @@ SELECT results_eq(
 
 -- exercise_names.
 SELECT results_eq(
+    $$SELECT exercise_name FROM public.exercise_names()$$,
     $$SELECT exercise_name FROM jsonb_array_elements_text(public.exercise_names()) AS n(exercise_name)$$,
     $$VALUES ('Bench Press'::text), ('Deadlift'::text), ('Squat'::text)$$,
     'exercise_names returns distinct names A-Z across 1,215 progress rows'
 );
 
 SELECT results_eq(
+    $$SELECT exercise_name FROM public.exercise_names('p2')$$,
     $$SELECT exercise_name FROM jsonb_array_elements_text(public.exercise_names('p2')) AS n(exercise_name)$$,
     $$VALUES ('Deadlift'::text)$$,
     'exercise_names filters by profile'
@@ -383,6 +397,10 @@ SELECT is(
     'exercise_progress_series filters by profile'
 );
 
+-- exercise_progress_series_many: one row per exercise, jsonb rows.
+SELECT results_eq(
+    $$SELECT exercise_name, jsonb_array_length(rows)
+      FROM public.exercise_progress_series_many(NULL, NULL, 5)$$,
 -- exercise_progress_series_many: one scalar envelope, jsonb rows per exercise.
 SELECT results_eq(
     $$SELECT g ->> 'exercise_name', jsonb_array_length(g -> 'rows')
@@ -394,6 +412,8 @@ SELECT results_eq(
 SELECT is(
     (
         SELECT array_agg((e ->> 'estimated_1rm_kg')::numeric::integer ORDER BY o)
+        FROM public.exercise_progress_series_many(ARRAY['Bench Press'], NULL, 3) m,
+             jsonb_array_elements(m.rows) WITH ORDINALITY AS x(e, o)
         FROM jsonb_array_elements(public.exercise_progress_series_many(ARRAY['Bench Press'], NULL, 3)) m,
              jsonb_array_elements(m -> 'rows') WITH ORDINALITY AS x(e, o)
     ),
@@ -404,6 +424,8 @@ SELECT is(
 SELECT is(
     (
         SELECT array_agg((e ->> 'estimated_1rm_kg')::numeric::integer ORDER BY o)
+        FROM public.exercise_progress_series_many(ARRAY['Squat'], NULL, 2) m,
+             jsonb_array_elements(m.rows) WITH ORDINALITY AS x(e, o)
         FROM jsonb_array_elements(public.exercise_progress_series_many(ARRAY['Squat'], NULL, 2)) m,
              jsonb_array_elements(m -> 'rows') WITH ORDINALITY AS x(e, o)
     ),
@@ -413,6 +435,8 @@ SELECT is(
 
 SELECT is(
     (
+        SELECT jsonb_array_length(rows)
+        FROM public.exercise_progress_series_many(ARRAY['Bench Press'])
         SELECT jsonb_array_length(public.exercise_progress_series_many(ARRAY['Bench Press']) -> 0 -> 'rows')
     ),
     100,
@@ -421,6 +445,8 @@ SELECT is(
 
 SELECT is(
     (
+        SELECT jsonb_array_length(rows)
+        FROM public.exercise_progress_series_many(ARRAY['Bench Press'], NULL, 5000)
         SELECT jsonb_array_length(public.exercise_progress_series_many(ARRAY['Bench Press'], NULL, 5000) -> 0 -> 'rows')
     ),
     1000,
@@ -429,6 +455,8 @@ SELECT is(
 
 SELECT is(
     (
+        SELECT jsonb_array_length(rows)
+        FROM public.exercise_progress_series_many(ARRAY['Bench Press'], NULL, 0)
         SELECT jsonb_array_length(public.exercise_progress_series_many(ARRAY['Bench Press'], NULL, 0) -> 0 -> 'rows')
     ),
     1,
@@ -437,6 +465,8 @@ SELECT is(
 
 SELECT is(
     (
+        SELECT (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(rows -> 0) AS k)
+        FROM public.exercise_progress_series_many(ARRAY['Squat'], NULL, 1)
         SELECT array_agg(k ORDER BY k)
         FROM jsonb_object_keys(
             public.exercise_progress_series_many(ARRAY['Squat'], NULL, 1) -> 0 -> 'rows' -> 0
@@ -451,6 +481,7 @@ SELECT is(
 );
 
 SELECT results_eq(
+    $$SELECT exercise_name FROM public.exercise_progress_series_many(NULL, 'p2', 10)$$,
     $$SELECT g ->> 'exercise_name'
       FROM jsonb_array_elements(public.exercise_progress_series_many(NULL, 'p2', 10)) g$$,
     $$VALUES ('Deadlift'::text)$$,
@@ -764,6 +795,7 @@ SET LOCAL ROLE authenticated;
 SELECT pg_temp.act_as('b4040404-0000-4000-8000-00000000000b');
 
 SELECT results_eq(
+    $$SELECT exercise_name, muscle_group, sessions FROM public.exercise_frequency()$$,
     $$SELECT exercise_name, muscle_group, sessions
       FROM jsonb_to_recordset(public.exercise_frequency())
            AS f(exercise_name text, muscle_group text, sessions integer)$$,
@@ -771,6 +803,7 @@ SELECT results_eq(
     'B sees only its own exercise frequency'
 );
 SELECT results_eq(
+    $$SELECT exercise_name FROM public.exercise_names()$$,
     $$SELECT exercise_name FROM jsonb_array_elements_text(public.exercise_names()) AS n(exercise_name)$$,
     $$VALUES ('Bench Press'::text)$$,
     'B sees only its own exercise names'
@@ -786,6 +819,7 @@ SELECT is(
     'B cannot read A''s profile-scoped progress by naming A''s profile id'
 );
 SELECT results_eq(
+    $$SELECT exercise_name, jsonb_array_length(rows) FROM public.exercise_progress_series_many()$$,
     $$SELECT g ->> 'exercise_name', jsonb_array_length(g -> 'rows')
       FROM jsonb_array_elements(public.exercise_progress_series_many()) g$$,
     $$VALUES ('Bench Press'::text, 1)$$,
@@ -825,6 +859,10 @@ SELECT results_eq(
 SELECT set_config('request.jwt.claims', '{"role":"authenticated"}', true);
 SELECT is(
     (
+        (SELECT count(*) FROM public.exercise_frequency())
+        + (SELECT count(*) FROM public.exercise_names())
+        + (SELECT count(*) FROM public.exercise_progress_series('Bench Press'))
+        + (SELECT count(*) FROM public.exercise_progress_series_many())
         jsonb_array_length(public.exercise_frequency())
         + jsonb_array_length(public.exercise_names())
         + (SELECT count(*) FROM public.exercise_progress_series('Bench Press'))
