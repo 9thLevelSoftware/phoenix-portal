@@ -518,8 +518,7 @@ function makeHarness(
         ? options.personalRecordsResult
         : table === "exercise_catalog" && options.catalogRows
         ? { data: options.catalogRows, error: null }
-        : undefined);
-      }, table === "personal_records" ? options.personalRecordsResult : undefined,
+        : undefined,
         options.subscriptionResult);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
@@ -3978,6 +3977,8 @@ Deno.test("PR 24: with LWW on, a rejected session is in neither p_session_ids no
     [acceptedId],
   );
   assertEquals(responseBody.exerciseProgressInserted, 1);
+});
+
 // ---------------------------------------------------------------------------
 // Real-SQL subscription gate (replaces the deleted live FREE-user sync tests):
 // the real `subscriptions` table, service-role grants and RLS decide 402 vs
