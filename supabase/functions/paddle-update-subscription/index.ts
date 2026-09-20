@@ -11,9 +11,12 @@ import {
   parsePaddlePaidTier,
 } from "../_shared/paddlePriceIds.ts";
 import {
+  applySubscriptionEvent,
   buildSubscriptionUpsertFromPaddleState,
   type PaddleSubscriptionState,
+  paddleEventOccurredAt,
   resolveBasePlanPriceId,
+  syntheticSubscriptionEventId,
 } from "../_shared/paddleSubscriptionState.ts";
 import {
   buildPaddleSubscriptionPatch,
@@ -432,21 +435,100 @@ async function paddleUpdateSubscriptionHandler(
       }
     }
 
+    // Ordered write: Paddle's own `updated_at` on the mutation response is the
+    // clock, so a webhook that landed while this call was in flight is not
+    // overwritten by the state we fetched a moment earlier (F-055).
+    const occurredAt = paddleEventOccurredAt(updatedSubscription, deps.now());
     const upsertData = buildSubscriptionUpsertFromPaddleState({
       userId: user.id,
       subscription: updatedSubscription,
       tier: updatedTier,
       priceId: updatedPriceId,
+      eventId: syntheticSubscriptionEventId(
+        "update",
+        updatedSubscription.id,
+        occurredAt,
+      ),
+      occurredAt,
     });
-    const { error: updateError } = await supabaseAdmin
-      .from("subscriptions")
-      .upsert(upsertData, { onConflict: "user_id" });
+    const write = await applySubscriptionEvent(supabaseAdmin, upsertData, {
+      storedSubscriptionId: currentPaddleSubscriptionId,
+    });
 
-    if (updateError) {
-      console.error("Error upserting subscription after Paddle update:", updateError);
+    if (write.outcome === "already_bound") {
+      console.error(
+        "[BILLING_ALERT] subscription_already_bound_to_another_user:",
+        `source=update`,
+        `user_id=${user.id}`,
+        `paddle_subscription_id=${updatedSubscription.id}`,
+        write.error,
+      );
+      return new Response(
+        JSON.stringify({
+          error: "Subscription already linked to another account",
+          code: "subscription_already_bound",
+          message:
+            "This subscription is linked to a different account. Contact support.",
+        }),
+        { status: 409, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (write.outcome === "error") {
+      console.error(
+        "Error applying subscription event after Paddle update:",
+        write.error,
+      );
       return new Response(
         JSON.stringify({ error: "Database upsert failed" }),
         { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (write.outcome !== "applied") {
+      // The row was deliberately left alone (a newer event already wrote it,
+      // or the guard refused). Paddle has applied the plan change regardless,
+      // so report the row as it actually stands — the client writes this
+      // straight into its cache.
+      if (write.outcome === "untracked_subscription") {
+        console.error(
+          "[BILLING_ALERT] subscription_guard_rejected_write:",
+          `source=update`,
+          `user_id=${user.id}`,
+          `attempted_subscription_id=${updatedSubscription.id}`,
+          `tracked_subscription_id=${currentPaddleSubscriptionId}`,
+        );
+      } else {
+        console.warn(
+          "[Paddle] Plan change not stored: a newer event already wrote the row",
+          updatedSubscription.id,
+        );
+      }
+
+      const { data: storedRow } = await supabaseAdmin
+        .from("subscriptions")
+        .select("tier, status, price_id, current_period_end, cancel_at_period_end")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          applied: false,
+          reason: write.outcome,
+          action: patchDecision.action,
+          subscription: {
+            tier: storedRow?.tier ?? upsertData.tier,
+            status: storedRow?.status ?? upsertData.status,
+            priceId: storedRow?.price_id ?? upsertData.price_id,
+            currentPeriodEnd: storedRow?.current_period_end ??
+              upsertData.current_period_end,
+            cancelAtPeriodEnd: storedRow
+              ? Boolean(storedRow.cancel_at_period_end)
+              : upsertData.cancel_at_period_end,
+          },
+        }),
+        { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
 
