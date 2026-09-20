@@ -31,10 +31,17 @@ SELECT ok(
      WHERE c.relname = 'sync_queue_one_active'),
     'sync_queue_one_active is a partial UNIQUE index'
 );
+SELECT is(
+    substring(
+      pg_get_indexdef('public.sync_queue_one_active'::regclass) FROM ' WHERE .*$'
+    ),
+    ' WHERE (status = ANY (ARRAY[''pending''::text, ''processing''::text]))',
+    'the index covers exactly the active statuses'
+);
 SELECT ok(
     pg_get_indexdef('public.sync_queue_one_active'::regclass)
-      LIKE '%WHERE ((status = ANY (ARRAY[''pending''::text, ''processing''::text])))%',
-    'the index covers exactly the active statuses'
+      LIKE '%(user_id, provider, ((COALESCE(sync_type, ''incremental''::text) = ''initial''::text)))%',
+    'the index key is (user_id, provider, initial-or-not), with NULL sync_type as non-initial'
 );
 
 INSERT INTO auth.users (id, email)
@@ -55,9 +62,12 @@ SELECT throws_ok(
     NULL,
     'a second non-initial row for the same pair is rejected'
 );
+-- An explicit NULL, not the column default: `sync_type = 'initial'` evaluates
+-- to NULL for such a row, and NULL index keys never collide, so a bare
+-- equality expression would let every untyped legacy row straight through.
 SELECT throws_ok(
-    $$ INSERT INTO public.sync_queue (user_id, provider, status)
-       VALUES ('52525252-0000-4000-8000-000000000001', 'strava', 'pending') $$,
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type, status)
+       VALUES ('52525252-0000-4000-8000-000000000001', 'strava', NULL, 'pending') $$,
     '23505',
     NULL,
     'a NULL sync_type counts as non-initial and is rejected too'
