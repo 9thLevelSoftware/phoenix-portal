@@ -31,6 +31,12 @@ export function useCreateGoal() {
 					goal_type: args.goal_type,
 					target_value: args.target_value,
 					target_unit: args.target_unit,
+					// KD-8: this client enters PR targets per cable. The column has
+					// no default, and a NULL basis is taken to mean a pre-PR-30
+					// client (its PR target is a doubled total and is halved by the
+					// user_goals_default_target_basis trigger). Say so explicitly so
+					// this insert is correct whichever order SPA and migration ship.
+					target_basis: "per_cable",
 					exercise_name: args.exercise_name ?? null,
 					exercise_id: args.exercise_id ?? null,
 					deadline: args.deadline ?? null,
@@ -78,6 +84,7 @@ interface UpdateGoalArgs {
 		period?: "weekly" | "monthly";
 		status?: "active" | "completed" | "archived";
 		completed_at?: string | null;
+		target_basis?: string;
 	};
 }
 
@@ -95,6 +102,12 @@ export function useUpdateGoal() {
 			};
 			if ("exercise_name" in updates && !("exercise_id" in updates)) {
 				payload.exercise_id = null;
+			}
+			// KD-8: any target this client writes is per cable. Restate the basis
+			// with the value so the write is self-describing (and so a target
+			// written here can never be mistaken for a pre-PR-30 doubled total).
+			if ("target_value" in updates) {
+				payload.target_basis = "per_cable";
 			}
 
 			const { data, error } = await supabase

@@ -1,21 +1,26 @@
 /**
  * Weight Transform Tests
  *
- * Validates the critical weight transformation that occurs between:
- * - Database storage: Per-cable values (0-220kg range)
- * - Portal display: Total values (per-cable * 2)
- *
- * The Phoenix fitness machine has dual cables, so the database stores per-cable weights
- * but users see total weight lifted. This is a parity-critical transform.
+ * Loads are stored and synced per cable, exactly as the phone shows them.
+ * The portal shows the per-cable figure first and adds a total only when the
+ * exercise's cable count is known (KD-8), via src/lib/units/loadDisplay.ts.
+ * A NULL cable count means unknown: per cable only, never assume 2 cables.
  *
  * Key test scenarios:
- * - Per-cable storage verification
- * - x2 multiplier for display
- * - Edge cases: 0, 1, 110 (max per-cable), 220 (max total)
+ * - Per-cable storage verification through push/pull
+ * - Display adapter: 2 cables -> total x2, 1 cable -> total x1, unknown -> none
+ * - Edge cases: 0, 1, 110 (max per-cable)
  * - Weight in all entity types: sessions, exercises, sets, routines
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { formatLoad, toLoadDisplay } from "@/lib/units/loadDisplay";
+import {
+	createRoutineExerciseFixture,
+	createSessionFixture,
+	createSetFixture,
+	WEIGHT_BOUNDARY_VALUES,
+} from "../fixtures";
 import {
 	callPullEndpoint,
 	callPushEndpoint,
@@ -31,10 +36,7 @@ import {
 } from "../helpers/edge-function-harness";
 import { getMockSession, resetMockStore } from "../helpers/mock-edge-functions";
 
-// Weight transform constant (must match src/schemas/transforms.ts)
-const WEIGHT_MULTIPLIER = 2;
 const MAX_PER_CABLE_KG = 110; // Machine physical limit per cable
-const MAX_TOTAL_KG = MAX_PER_CABLE_KG * WEIGHT_MULTIPLIER;
 
 vi.setConfig({ testTimeout: 30000 });
 
@@ -49,7 +51,7 @@ describe("Weight Transform Tests", () => {
 	describe("Per-Cable Storage Verification", () => {
 		it("should store weight values as per-cable in the database", async () => {
 			// Arrange: Set with specific per-cable weight
-			const perCableWeight = 50; // 50kg per cable = 100kg total
+			const perCableWeight = 50; // 50kg per cable, as the phone shows it
 			const sessionId = generateTestId();
 			const exerciseId = generateTestId();
 			const setId = generateTestId();
@@ -134,46 +136,25 @@ describe("Weight Transform Tests", () => {
 		});
 	});
 
-	describe("Display Multiplier Application", () => {
-		it("should apply x2 multiplier when transforming for display", () => {
-			// This tests the transform logic that should be applied in the portal UI
-			const perCableValue = 60;
-			const expectedDisplay = perCableValue * WEIGHT_MULTIPLIER;
-
-			expect(expectedDisplay).toBe(120);
+	// The three KD-8 acceptance cases, kept here next to the sync round trips
+	// (edge cases live in src/lib/units/loadDisplay.test.ts).
+	describe("Load display adapter", () => {
+		it("20 kg per cable with 2 cables shows 20 and 40", () => {
+			expect(toLoadDisplay(20, 2)).toEqual({ perCableKg: 20, totalKg: 40 });
+			expect(formatLoad(20, 2, "kg")).toBe("20 kg per cable · 40 kg total");
 		});
 
-		it("should correctly calculate total weight for various per-cable values", () => {
-			const testCases = [
-				{ perCable: 0, expectedTotal: 0 },
-				{ perCable: 1, expectedTotal: 2 },
-				{ perCable: 2.5, expectedTotal: 5 },
-				{ perCable: 25, expectedTotal: 50 },
-				{ perCable: 50, expectedTotal: 100 },
-				{ perCable: 75, expectedTotal: 150 },
-				{ perCable: 100, expectedTotal: 200 },
-				{ perCable: 110, expectedTotal: 220 },
-			];
-
-			for (const { perCable, expectedTotal } of testCases) {
-				const displayValue = perCable * WEIGHT_MULTIPLIER;
-				expect(displayValue).toBe(expectedTotal);
-			}
+		it("20 kg per cable with 1 cable shows 20 and 20 (never doubled)", () => {
+			expect(toLoadDisplay(20, 1)).toEqual({ perCableKg: 20, totalKg: 20 });
+			expect(formatLoad(20, 1, "kg")).toBe("20 kg per cable · 20 kg total");
 		});
 
-		it("should handle decimal per-cable weights correctly", () => {
-			const decimalWeights = [
-				{ perCable: 2.5, expectedTotal: 5 },
-				{ perCable: 7.5, expectedTotal: 15 },
-				{ perCable: 12.5, expectedTotal: 25 },
-				{ perCable: 17.5, expectedTotal: 35 },
-				{ perCable: 22.5, expectedTotal: 45 },
-			];
-
-			for (const { perCable, expectedTotal } of decimalWeights) {
-				const displayValue = perCable * WEIGHT_MULTIPLIER;
-				expect(displayValue).toBe(expectedTotal);
-			}
+		it("unknown cable count shows 20 only", () => {
+			expect(toLoadDisplay(20, null)).toEqual({
+				perCableKg: 20,
+				totalKg: null,
+			});
+			expect(formatLoad(20, null, "kg")).toBe("20 kg per cable");
 		});
 	});
 
@@ -211,9 +192,11 @@ describe("Weight Transform Tests", () => {
 				pullResult.data!.sessions[0].exercises[0].sets[0].weightKg;
 			expect(pulledWeight).toBe(0);
 
-			// Display should also be 0
-			const displayWeight = pulledWeight * WEIGHT_MULTIPLIER;
-			expect(displayWeight).toBe(0);
+			// Display is 0 per cable (and 0 total when the count is known)
+			expect(toLoadDisplay(pulledWeight, 2)).toEqual({
+				perCableKg: 0,
+				totalKg: 0,
+			});
 		});
 
 		it("should handle weight = 1 (minimum meaningful weight)", async () => {
@@ -232,7 +215,7 @@ describe("Weight Transform Tests", () => {
 						sets: [
 							createTestSet(exerciseId, 1, {
 								id: generateTestId(),
-								weightKg: 1, // 1kg per cable = 2kg total
+								weightKg: 1, // 1kg per cable
 							}),
 						],
 					},
@@ -249,8 +232,11 @@ describe("Weight Transform Tests", () => {
 				pullResult.data!.sessions[0].exercises[0].sets[0].weightKg;
 			expect(pulledWeight).toBe(1);
 
-			const displayWeight = pulledWeight * WEIGHT_MULTIPLIER;
-			expect(displayWeight).toBe(2);
+			// Primary display is the pulled per-cable value; unknown count -> no total
+			expect(toLoadDisplay(pulledWeight, null)).toEqual({
+				perCableKg: 1,
+				totalKg: null,
+			});
 		});
 
 		it("should handle weight = 110 (max per-cable)", async () => {
@@ -269,7 +255,7 @@ describe("Weight Transform Tests", () => {
 						sets: [
 							createTestSet(exerciseId, 1, {
 								id: generateTestId(),
-								weightKg: MAX_PER_CABLE_KG, // 110kg per cable = 220kg total
+								weightKg: MAX_PER_CABLE_KG, // 110kg per cable
 							}),
 						],
 					},
@@ -286,22 +272,11 @@ describe("Weight Transform Tests", () => {
 				pullResult.data!.sessions[0].exercises[0].sets[0].weightKg;
 			expect(pulledWeight).toBe(MAX_PER_CABLE_KG);
 
-			const displayWeight = pulledWeight * WEIGHT_MULTIPLIER;
-			expect(displayWeight).toBe(MAX_TOTAL_KG);
-		});
-
-		it("should validate machine physical limits", () => {
-			// The Phoenix fitness machine has physical limits
-			expect(MAX_PER_CABLE_KG).toBe(110);
-			expect(MAX_TOTAL_KG).toBe(220);
-
-			// Values above this shouldn't be possible with the hardware
-			const invalidPerCable = 120;
-			const wouldBeDisplay = invalidPerCable * WEIGHT_MULTIPLIER;
-			expect(wouldBeDisplay).toBe(240);
-
-			// This test documents the expected bounds
-			expect(invalidPerCable).toBeGreaterThan(MAX_PER_CABLE_KG);
+			expect(toLoadDisplay(pulledWeight, 2)).toEqual({
+				perCableKg: MAX_PER_CABLE_KG,
+				totalKg: MAX_PER_CABLE_KG * 2,
+			});
+			expect(toLoadDisplay(pulledWeight, 1).totalKg).toBe(MAX_PER_CABLE_KG);
 		});
 	});
 
@@ -477,15 +452,6 @@ describe("Weight Transform Tests", () => {
 	});
 
 	describe("Weight Transform Consistency", () => {
-		it("should use consistent WEIGHT_MULTIPLIER = 2", () => {
-			// This is a critical constant that must match across:
-			// - src/schemas/transforms.ts (portal display)
-			// - Mobile app (data storage)
-			// - This test file
-
-			expect(WEIGHT_MULTIPLIER).toBe(2);
-		});
-
 		it("should correctly round-trip volume calculations", async () => {
 			// Volume = weight * reps
 			// If weight is per-cable, volume should also be per-cable
@@ -496,10 +462,6 @@ describe("Weight Transform Tests", () => {
 			const exercises = 2;
 
 			const expectedPerCableVolume = perCableWeight * reps * sets * exercises;
-			const expectedTotalDisplay = expectedPerCableVolume * WEIGHT_MULTIPLIER;
-
-			expect(expectedPerCableVolume).toBe(3000); // 50 * 10 * 3 * 2
-			expect(expectedTotalDisplay).toBe(6000); // Displayed as 6000kg total
 
 			// Verify the session stores per-cable volume
 			const session: SessionDto = createTestSession(testUser.id, {

@@ -537,6 +537,8 @@ interface ExerciseDto {
   name: string;
   muscleGroup: string;
   orderIndex: number;
+  /** 1 or 2; absent/null = unknown (pre-PR 29 mobile builds). Never assume 2. */
+  cableCount?: number | null;
   sets: SetDto[];
 }
 
@@ -760,6 +762,10 @@ export interface MobileSyncPushHandlerDependencies {
   createAdminClient(): SupabaseClient;
   logOperationalFailure(value: { name: string }): void;
   now(): number;
+  /**
+   * Test seam for the LWW gate. Omitted in production, where the
+   * SYNC_LWW_ENABLED cold-start flag applies.
+   */
   /** Optional override for deterministic handler tests. Defaults to the cold-start flag. */
   syncLwwEnabled?: boolean;
 }
@@ -924,6 +930,7 @@ async function mobileSyncPushHandler(
 ): Promise<Response> {
   const syncLwwEnabled = dependencies.syncLwwEnabled ?? SYNC_LWW_ENABLED;
   const cors = getCorsHeaders(req);
+  const syncLwwEnabled = dependencies.syncLwwEnabled ?? SYNC_LWW_ENABLED;
 
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -2022,7 +2029,7 @@ async function mobileSyncPushHandler(
 
       // Ownership of every session id was verified once in directOwnerChecks.
 
-      if (SYNC_LWW_ENABLED) {
+      if (syncLwwEnabled) {
         // Phase 3.2: route through the LWW RPC so the server rejects stale
         // rows instead of overwriting with older data. Accepted ids are used
         // to filter the exercises/sets/rep_summaries child upserts below.
@@ -2061,7 +2068,9 @@ async function mobileSyncPushHandler(
       // Stored telemetry of a set the payload re-sends WITHOUT telemetry is
       // re-linked to the new set id when the match is unambiguous (see
       // 20260920002000_replace_session_children_preserve_telemetry.sql for
-      // the key rule). That delete + re-insert is performed in ONE
+      // the key rule). The sessions' exercise_progress rows are replaced in
+      // the same call (20260920002400_progress_refresh_and_indexes.sql).
+      // That delete + re-insert is performed in ONE
       // transaction by the replace_session_children RPC below: previously the
       // delete and each upsert were separate statements, so a failure after the
       // delete permanently destroyed the user's data. The child rows are built
@@ -2103,6 +2112,8 @@ async function mobileSyncPushHandler(
             exercise_id: catalogId(e.exerciseId, e.name),
             muscle_group: e.muscleGroup ?? 'General',
             order_index: e.orderIndex ?? 0,
+            // PR 28: NULL = unknown (older builds send nothing).
+            cable_count: e.cableCount ?? null,
           }))
         );
 
@@ -2213,14 +2224,55 @@ async function mobileSyncPushHandler(
         }));
       const dedupedTelemetryRows = deduplicateByKey(telemetryRows, (r) => r.id);
 
+      // --- 4f-pre. Compute exercise_progress (mobile-provided 1RM, hybrid
+      // fallback; PARITY-CRITICAL, see _shared/exerciseProgressRows.ts) for
+      // every accepted session, new or edited. Filtered through childAllowed
+      // like every other child path so LWW-rejected sessions keep the
+      // server's newer progress (Issue #99 RCA layer 3). One row per
+      // (session, catalog id or name): the first wins, as before.
+      // The rows are passed to replace_session_children as p_progress, which
+      // replaces the sessions' stored progress in the same transaction, so an
+      // edited weight refreshes max_weight_kg / estimated_1rm_kg and a removed
+      // exercise loses its row (F-069; migration
+      // 20260920002400_progress_refresh_and_indexes.sql). Always an array, so
+      // an accepted session that now has no progress rows is cleared too.
+      const acceptedSessions = payload.sessions
+        .filter((s) => childAllowed(acceptedSessionIds, s.id));
+      const progressIdentityKey = (row: {
+        session_id: string;
+        exercise_id: string | null;
+        exercise_name: string;
+      }) =>
+        row.exercise_id !== null && row.exercise_id.length > 0
+          ? `${row.session_id}:id:${row.exercise_id}`
+          : `${row.session_id}:name:${row.exercise_name}`;
+      const seenProgressKeys = new Set<string>();
+      const progressRows = buildExerciseProgressRows(
+        acceptedSessions,
+        userId,
+        localProfileId,
+      )
+        .map((row) => ({
+          ...row,
+          exercise_id: catalogId(row.exercise_id, row.exercise_name),
+        }))
+        .filter((row) => {
+          const key = progressIdentityKey(row);
+          if (seenProgressKeys.has(key)) return false;
+          seenProgressKeys.add(key);
+          return true;
+        });
+
       // --- 4f. Atomic swap: delete affected sessions' children + re-insert all
-      // child rows in a single transaction (F343). A failure anywhere rolls the
-      // delete back, so partial-write data loss is impossible.
+      // child rows (and refresh their exercise_progress) in a single
+      // transaction (F343). A failure anywhere rolls the delete back, so
+      // partial-write data loss is impossible.
       if (
         sessionRowsWithUpdatedAt.length > 0 ||
         dedupedExerciseRows.length > 0 ||
         dedupedTelemetryRows.length > 0
       ) {
+        const { data: replaceData, error: replaceErr } = await supabase.rpc('replace_session_children', {
         const { data: parentResults, error: replaceErr } = await supabase.rpc(
           'upsert_workout_sessions_with_components', {
           p_user_id: userId,
@@ -2231,11 +2283,22 @@ async function mobileSyncPushHandler(
           p_sets: dedupedSetRows,
           p_rep_summaries: dedupedRepRows,
           p_rep_telemetry: dedupedTelemetryRows,
+          p_progress: progressRows,
+        });
           },
         );
         if (replaceErr) {
           throw new Error(`session hierarchy replace failed: ${replaceErr.message}`);
         }
+        exercisesInserted = dedupedExerciseRows.length;
+        setsInserted = dedupedSetRows.length;
+        repSummariesInserted = dedupedRepRows.length;
+        telemetryInserted = dedupedTelemetryRows.length;
+        // Rows the RPC actually wrote (step 7 ignores rows outside
+        // p_session_ids / p_user_id), not rows sent.
+        const writtenProgress = (replaceData as { exercise_progress?: unknown } | null)
+          ?.exercise_progress;
+        exerciseProgressInserted = typeof writtenProgress === 'number' ? writtenProgress : 0;
         acceptedSessionIds = new Set<string>();
         for (const row of (parentResults ?? []) as LwwUpsertRow[]) {
           if (row.accepted) acceptedSessionIds.add(row.id);
@@ -2676,8 +2739,8 @@ async function mobileSyncPushHandler(
 
       // Ownership of every routine id was verified once in directOwnerChecks.
 
-      if (SYNC_LWW_ENABLED) {
       if (syncLwwEnabled) {
+      if (SYNC_LWW_ENABLED) {
         const rows = routineRows.map((r) => ({
           ...r,
           updated_at: r.updated_at ?? new Date().toISOString(),
@@ -3125,10 +3188,12 @@ async function mobileSyncPushHandler(
           if (row.structure_applied && row.server_updated_at) {
             cycleVersions[row.id] = row.server_updated_at;
           }
+        } else {
           // R-3/R-6: report the stored LWW key, like sessions and routines.
           // `server_updated_at` (the pull cursor) is reserved for
           // cycleVersions above, which mobile compares with portal_edited_at.
           rejections.cycles.push({ id: row.id, serverUpdatedAt: row.client_updated_at ?? null });
+        }
       }
       cyclesUpserted = acceptedIds.size;
       // R-4 race guard: undo a re-create of a cycle deleted meanwhile.
@@ -3207,6 +3272,7 @@ async function mobileSyncPushHandler(
       if (racedCycleIds.length > 0) {
         skippedDeleted.cycles.push(...racedCycleIds);
         cyclesUpserted = Math.max(0, cyclesUpserted - racedCycleIds.length);
+        for (const racedId of racedCycleIds) delete cycleVersions[racedId];
       }
       // The parent clock decision and full day replacement hold the same
       // per-cycle transaction lock, preventing an older concurrent request
