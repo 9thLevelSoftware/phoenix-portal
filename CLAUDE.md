@@ -228,10 +228,18 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
   `updatedAt` (the fallback covers rows written before the `20260920002100`
   backfill) while its cursor stays on `updated_at`. Routine and cycle DTOs
   still report `updated_at` — routines as epoch ms, cycles as an ISO string.
-- `rejections[].serverUpdatedAt` in the push response is the **stored LWW key**
-  for every entity, including cycles. It is not a cursor and must never be
-  compared with `cycleVersions` / `baseUpdatedAt`, which stay on `updated_at`.
-  It is `null` when there is no row to report.
+- `rejections[].serverUpdatedAt` is the **stored LWW key** — the
+  `client_updated_at` the push lost to — for `sessions`, `routines` **and**
+  `cycles`. Cycles used to report the server clock here; since `20260920002100`
+  / `…2101` they do not. It is not a cursor and must never be compared with
+  `cycleVersions` / `baseUpdatedAt`, which stay on `updated_at`. It is `null`
+  when there is no row to report.
+  The same response object also carries `externalActivities`, `rpgAttributes`
+  and `gamificationStats` rejection lists. Those come from
+  `upsert_external_activity_lww` / `upsert_rpg_attributes_lww` /
+  `upsert_gamification_stats_lww`, which `20260920002100`/`…2101` did **not**
+  rewrite, so their `serverUpdatedAt` is still the server-clock `updated_at`.
+  Treat the field name as per-entity, not global.
 
 **mobile-sync-push** (`supabase/functions/mobile-sync-push/index.ts`):
 - Batched sessions with nested exercises, sets, rep summaries and telemetry,
