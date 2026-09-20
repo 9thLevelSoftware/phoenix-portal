@@ -191,6 +191,10 @@ export function AppRoutes() {
 						    deliberately NOT behind the FLAME route gate: the tier
 						    is re-checked server-side by `complete-oauth`, and a
 						    stale client tier must not swallow the callback before
+						    the POST is even made. Live since PR 48 — `strava-oauth`
+						    relays the provider's response here. A signed-out
+						    browser is sent to `/` by ProtectedRoute and the flow
+						    restarts; see IntegrationsCallback's header. */}
 						    the POST is even made. Dormant — nothing redirects
 						    here until PR 48 cuts the providers over. */}
 						<Route
