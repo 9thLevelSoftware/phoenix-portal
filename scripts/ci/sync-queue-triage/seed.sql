@@ -72,6 +72,14 @@ VALUES
   ('c1c1c1c1-0000-4000-8000-00000000001c', 'garmin', 'tok', NULL)
 ON CONFLICT (user_id, provider) DO NOTHING;
 
+-- Fixture intentionally seeds a PRE-triage backlog with duplicate active
+-- (user_id, provider, is_initial) rows so private.triage_sync_queue_backlog
+-- can supersede them. Migration 20260920005200 already created the partial
+-- unique index sync_queue_one_active; drop it for this throwaway CI DB so
+-- the fixture can load, then triage re-establishes a compliant state.
+DROP INDEX IF EXISTS public.sync_queue_one_active;
+DROP INDEX IF EXISTS public.sync_queue_one_processing;
+
 INSERT INTO public.sync_queue (id, user_id, provider, sync_type, status, created_at, started_at)
 VALUES
   ('c1c10000-0000-4000-8000-0000000000a1', 'c1c1c1c1-0000-4000-8000-00000000000a', 'strava', 'incremental', 'pending', now() - interval '1 day', NULL),
