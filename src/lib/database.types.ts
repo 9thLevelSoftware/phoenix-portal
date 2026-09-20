@@ -302,7 +302,10 @@ export type Database = {
 					cancelled_at: string | null;
 					executed_at: string | null;
 					id: string;
+					previous_cancelled_at: string | null;
+					previous_requested_at: string | null;
 					requested_at: string;
+					rerequest_count: number;
 					scheduled_for: string;
 					status: string;
 					user_id: string;
@@ -311,7 +314,10 @@ export type Database = {
 					cancelled_at?: string | null;
 					executed_at?: string | null;
 					id?: string;
+					previous_cancelled_at?: string | null;
+					previous_requested_at?: string | null;
 					requested_at?: string;
+					rerequest_count?: number;
 					scheduled_for?: string;
 					status?: string;
 					user_id: string;
@@ -320,7 +326,10 @@ export type Database = {
 					cancelled_at?: string | null;
 					executed_at?: string | null;
 					id?: string;
+					previous_cancelled_at?: string | null;
+					previous_requested_at?: string | null;
 					requested_at?: string;
+					rerequest_count?: number;
 					scheduled_for?: string;
 					status?: string;
 					user_id?: string;
@@ -2029,6 +2038,27 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			sync_tombstones: {
+				Row: {
+					deleted_at: string;
+					entity: string;
+					entity_id: string;
+					user_id: string;
+				};
+				Insert: {
+					deleted_at?: string;
+					entity: string;
+					entity_id: string;
+					user_id: string;
+				};
+				Update: {
+					deleted_at?: string;
+					entity?: string;
+					entity_id?: string;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
 			telemetry_analysis: {
 				Row: {
 					analysis_type: string;
@@ -2641,20 +2671,8 @@ export type Database = {
 				Args: { p_provider: string; p_timestamp: string; p_user_id: string };
 				Returns: undefined;
 			};
-			exercise_frequency: {
-				Args: { p_profile_id?: string };
-				Returns: {
-					exercise_name: string;
-					muscle_group: string;
-					sessions: number;
-				}[];
-			};
-			exercise_names: {
-				Args: { p_profile_id?: string };
-				Returns: {
-					exercise_name: string;
-				}[];
-			};
+			exercise_frequency: { Args: { p_profile_id?: string }; Returns: Json };
+			exercise_names: { Args: { p_profile_id?: string }; Returns: Json };
 			exercise_progress_series: {
 				Args: { p_exercise: string; p_limit?: number; p_profile_id?: string };
 				Returns: {
@@ -2685,11 +2703,7 @@ export type Database = {
 					p_limit_per_exercise?: number;
 					p_profile_id?: string;
 				};
-				Returns: {
-					exercise_name: string;
-					latest_recorded_at: string;
-					rows: Json;
-				}[];
+				Returns: Json;
 			};
 			get_acwr: {
 				Args: {
@@ -2967,6 +2981,19 @@ export type Database = {
 					workout_mode: string;
 				}[];
 			};
+			get_sync_tombstones: {
+				Args: {
+					p_entity?: string;
+					p_ids?: string[];
+					p_since?: string;
+					p_user_id: string;
+				};
+				Returns: {
+					deleted_at: string;
+					entity: string;
+					entity_id: string;
+				}[];
+			};
 			get_user_pr_rank: {
 				Args: { target_user_id: string };
 				Returns: {
@@ -3027,6 +3054,12 @@ export type Database = {
 				Args: { p_routine_id: string; p_snapshot: Json };
 				Returns: undefined;
 			};
+			insights_batch_candidates: {
+				Args: { p_cursor?: string; p_limit?: number };
+				Returns: {
+					user_id: string;
+				}[];
+			};
 			jsonb_redact_token_keys: { Args: { data: Json }; Returns: Json };
 			local_profile_preference_section_canonical: {
 				Args: {
@@ -3051,6 +3084,7 @@ export type Database = {
 					server_revision: number;
 				}[];
 			};
+			personal_record_bests: { Args: { p_profile_id?: string }; Returns: Json };
 			personal_record_history: {
 				Args: {
 					p_before?: string;
@@ -3110,6 +3144,27 @@ export type Database = {
 				Args: { p_period: string; p_rows: Json; p_user_id: string };
 				Returns: number;
 			};
+			request_account_deletion: {
+				Args: never;
+				Returns: {
+					cancelled_at: string | null;
+					executed_at: string | null;
+					id: string;
+					previous_cancelled_at: string | null;
+					previous_requested_at: string | null;
+					requested_at: string;
+					rerequest_count: number;
+					scheduled_for: string;
+					status: string;
+					user_id: string;
+				};
+				SetofOptions: {
+					from: "*";
+					to: "deletion_requests";
+					isOneToOne: true;
+					isSetofReturn: false;
+				};
+			};
 			safe_jsonb_int: {
 				Args: { p_default: number; p_key: string; p_obj: Json };
 				Returns: number;
@@ -3128,6 +3183,11 @@ export type Database = {
 					week_start: string;
 				}[];
 			};
+			set_insights_batch_cursor: {
+				Args: { p_cursor: string };
+				Returns: undefined;
+			};
+			subscription_tier_for: { Args: { p_user_id: string }; Returns: string };
 			update_cycle_with_days: {
 				Args: {
 					p_cycle_id: string;

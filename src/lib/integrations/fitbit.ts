@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { redirectToValidatedOAuthUrl } from "./oauthRedirect";
+import {
+	oauthInitiateError,
+	redirectToValidatedOAuthUrl,
+} from "./oauthRedirect";
 import type { NormalizedActivity } from "./types";
 
 // =============================================================================
@@ -95,9 +98,7 @@ export async function initiateFitbitConnect(
 	});
 
 	if (!response.ok) {
-		throw new Error(
-			`Failed to initiate Fitbit OAuth: ${await response.text()}`,
-		);
+		throw await oauthInitiateError("Fitbit", response);
 	}
 
 	const { url } = await response.json();

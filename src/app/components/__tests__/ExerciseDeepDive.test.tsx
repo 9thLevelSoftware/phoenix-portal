@@ -30,9 +30,13 @@ vi.mock("@/queries/progress", () => ({
 }));
 
 vi.mock("@/queries/records", () => ({
+	// personalRecordsOptions is an infinite query (keyset-paged PR history).
 	personalRecordsOptions: (userId: string, profileId?: string | null) => ({
 		queryKey: ["records", userId, profileId],
+		initialPageParam: null,
 		queryFn: async () => mockQueryData.records,
+		getNextPageParam: () => null,
+		select: (data: { pages: unknown[][] }) => data.pages.flat(),
 	}),
 }));
 

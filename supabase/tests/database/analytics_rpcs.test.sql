@@ -248,6 +248,11 @@ SELECT is(
     ),
     7,
     'exactly one overload of each of the seven analytics RPCs'
+              'personal_record_bests', 'profile_workout_stats', 'session_volume_buckets'
+          )
+    ),
+    8,
+    'exactly one overload of each of the eight analytics RPCs'
 );
 
 SELECT is(
@@ -260,6 +265,7 @@ SELECT is(
               'exercise_frequency', 'exercise_names', 'exercise_progress_series',
               'exercise_progress_series_many', 'personal_record_history',
               'profile_workout_stats', 'session_volume_buckets'
+              'personal_record_bests', 'profile_workout_stats', 'session_volume_buckets'
           )
           AND NOT p.prosecdef
           AND 'search_path=""' = ANY (p.proconfig)
@@ -272,6 +278,8 @@ SELECT is(
     ),
     7,
     'all seven are SECURITY INVOKER, search_path pinned, authenticated-only (no anon, no PUBLIC)'
+    8,
+    'all eight are SECURITY INVOKER, search_path pinned, authenticated-only (no anon, no PUBLIC)'
 );
 
 SELECT has_index(
@@ -304,6 +312,22 @@ SELECT results_eq(
 
 SELECT results_eq(
     $$SELECT exercise_name, muscle_group, sessions FROM public.exercise_frequency('p2')$$,
+-- exercise_frequency: scalar JSON envelope, distinct sessions, latest
+-- non-General raw group.
+SELECT results_eq(
+    $$SELECT exercise_name, muscle_group, sessions
+      FROM jsonb_to_recordset(public.exercise_frequency())
+           AS f(exercise_name text, muscle_group text, sessions integer)$$,
+    $$VALUES ('Bench Press'::text, 'Chest'::text, 3),
+             ('Plank'::text, 'General'::text, 1),
+             ('Row'::text, 'Back'::text, 1)$$,
+    'exercise_frequency: JSON entries are one per name, distinct sessions (s2 double counted once), latest non-General group'
+);
+
+SELECT results_eq(
+    $$SELECT exercise_name, muscle_group, sessions
+      FROM jsonb_to_recordset(public.exercise_frequency('p2'))
+           AS f(exercise_name text, muscle_group text, sessions integer)$$,
     $$VALUES ('Bench Press'::text, 'General'::text, 1)$$,
     'exercise_frequency filters by profile through the parent session (General fallback)'
 );
@@ -311,12 +335,14 @@ SELECT results_eq(
 -- exercise_names.
 SELECT results_eq(
     $$SELECT exercise_name FROM public.exercise_names()$$,
+    $$SELECT exercise_name FROM jsonb_array_elements_text(public.exercise_names()) AS n(exercise_name)$$,
     $$VALUES ('Bench Press'::text), ('Deadlift'::text), ('Squat'::text)$$,
     'exercise_names returns distinct names A-Z across 1,215 progress rows'
 );
 
 SELECT results_eq(
     $$SELECT exercise_name FROM public.exercise_names('p2')$$,
+    $$SELECT exercise_name FROM jsonb_array_elements_text(public.exercise_names('p2')) AS n(exercise_name)$$,
     $$VALUES ('Deadlift'::text)$$,
     'exercise_names filters by profile'
 );
@@ -383,6 +409,10 @@ SELECT is(
 SELECT results_eq(
     $$SELECT exercise_name, jsonb_array_length(rows)
       FROM public.exercise_progress_series_many(NULL, NULL, 5)$$,
+-- exercise_progress_series_many: one scalar envelope, jsonb rows per exercise.
+SELECT results_eq(
+    $$SELECT g ->> 'exercise_name', jsonb_array_length(g -> 'rows')
+      FROM jsonb_array_elements(public.exercise_progress_series_many(NULL, NULL, 5)) g$$,
     $$VALUES ('Deadlift'::text, 3), ('Bench Press'::text, 5), ('Squat'::text, 5)$$,
     'series_many(all): one row per exercise, newest exercise first, per-exercise limit'
 );
@@ -392,6 +422,8 @@ SELECT is(
         SELECT array_agg((e ->> 'estimated_1rm_kg')::numeric::integer ORDER BY o)
         FROM public.exercise_progress_series_many(ARRAY['Bench Press'], NULL, 3) m,
              jsonb_array_elements(m.rows) WITH ORDINALITY AS x(e, o)
+        FROM jsonb_array_elements(public.exercise_progress_series_many(ARRAY['Bench Press'], NULL, 3)) m,
+             jsonb_array_elements(m -> 'rows') WITH ORDINALITY AS x(e, o)
     ),
     ARRAY[1200, 1199, 1198],
     'series_many rows are the newest rows, newest first'
@@ -402,6 +434,8 @@ SELECT is(
         SELECT array_agg((e ->> 'estimated_1rm_kg')::numeric::integer ORDER BY o)
         FROM public.exercise_progress_series_many(ARRAY['Squat'], NULL, 2) m,
              jsonb_array_elements(m.rows) WITH ORDINALITY AS x(e, o)
+        FROM jsonb_array_elements(public.exercise_progress_series_many(ARRAY['Squat'], NULL, 2)) m,
+             jsonb_array_elements(m -> 'rows') WITH ORDINALITY AS x(e, o)
     ),
     ARRAY[222, 111],
     'series_many breaks a recorded_at tie by id DESC'
@@ -411,6 +445,7 @@ SELECT is(
     (
         SELECT jsonb_array_length(rows)
         FROM public.exercise_progress_series_many(ARRAY['Bench Press'])
+        SELECT jsonb_array_length(public.exercise_progress_series_many(ARRAY['Bench Press']) -> 0 -> 'rows')
     ),
     100,
     'series_many default per-exercise limit is 100'
@@ -420,6 +455,7 @@ SELECT is(
     (
         SELECT jsonb_array_length(rows)
         FROM public.exercise_progress_series_many(ARRAY['Bench Press'], NULL, 5000)
+        SELECT jsonb_array_length(public.exercise_progress_series_many(ARRAY['Bench Press'], NULL, 5000) -> 0 -> 'rows')
     ),
     1000,
     'series_many clamps the per-exercise limit to 1000'
@@ -429,6 +465,7 @@ SELECT is(
     (
         SELECT jsonb_array_length(rows)
         FROM public.exercise_progress_series_many(ARRAY['Bench Press'], NULL, 0)
+        SELECT jsonb_array_length(public.exercise_progress_series_many(ARRAY['Bench Press'], NULL, 0) -> 0 -> 'rows')
     ),
     1,
     'series_many clamps a per-exercise limit of 0 to 1'
@@ -438,6 +475,10 @@ SELECT is(
     (
         SELECT (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(rows -> 0) AS k)
         FROM public.exercise_progress_series_many(ARRAY['Squat'], NULL, 1)
+        SELECT array_agg(k ORDER BY k)
+        FROM jsonb_object_keys(
+            public.exercise_progress_series_many(ARRAY['Squat'], NULL, 1) -> 0 -> 'rows' -> 0
+        ) AS k
     ),
     (
         SELECT array_agg(column_name::text ORDER BY column_name::text)
@@ -449,8 +490,38 @@ SELECT is(
 
 SELECT results_eq(
     $$SELECT exercise_name FROM public.exercise_progress_series_many(NULL, 'p2', 10)$$,
+    $$SELECT g ->> 'exercise_name'
+      FROM jsonb_array_elements(public.exercise_progress_series_many(NULL, 'p2', 10)) g$$,
     $$VALUES ('Deadlift'::text)$$,
     'series_many filters by profile'
+);
+
+SAVEPOINT more_than_max_rows;
+INSERT INTO public.exercise_progress
+    (user_id, exercise_name, session_id, recorded_at, estimated_1rm_kg)
+SELECT
+    'a4040404-0000-4000-8000-00000000000a',
+    'Synthetic ' || lpad(i::text, 4, '0'),
+    'a4040404-0001-4000-8000-000000000001',
+    TIMESTAMPTZ '2026-03-01 00:00+00' + make_interval(secs => i),
+    i
+FROM generate_series(1, 1001) AS i;
+SELECT is(
+    jsonb_array_length(public.exercise_progress_series_many(NULL, NULL, 1)),
+    1004,
+    'series_many scalar envelope keeps more than 1,000 top-level exercise groups'
+);
+ROLLBACK TO SAVEPOINT more_than_max_rows;
+
+SELECT is(
+    jsonb_array_length(public.personal_record_bests()),
+    1,
+    'personal_record_bests aggregates the full live strength history into one exercise/type group'
+);
+SELECT is(
+    (public.personal_record_bests() -> 0 ->> 'value')::numeric,
+    1099::numeric,
+    'personal_record_bests is not limited to the newest 500 history rows'
 );
 
 -- personal_record_history: keyset walk over 1,100 rows (50 tombstoned).
@@ -665,6 +736,41 @@ SELECT throws_ok(
     'session_volume_buckets rejects an unknown time zone'
 );
 
+-- A scalar JSON envelope is a single PostgREST result row, so neither RPC is
+-- clipped when a caller has more than the configured 1,000 API rows.
+RESET ROLE;
+INSERT INTO public.exercises (id, session_id, name, muscle_group, user_id)
+SELECT
+    ('a4040404-7002-4000-8000-' || lpad(i::text, 12, '0'))::uuid,
+    'a4040404-0001-4000-8000-000000000001',
+    'Generated Exercise ' || lpad(i::text, 4, '0'),
+    'General',
+    'a4040404-0000-4000-8000-00000000000a'
+FROM generate_series(1, 1001) AS i;
+
+INSERT INTO public.exercise_progress
+    (user_id, exercise_name, session_id, recorded_at, estimated_1rm_kg)
+SELECT
+    'a4040404-0000-4000-8000-00000000000a',
+    'Generated Exercise ' || lpad(i::text, 4, '0'),
+    'a4040404-0001-4000-8000-000000000001',
+    TIMESTAMPTZ '2026-03-01 00:00+00' + make_interval(secs => i),
+    i
+FROM generate_series(1, 1001) AS i;
+
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.act_as('a4040404-0000-4000-8000-00000000000a');
+SELECT is(
+    jsonb_array_length(public.exercise_frequency()),
+    1004,
+    'exercise_frequency scalar JSON preserves more than 1,000 exercise names'
+);
+SELECT is(
+    jsonb_array_length(public.exercise_names()),
+    1004,
+    'exercise_names scalar JSON preserves more than 1,000 exercise names'
+);
+
 RESET ROLE;
 
 -- Period mapping (user C: probes 12 hours either side of each cutoff).
@@ -698,11 +804,15 @@ SELECT pg_temp.act_as('b4040404-0000-4000-8000-00000000000b');
 
 SELECT results_eq(
     $$SELECT exercise_name, muscle_group, sessions FROM public.exercise_frequency()$$,
+    $$SELECT exercise_name, muscle_group, sessions
+      FROM jsonb_to_recordset(public.exercise_frequency())
+           AS f(exercise_name text, muscle_group text, sessions integer)$$,
     $$VALUES ('Squat'::text, 'Legs'::text, 1)$$,
     'B sees only its own exercise frequency'
 );
 SELECT results_eq(
     $$SELECT exercise_name FROM public.exercise_names()$$,
+    $$SELECT exercise_name FROM jsonb_array_elements_text(public.exercise_names()) AS n(exercise_name)$$,
     $$VALUES ('Bench Press'::text)$$,
     'B sees only its own exercise names'
 );
@@ -718,6 +828,8 @@ SELECT is(
 );
 SELECT results_eq(
     $$SELECT exercise_name, jsonb_array_length(rows) FROM public.exercise_progress_series_many()$$,
+    $$SELECT g ->> 'exercise_name', jsonb_array_length(g -> 'rows')
+      FROM jsonb_array_elements(public.exercise_progress_series_many()) g$$,
     $$VALUES ('Bench Press'::text, 1)$$,
     'B''s batched series covers only B''s rows'
 );
@@ -759,6 +871,10 @@ SELECT is(
         + (SELECT count(*) FROM public.exercise_names())
         + (SELECT count(*) FROM public.exercise_progress_series('Bench Press'))
         + (SELECT count(*) FROM public.exercise_progress_series_many())
+        jsonb_array_length(public.exercise_frequency())
+        + jsonb_array_length(public.exercise_names())
+        + (SELECT count(*) FROM public.exercise_progress_series('Bench Press'))
+        + jsonb_array_length(public.exercise_progress_series_many())
         + (SELECT count(*) FROM public.personal_record_history())
         + (SELECT count(*) FROM public.session_volume_buckets('all'))
     )::integer,
@@ -793,6 +909,12 @@ SELECT throws_ok(
     '42501',
     NULL,
     'anon cannot execute exercise_progress_series_many'
+);
+SELECT throws_ok(
+    $$SELECT public.personal_record_bests()$$,
+    '42501',
+    NULL,
+    'anon cannot execute personal_record_bests'
 );
 RESET ROLE;
 

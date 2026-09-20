@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
 	Activity,
 	AlertCircle,
@@ -85,6 +85,7 @@ import { insightsOptions } from "@/queries/insights";
 import { externalActivitiesOptions } from "@/queries/integrations";
 import { profileOptions } from "@/queries/profile";
 import { progressionWorkbenchOptions } from "@/queries/progress";
+import { personalRecordsOptions } from "@/queries/records";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import {
 	buildPhaseMetricSummary,
@@ -317,6 +318,57 @@ function mapServerInsight(
 		description: normalizedDescription,
 		recommendation: item.recommendation as string | undefined,
 		metric,
+	};
+}
+
+/**
+ * KD-14 precedence: the feed shows a FRESH server batch or the browser
+ * fallback, never a mix, so the two can never contradict each other and no
+ * item can be listed twice.
+ *
+ * A server row counts only while `expires_at` is in the future.
+ * `insightsOptions` already filters on it in SQL; repeating it here means a
+ * query result cached across the 36-hour boundary flips to the fallback
+ * instead of presenting a stale batch as current, and it keeps the whole rule
+ * in one testable place. Server items keep the server row's `id`.
+ */
+export function selectInsightsFeed(
+	serverRows: unknown,
+	localInsights: Array<{
+		type: Insight["type"];
+		title: string;
+		description: string;
+	}>,
+	unit: WeightUnit,
+	now: number = Date.now(),
+): { items: InsightItem[]; source: "server" | "local" } {
+	const fresh = Array.isArray(serverRows)
+		? (serverRows as Array<Record<string, unknown>>).filter((item) => {
+				const expiresAt = item.expires_at;
+				return typeof expiresAt === "string" && Date.parse(expiresAt) > now;
+			})
+		: [];
+
+	if (fresh.length > 0) {
+		return {
+			items: fresh.map((item) => mapServerInsight(item, unit)),
+			source: "server",
+		};
+	}
+
+	return {
+		items: localInsights.map((i, idx) => ({
+			id: `local-${idx}`,
+			type:
+				i.type === "positive"
+					? ("success" as const)
+					: i.type === "warning"
+						? ("warning" as const)
+						: ("info" as const),
+			title: i.title,
+			description: i.description,
+		})),
+		source: "local",
 	};
 }
 
@@ -605,6 +657,11 @@ export function Analytics() {
 		...progressionWorkbenchOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
+	// The workbench shares the Records tab's personal-record query, so the two
+	// together issue one request for records instead of one each.
+	const { data: personalRecords } = useInfiniteQuery(
+		personalRecordsOptions(userId, activeProfileId),
+	);
 	const {
 		data: dashboardFreshness,
 		isFetching: freshnessFetching,
@@ -1079,31 +1136,11 @@ export function Analytics() {
 		};
 	}, [volumeData, unit]);
 
-	// --- Insights feed data (from server or local fallback) ---
-	const insightsFeedItems: InsightItem[] = useMemo(() => {
-		// If we have server-generated insights, use them
-		if (
-			insightsData &&
-			Array.isArray(insightsData) &&
-			insightsData.length > 0
-		) {
-			return insightsData.map((item: Record<string, unknown>) =>
-				mapServerInsight(item, unit),
-			);
-		}
-		// Fallback: convert local insights to InsightsFeed format
-		return insights.map((i, idx) => ({
-			id: `local-${idx}`,
-			type:
-				i.type === "positive"
-					? ("success" as const)
-					: i.type === "warning"
-						? ("warning" as const)
-						: ("info" as const),
-			title: i.title,
-			description: i.description,
-		}));
-	}, [insightsData, insights, unit]);
+	// --- Insights feed: a fresh server batch OR local, never both (KD-14) ---
+	const { items: insightsFeedItems, source: insightsSource } = useMemo(
+		() => selectInsightsFeed(insightsData, insights, unit),
+		[insightsData, insights, unit],
+	);
 
 	// --- Muscle radar data ---
 	const muscleRadarData = useMemo(() => {
@@ -1126,12 +1163,18 @@ export function Analytics() {
 		() =>
 			buildProgressionWorkbenchModel({
 				progressRows: progressionWorkbenchData?.progressRows ?? [],
-				records: progressionWorkbenchData?.records ?? [],
+				records: personalRecords ?? [],
 				selectedExercise: selectedProgressionExercise,
 				phaseFilter,
 				unit,
 			}),
-		[progressionWorkbenchData, selectedProgressionExercise, phaseFilter, unit],
+		[
+			progressionWorkbenchData,
+			personalRecords,
+			selectedProgressionExercise,
+			phaseFilter,
+			unit,
+		],
 	);
 
 	const analyticsFreshness = useMemo(() => {
@@ -1221,7 +1264,7 @@ export function Analytics() {
 		(strengthRaw?.length ?? 0) > 0 ||
 		(phaseStatsRaw?.length ?? 0) > 0 ||
 		(progressionWorkbenchData?.progressRows.length ?? 0) > 0 ||
-		(progressionWorkbenchData?.records.length ?? 0) > 0 ||
+		(personalRecords?.length ?? 0) > 0 ||
 		(bodyIntelData?.length ?? 0) > 0;
 	const mobileHasData =
 		mobileVolumeData.length > 0 || mobileMusclData.length > 0 || hasTabData;
@@ -1445,6 +1488,7 @@ export function Analytics() {
 										insightsFeedItems={insightsFeedItems}
 										insightsPending={insightsPending}
 										insightsError={insightsError}
+										insightsSource={insightsSource}
 									/>
 								</Suspense>
 							)}
@@ -1675,6 +1719,7 @@ export function Analytics() {
 											insightsFeedItems={insightsFeedItems}
 											insightsPending={insightsPending}
 											insightsError={insightsError}
+											insightsSource={insightsSource}
 										/>
 									</Suspense>
 								</TabsContent>

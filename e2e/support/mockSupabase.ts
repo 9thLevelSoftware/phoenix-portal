@@ -557,6 +557,25 @@ export async function installMockSupabase(
 				await respondRows(route, sets, request.headers().accept);
 				return;
 			}
+			// RPC (POST /rest/v1/rpc/<name>). The portal reads personal records
+			// newest-first through `personal_record_history` keyset pages.
+			case "personal_record_history": {
+				const history = [...state.personalRecords].sort((a, b) =>
+					String(b.achieved_at).localeCompare(String(a.achieved_at)),
+				);
+				await respondRows(route, history, request.headers().accept);
+				return;
+			}
+			case "exercise_names":
+			case "exercise_progress_series":
+			case "exercise_progress_series_many": {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify([]),
+				});
+				return;
+			}
 			case "personal_records": {
 				const records = filterRows(state.personalRecords, url);
 				if (method === "HEAD") {

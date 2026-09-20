@@ -310,3 +310,18 @@ export async function verifyPaddleSignature(
 	}
 	return mismatch === 0;
 }
+
+// ─── Cancel feedback ────────────────────────────────────────────────────────
+
+/**
+ * Toast text after paddle-cancel-subscription succeeds. A past_due
+ * subscription is canceled immediately (`canceledImmediately: true`); others
+ * are canceled at the end of the billing period.
+ */
+export function cancelSuccessMessage(
+	data: { canceledImmediately?: boolean } | null | undefined,
+): string {
+	return data?.canceledImmediately
+		? "Subscription canceled. Your paid access has ended."
+		: "Subscription canceled. You'll retain access until the end of your billing period.";
+}
