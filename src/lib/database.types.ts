@@ -1920,7 +1920,7 @@ export type Database = {
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
 					price_id?: string | null;
-					row_snapshot?: Json;
+					row_snapshot: Json;
 					status?: string | null;
 					subscription_created_at?: string | null;
 					subscription_row_id?: string | null;

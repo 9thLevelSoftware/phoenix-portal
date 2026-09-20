@@ -264,6 +264,14 @@ CREATE EXTENSION IF NOT EXISTS pg_cron;
 SELECT lives_ok(
     $$ SELECT private.schedule_sync_queue_jobs() $$,
     'schedule_sync_queue_jobs runs with pg_cron installed'
+SELECT cron.schedule(
+    'sync-tombstones-retention',
+    '23 3 * * *',
+    'DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval ''180 days'''
+);
+SELECT lives_ok(
+    $$ SELECT private.schedule_sync_queue_jobs() $$,
+    'schedule_sync_queue_jobs runs with pg_cron installed and removes legacy tombstone retention'
 );
 
 CREATE OR REPLACE FUNCTION pg_temp.scheduler_jobs() RETURNS TABLE(jobname text, schedule text, command text, active boolean, jobid bigint)
@@ -287,6 +295,14 @@ SELECT set_eq(
 SELECT is(
     (SELECT count(*)::int FROM pg_temp.scheduler_jobs()),
     3,
+        ('cron-job-run-details-retention', '41 3 * * *',
+         'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days''')
+    $$,
+    'the scheduler jobs exist with the expected schedule and command'
+);
+SELECT is(
+    (SELECT count(*)::int FROM pg_temp.scheduler_jobs()),
+    2,
     'each scheduler job exists exactly once'
 );
 
@@ -317,6 +333,19 @@ SELECT diag('database:sync-queue-client-insert-guard');
 INSERT INTO auth.users (id, email)
 VALUES ('31313131-0000-4000-8000-0000000000f0'::uuid, 'scheduler-guard@example.test')
 ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.subscriptions (id, user_id, tier, status, current_period_end)
+VALUES (
+    '31313131-5555-4000-8000-0000000000f0'::uuid,
+    '31313131-0000-4000-8000-0000000000f0'::uuid,
+    'FLAME',
+    'active',
+    now() + interval '30 days'
+)
+ON CONFLICT (user_id) DO UPDATE
+SET tier = EXCLUDED.tier,
+    status = EXCLUDED.status,
+    current_period_end = EXCLUDED.current_period_end;
 
 SET LOCAL ROLE authenticated;
 SELECT set_config(

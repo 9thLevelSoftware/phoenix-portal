@@ -20,6 +20,7 @@ import type {
 	IntegrationProvider,
 	UserIntegration,
 } from "@/lib/integrations/types";
+import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import {
 	useDisconnectIntegration,
 	useManualSync,
@@ -31,7 +32,7 @@ import {
 
 export function Integrations() {
 	const { user, session, loading: authLoading } = useAuth();
-	const { isPremium } = useSubscription();
+	const { isPremium, refetch: refetchSubscription } = useSubscription();
 	const userId = user?.id ?? "";
 	const accessToken = session?.access_token ?? "";
 	// Provider connect/sync/disconnect actions all require an authenticated user
@@ -76,6 +77,15 @@ export function Integrations() {
 	};
 
 	const handleConnectError = (providerName: string, err: unknown) => {
+		// The route gate is FLAME, so a tier denial here means the client's
+		// cached subscription is stale (plan lapsed or downgraded while this
+		// page was open). Say so plainly and refetch billing status so the
+		// gate catches up, instead of showing the raw 402 body.
+		if (isTierDenied(err)) {
+			toast.error(TIER_DENIED_MESSAGE);
+			void refetchSubscription();
+			return;
+		}
 		toast.error(
 			err instanceof Error
 				? err.message
