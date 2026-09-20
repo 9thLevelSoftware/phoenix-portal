@@ -750,7 +750,6 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 								</Button>
 							</div>
 						)}
-
 					</motion.div>
 				)}
 			</AnimatePresence>

@@ -33,10 +33,7 @@ export function goalsOptions(userId: string) {
 }
 
 /** Best strength PRs for goal progress, aggregated across the full history. */
-export function goalPrBestsOptions(
-	userId: string,
-	profileId?: string | null,
-) {
+export function goalPrBestsOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
 		queryKey: [
 			...queryKeys.goals.progress(userId),
