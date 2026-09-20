@@ -406,11 +406,6 @@ function streamingRawRequest(
   });
 }
 
-type TableResultValue = { data: unknown; error: unknown; count?: number };
-/** A fixed result, or one chosen from the query's `.eq()` filters. */
-type TableResult =
-  | TableResultValue
-  | ((eqFilters: Record<string, unknown>) => TableResultValue);
 const DEFAULT_SUBSCRIPTION_RESULT = {
   data: {
     tier: "EMBER",
@@ -423,7 +418,6 @@ const DEFAULT_SUBSCRIPTION_RESULT = {
 function permissiveQuery(
   table: string,
   onWrite: (method: string, args: unknown[]) => void,
-  terminalResult: TableResult = {
   terminalResult: TerminalResult = {
     data: [],
     error: null,
@@ -431,10 +425,6 @@ function permissiveQuery(
   },
   subscriptionResult: { data: unknown; error: unknown } =
     DEFAULT_SUBSCRIPTION_RESULT,
-): Record<string, unknown> {
-  const query: Record<string, unknown> = {};
-  let ownershipProbe = false;
-  const eqFilters: Record<string, unknown> = {};
   writeError?: (method: string) => unknown,
   onCall?: (method: string, args: unknown[]) => void,
 ): Record<string, unknown> {
@@ -460,13 +450,13 @@ function permissiveQuery(
     "delete",
     "returns",
   ];
-  const operations: QueryOperation[] = [];
+  const operations = [] as unknown as QueryOperations;
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
       onCall?.(method, args);
       operations.push({ name: method, args });
       if (method === "neq") ownershipProbe = true;
-      if (method === "eq") eqFilters[String(args[0])] = args[1];
+      if (method === "eq") operations[String(args[0])] = args[1];
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method, args);
         injectedWriteError = writeError?.(method) ?? injectedWriteError;
@@ -486,10 +476,6 @@ function permissiveQuery(
     reject?: (reason: unknown) => unknown,
   ) =>
     Promise.resolve(
-      ownershipProbe
-        ? { data: [], error: null, count: 0 }
-        : typeof terminalResult === "function"
-        ? terminalResult(eqFilters)
       injectedWriteError
         ? { data: null, error: injectedWriteError }
         : ownershipProbe
@@ -506,9 +492,11 @@ interface QueryOperation {
   args: unknown[];
 }
 
+type QueryOperations = QueryOperation[] & Record<string, unknown>;
+
 type TerminalResult =
   | { data: unknown; error: unknown; count?: number }
-  | ((operations: QueryOperation[]) => { data: unknown; error: unknown });
+  | ((operations: QueryOperations) => { data: unknown; error: unknown });
 
 interface PushHarness {
   handler: (request: Request) => Promise<Response>;
@@ -538,7 +526,6 @@ function makeHarness(
     channelError?: unknown;
     rpcBehavior?: RpcBehavior;
     personalRecordsResult?: { data: unknown; error: unknown };
-    tableResults?: Record<string, TableResult>;
     subscriptionResult?: { data: unknown; error: unknown };
     /** Error injected into a write, keyed `table:method` (e.g. `routines:delete`). */
     writeErrors?: Record<string, unknown>;
@@ -558,9 +545,6 @@ function makeHarness(
     [];
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
-  const adminWriteArgs: Array<
-    { table: string; method: string; args: unknown[] }
-  > = [];
   const adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }> =
     [];
   const loggerCalls: unknown[][] = [];
@@ -2667,8 +2651,9 @@ Deno.test("external activity upsert failure reports failed.externalActivities wi
   });
 });
 
-Deno.test("a newer active personal record cannot resurrect a stored tombstone", async () => {
-  const personalRecordId = "00000000-0000-4000-8000-000000000040";
+Deno.test("an uppercase personal record UUID cannot bypass a lowercase stored tombstone", async () => {
+  const personalRecordId = "abcdefab-cdef-4abc-8abc-abcdefabcdef";
+  const uppercasePersonalRecordId = personalRecordId.toUpperCase();
   const harness = makeHarness(undefined, {
     personalRecordsResult: {
       data: [{
@@ -2689,7 +2674,7 @@ Deno.test("a newer active personal record cannot resurrect a stored tombstone", 
   const response = await harness.handler(requestFromBody({
     ...validPushBody(),
     personalRecords: [{
-      id: personalRecordId,
+      id: uppercasePersonalRecordId,
       exerciseName: "Bench Press",
       recordType: "MAX_WEIGHT",
       value: 105,
@@ -2707,6 +2692,94 @@ Deno.test("a newer active personal record cannot resurrect a stored tombstone", 
     ),
     [],
   );
+});
+
+Deno.test("personal record UUID casing is one payload identity", async () => {
+  const personalRecordId = "abcdefab-cdef-4abc-8abc-abcdefabcdea";
+  const baseRecord = {
+    exerciseName: "Bench Press",
+    recordType: "MAX_WEIGHT",
+    value: 105,
+    achievedAt: "2026-06-01T12:00:00.000Z",
+    updatedAt: "2026-07-03T12:00:00.000Z",
+  };
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    personalRecords: [
+      { ...baseRecord, id: personalRecordId },
+      { ...baseRecord, id: personalRecordId.toUpperCase(), value: 110 },
+    ],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.personalRecordsInserted, 1);
+  const written = upsertedRows(harness, "personal_records");
+  assertEquals(written.length, 1);
+  assertEquals(written[0].id, personalRecordId.toUpperCase());
+  assertEquals(written[0].value, 110);
+});
+
+Deno.test("an uppercase routine exercise UUID preserves lowercase stored drop-set fields", async () => {
+  const lowercaseExerciseId = ROUTINE_EXERCISE_ID;
+  const uppercaseExerciseId = lowercaseExerciseId.toUpperCase();
+  const body = validNestedRelationshipBody();
+  const routine = (body.routines as Record<string, unknown>[])[0];
+  const exercise = (routine.exercises as Record<string, unknown>[])[0];
+  exercise.id = uppercaseExerciseId;
+  delete exercise.dropSetEnabled;
+  delete exercise.dropSetMinWeightKg;
+
+  const harness = makeHarness(undefined, {
+    tableResults: {
+      routine_exercises: {
+        data: [{
+          id: lowercaseExerciseId,
+          drop_set_enabled: true,
+          drop_set_min_weight_kg: 42.5,
+        }],
+        error: null,
+      },
+    },
+  });
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  const written = upsertedRows(harness, "routine_exercises");
+  assertEquals(written.length, 1);
+  assertEquals(written[0].id, uppercaseExerciseId);
+  assertEquals(written[0].drop_set_enabled, true);
+  assertEquals(written[0].drop_set_min_weight_kg, 42.5);
+});
+
+Deno.test("an uppercase cycle UUID preserves a lowercase row's template_id", async () => {
+  const lowercaseCycleId = CYCLE_ID;
+  const uppercaseCycleId = lowercaseCycleId.toUpperCase();
+  const body = validNestedRelationshipBody();
+  const cycle = (body.cycles as Record<string, unknown>[])[0];
+  const day = (cycle.days as Record<string, unknown>[])[0];
+  cycle.id = uppercaseCycleId;
+  day.cycleId = uppercaseCycleId;
+  delete cycle.templateId;
+
+  const harness = makeHarness(undefined, {
+    tableResults: {
+      training_cycles: {
+        data: [{ id: lowercaseCycleId, template_id: "template_149" }],
+        error: null,
+      },
+    },
+  });
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  const written = upsertedRows(harness, "training_cycles");
+  assertEquals(written.length, 1);
+  assertEquals(written[0].id, uppercaseCycleId);
+  assertEquals(written[0].template_id, "template_149");
 });
 
 Deno.test("deletedAt is the LWW timestamp when a tombstone omits updatedAt", async () => {
@@ -4996,6 +5069,10 @@ function tombstoneMobilePushBody(
         dayType: "workout",
         routineId: ids.routineId,
       }],
+    }],
+  };
+}
+
 Deno.test({
   name:
     "integration: VBT push is idempotent on the timestamptz value and the unique index exists",

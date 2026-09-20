@@ -2227,11 +2227,11 @@ async function mobileSyncPushHandler(
       const existingPrsById = new Map(
         (existingPrs ?? [])
           .filter((row) => typeof row.id === 'string')
-          .map((row) => [row.id as string, row]),
+          .map((row) => [normalizeUuid(row.id as string), row]),
       );
       const prRowsToWrite = dedupedPrRows.filter((row) => {
         if (!dedicatedPrsPresent || !row.id) return true;
-        const existing = existingPrsById.get(row.id);
+        const existing = existingPrsById.get(normalizeUuid(row.id));
         if (!existing) return true;
         // Once a UUID has been tombstoned, active writes cannot resurrect it,
         // even if a stale client assigns the write a later timestamp.
@@ -2435,7 +2435,7 @@ async function mobileSyncPushHandler(
           }
           for (const row of existingExercises ?? []) {
             if (typeof row.id !== 'string') continue;
-            existingDropSets.set(row.id, {
+            existingDropSets.set(normalizeUuid(row.id), {
               drop_set_enabled: row.drop_set_enabled === true,
               drop_set_min_weight_kg: coerceDropSetMinWeightKg(
                 row.drop_set_min_weight_kg,
@@ -2482,7 +2482,7 @@ async function mobileSyncPushHandler(
             dropSetEnabled: e.dropSetEnabled,
             dropSetMinWeightKg: e.dropSetMinWeightKg,
           },
-          existingDropSets.get(e.id) ?? null,
+          existingDropSets.get(normalizeUuid(e.id)) ?? null,
         ),
         ...(anyDurationSent
           ? {
@@ -2665,13 +2665,13 @@ async function mobileSyncPushHandler(
             }
             for (const row of existingCycles ?? []) {
               if (typeof row.id === 'string' && typeof row.template_id === 'string') {
-                existingTemplateIds.set(row.id, row.template_id);
+                existingTemplateIds.set(normalizeUuid(row.id), row.template_id);
               }
             }
           }
           for (const row of cycleRows) {
             if (row.template_id == null) {
-              row.template_id = existingTemplateIds.get(row.id) ?? null;
+              row.template_id = existingTemplateIds.get(normalizeUuid(row.id)) ?? null;
             }
           }
         }

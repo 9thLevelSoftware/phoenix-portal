@@ -113,7 +113,7 @@ Deno.test("requireSubscription looks up the caller's own subscriptions row", asy
   await requireSubscription(fakeClient(row("EMBER", "active"), lookups), USER_ID, "EMBER", CORS);
   assertEquals(lookups, [{
     table: "subscriptions",
-    select: "tier, status, current_period_end",
+    select: "tier, status, current_period_end, cancel_at_period_end",
     eq: ["user_id", USER_ID],
   }]);
 });

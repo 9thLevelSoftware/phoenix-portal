@@ -451,7 +451,10 @@ export function personalRecordIdentityKey(
 	row: PersonalRecordIdentityInput,
 ): string {
 	if (typeof row.id === "string" && row.id.length > 0) {
-		return JSON.stringify(["id", row.id]);
+		// PostgreSQL serializes UUIDs with lowercase hex digits. Mobile UUIDs
+		// are case-insensitive too, so casing must not create a second identity
+		// or bypass an existing-row/tombstone match.
+		return JSON.stringify(["id", row.id.toLowerCase()]);
 	}
 	return personalRecordDerivedIdentityKey(row);
 }
