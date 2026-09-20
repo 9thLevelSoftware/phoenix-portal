@@ -66,14 +66,14 @@ jobs:
       # Single source for the CLI version: .supabase-cli-version (also read
       # by scripts/supabase-cli.mjs and scripts/gen-types.mjs, which refuses
       # to generate types with any other version).
+      - name: Read pinned Supabase CLI version
+        id: cli
+        shell: bash
       # Validated here for the same reason the two prod-facing workflows do
       # it: an empty/malformed value makes setup-cli silently fall back to its
       # own default, and a different CLI generates different types, which is
       # exactly what the gen:types:check step below compares against. The
       # regex is inlined (no Node yet at this point in the job).
-      - name: Read pinned Supabase CLI version
-        id: cli
-        shell: bash
         run: |
           set -euo pipefail
           if [ ! -r .supabase-cli-version ]; then

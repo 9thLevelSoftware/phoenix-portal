@@ -2667,6 +2667,10 @@ export type Database = {
 				Args: { p_provider: string; p_timestamp: string; p_user_id: string };
 				Returns: undefined;
 			};
+			disconnect_integration: {
+				Args: { p_provider: string; p_timestamp: string; p_user_id: string };
+				Returns: undefined;
+			};
 			get_acwr: {
 				Args: {
 					p_acute_days?: number;
