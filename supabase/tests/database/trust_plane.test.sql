@@ -415,7 +415,7 @@ SELECT set_config(
     true
 );
 
-SELECT lives_ok(
+SELECT throws_ok(
     $sql$
         INSERT INTO public.routines (user_id, name)
         VALUES (
@@ -423,7 +423,9 @@ SELECT lives_ok(
             'ember cloud write'
         )
     $sql$,
-    'EMBER JWT can INSERT routines'
+    '42501',
+    NULL,
+    'EMBER JWT cannot INSERT routines (browser authoring is FLAME-only since 20260920000900)'
 );
 
 RESET ROLE;
