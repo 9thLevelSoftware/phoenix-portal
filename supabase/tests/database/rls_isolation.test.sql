@@ -1,6 +1,7 @@
 -- Cross-user RLS isolation.
 --
--- Users A and B are both EMBER; C has no subscription row (FREE). A owns one
+-- Users A and B are both FLAME (owner write policies are FLAME-gated since
+-- 20260920000900); C has no subscription row (FREE). A owns one
 -- fixture row in every private user-owned relation listed in rls_cases.
 -- Users A and B are both FLAME, so every owner write policy (including the
 -- FLAME-gated ones from 20260920000900) has a positive control; C has no
@@ -189,12 +190,12 @@ VALUES
     (
         'a1a1a1a1-5555-4000-8000-00000000000a'::uuid,
         'a1a1a1a1-0000-4000-8000-00000000000a'::uuid,
-        'EMBER', 'active', now() + INTERVAL '30 days'
+        'FLAME', 'active', now() + INTERVAL '30 days'
     ),
     (
         'b2b2b2b2-5555-4000-8000-00000000000b'::uuid,
         'b2b2b2b2-0000-4000-8000-00000000000b'::uuid,
-        'EMBER', 'active', now() + INTERVAL '30 days'
+        'FLAME', 'active', now() + INTERVAL '30 days'
     );
 
 INSERT INTO public.workout_sessions (id, user_id)
@@ -695,7 +696,7 @@ SELECT is(
             ))[1]::text::integer AS n
         ) others
         WHERE others.n > 0
-          -- B's subscription is needed for EMBER; no client UPDATE/DELETE
+          -- B's subscription is needed for owner-tier positive controls; no client UPDATE/DELETE
           -- policy may ever match it, so the blind probe still expects 0.
           AND rc.table_name <> 'subscriptions'
     ),
@@ -1005,12 +1006,6 @@ SELECT throws_ok(
     '42501',
     NULL,
     'A cannot upsert its own subscription to a higher tier'
-);
-
-SELECT is(
-    public.user_has_min_tier('FLAME'),
-    false,
-    'A still does not hold FLAME after the attempts'
 );
 
 SELECT is(

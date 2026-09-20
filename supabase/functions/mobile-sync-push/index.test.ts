@@ -3548,10 +3548,10 @@ async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
   );
   const suffix = crypto.randomUUID();
   const email = `pr16-owner-${suffix}@example.invalid`;
-  const password = `pw-${suffix}`;
+  const tempUserPass = `pw-${suffix}`;
   const owner = await admin.auth.admin.createUser({
     email,
-    password,
+    password: tempUserPass,
     email_confirm: true,
   });
   if (owner.error || !owner.data.user) {
