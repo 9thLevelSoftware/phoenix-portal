@@ -53,6 +53,7 @@ const TARGETED_INVALIDATIONS = [
 		label: "localProfiles.byUser",
 	},
 	{ queryKey: queryKeys.onboarding.all, label: "onboarding" },
+	{ queryKey: queryKeys.goals.all, label: "goals" },
 	{ queryKey: queryKeys.insights.all, label: "insights" },
 ] as const;
 

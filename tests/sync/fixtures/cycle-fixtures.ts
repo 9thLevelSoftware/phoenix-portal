@@ -231,7 +231,6 @@ export function createNestedCycleFixture(
 
 	const cycleId = nextTestUuid();
 	const restDaysPerWeek = 7 - workoutDaysPerWeek;
-	const totalDays = durationWeeks * 7;
 
 	const days: CycleDayRow[] = [];
 	let dayNumber = 1;

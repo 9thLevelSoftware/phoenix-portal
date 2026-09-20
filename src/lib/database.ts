@@ -39,6 +39,22 @@ type FunctionOverrides = {
 		"update_cycle_with_days",
 		"p_started_at" | "p_progression_settings" | "p_deload_settings"
 	>;
+	// 20260920001400: the create RPCs mirror the update ones. NULL
+	// p_local_profile_id is the default profile (routines /
+	// training_cycles.local_profile_id IS NULL); a non-null value must be an
+	// existing local_profiles row for the caller, because both columns carry a
+	// composite FK to local_profiles(user_id, id).
+	create_routine_with_exercises: WithNullableArgs<
+		"create_routine_with_exercises",
+		"p_local_profile_id"
+	>;
+	create_cycle_with_days: WithNullableArgs<
+		"create_cycle_with_days",
+		| "p_started_at"
+		| "p_progression_settings"
+		| "p_deload_settings"
+		| "p_local_profile_id"
+	>;
 	// import_shared_routine(uuid, text DEFAULT NULL) and
 	// import_shared_cycle(uuid, text DEFAULT NULL): NULL = no local profile.
 	import_shared_routine: WithNullableArgs<

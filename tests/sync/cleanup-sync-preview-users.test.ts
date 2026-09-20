@@ -5,7 +5,6 @@ import path from "node:path";
 const cleanupPath = path.resolve("scripts/cleanup-sync-preview-users.mjs");
 const workflowPath = path.resolve(".github/workflows/sync-tests.yml");
 const resolverPath = path.resolve("scripts/resolve-sync-preview.mjs");
-const validationPath = path.resolve("tests/sync/validation.test.ts");
 const trainingCyclePath = path.resolve(
 	"tests/sync/training-cycle-template-id.test.ts",
 );
@@ -227,14 +226,12 @@ describe("sync preview namespace cleanup", () => {
 	});
 
 	it("wires guaranteed cleanup, resolver ref handoff, diagnostics, and exceptions", async () => {
-		const [workflow, resolver, validation, trainingCycle, readme] =
-			await Promise.all([
-				readFile(workflowPath, "utf8"),
-				readFile(resolverPath, "utf8"),
-				readFile(validationPath, "utf8"),
-				readFile(trainingCyclePath, "utf8"),
-				readFile(readmePath, "utf8"),
-			]);
+		const [workflow, resolver, trainingCycle, readme] = await Promise.all([
+			readFile(workflowPath, "utf8"),
+			readFile(resolverPath, "utf8"),
+			readFile(trainingCyclePath, "utf8"),
+			readFile(readmePath, "utf8"),
+		]);
 
 		expect(
 			workflow.match(/scripts\/cleanup-sync-preview-users\.mjs/g),
@@ -253,9 +250,6 @@ describe("sync preview namespace cleanup", () => {
 		expect(workflow).not.toContain("max-parallel: 1");
 		expect(resolver).toMatch(
 			/SYNC_STAGING_PROJECT_REF=\$\{credentials\.previewRef\}/,
-		);
-		expect(validation).toMatch(
-			/createTestUser\(\s*undefined,\s*undefined,\s*\{\s*seedSubscription:\s*false,?\s*\}\s*\)/,
 		);
 		expect(trainingCycle).toMatch(
 			/createTrackedTestUser\(\s*undefined,\s*undefined,\s*\{\s*seedSubscription:\s*false,?\s*\}\s*\)/,

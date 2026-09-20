@@ -47,7 +47,7 @@ export const TIER_PRICING: TierPricing[] = [
 			"Everything in Ember",
 			"Community hub, routines & cycles",
 			"Analytics, leaderboards, challenges & compare",
-			"Integrations (Strava, Hevy, Liftosaur) & session replay",
+			"Integrations (Strava, Hevy, Liftosaur) & session replay (rep-by-rep)",
 		],
 	},
 	{
