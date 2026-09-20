@@ -4,7 +4,7 @@ import {
 	E2E_SUPABASE_URL,
 } from "./e2e/support/supabase";
 
-const E2E_PORT = 45173;
+const E2E_PORT = Number(process.env.E2E_PORT ?? 45173);
 const E2E_BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
 const E2E_PADDLE_PRICE_IDS = {
 	VITE_PADDLE_EMBER_MONTHLY_PRICE_ID:
