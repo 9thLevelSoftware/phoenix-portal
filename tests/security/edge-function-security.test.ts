@@ -736,11 +736,12 @@ describe("SPA -> Edge _shared import boundary", () => {
 	// relative path so the CTA and the server cannot disagree (R-11). The
 	// directory it opens onto is full of modules that read secrets, and one
 	// careless re-export would put a service-role code path or a secret name
-	// into dist/. Pin the boundary: only these two modules are reachable from
+	// into dist/. Pin the boundary: only these modules are reachable from
 	// src/, and neither may contain a server-only token.
 	const SPA_REACHABLE_SHARED_MODULES = [
 		"billingAction.ts",
 		"subscriptionEntitlement.ts",
+		"workoutModes.ts",
 	];
 
 	function readShared(file: string) {
