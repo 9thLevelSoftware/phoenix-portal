@@ -272,8 +272,6 @@ SELECT is(
     ),
     8,
     'all eight are SECURITY INVOKER, search_path pinned, authenticated-only (no anon, no PUBLIC)'
-    8,
-    'all eight are SECURITY INVOKER, search_path pinned, authenticated-only (no anon, no PUBLIC)'
 );
 
 SELECT has_index(
