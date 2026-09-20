@@ -10,10 +10,6 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-// Type import for Database (optional - tests may not have access to generated types)
-// Using generic types to avoid build dependencies on generated types
-type GenericDatabase = Record<string, unknown>;
-
 /**
  * Default local Supabase configuration
  * Used when running `supabase start` locally

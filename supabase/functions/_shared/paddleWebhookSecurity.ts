@@ -45,6 +45,81 @@ export function classifyPaddleEventOrder(
   return { action: "accept", occurredAt };
 }
 
+function constantTimeEqual(left: string, right: string): boolean {
+  const encoder = new TextEncoder();
+  const a = encoder.encode(left);
+  const b = encoder.encode(right);
+
+  let mismatch = a.length !== b.length ? 1 : 0;
+  const cmpLen = Math.min(a.length, b.length);
+  for (let i = 0; i < cmpLen; i++) {
+    mismatch |= a[i]! ^ b[i]!;
+  }
+  return mismatch === 0;
+}
+
+/** Paddle's replay window for `Paddle-Signature` timestamps, in seconds. */
+export const PADDLE_SIGNATURE_TOLERANCE_SECONDS = 300;
+
+/**
+ * Verifies a Paddle webhook `Paddle-Signature` header (HMAC-SHA256).
+ *
+ * Header format: `ts=<unix seconds>;h1=<hex>[;h1=<hex>...]`; the HMAC payload
+ * is `ts + ":" + rawBody`. Fails closed: exactly one `ts`, all digits, within
+ * `toleranceSeconds` of `now()` in either direction. While a webhook secret is
+ * being rotated Paddle sends one `h1` per active secret, so the event is
+ * accepted when any `h1` matches; each value is compared in constant time.
+ */
+export async function verifyPaddleSignature(
+  rawBody: string,
+  signatureHeader: string,
+  secret: string,
+  options: { now?: () => number; toleranceSeconds?: number } = {},
+): Promise<boolean> {
+  const now = options.now ?? Date.now;
+  const toleranceSeconds = options.toleranceSeconds ??
+    PADDLE_SIGNATURE_TOLERANCE_SECONDS;
+
+  // Header values are never logged; only which structural check failed.
+  const rejectMalformed = (reason: string): false => {
+    console.warn("[Paddle] Malformed Paddle-Signature header:", reason);
+    return false;
+  };
+
+  const parts = signatureHeader.split(";").map((part) => part.trim());
+  const tsEntries = parts.filter((part) => part.startsWith("ts="));
+  if (tsEntries.length !== 1) {
+    return rejectMalformed(`expected exactly one ts, got ${tsEntries.length}`);
+  }
+  const ts = tsEntries[0]!.slice(3);
+  if (!/^\d+$/.test(ts)) return rejectMalformed("ts is not all digits");
+
+  const candidates = parts
+    .filter((part) => part.startsWith("h1="))
+    .map((part) => part.slice(3))
+    .filter((value) => value.length > 0);
+  if (candidates.length === 0) return rejectMalformed("no h1 signature");
+
+  const signatureAge = Math.abs(now() / 1000 - Number(ts));
+  if (!(signatureAge <= toleranceSeconds)) {
+    console.warn(
+      // Runbooks (operations.md, paddle-simulation-testing.md) key on this text.
+      "[BILLING_ALERT] Webhook signature too old:",
+      signatureAge,
+      "seconds",
+    );
+    return false;
+  }
+
+  const expectedHex = await hmacSha256Hex(secret, `${ts}:${rawBody}`);
+  let matched = false;
+  for (const candidate of candidates) {
+    // Compare every candidate; no early exit on the first match.
+    if (constantTimeEqual(candidate, expectedHex)) matched = true;
+  }
+  return matched;
+}
+
 export async function verifyPaddleCustomDataSignature(
   userId: string,
   providedSig: unknown,
@@ -55,16 +130,7 @@ export async function verifyPaddleCustomDataSignature(
   }
 
   const expectedSig = await hmacSha256Hex(secret, userId);
-  const encoder = new TextEncoder();
-  const a = encoder.encode(providedSig);
-  const b = encoder.encode(expectedSig);
-
-  let mismatch = a.length !== b.length ? 1 : 0;
-  const cmpLen = Math.min(a.length, b.length);
-  for (let i = 0; i < cmpLen; i++) {
-    mismatch |= a[i]! ^ b[i]!;
-  }
-  return mismatch === 0;
+  return constantTimeEqual(providedSig, expectedSig);
 }
 
 export type PaddleCustomDataTrustDecision =
