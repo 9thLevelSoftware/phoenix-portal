@@ -798,5 +798,96 @@ SELECT is(
     'cycle (R-2): the NULL-key row is unchanged'
 );
 
+-- The millisecond truncation is load-bearing, and a now()-based case cannot
+-- see it: a real device sends back the base it PULLED, at millisecond
+-- precision, while portal_edited_at is stored at microsecond precision. With
+-- a bare `v_base >= v_existing.portal_edited_at` the escape stops firing for
+-- every real device — R-2 would silently revert to "not addressed" in
+-- production while this suite stayed green. PR 18 carries the same pin for
+-- the staleness rule (integration: cycle merge … a base truncated to
+-- milliseconds that equals the stored version is current). Explicit
+-- timestamps, so the sub-millisecond digits are never accidentally zero.
+INSERT INTO public.training_cycles
+    (id, user_id, name, updated_at, client_updated_at, portal_edited_at)
+VALUES ('21212121-0000-4000-8000-0000000000c6'::uuid, '21212121-0000-4000-8000-000000000001'::uuid,
+        'C6 portal',
+        '2026-09-20 10:00:00.123456+00', '2026-09-20 10:00:00.123456+00',
+        '2026-09-20 10:00:00.123456+00');
+SELECT results_eq(
+    format(
+        $sql$ SELECT accepted, structure_applied FROM public.merge_training_cycles_from_push(
+                '21212121-0000-4000-8000-000000000001', %L::jsonb, true) $sql$,
+        jsonb_build_array(jsonb_build_object(
+            'id', '21212121-0000-4000-8000-0000000000c6', 'name', 'C6 phone',
+            -- The device's clock is nine minutes behind the portal edit.
+            'updated_at', '2026-09-20T09:51:00Z',
+            -- The base as a device round-trips it: millisecond precision.
+            'base_updated_at', '2026-09-20T10:00:00.123Z'))
+    ),
+    $v$ VALUES (true, true) $v$,
+    'cycle (R-2): a millisecond-truncated base equal to portal_edited_at still clears the LWW gate'
+);
+SELECT is(
+    (SELECT name FROM public.training_cycles WHERE id = '21212121-0000-4000-8000-0000000000c6'),
+    'C6 phone',
+    'cycle (R-2): the device edit behind a ms-truncated base is applied'
+);
+
+SELECT diag('database:lww-clock-owner-immutable');
+
+-- R-13 on the SHIPPING path. SYNC_LWW_ENABLED defaults to false, so the
+-- default push path is a service-role PostgREST upsert that never reaches
+-- the guarded LWW RPCs and writes user_id as well — a cross-user id in the
+-- TOCTOU window would change the row's OWNER, not just its contents.
+-- PostgREST cannot express the predicate, so the guard is a DB trigger and
+-- covers every writer. The session claims here are service_role, i.e. the
+-- push's own identity.
+SELECT throws_ok(
+    $sql$ UPDATE public.workout_sessions
+             SET user_id = '21212121-0000-4000-8000-000000000002'::uuid,
+                 name = 'takeover'
+           WHERE id = '21212121-0000-4000-8000-0000000000a1' $sql$,
+    '42501', NULL,
+    'session: a service-role UPDATE that moves the row to another user is refused (R-13)'
+);
+SELECT throws_ok(
+    $sql$ UPDATE public.routines
+             SET user_id = '21212121-0000-4000-8000-000000000002'::uuid,
+                 name = 'takeover'
+           WHERE id = '21212121-0000-4000-8000-0000000000b3' $sql$,
+    '42501', NULL,
+    'routine: a service-role UPDATE that moves the row to another user is refused (R-13)'
+);
+SELECT throws_ok(
+    $sql$ UPDATE public.training_cycles
+             SET user_id = '21212121-0000-4000-8000-000000000002'::uuid,
+                 name = 'takeover'
+           WHERE id = '21212121-0000-4000-8000-0000000000c1' $sql$,
+    '42501', NULL,
+    'cycle: a service-role UPDATE that moves the row to another user is refused (R-13)'
+);
+SELECT results_eq(
+    $sql$ SELECT name, user_id FROM public.workout_sessions
+          WHERE id = '21212121-0000-4000-8000-0000000000a1' $sql$,
+    $v$ VALUES ('device v2'::text, '21212121-0000-4000-8000-000000000001'::uuid) $v$,
+    'session: the refused takeover left the victim''s row untouched'
+);
+SELECT results_eq(
+    $sql$ SELECT name, user_id FROM public.routines
+          WHERE id = '21212121-0000-4000-8000-0000000000b3' $sql$,
+    $v$ VALUES ('b3 v2'::text, '21212121-0000-4000-8000-000000000001'::uuid) $v$,
+    'routine: the refused takeover left the victim''s row untouched'
+);
+
+-- No false positives: an ordinary UPDATE that leaves user_id alone still
+-- works (the push's own writes go through this trigger on every row).
+UPDATE public.workout_sessions SET name = 'still editable'
+WHERE id = '21212121-0000-4000-8000-0000000000a1';
+SELECT is(
+    (SELECT name FROM public.workout_sessions WHERE id = '21212121-0000-4000-8000-0000000000a1'),
+    'still editable',
+    'session: an UPDATE that keeps user_id is unaffected by the owner guard'
+);
+
 SELECT * FROM finish();
 ROLLBACK;

@@ -5245,3 +5245,87 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name:
+    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) the flag-off PostgREST upsert cannot move a row to another owner (R-13)`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    let attackerId: string | null = null;
+    try {
+      const push = realTombstonePushHandler(fixture);
+      const ids = { sessionId: crypto.randomUUID(), routineId: crypto.randomUUID() };
+      await pushOk(
+        push,
+        lwwClockPush(ids, "victim", new Date(Date.now() - 60_000).toISOString()),
+      );
+
+      const suffix = crypto.randomUUID();
+      const attacker = await fixture.admin.auth.admin.createUser({
+        email: `pr21-attacker-${suffix}@example.invalid`,
+        password: `pw-${suffix}`,
+        email_confirm: true,
+      });
+      if (attacker.error || !attacker.data.user) throw new Error("attacker fixture failed");
+      attackerId = attacker.data.user.id;
+
+      // SYNC_LWW_ENABLED defaults to false, so the SHIPPING push path is the
+      // service-role PostgREST upsert at mobile-sync-push/index.ts:1786-1789,
+      // which never reaches the guarded LWW RPCs. It writes user_id along
+      // with the content, so a victim id landing in the TOCTOU window after
+      // assertRowsOwnedByUser changes the row's OWNER outright. This is that
+      // exact write, issued the way the handler issues it. Without the
+      // owner-immutable trigger it succeeds.
+      const takeover = await fixture.admin
+        .from("workout_sessions")
+        .upsert(
+          {
+            id: ids.sessionId,
+            user_id: attackerId,
+            name: "takeover",
+            started_at: "2026-07-01T08:00:00.000Z",
+            client_updated_at: new Date(Date.now() + 86_400_000).toISOString(),
+          },
+          { onConflict: "id" },
+        );
+      assert(takeover.error !== null, "the cross-user session upsert must be refused");
+      assertEquals(takeover.error?.code, "42501", JSON.stringify(takeover.error));
+
+      const routineTakeover = await fixture.admin
+        .from("routines")
+        .upsert(
+          {
+            id: ids.routineId,
+            user_id: attackerId,
+            name: "takeover",
+            client_updated_at: new Date(Date.now() + 86_400_000).toISOString(),
+          },
+          { onConflict: "id" },
+        );
+      assert(routineTakeover.error !== null, "the cross-user routine upsert must be refused");
+      assertEquals(routineTakeover.error?.code, "42501", JSON.stringify(routineTakeover.error));
+
+      const session = await storedLwwRow(fixture, "workout_sessions", ids.sessionId);
+      const routine = await storedLwwRow(fixture, "routines", ids.routineId);
+      assertEquals(session.name, "Session victim", "the victim's session is untouched");
+      assertEquals(routine.name, "Routine victim", "the victim's routine is untouched");
+      const owners = await fixture.admin
+        .from("workout_sessions")
+        .select("user_id")
+        .eq("id", ids.sessionId)
+        .single();
+      if (owners.error) throw new Error(`owner lookup failed: ${owners.error.message}`);
+      assertEquals(
+        (owners.data as unknown as { user_id: string }).user_id,
+        fixture.ownerId,
+        "the row still belongs to the victim",
+      );
+    } finally {
+      const toDelete = attackerId === null
+        ? [fixture.ownerId]
+        : [fixture.ownerId, attackerId];
+      await deleteTombstonePushFixture(fixture.admin, toDelete);
+    }
+  },
+});
