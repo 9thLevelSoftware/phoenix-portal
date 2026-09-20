@@ -2835,11 +2835,11 @@ export type Database = {
 				};
 				Returns: {
 					achieved_at: string;
-					deleted_at: string;
-					exercise_id: string;
+					deleted_at: string | null;
+					exercise_id: string | null;
 					exercise_name: string;
 					id: string;
-					local_profile_id: string;
+					local_profile_id: string | null;
 					muscle_group: string;
 					previous_value: number | null;
 					record_type: string;
@@ -2851,7 +2851,7 @@ export type Database = {
 					user_id: string;
 					value: number;
 					weight_kg: number | null;
-					workout_phase: string;
+					workout_phase: string | null;
 				}[];
 				SetofOptions: {
 					from: "*";
@@ -2871,11 +2871,11 @@ export type Database = {
 				};
 				Returns: {
 					achieved_at: string;
-					deleted_at: string;
-					exercise_id: string;
+					deleted_at: string | null;
+					exercise_id: string | null;
 					exercise_name: string;
 					id: string;
-					local_profile_id: string;
+					local_profile_id: string | null;
 					muscle_group: string;
 					previous_value: number | null;
 					record_type: string;
@@ -2887,7 +2887,7 @@ export type Database = {
 					user_id: string;
 					value: number;
 					weight_kg: number | null;
-					workout_phase: string;
+					workout_phase: string | null;
 				}[];
 				SetofOptions: {
 					from: "*";

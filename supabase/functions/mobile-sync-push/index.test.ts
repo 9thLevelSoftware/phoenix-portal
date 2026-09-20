@@ -3010,6 +3010,10 @@ Deno.test("PR 57: the probe also looks dedicated ids up, so a moved tombstone ca
   assertEquals(body.personalRecordsInserted, 0);
   assertEquals(
     harness.adminWriteCalls.filter((call) => call.table === "personal_records"),
+    [],
+  );
+});
+
 // ---------------------------------------------------------------------------
 // KD-4: routine/cycle tombstones on push (both SYNC_LWW_ENABLED values).
 // ---------------------------------------------------------------------------
