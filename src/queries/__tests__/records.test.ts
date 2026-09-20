@@ -271,6 +271,24 @@ describe("personalRecordsOptions", () => {
 		expect(page?.nextCursor).toBeNull();
 	});
 
+	it("does not refetch when a consumer mounts later in the same page view", async () => {
+		rpcHandler = historyHandler(RECORDS);
+		const { personalRecordsOptions } = await import("../records");
+		// QueryProvider's defaults (src/providers/QueryProvider.tsx).
+		const client = new QueryClient({
+			defaultOptions: { queries: { staleTime: 5 * 60 * 1000, retry: false } },
+		});
+
+		// The workbench on page load, then the Records tab when the user
+		// switches to it.
+		await client.ensureInfiniteQueryData(personalRecordsOptions("user-1"));
+		await client.ensureInfiniteQueryData(personalRecordsOptions("user-1"));
+
+		expect(
+			rpcCalls.filter((call) => call.fn === "personal_record_history"),
+		).toHaveLength(1);
+	});
+
 	it("fetches records once when two consumers mount the same query", async () => {
 		rpcHandler = historyHandler(RECORDS);
 		const { personalRecordsOptions } = await import("../records");
