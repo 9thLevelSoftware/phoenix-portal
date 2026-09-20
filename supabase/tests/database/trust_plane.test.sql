@@ -258,7 +258,7 @@ SELECT pg_temp.assert_exception(
         )
     $sql$,
     'P0001',
-    'EMBER_REQUIRED',
+    'FLAME_REQUIRED',
     'FREE JWT cannot import_shared_routine'
 );
 
@@ -269,7 +269,7 @@ SELECT pg_temp.assert_exception(
         )
     $sql$,
     'P0001',
-    'EMBER_REQUIRED',
+    'FLAME_REQUIRED',
     'FREE JWT cannot import_shared_cycle'
 );
 
