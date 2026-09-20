@@ -43,6 +43,8 @@ interface HarnessOptions {
   insertError?: { code: string; message: string };
   /** Successive `check_rate_limit` verdicts; the last one repeats. */
   rateLimitAllows?: boolean[];
+  /** Return a shape `normalizeRateLimitRpcResult` rejects. */
+  rateLimitMalformed?: boolean;
 }
 
 interface Harness {
@@ -128,6 +130,9 @@ function makeHarness(options: HarnessOptions = {}): Harness {
           rpcCalls.push({ name, args });
           if (name !== "check_rate_limit") {
             return Promise.resolve({ data: null, error: null });
+          }
+          if (options.rateLimitMalformed) {
+            return Promise.resolve({ data: { unexpected: true }, error: null });
           }
           const allowed = verdicts.length > 1
             ? verdicts.shift() as boolean
@@ -281,6 +286,19 @@ Deno.test("initiate-oauth rate-limits before the subscription gate runs", async 
   assertEquals(harness.inserts, []);
   assertEquals(harness.reads.includes("subscriptions"), false);
   assertEquals(harness.reads.includes("oauth_states"), false);
+});
+
+Deno.test("initiate-oauth mints nothing when the rate limiter itself fails", async () => {
+  // Fail closed: an unreadable limiter verdict must not become an open door to
+  // state minting.
+  const harness = makeHarness({ rateLimitMalformed: true });
+
+  const response = await harness.handler(requestFor({ provider: "strava" }));
+
+  assertEquals(response.status, 503);
+  assertEquals((await json(response)).error, "rate_limit_unavailable");
+  assertEquals(harness.inserts, []);
+  assertEquals(harness.reads.includes("subscriptions"), false);
 });
 
 // ---------------------------------------------------------------------------

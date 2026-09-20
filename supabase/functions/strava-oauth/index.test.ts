@@ -192,6 +192,14 @@ Deno.test("strava-oauth relays the provider response to the portal callback", as
   assertEquals(target.searchParams.get("provider"), "strava");
   assertEquals(target.searchParams.get("code"), AUTH_CODE);
   assertEquals(target.searchParams.get("state"), STATE_TOKEN);
+
+  // The literal header the browser follows, not a re-parse of it: a re-parse
+  // would still pass if the URL had been percent-encoded twice on the way out.
+  // The fixtures are plain ASCII, so there is nothing legitimate to encode.
+  assertEquals(
+    response.headers.get("Location"),
+    `${APP_URL}/integrations/callback?provider=strava&code=${AUTH_CODE}&state=${STATE_TOKEN}`,
+  );
 });
 
 Deno.test("strava-oauth writes no tokens, integration or sync queue row", async () => {
