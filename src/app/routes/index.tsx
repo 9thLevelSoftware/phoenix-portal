@@ -22,7 +22,12 @@ function lazyWithReload<T extends ComponentType<unknown>>(
 				msg.includes("loading chunk") ||
 				msg.includes("loading css chunk");
 
-			if (isChunkError) {
+			// Offline, the chunk just isn't cached yet: a reload cannot help, so
+			// let the error boundary show the offline message instead.
+			const offline =
+				typeof navigator !== "undefined" && navigator.onLine === false;
+
+			if (isChunkError && !offline) {
 				const key = "phoenix-chunk-reload";
 				// sessionStorage can throw in private/blocked-storage contexts.
 				// Fall back to a best-effort reload so recovery still happens.

@@ -48,7 +48,8 @@
 			},
 			"correctness": {
 				"noUnusedFunctionParameters": "warn",
-				"noUnusedVariables": "warn"
+				"noUnusedVariables": "error",
+				"noUnusedImports": "error"
 			},
 			"style": {
 				"noNonNullAssertion": "warn"

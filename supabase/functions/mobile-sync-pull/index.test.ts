@@ -2,6 +2,7 @@ import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { CHILD_PAGE_SIZE } from "../_shared/pagedByParent.ts";
 import { createMobileSyncPullHandler } from "./index.ts";
+import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 
 type AuthBehavior = (jwt: string) => Promise<unknown>;
 
@@ -28,6 +29,82 @@ function validPullBody(): Record<string, unknown> {
     },
   };
 }
+
+Deno.test("cycle pull exposes authoritative progress and nullable day modifiers", async () => {
+  const cycleId = "90000000-0000-4000-8000-000000000001";
+  const progressState = {
+    currentDayNumber: 2,
+    lastCompletedDate: 1_789_948_800_000,
+    cycleStartDate: 1_789_862_400_000,
+    lastAdvancedAt: 1_789_952_400_000,
+    completedDays: [1],
+    missedDays: [],
+    rotationCount: 3,
+  };
+  const harness = makeHarness(undefined, {
+    rpcImpl(name) {
+      if (name !== "get_cycles_excluding_ids") return undefined;
+      return {
+        data: [{
+          id: cycleId,
+          user_id: VALID_USER_ID,
+          name: "Full cycle",
+          description: null,
+          duration_weeks: 1,
+          workout_days: 1,
+          rest_days: 0,
+          current_week: 1,
+          status: "active",
+          started_at: null,
+          last_used_at: null,
+          progression_settings: null,
+          deload_settings: null,
+          template_id: null,
+          progress_state: progressState,
+          updated_at: "2026-09-20T12:00:00Z",
+        }],
+        error: null,
+      };
+    },
+    fromPages: {
+      training_cycles: [{
+        data: [{ id: cycleId, progress_state: progressState }],
+        error: null,
+      }],
+      cycle_days: [{
+        data: [{
+          id: "90000000-0000-4000-8000-000000000002",
+          cycle_id: cycleId,
+          day_number: 1,
+          day_type: "workout",
+          routine_id: null,
+          weight_adjustment: 0,
+          rep_modifier: 0,
+          rest_override: null,
+          rest_type: null,
+          notes: null,
+          echo_level: null,
+          eccentric_load_percent: 125,
+        }],
+        error: null,
+      }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const cycle = (body.cycles as Array<Record<string, unknown>>)[0];
+  assertEquals(cycle.progressionSettingsPresent, true);
+  assertEquals(cycle.progressionSettings, null);
+  assertEquals(cycle.progressStatePresent, true);
+  assertEquals(cycle.progressState, progressState);
+  const day = (cycle.days as Array<Record<string, unknown>>)[0];
+  assertEquals(day.echoLevelPresent, true);
+  assertEquals(day.echoLevel, null);
+  assertEquals(day.eccentricLoadPercentPresent, true);
+  assertEquals(day.eccentricLoadPercent, 125);
+});
 
 function requestFromBody(
   body: unknown,
@@ -325,6 +402,84 @@ Deno.test("shared profile preference contract module is required by pull too", a
   const moduleName = "../_shared/" + "profilePreferenceContract.ts";
   const contract = await import(new URL(moduleName, import.meta.url).href);
   assert(Object.keys(contract).length > 0);
+});
+
+Deno.test("pull returns persistent account deletion and ownership events", async () => {
+  const deletionId = "50000000-0000-4000-8000-000000000001";
+  const transferId = "50000000-0000-4000-8000-000000000002";
+  const harness = makeHarness(undefined, {
+    fromPages: {
+      workout_deletion_tombstones: [{
+        data: [{
+          mutation_id: deletionId,
+          profile_id: VALID_PROFILE_ID,
+          scope: "WORKOUT",
+          portal_session_id: "50000000-0000-4000-8000-000000000003",
+          component_session_id: null,
+          deleted_at: "2026-09-20T12:00:00.000Z",
+          recorded_at: "2026-09-20T18:00:00.000Z",
+        }],
+        error: null,
+      }],
+      profile_ownership_events: [{
+        data: [{
+          mutation_id: transferId,
+          source_profile_id: null,
+          target_profile_id: "default",
+          target_profile_name: "Default",
+          target_profile_color_index: 0,
+          workout_session_ids: ["50000000-0000-4000-8000-000000000003"],
+          routine_ids: [],
+          cycle_ids: [],
+          personal_record_ids: [],
+          transferred_at: "2026-09-20T12:01:00.000Z",
+        }],
+        error: null,
+      }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.workoutDeletions, [{
+    mutationId: deletionId,
+    profileId: VALID_PROFILE_ID,
+    scope: "WORKOUT",
+    portalSessionId: "50000000-0000-4000-8000-000000000003",
+    componentSessionId: null,
+    deletedAt: "2026-09-20T12:00:00.000Z",
+  }]);
+  const deletionCall = harness.adminCalls.find((call) =>
+    call.kind === "from" && call.name === "workout_deletion_tombstones"
+  );
+  assertEquals(
+    deletionCall?.operations?.find((op) => op.name === "select")?.args[0],
+    "mutation_id, profile_id, scope, portal_session_id, component_session_id, deleted_at, recorded_at",
+  );
+  assertEquals(
+    deletionCall?.operations?.filter((op) => op.name === "gt"),
+    [{ name: "gt", args: ["recorded_at", "1970-01-01T00:00:00.000Z"] }],
+  );
+  assertEquals(
+    deletionCall?.operations?.filter((op) => op.name === "order"),
+    [
+      { name: "order", args: ["recorded_at", { ascending: true }] },
+      { name: "order", args: ["mutation_id", { ascending: true }] },
+    ],
+  );
+  assertEquals(body.ownershipEvents, [{
+    mutationId: transferId,
+    sourceProfileId: null,
+    targetProfileId: "default",
+    targetProfileName: "Default",
+    targetProfileColorIndex: 0,
+    workoutSessionIds: ["50000000-0000-4000-8000-000000000003"],
+    routineIds: [],
+    cycleIds: [],
+    personalRecordIds: [],
+    transferredAt: "2026-09-20T12:01:00.000Z",
+  }]);
 });
 
 for (
@@ -956,12 +1111,14 @@ Deno.test("ordinary pull response fields remain unchanged when preferences are a
     "gamificationStats",
     "hasMore",
     "localProfiles",
+    "ownershipEvents",
     "personalRecords",
     "profilePreferenceSections",
     "routines",
     "rpgAttributes",
     "sessions",
     "syncTime",
+    "workoutDeletions",
   ]);
   assertEquals(body.sessions, []);
   assertEquals(body.routines, []);
@@ -1066,21 +1223,6 @@ for (
     assertEquals(harness.loggerCalls, [[{ name: expectedName }]]);
   });
 }
-
-interface LocalIntegrationEnvironment {
-  url: string;
-  anonKey: string;
-  serviceRoleKey: string;
-}
-
-const localIntegrationEnvironment: LocalIntegrationEnvironment | null = (() => {
-  const url = Deno.env.get("SUPABASE_URL");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  return url && anonKey && serviceRoleKey
-    ? { url, anonKey, serviceRoleKey }
-    : null;
-})();
 
 interface LocalPullFixture {
   admin: SupabaseClient;

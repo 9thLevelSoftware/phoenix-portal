@@ -246,6 +246,8 @@ export type Database = {
 					cycle_id: string;
 					day_number: number;
 					day_type: string;
+					eccentric_load_percent: number | null;
+					echo_level: string | null;
 					id: string;
 					notes: string | null;
 					rep_modifier: number;
@@ -258,6 +260,8 @@ export type Database = {
 					cycle_id: string;
 					day_number: number;
 					day_type?: string;
+					eccentric_load_percent?: number | null;
+					echo_level?: string | null;
 					id?: string;
 					notes?: string | null;
 					rep_modifier?: number;
@@ -270,6 +274,8 @@ export type Database = {
 					cycle_id?: string;
 					day_number?: number;
 					day_type?: string;
+					eccentric_load_percent?: number | null;
+					echo_level?: string | null;
 					id?: string;
 					notes?: string | null;
 					rep_modifier?: number;
@@ -1716,6 +1722,7 @@ export type Database = {
 					local_profile_id: string | null;
 					name: string;
 					progression_settings: Json | null;
+					progress_state: Json | null;
 					rest_days: number;
 					started_at: string | null;
 					status: string;
@@ -1734,6 +1741,7 @@ export type Database = {
 					local_profile_id?: string | null;
 					name: string;
 					progression_settings?: Json | null;
+					progress_state?: Json | null;
 					rest_days?: number;
 					started_at?: string | null;
 					status?: string;
@@ -1752,6 +1760,7 @@ export type Database = {
 					local_profile_id?: string | null;
 					name?: string;
 					progression_settings?: Json | null;
+					progress_state?: Json | null;
 					rest_days?: number;
 					started_at?: string | null;
 					status?: string;
@@ -2221,6 +2230,46 @@ export type Database = {
 			};
 		};
 		Functions: {
+			verify_profile_recovery_source: {
+				Args: {
+					p_source_profile_id: string | null;
+					p_workout_session_ids: string[];
+					p_routine_ids: string[];
+					p_cycle_ids: string[];
+					p_personal_record_ids: string[];
+					p_proof_workout_session_ids: string[];
+					p_proof_routine_ids: string[];
+					p_proof_cycle_ids: string[];
+					p_proof_personal_record_ids: string[];
+				};
+				Returns: {
+					verified: boolean;
+					authenticated_owner_user_id: string | null;
+					verified_proof_count: number;
+				}[];
+			};
+			delete_training_cycle_lww: {
+				Args: {
+					p_cycle_id: string;
+					p_updated_at: string;
+				};
+				Returns: {
+					id: string;
+					accepted: boolean;
+					server_updated_at: string | null;
+				}[];
+			};
+			delete_workout_with_tombstone: {
+				Args: {
+					p_component_session_id: string | null;
+					p_deleted_at: string;
+					p_mutation_id: string;
+					p_portal_session_id: string;
+					p_profile_id: string | null;
+					p_scope: string;
+				};
+				Returns: { mutation_id: string }[];
+			};
 			update_routine_with_exercises: {
 				Args: {
 					p_routine_id: string;
