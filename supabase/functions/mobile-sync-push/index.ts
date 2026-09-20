@@ -87,6 +87,18 @@ const TOMBSTONE_RACE_MARGIN_MS = 5_000;
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** PostgreSQL serializes UUID columns in lowercase; mobile UUID casing varies. */
+const normalizeUuid = (id: string): string => id.toLowerCase();
+
+/** Deduplicate UUIDs case-insensitively while retaining a caller-supplied form. */
+function uniqueUuidValues(ids: string[]): string[] {
+  const byNormalizedId = new Map<string, string>();
+  for (const id of ids) {
+    if (id) byNormalizedId.set(normalizeUuid(id), id);
+  }
+  return [...byNormalizedId.values()];
+}
+
 /**
  * Defense-in-depth: deduplicate rows by a key field before upserting.
  * PostgreSQL rejects an INSERT ... ON CONFLICT DO UPDATE when two rows in the
@@ -123,7 +135,7 @@ async function assertRowsOwnedByUser(
   userId: string,
   cors: Record<string, string>,
 ): Promise<Response | null> {
-  const unique = [...new Set(ids)].filter(Boolean);
+  const unique = uniqueUuidValues(ids);
   const chunkSize = 100;
   for (let i = 0; i < unique.length; i += chunkSize) {
     const chunk = unique.slice(i, i + chunkSize);
@@ -182,10 +194,12 @@ async function assertParentRowsExistAndOwnedByUser(
     const seen = new Set<string>();
     for (const row of rows ?? []) {
       const id = (row as { id?: unknown }).id;
-      if (typeof id !== 'string' || seen.has(id)) continue;
-      seen.add(id);
+      if (typeof id !== 'string') continue;
+      const normalizedId = normalizeUuid(id);
+      if (seen.has(normalizedId)) continue;
+      seen.add(normalizedId);
       if ((row as { user_id?: unknown }).user_id === userId) {
-        validIds.add(id);
+        validIds.add(normalizedId);
       } else {
         return {
           response: new Response(
@@ -199,7 +213,7 @@ async function assertParentRowsExistAndOwnedByUser(
       }
     }
     for (const id of chunk) {
-      if (!seen.has(id)) {
+      if (!seen.has(normalizeUuid(id))) {
         if (options.allowMissing) continue;
         return {
           response: new Response(
@@ -1560,7 +1574,7 @@ async function mobileSyncPushHandler(
     let acceptedCycleIds: Set<string> | null = null;
 
     const childAllowed = <T>(parentSet: Set<string> | null, parentId: string): boolean =>
-      parentSet === null || parentSet.has(parentId);
+      parentSet === null || parentSet.has(normalizeUuid(parentId));
 
     // =========================================================================
     // KD-4: refuse to resurrect deleted routines and cycles.
@@ -1588,7 +1602,7 @@ async function mobileSyncPushHandler(
       table: 'routines' | 'training_cycles',
       ids: string[],
     ): Promise<string[]> => {
-      const unique = [...new Set(ids)];
+      const unique = uniqueUuidValues(ids);
       const raced = new Set<string>();
       const chunkSize = 100;
       for (let i = 0; i < unique.length; i += chunkSize) {
@@ -1602,7 +1616,7 @@ async function mobileSyncPushHandler(
           .in('entity_id', chunk);
         if (error) throw new Error(`sync tombstone race check failed: ${error.message}`);
         for (const row of (data ?? []) as Array<{ entity_id?: unknown }>) {
-          if (typeof row.entity_id === 'string') raced.add(row.entity_id);
+          if (typeof row.entity_id === 'string') raced.add(normalizeUuid(row.entity_id));
         }
       }
       if (raced.size === 0) return [];
@@ -1626,7 +1640,7 @@ async function mobileSyncPushHandler(
         {
           p_user_id: userId,
           p_entity: null,
-          p_ids: [...new Set([...allRoutineIds, ...allCycleIds])],
+          p_ids: uniqueUuidValues([...allRoutineIds, ...allCycleIds]),
           p_since: null,
         },
       );
@@ -1638,13 +1652,18 @@ async function mobileSyncPushHandler(
         entity_id?: unknown;
       }>) {
         if (typeof row.entity_id !== 'string') continue;
-        if (row.entity === 'routine') tombstonedRoutineIds.add(row.entity_id);
-        else if (row.entity === 'cycle') tombstonedCycleIds.add(row.entity_id);
+        const normalizedId = normalizeUuid(row.entity_id);
+        if (row.entity === 'routine') tombstonedRoutineIds.add(normalizedId);
+        else if (row.entity === 'cycle') tombstonedCycleIds.add(normalizedId);
       }
-      liveRoutines = liveRoutines.filter((r) => !tombstonedRoutineIds.has(r.id));
-      liveCycles = liveCycles.filter((c) => !tombstonedCycleIds.has(c.id));
-      skippedDeleted.routines = [...new Set(allRoutineIds.filter((id) => tombstonedRoutineIds.has(id)))];
-      skippedDeleted.cycles = [...new Set(allCycleIds.filter((id) => tombstonedCycleIds.has(id)))];
+      liveRoutines = liveRoutines.filter((r) => !tombstonedRoutineIds.has(normalizeUuid(r.id)));
+      liveCycles = liveCycles.filter((c) => !tombstonedCycleIds.has(normalizeUuid(c.id)));
+      skippedDeleted.routines = uniqueUuidValues(
+        allRoutineIds.filter((id) => tombstonedRoutineIds.has(normalizeUuid(id))),
+      );
+      skippedDeleted.cycles = uniqueUuidValues(
+        allCycleIds.filter((id) => tombstonedCycleIds.has(normalizeUuid(id))),
+      );
       if (skippedDeleted.routines.length > 0 || skippedDeleted.cycles.length > 0) {
         console.log(
           `Skipped ${skippedDeleted.routines.length} deleted routine(s) and ` +
@@ -1725,7 +1744,7 @@ async function mobileSyncPushHandler(
         if (lwwErr) throw new Error(`workout_sessions LWW RPC failed: ${lwwErr.message}`);
         acceptedSessionIds = new Set<string>();
         for (const r of (lwwData ?? []) as LwwUpsertRow[]) {
-          if (r.accepted) acceptedSessionIds.add(r.id);
+          if (r.accepted) acceptedSessionIds.add(normalizeUuid(r.id));
           else rejections.sessions.push({ id: r.id, serverUpdatedAt: r.server_updated_at });
         }
         sessionsInserted = acceptedSessionIds.size;
@@ -2303,7 +2322,7 @@ async function mobileSyncPushHandler(
         if (lwwErr) throw new Error(`routines LWW RPC failed: ${lwwErr.message}`);
         acceptedRoutineIds = new Set<string>();
         for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
-          if (rr.accepted) acceptedRoutineIds.add(rr.id);
+          if (rr.accepted) acceptedRoutineIds.add(normalizeUuid(rr.id));
           else rejections.routines.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
         }
         routinesUpserted = acceptedRoutineIds.size;
@@ -2438,8 +2457,8 @@ async function mobileSyncPushHandler(
         liveRoutines.map((r) => r.id),
       );
       if (racedRoutineIds.length > 0) {
-        const raced = new Set(racedRoutineIds);
-        liveRoutines = liveRoutines.filter((r) => !raced.has(r.id));
+        const raced = new Set(racedRoutineIds.map(normalizeUuid));
+        liveRoutines = liveRoutines.filter((r) => !raced.has(normalizeUuid(r.id)));
         skippedDeleted.routines.push(...racedRoutineIds);
         routinesUpserted = Math.max(0, routinesUpserted - racedRoutineIds.length);
       }
@@ -2545,7 +2564,7 @@ async function mobileSyncPushHandler(
         if (lwwErr) throw new Error(`training_cycles LWW RPC failed: ${lwwErr.message}`);
         acceptedCycleIds = new Set<string>();
         for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
-          if (rr.accepted) acceptedCycleIds.add(rr.id);
+          if (rr.accepted) acceptedCycleIds.add(normalizeUuid(rr.id));
           else rejections.cycles.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
         }
         cyclesUpserted = acceptedCycleIds.size;
@@ -2595,21 +2614,24 @@ async function mobileSyncPushHandler(
       // exists on the server), or it already existed for this user at the 3b
       // probe. A tombstoned, missing or just-deleted routine becomes NULL,
       // matching the FK's ON DELETE SET NULL, so the write cannot fail.
-      const deletedInThisPush = new Set(payload.deletedRoutineIds ?? []);
+      const deletedInThisPush = new Set(
+        (payload.deletedRoutineIds ?? []).map(normalizeUuid),
+      );
       const keepableDayRoutineIds = new Set<string>([
-        ...liveRoutines.map((r) => r.id),
+        ...liveRoutines.map((r) => normalizeUuid(r.id)),
         ...dayRoutineProbe.validIds,
       ]);
-      const skippedRoutineIds = new Set(skippedDeleted.routines);
+      const skippedRoutineIds = new Set(skippedDeleted.routines.map(normalizeUuid));
       // Cleared references are logged, never dropped silently (R-3).
       const clearedDeletedRefs = new Set<string>();
       const clearedMissingRefs = new Set<string>();
       const dayRoutineId = (routineId: string | null | undefined): string | null => {
         if (!routineId) return null;
-        if (keepableDayRoutineIds.has(routineId) && !deletedInThisPush.has(routineId)) {
+        const normalizedId = normalizeUuid(routineId);
+        if (keepableDayRoutineIds.has(normalizedId) && !deletedInThisPush.has(normalizedId)) {
           return routineId;
         }
-        if (skippedRoutineIds.has(routineId) || deletedInThisPush.has(routineId)) {
+        if (skippedRoutineIds.has(normalizedId) || deletedInThisPush.has(normalizedId)) {
           clearedDeletedRefs.add(routineId);
         } else {
           // Not in this push and not on the server for this user (deleted

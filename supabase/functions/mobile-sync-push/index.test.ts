@@ -538,12 +538,8 @@ function makeHarness(
         table === "personal_records"
           ? options.personalRecordsResult
           : options.tableResults?.[table],
+        options.subscriptionResult,
       );
-      return permissiveQuery(table, (method) => {
-        adminWriteCalls.push({ table, method });
-        operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records" ? options.personalRecordsResult : undefined,
-        options.subscriptionResult);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -2254,10 +2250,14 @@ function tombstoneRpcBehavior(
   return async (name, args) => {
     if (name === "get_sync_tombstones") {
       if (tombstoneError) return { data: null, error: tombstoneError };
-      const ids = new Set(args.p_ids as string[]);
+      // UUID columns are serialized in lowercase by PostgreSQL even when a
+      // mobile client supplied uppercase hexadecimal characters.
+      const ids = new Set(
+        (args.p_ids as string[]).map((id) => id.toLowerCase()),
+      );
       return {
         data: tombstones
-          .filter((row) => ids.has(row.entity_id))
+          .filter((row) => ids.has(row.entity_id.toLowerCase()))
           .map((row) => ({ ...row, deleted_at: "2026-07-15T00:00:00.000Z" })),
         error: null,
       };
@@ -2277,6 +2277,19 @@ function tombstoneRpcBehavior(
     }
     return { data: [], error: null };
   };
+}
+
+function uppercaseRoutineIdBody(): Record<string, unknown> {
+  const body = oldBuildRoutineAndCycleBody();
+  const uppercaseId = "abcdefab-cdef-4abc-8abc-abcdefabcdef".toUpperCase();
+  const routine = (body.routines as Record<string, unknown>[])[0];
+  routine.id = uppercaseId;
+  const exercise = (routine.exercises as Record<string, unknown>[])[0];
+  exercise.routineId = uppercaseId;
+  const cycle = (body.cycles as Record<string, unknown>[])[0];
+  const day = (cycle.days as Record<string, unknown>[])[0];
+  day.routineId = uppercaseId;
+  return body;
 }
 
 /** Ids written to a parent table through either flag path. */
@@ -2344,6 +2357,26 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): old-build push of a deleted rou
     [...(lookups[0].args.p_ids as string[])].sort(),
     [TOMB_ROUTINE_ID, TOMB_CYCLE_ID].sort(),
   );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): uppercase mobile UUID matches the lowercase database tombstone`, async () => {
+  const lowercaseId = "abcdefab-cdef-4abc-8abc-abcdefabcdef";
+  const uppercaseId = lowercaseId.toUpperCase();
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([
+      { entity: "routine", entity_id: lowercaseId },
+    ]),
+  });
+  const response = await harness.handler(
+    requestFromBody(uppercaseRoutineIdBody()),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [uppercaseId], cycles: [] });
+  assertEquals(parentWriteIds(harness, "routines"), []);
+  assertEquals(upsertedRows(harness, "routine_exercises"), []);
+  assertEquals(upsertedRows(harness, "cycle_days")[0].routine_id, null);
 });
 
 Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a routine created in the same push keeps the cycle day reference`, async () => {
@@ -2642,6 +2675,34 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a routine deleted concurrently 
     ),
     [],
   );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a lowercase race tombstone re-deletes an uppercase mobile UUID`, async () => {
+  const lowercaseId = "abcdefab-cdef-4abc-8abc-abcdefabcdef";
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    tableResults: {
+      sync_tombstones: (filters) => ({
+        data: filters.entity === "routine" ? [{ entity_id: lowercaseId }] : [],
+        error: null,
+      }),
+    },
+  });
+  const response = await harness.handler(
+    requestFromBody(uppercaseRoutineIdBody()),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [lowercaseId], cycles: [] });
+  assertEquals(body.routinesUpserted, 0);
+  assertEquals(
+    harness.adminWriteArgs.filter((call) =>
+      call.table === "routines" && call.method === "delete"
+    ).length,
+    1,
+  );
+  assertEquals(upsertedRows(harness, "cycle_days")[0].routine_id, null);
 });
 
 Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle deleted concurrently with the push is deleted again`, async () => {
@@ -3647,6 +3708,40 @@ async function deleteTombstonePushFixture(
 }
 
 async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
+  assert(localIntegrationEnvironment);
+  const admin = createClient(
+    localIntegrationEnvironment.url,
+    localIntegrationEnvironment.serviceRoleKey,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const suffix = crypto.randomUUID();
+  const email = `pr16-owner-${suffix}@example.invalid`;
+  const password = `pw-${suffix}`;
+  const owner = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (owner.error || !owner.data.user) {
+    throw new Error("owner fixture creation failed");
+  }
+  const ownerId = owner.data.user.id;
+  try {
+    const subscription = await admin.from("subscriptions").insert({
+      user_id: ownerId,
+      tier: "EMBER",
+      status: "active",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+    });
+    if (subscription.error) throw new Error("subscription fixture failed");
+    return { admin, ownerId, email, password };
+  } catch (error) {
+    await deleteTombstonePushFixture(admin, [ownerId]);
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Real-SQL subscription gate (replaces the deleted live FREE-user sync tests):
 // the real `subscriptions` table, service-role grants and RLS decide 402 vs
 // the write path.
@@ -3685,29 +3780,6 @@ async function createGateFixture(
     localIntegrationEnvironment.serviceRoleKey,
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
-  const suffix = crypto.randomUUID();
-  const email = `pr16-owner-${suffix}@example.invalid`;
-  const password = `pw-${suffix}`;
-  const owner = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-  });
-  if (owner.error || !owner.data.user) {
-    throw new Error("owner fixture creation failed");
-  }
-  const ownerId = owner.data.user.id;
-  try {
-    const subscription = await admin.from("subscriptions").insert({
-      user_id: ownerId,
-      tier: "EMBER",
-      status: "active",
-      current_period_end: "2099-01-01T00:00:00.000Z",
-    });
-    if (subscription.error) throw new Error("subscription fixture failed");
-    return { admin, ownerId, email, password };
-  } catch (error) {
-    await deleteTombstonePushFixture(admin, [ownerId]);
   const created = await admin.auth.admin.createUser({
     email: `pr6-gate-${crypto.randomUUID()}@example.invalid`,
     email_confirm: true,
@@ -3754,6 +3826,24 @@ function realTombstonePushHandler(
       return "ok";
     },
   };
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      return client;
+    },
+    logOperationalFailure: () => {},
+    now: () => Date.now(),
+  } as never);
+}
+
 // Real SQL, but the realtime broadcast is recorded instead of opening a
 // websocket (which would leak past the test).
 function realGatePushHandler(
@@ -3784,17 +3874,16 @@ function realGatePushHandler(
       return {
         auth: {
           async getUser() {
-            return { data: { user: { id: fixture.ownerId } }, error: null };
             return { data: { user: { id: fixture.userId } }, error: null };
           },
         },
       };
     },
     createAdminClient() {
-      return client;
+      return admin;
     },
     logOperationalFailure: () => {},
-    now: () => Date.now(),
+    now: () => 1_784_167_200_000,
   } as never);
 }
 
@@ -4142,12 +4231,9 @@ Deno.test({
       );
     } finally {
       await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
-      return admin;
-    },
-    logOperationalFailure: () => {},
-    now: () => 1_784_167_200_000,
-  } as never);
-}
+    }
+  },
+});
 
 async function countGateSessions(
   fixture: GateFixture,
