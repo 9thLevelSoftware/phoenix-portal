@@ -419,12 +419,14 @@ SELECT pg_temp.assert_exception(
 -- still works for an entitled caller. Importing is FLAME since
 -- 20260920000900 (tier_matrix.test.sql covers the EMBER denial), so A is
 -- FLAME for these two calls and back to EMBER afterwards.
+-- still works for an entitled FLAME caller.
 RESET ROLE;
 UPDATE public.subscriptions
 SET tier = 'FLAME'
 WHERE user_id = 'a1a1a1a1-0000-4000-8000-000000000001'::uuid;
 SET LOCAL ROLE authenticated;
 
+-- still works for an EMBER caller.
 SELECT lives_ok(
     $sql$
         SELECT public.import_shared_routine(
@@ -432,6 +434,7 @@ SELECT lives_ok(
         )
     $sql$,
     'FLAME user can still import_shared_routine'
+    'EMBER user can still import_shared_routine'
 );
 
 SELECT lives_ok(
@@ -443,6 +446,18 @@ SELECT lives_ok(
     'FLAME user can still import_shared_cycle'
 );
 
+-- A tier helper evaluated inside an RLS policy as authenticated.
+RESET ROLE;
+UPDATE public.subscriptions
+SET tier = 'EMBER'
+WHERE user_id = 'a1a1a1a1-0000-4000-8000-000000000001'::uuid;
+SET LOCAL ROLE authenticated;
+
+SELECT lives_ok(
+    $sql$
+    'EMBER user can still import_shared_cycle'
+);
+
 RESET ROLE;
 UPDATE public.subscriptions
 SET tier = 'EMBER'
@@ -452,12 +467,14 @@ SET LOCAL ROLE authenticated;
 -- A tier helper evaluated inside an RLS policy as authenticated.
 SELECT lives_ok(
     $sql$
+        INSERT INTO public.routines (user_id, name)
         INSERT INTO public.workout_sessions (user_id, name)
         VALUES (
             'a1a1a1a1-0000-4000-8000-000000000001'::uuid,
             'ember write through user_has_min_tier policy'
         )
     $sql$,
+    'EMBER JWT can INSERT routines (policy calls user_has_min_tier)'
     'EMBER JWT can INSERT workout_sessions (policy calls user_has_min_tier)'
 );
 

@@ -11,6 +11,7 @@ import type { Recommendation } from "@/lib/recommendations";
 import type { MuscleRecovery } from "@/lib/sra-recovery";
 import { formatVolume, type WeightUnit } from "@/lib/units";
 import { BodyMuscleHeatmap } from "./BodyMuscleHeatmap";
+import { BodyMuscleMapStatus } from "./BodyMuscleMapStatus";
 
 const VolumeLandmarks = lazy(() =>
 	import("./VolumeLandmarks").then((m) => ({ default: m.VolumeLandmarks })),
@@ -37,7 +38,9 @@ export interface MobileBodyTabProps {
 	muscleGroupData: Array<{ name: string; value: number; color: string }>;
 	muscleRadarData: Record<string, number>;
 	mobileMusclData: MuscleEntry[];
-	bodyMuscleModel: BodyMuscleFocusModel;
+	/** Null while the lazily loaded body-muscle map is still downloading. */
+	bodyMuscleModel: BodyMuscleFocusModel | null;
+	bodyMuscleMapFailed?: boolean;
 	// New props
 	weeklyVolume: Record<string, number>;
 	totalSessions: number;
@@ -57,6 +60,7 @@ export default function MobileBodyTab({
 	muscleRadarData,
 	mobileMusclData,
 	bodyMuscleModel,
+	bodyMuscleMapFailed = false,
 	weeklyVolume,
 	totalSessions,
 	muscleRecoveries,
@@ -66,7 +70,7 @@ export default function MobileBodyTab({
 	const [selectedMuscleId, setSelectedMuscleId] = useState<string | null>(null);
 	const [bodySide, setBodySide] = useState<"front" | "back">("front");
 	const selectedMuscle = selectedMuscleId
-		? (bodyMuscleModel.muscleById[selectedMuscleId] ?? null)
+		? (bodyMuscleModel?.muscleById[selectedMuscleId] ?? null)
 		: null;
 
 	if (muscleGroupData.length === 0) {
@@ -148,7 +152,13 @@ export default function MobileBodyTab({
 						</button>
 					)}
 				</div>
-				{bodyMuscleModel.muscles.length > 0 && (
+				{!bodyMuscleModel && (
+					<BodyMuscleMapStatus
+						failed={bodyMuscleMapFailed}
+						className="h-[360px]"
+					/>
+				)}
+				{bodyMuscleModel && bodyMuscleModel.muscles.length > 0 && (
 					<BodyMuscleHeatmap
 						model={bodyMuscleModel}
 						side={bodySide}
@@ -164,7 +174,7 @@ export default function MobileBodyTab({
 				<div className="mt-4 space-y-2">
 					{(selectedMuscle
 						? [selectedMuscle]
-						: bodyMuscleModel.muscles.slice(0, 8)
+						: (bodyMuscleModel?.muscles.slice(0, 8) ?? [])
 					).map((muscle) => (
 						<button
 							key={muscle.muscleId}
@@ -190,7 +200,7 @@ export default function MobileBodyTab({
 						</button>
 					))}
 				</div>
-				{bodyMuscleModel.estimatedExerciseCount > 0 && (
+				{bodyMuscleModel && bodyMuscleModel.estimatedExerciseCount > 0 && (
 					<p className="mt-3 text-xs text-muted-foreground">
 						{bodyMuscleModel.estimatedExerciseCount} custom or unmatched{" "}
 						{bodyMuscleModel.estimatedExerciseCount === 1

@@ -164,6 +164,10 @@ jobs:
       # (`--output-format json`) read by scripts/migration-list-applied.mjs.
       # Fails closed: a CLI error, no local migrations found, output the
       # parser rejects, or no applied versions in prod all block the deploy.
+      # Parsing mirrors prod-migration-drift.yml (CLI 2.76.9 has no
+      # machine-readable output flag). Fails closed: a CLI error, no local
+      # migrations found, or a parse that yields no remote versions all block
+      # the deploy.
       - name: Gate on prod migrations
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -183,6 +187,7 @@ jobs:
           fi
 
           if ! supabase migration list --linked --output-format json > migration_list.json 2> migration_list.err; then
+          if ! supabase migration list --linked > migration_list.out 2> migration_list.err; then
             echo "::error::supabase migration list --linked failed; refusing to deploy without verifying prod migrations."
             redact migration_list.err
             exit 1
@@ -235,6 +240,34 @@ jobs:
           # tests/ci/migration-list-applied.test.ts); re-sorting here puts both
           # sides through the same coreutils `sort` under this shell's locale.
           sort -u -o remote_migrations.txt remote_migrations.txt
+          (
+          python3 <<'PY'
+          import re
+          from pathlib import Path
+
+          ansi = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+          versions = set()
+          for raw_line in Path("migration_list.out").read_text(
+              encoding="utf-8", errors="replace"
+          ).splitlines():
+              line = ansi.sub("", raw_line)
+              columns = [c.strip().strip("`") for c in re.split(r"[|│]", line)]
+              if len(columns) >= 4 and columns[0] == "" and columns[-1] == "":
+                  columns = columns[1:]
+              if len(columns) < 3:
+                  continue
+              match = re.search(r"\b(\d+)\b", columns[1])
+              if match:
+                  versions.add(match.group(1))
+          for version in sorted(versions):
+              print(version)
+          PY
+          ) | tr -d '\r' | sort -u > remote_migrations.txt
+          if [ ! -s remote_migrations.txt ]; then
+            # A parser failure, not a drift result: do not tell anyone to db push.
+            echo "::error::Could not parse any applied migration versions from 'supabase migration list --linked' (the CLI table format may have changed). This is not a drift result: do NOT run db push; fix the parser, then re-run."
+            exit 1
+          fi
 
           echo "Local migrations: $(wc -l < local_migrations.txt | tr -d ' ')"
           echo "Applied in prod:  $(wc -l < remote_migrations.txt | tr -d ' ')"

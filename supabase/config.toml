@@ -24,6 +24,8 @@ refresh_token_reuse_interval = 60
 # Keep every deployed Edge Function listed here so Supabase production and
 # preview deploys use explicit JWT-verification settings.
 [functions.compute-rankings]
+# Auth: handler JWT. The handler requires an Authorization header and calls
+# auth.getUser() with it; no valid user returns 401.
 verify_jwt = false
 
 [functions.delete-account]
@@ -32,16 +34,32 @@ verify_jwt = true
 [functions.disconnect-integration]
 verify_jwt = true
 
+[functions.export-user-data]
+verify_jwt = true
+
 [functions.fitbit-oauth]
+# Auth: none of handler JWT, HMAC, or cron secret. This is the browser
+# redirect from Fitbit, which carries no JWT. The handler accepts only an
+# unexpired oauth_states token issued to the user by initiate-oauth for
+# provider 'fitbit'; the token is deleted after a successful exchange.
 verify_jwt = false
 
 [functions.fitbit-sync]
 verify_jwt = true
 
 [functions.garmin-oauth]
+# Auth: none of handler JWT, HMAC, or cron secret. These are browser
+# redirects that carry no JWT. Step 1 accepts only an unexpired
+# oauth_states token from initiate-oauth, deleted once the request token is
+# stored; step 2 (Garmin's callback) accepts only an oauth_token matching an
+# unexpired pending request token stored server-side in step 1. (OAuth 1.0a HMAC-SHA1 signs our outbound
+# calls to Garmin; it does not authenticate inbound requests.)
 verify_jwt = false
 
 [functions.garmin-webhook]
+# Auth: HMAC. The handler requires x-garmin-signature to equal the
+# HMAC-SHA256 of the raw body keyed with GARMIN_WEBHOOK_SECRET
+# (constant-time compare); it returns 503 when the secret is unset.
 verify_jwt = false
 
 [functions.hevy-sync]
@@ -56,16 +74,18 @@ verify_jwt = true
 [functions.mobile-integration-sync]
 verify_jwt = true
 
-# Gateway verification is intentionally disabled: the handler calls
-# auth.getUser(userJwt) before constructing its service-role client so mobile
-# retries can distinguish definitive credential failures (401) from Auth outages (503).
 [functions.mobile-sync-pull]
+# Auth: handler JWT. Gateway verification is intentionally disabled: the
+# handler calls auth.getUser(userJwt) before constructing its service-role
+# client so mobile retries can distinguish definitive credential failures
+# (401) from Auth outages (503).
 verify_jwt = false
 
-# Gateway verification is intentionally disabled: the handler calls
-# auth.getUser(userJwt) before constructing its service-role client so mobile
-# retries can distinguish definitive credential failures (401) from Auth outages (503).
 [functions.mobile-sync-push]
+# Auth: handler JWT. Gateway verification is intentionally disabled: the
+# handler calls auth.getUser(userJwt) before constructing its service-role
+# client so mobile retries can distinguish definitive credential failures
+# (401) from Auth outages (503).
 verify_jwt = false
 
 [functions.paddle-cancel-subscription]
@@ -81,6 +101,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.paddle-webhooks]
+# Auth: HMAC. The handler requires Paddle-Signature (ts;h1) to match
+# HMAC-SHA256 of "ts:raw_body" keyed with PADDLE_WEBHOOK_SECRET, with a
+# 5-minute timestamp window (constant-time compare).
 verify_jwt = false
 
 # Gateway verification is intentionally disabled (KD-10 / R-18): pg_cron calls
@@ -88,9 +111,17 @@ verify_jwt = false
 # either the `x-cron-secret` header (constant-time compare against CRON_SECRET)
 # or an exact service-role bearer key, and returns 401 otherwise.
 [functions.process-sync-queue]
+# Auth: cron secret. The handler requires x-cron-secret to equal
+# PROCESS_SYNC_QUEUE_SECRET (or CRON_SYNC_QUEUE_SECRET), or
+# Authorization: Bearer <service-role key> (constant-time compare);
+# otherwise it returns 401.
 verify_jwt = false
 
 [functions.strava-oauth]
+# Auth: none of handler JWT, HMAC, or cron secret. This is the browser
+# redirect from Strava, which carries no JWT. The handler accepts only an
+# unexpired oauth_states token issued to the user by initiate-oauth for
+# provider 'strava'; the token is deleted after a successful exchange.
 verify_jwt = false
 
 # Gateway verification is intentionally disabled (KD-14 / R-18): pg_cron calls
