@@ -56,7 +56,7 @@ describe("workoutListOptions", () => {
 		expect(opts.queryKey).toEqual(queryKeys.workouts.list("user-abc"));
 	});
 
-	it("returns Zod-transformed data (weights doubled, dates as Date, duration as seconds)", async () => {
+	it("returns Zod-transformed data (per-cable weights, dates as Date, duration as seconds)", async () => {
 		const raw = [
 			{
 				id: "11111111-1111-4111-8111-111111111111",
@@ -79,7 +79,7 @@ describe("workoutListOptions", () => {
 		const result = await opts.queryFn?.({} as never);
 
 		expect(result).toHaveLength(1);
-		expect(result[0].total_volume).toBe(500); // Phase 40 fix: no longer doubled (already total)
+		expect(result[0].total_volume).toBe(500); // per cable, as stored (KD-8)
 		expect(result[0].duration_seconds).toBe(3600); // raw seconds — no schema transform
 		expect(result[0].started_at).toBeInstanceOf(Date);
 		expect(result[0].workout_mode).toBe("Echo");
@@ -168,6 +168,29 @@ describe("sessionDetailOptions", () => {
 			is_pr: true,
 			notes: null,
 		};
+		const exerciseRows = [
+			{
+				id: "aaaa1111-1111-4111-8111-111111111111",
+				session_id: "11111111-1111-4111-8111-111111111111",
+				name: "Squat",
+				muscle_group: "Legs",
+				order_index: 0,
+				cable_count: 2,
+			},
+		];
+		const setRows = [
+			{
+				id: "bbbb1111-1111-4111-8111-111111111111",
+				exercise_id: "aaaa1111-1111-4111-8111-111111111111",
+				set_number: 1,
+				target_reps: 8,
+				actual_reps: 8,
+				weight_kg: 60,
+				rpe: 7,
+				is_pr: true,
+				notes: null,
+			},
+		];
 		const exerciseRow = {
 			id: "aaaa1111-1111-4111-8111-111111111111",
 			session_id: SESSION_ROW.id,
@@ -187,6 +210,15 @@ describe("sessionDetailOptions", () => {
 		const opts = sessionDetailOptions(SESSION_ROW.id);
 		const result = await opts.queryFn?.({} as never);
 
+		expect(result.name).toBe("Leg Day");
+		expect(result.exercises).toHaveLength(1);
+		expect(result.exercises[0].name).toBe("Squat");
+		expect(result.exercises[0].sets).toHaveLength(1);
+		expect(result.exercises[0].hasPR).toBe(true);
+		// weight_kg stays per cable; the cable count rides on the exercise so
+		// the display adapter can add a total (KD-8).
+		expect(result.exercises[0].sets[0].weight_kg).toBe(60);
+		expect(result.exercises[0].cable_count).toBe(2);
 		// Single request against workout_sessions with the embedded tree
 		expect(fromFn).toHaveBeenCalledTimes(1);
 		expect(fromFn).toHaveBeenCalledWith("workout_sessions");
@@ -492,7 +524,7 @@ describe("recentPRsOptions", () => {
 		expect(opts.queryKey).toContain("recent");
 	});
 
-	it("returns Zod-transformed PRs with doubled values", async () => {
+	it("returns Zod-transformed PRs with per-cable values", async () => {
 		const raw = [
 			{
 				id: "11111111-1111-4111-8111-111111111111",
@@ -511,8 +543,8 @@ describe("recentPRsOptions", () => {
 		const opts = recentPRsOptions("user-1");
 		const result = await opts.queryFn?.({} as never);
 		expect(chain.is).toHaveBeenCalledWith("deleted_at", null);
-		expect(result[0].value).toBe(200); // doubled
-		expect(result[0].previous_value).toBe(180); // doubled
+		expect(result[0].value).toBe(100); // per cable, not doubled
+		expect(result[0].previous_value).toBe(90); // per cable, not doubled
 		expect(result[0].achieved_at).toBeInstanceOf(Date);
 	});
 

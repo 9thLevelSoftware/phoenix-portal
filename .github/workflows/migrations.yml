@@ -20,6 +20,7 @@ on:
       - "supabase/seed.sql"
       - "supabase/config.toml"
       - "supabase/tests/**"
+      - "scripts/migration-gating/**"
       - "scripts/ci/sync-queue-triage/**"
       - "src/lib/database.types.ts"
       - "scripts/gen-types.mjs"
@@ -37,6 +38,7 @@ on:
       - "supabase/seed.sql"
       - "supabase/config.toml"
       - "supabase/tests/**"
+      - "scripts/migration-gating/**"
       - "scripts/ci/sync-queue-triage/**"
       - "src/lib/database.types.ts"
       - "scripts/gen-types.mjs"
@@ -227,6 +229,23 @@ jobs:
       # separately; this runs only the guard file.
       - name: pgTAP definer function grant guard
         run: supabase test db supabase/tests/database/definer_function_grants.test.sql
+
+      # Gating checks for 20260920007600: it must be a no-op against a
+      # prod-shaped schema, idempotent, and correct on a drifted database that
+      # has rows (the pgTAP suite runs against an empty DB, so its backfill and
+      # its text->jsonb USING clause are never exercised there). Destructive:
+      # it drifts and re-converges this throwaway DB, so it runs last.
+      - name: Migration gating (no-op, idempotency, drifted-with-data)
+        if: ${{ !cancelled() && steps.reset.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `supabase status` may print deprecation warnings alongside the
+          # JSON; fall back to the default [db].port (config.toml sets none).
+          DB_URL="$(supabase status -o json 2>/dev/null | jq -r '.DB_URL // empty')"
+          [ -n "$DB_URL" ] || DB_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+          export DB_URL
+          bash scripts/migration-gating/run.sh
 
       - name: Stop stack
         if: always()

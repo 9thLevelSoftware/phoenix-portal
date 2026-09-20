@@ -498,9 +498,25 @@ describe("ProgressionWorkbench", () => {
 		expect(screen.getByText("Progression Workbench")).toBeInTheDocument();
 		expect(screen.getAllByText("Squat").length).toBeGreaterThanOrEqual(1);
 		expect(screen.getByText("Add 2.5 kg")).toBeInTheDocument();
+		// KD-8: the headline 1RM is a per-cable load and must say so. Nothing
+		// else guards this label (the progress e2e does not reach it).
+		expect(screen.getByText("162 kg per cable")).toBeInTheDocument();
+		expect(screen.getByText("current 1RM")).toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: /bench press/i }));
 		expect(onSelect).toHaveBeenCalledWith("Bench Press");
+	});
+
+	it("labels the current 1RM per cable in the display unit", () => {
+		renderWithProviders(
+			<ProgressionWorkbench
+				model={progressionModel}
+				unit="lbs"
+				onSelectExercise={vi.fn()}
+			/>,
+		);
+
+		expect(screen.getByText("162 lbs per cable")).toBeInTheDocument();
 	});
 
 	it("renders no-history state", () => {

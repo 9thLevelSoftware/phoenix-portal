@@ -1,10 +1,38 @@
 /**
- * Mock Edge Function Implementations
+ * Mock Edge Function Implementations — a fixture harness, NOT a sync oracle
  *
  * Provides mock implementations of mobile-sync-push and mobile-sync-pull
  * for CI environments without Supabase access.
  *
  * Enable mocks by setting MOCK_EDGE_FUNCTIONS=true environment variable.
+ *
+ * ## What this mock deliberately does NOT model
+ *
+ * One global in-memory store, keyed by entity id only. It has:
+ * - no user scoping (the store has no user column; any non-empty bearer token
+ *   is accepted, and `createTestUser()` ids never reach the store)
+ * - no profile scoping (`profileId` on a push or pull is ignored entirely)
+ * - no LWW: `Map.set` means the last push in *arrival order* wins, which is
+ *   not what `upsert_*_lww` does (it compares timestamps and can reject)
+ * - no per-row delta: a pull returns every stored row whenever
+ *   `lastPushTime > lastSync`
+ * - no cursor or pageSize handling, no tombstones, no tier gate, no rate
+ *   limit, no size caps, no weight transform, no telemetry, no RLS
+ *
+ * ## The rule for tests that use it
+ *
+ * Assert only things the harness and the fixtures are genuinely responsible
+ * for: that a payload of a given shape survives push → pull with its fields
+ * and nesting intact. Never write an assertion whose subject is one of the
+ * behaviours listed above — it would restate this file, and it would stay
+ * green while the corresponding server behaviour was deleted. In particular,
+ * `expect(result.success).toBe(true)` is not an assertion about sync.
+ *
+ * Server behaviour belongs in the real-handler suites
+ * (`supabase/functions/mobile-sync-{push,pull}/index.test.ts`,
+ * `npm run test:edge`), or, when it needs real SQL, in an
+ * `integration: `-prefixed case there (`npm run test:edge:integration`).
+ * See `tests/sync/BASELINE.md` for the current list of unproven invariants.
  */
 
 import { CHILD_PAGE_SIZE } from "../../../supabase/functions/_shared/pagedByParent.ts";

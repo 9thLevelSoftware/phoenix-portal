@@ -72,6 +72,18 @@ export function formatWeight(valueKg: number, unit: WeightUnit): string {
     : `${Math.round(converted)} kg`;
 }
 
+/**
+ * KD-8: stored loads are per cable and are never doubled. A weight PR has no
+ * cable count attached, so it is labelled per cable and no total is shown
+ * (mirrors `formatLoad(value, null, unit)` in `src/lib/units/loadDisplay.ts`).
+ */
+export function formatPerCableWeight(
+  valueKg: number,
+  unit: WeightUnit,
+): string {
+  return `${formatWeight(valueKg, unit)} per cable`;
+}
+
 /** Volume PRs are large numbers; abbreviate above 1K. */
 export function formatVolume(valueKg: number, unit: WeightUnit): string {
   const converted = convertWeight(valueKg, unit);
@@ -236,6 +248,7 @@ export function generateInsights(
     const delta =
       pr.previousValue !== undefined ? pr.value - pr.previousValue : undefined;
     const isVolumeRecord = (pr.recordType ?? '').toUpperCase() === 'MAX_VOLUME';
+    const format = isVolumeRecord ? formatVolume : formatPerCableWeight;
     const format = isVolumeRecord ? formatVolume : formatWeight;
     const formattedValue = format(pr.value, unit);
     const formattedDelta = delta !== undefined ? format(delta, unit) : undefined;

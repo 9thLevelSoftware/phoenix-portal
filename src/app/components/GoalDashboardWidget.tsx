@@ -6,7 +6,8 @@ import { Card } from "@/app/components/ui/card";
 import { useAuth } from "@/app/hooks/useAuth";
 import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { useSubscription } from "@/hooks/useSubscription";
-import { formatVolume, formatWeight, type WeightUnit } from "@/lib/units";
+import { formatVolume, type WeightUnit } from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 import { goalsOptions } from "@/queries/goals";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { GoalProgressRing } from "./GoalProgressRing";
@@ -117,7 +118,8 @@ export function GoalDashboardWidget() {
 	);
 }
 
-function getGoalLabel(
+/** PR targets and session volume are per cable (KD-8). */
+export function getGoalLabel(
 	goal: {
 		goal_type: string;
 		target_value: number;
@@ -130,9 +132,9 @@ function getGoalLabel(
 		case "frequency":
 			return `${goal.target_value} workouts / ${goal.target_unit === "workouts/month" ? "month" : "week"}`;
 		case "volume":
-			return `${formatVolume(goal.target_value, unit)} / ${goal.target_unit === "kg/month" ? "month" : "week"}`;
+			return `${formatVolume(goal.target_value, unit)} per cable / ${goal.target_unit === "kg/month" ? "month" : "week"}`;
 		case "pr":
-			return `${goal.exercise_name}: ${formatWeight(goal.target_value, unit)} PR`;
+			return `${goal.exercise_name}: ${formatLoad(goal.target_value, null, unit)} PR`;
 		default:
 			return "Goal";
 	}
@@ -148,7 +150,7 @@ function getGoalProgressText(
 		return `${achieved}/${goal.target_value} workouts`;
 	}
 	if (goal.goal_type === "volume") {
-		return `${formatVolume(achieved, unit)}/${formatVolume(goal.target_value, unit)}`;
+		return `${formatVolume(achieved, unit)}/${formatVolume(goal.target_value, unit)} per cable`;
 	}
 	return `${progress >= 100 ? "Achieved" : `${Math.round(progress)}%`}`;
 }

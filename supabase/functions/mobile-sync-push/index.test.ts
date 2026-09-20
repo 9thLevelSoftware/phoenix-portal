@@ -12,6 +12,7 @@ import {
   scanTopLevelJsonObject,
 } from "../_shared/profilePreferenceContract.ts";
 import { createMobileSyncPushHandler } from "./index.ts";
+import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 import { SYNC_LWW_ENABLED } from "../_shared/flags.ts";
 import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
@@ -579,6 +580,7 @@ interface PushHarness {
   adminRpcCalls: Array<{ name: string; args: Record<string, unknown> }>;
   adminFromCalls: string[];
   adminWriteCalls: Array<{ table: string; method: string }>;
+  adminWritePayloads: Array<{ table: string; method: string; payload: unknown }>;
   adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
   ownershipProbeTables: string[];
   catalogQueries: CatalogQuery[];
@@ -609,9 +611,14 @@ function makeHarness(
     fromError?: unknown;
     httpSendBehavior?: () => Promise<unknown>;
     rpcBehavior?: RpcBehavior;
+    /** Result of the get_personal_record_identity_candidates probe RPC. */
     sessionHierarchyResult?: { data: unknown; error: unknown };
     personalRecordsResult?: { data: unknown; error: unknown };
+    syncLwwEnabled?: boolean;
+    catalogRows?: unknown[];
     tableResults?: Record<string, TableResult>;
+    syncLwwEnabled?: boolean;
+    catalogRows?: unknown[];
     /** Terminal result for non-write queries on a table (e.g. catalog rows). */
     tableResults?: Record<string, { data: unknown; error: unknown }>;
     /** Error injected into a write, keyed `table:method` (e.g. `routines:delete`). */
@@ -643,6 +650,9 @@ function makeHarness(
     [];
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
+  const adminWritePayloads: Array<
+    { table: string; method: string; payload: unknown }
+  > = [];
   const adminWriteArgs: Array<
     { table: string; method: string; args: unknown[] }
   > = [];
@@ -682,6 +692,22 @@ function makeHarness(
         ? { calls: [] }
         : null;
       if (catalogQuery) catalogQueries.push(catalogQuery);
+      return permissiveQuery(table, (method, args) => {
+        adminWriteCalls.push({ table, method });
+        adminWriteArgs.push({ table, method, args });
+        adminWritePayloads.push({ table, method, payload: args[0] });
+        operationEvents.push(`write:${table}:${method}`);
+      }, table === "personal_records"
+        ? options.personalRecordsResult
+        : options.tableResults?.[table]);
+      return permissiveQuery(table, (method) => {
+        adminWriteCalls.push({ table, method });
+        operationEvents.push(`write:${table}:${method}`);
+      }, table === "personal_records"
+        ? options.personalRecordsResult
+        : table === "exercise_catalog" && options.catalogRows
+        ? { data: options.catalogRows, error: null }
+        : undefined,
       return permissiveQuery(
         table,
         (method) => {
@@ -699,6 +725,9 @@ function makeHarness(
         },
         table === "personal_records"
           ? options.personalRecordsResult
+          : table === "exercise_catalog" && options.catalogRows
+          ? { data: options.catalogRows, error: null }
+          : options.tableResults?.[table],
           : options.tableResults?.[table],
       );
         (method) => options.writeErrors?.[`${table}:${method}`],
@@ -753,6 +782,16 @@ function makeHarness(
         };
       }
       if (options.rpcBehavior) return await options.rpcBehavior(name, args);
+      if (
+        name === "get_personal_record_identity_candidates" &&
+        options.personalRecordsResult
+      ) {
+        return options.personalRecordsResult;
+      }
+      if (name === "upsert_set_derived_personal_records") {
+        // Real function returns rows inserted or changed; with an empty store
+        // every distinct row is a fresh insert.
+        return { data: (args.p_rows as unknown[]).length, error: null };
       if (name === "upsert_training_cycles_with_days_lww") {
         return {
           data: ((args.p_rows as Array<{ id: string; updated_at?: string }>) ?? []).map((row) => ({
@@ -833,8 +872,10 @@ function makeHarness(
       return admin;
     },
     logOperationalFailure: ((...args: unknown[]) => loggerCalls.push(args)),
+    syncLwwEnabled: options.syncLwwEnabled,
     now: options.now ?? (() => 1_784_167_200_000),
     now: () => 1_784_167_200_000,
+    syncLwwEnabled: options.syncLwwEnabled,
     syncLwwEnabled: options.syncLwwEnabled ?? false,
   } as never);
 
@@ -846,6 +887,7 @@ function makeHarness(
     adminRpcCalls,
     adminFromCalls,
     adminWriteCalls,
+    adminWritePayloads,
     adminWriteArgs,
     ownershipProbeTables,
     catalogQueries,
@@ -3880,6 +3922,362 @@ Deno.test("deletedAt is the LWW timestamp when a tombstone omits updatedAt", asy
   );
 });
 
+// PR 57: in-memory stand-in for personal_records behind the two service-role
+// RPCs. The identity mirrors uq_personal_records_set_derived_identity
+// (20260920005700_personal_records_source_identity.sql).
+type StoredPersonalRecord = Record<string, unknown> & { id: string };
+
+function setDerivedSqlIdentity(row: Record<string, unknown>): string {
+  return JSON.stringify([
+    row.local_profile_id ?? "default",
+    // NULLIF(exercise_id, '') IS NOT NULL
+    row.exercise_id != null && row.exercise_id !== ""
+      ? `id:${row.exercise_id}`
+      : `name:${row.exercise_name}`,
+    Date.parse(String(row.achieved_at)),
+    row.record_type,
+    row.workout_phase ?? "COMBINED",
+  ]);
+}
+
+function personalRecordRpcStore() {
+  const rows = new Map<string, StoredPersonalRecord>();
+  let nextId = 0x100;
+  const rpcBehavior: RpcBehavior = async (name, args) => {
+    if (name === "get_personal_record_identity_candidates") {
+      // Mirrors the SQL: achieved_at match OR id match, tombstones included.
+      const wanted = new Set(
+        (args.p_achieved_at as string[]).map((value) => Date.parse(value)),
+      );
+      const ids = new Set((args.p_ids as string[] | undefined) ?? []);
+      const after = args.p_after_id as string | null;
+      const page = [...rows.values()]
+        .filter((row) =>
+          wanted.has(Date.parse(String(row.achieved_at))) || ids.has(row.id)
+        )
+        .filter((row) => after === null || row.id > after)
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .slice(0, args.p_limit as number);
+      return { data: page, error: null };
+    }
+    if (name === "upsert_set_derived_personal_records") {
+      // Mirrors the SQL: last row per identity in the batch wins (DISTINCT
+      // ON), ids are always server-generated, an unchanged conflict is not
+      // counted, and the return value is rows inserted or changed.
+      const lastByIdentity = new Map<string, Record<string, unknown>>();
+      for (const incoming of args.p_rows as Record<string, unknown>[]) {
+        lastByIdentity.set(setDerivedSqlIdentity(incoming), incoming);
+      }
+      let affected = 0;
+      for (const [identity, incoming] of lastByIdentity) {
+        const existing = [...rows.values()].find((row) =>
+          row.source === "set_derived" && row.deleted_at == null &&
+          setDerivedSqlIdentity(row) === identity
+        );
+        if (existing) {
+          if (existing.value !== incoming.value) {
+            existing.value = incoming.value;
+            affected += 1;
+          }
+        } else {
+          const id = `00000000-0000-4000-8000-${(nextId++).toString(16).padStart(12, "0")}`;
+          rows.set(id, {
+            ...incoming,
+            id,
+            user_id: args.p_user_id,
+            source: "set_derived",
+            deleted_at: null,
+          });
+          affected += 1;
+        }
+      }
+      return { data: affected, error: null };
+    }
+    return { data: [], error: null };
+  };
+  return { rows, rpcBehavior };
+}
+
+Deno.test("PR 57: two pushes of the same set-derived PR yield one row; a dedicated PR with the same identity is still written (F335)", async () => {
+  const store = personalRecordRpcStore();
+  const harness = makeHarness(undefined, { rpcBehavior: store.rpcBehavior });
+  const setDerivedBody = () => {
+    const body = validPushBody();
+    (body.sessions as Record<string, unknown>[]).push(makePrSession());
+    return body;
+  };
+
+  const first = await harness.handler(requestFromBody(setDerivedBody()));
+  const firstBody = await json(first);
+  assertEquals(first.status, 200, JSON.stringify(firstBody));
+  assertEquals(firstBody.personalRecordsInserted, 1);
+
+  const second = await harness.handler(requestFromBody(setDerivedBody()));
+  const secondBody = await json(second);
+  assertEquals(second.status, 200, JSON.stringify(secondBody));
+  assertEquals(secondBody.personalRecordsInserted, 0);
+
+  assertEquals(store.rows.size, 1);
+  const [stored] = [...store.rows.values()];
+  assertEquals(stored.source, "set_derived");
+  const upsertCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "upsert_set_derived_personal_records"
+  );
+  assertEquals(upsertCalls.length, 1);
+  assertEquals(upsertCalls[0].args.p_user_id, VALID_USER_ID);
+  const sentRow = (upsertCalls[0].args.p_rows as Record<string, unknown>[])[0];
+  assertEquals(sentRow.source, "set_derived");
+  assert(!Object.hasOwn(sentRow, "id"));
+  // Set-derived rows never use the PostgREST table write (it cannot target
+  // the partial unique index).
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table === "personal_records"),
+    [],
+  );
+  // The probe travels as an RPC body, not a GET `.in('achieved_at', ...)`.
+  assert(!harness.adminFromCalls.includes("personal_records"));
+
+  const dedicatedId = "00000000-0000-4000-8000-000000000057";
+  const dedicated = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    personalRecords: [{
+      id: dedicatedId,
+      exerciseName: stored.exercise_name,
+      exerciseId: stored.exercise_id ?? null,
+      recordType: stored.record_type,
+      workoutPhase: stored.workout_phase,
+      value: 82.5,
+      weightKg: 82.5,
+      reps: 5,
+      achievedAt: stored.achieved_at,
+      updatedAt: "2026-01-20T11:00:00.000Z",
+    }],
+  }));
+  const dedicatedBody = await json(dedicated);
+  assertEquals(dedicated.status, 200, JSON.stringify(dedicatedBody));
+  assertEquals(dedicatedBody.personalRecordsInserted, 1);
+  const dedicatedWrites = harness.adminWritePayloads.filter((call) =>
+    call.table === "personal_records"
+  );
+  assertEquals(dedicatedWrites.length, 1);
+  assertEquals(dedicatedWrites[0].method, "upsert");
+  const dedicatedRows = dedicatedWrites[0].payload as Record<string, unknown>[];
+  assertEquals(dedicatedRows.length, 1);
+  assertEquals(dedicatedRows[0].id, dedicatedId);
+  assertEquals(dedicatedRows[0].source, "dedicated");
+  assertEquals(
+    setDerivedSqlIdentity(dedicatedRows[0]),
+    setDerivedSqlIdentity(stored),
+  );
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "upsert_set_derived_personal_records"
+    ).length,
+    1,
+  );
+});
+
+Deno.test("PR 57: the personal record probe pages by id through the RPC body", async () => {
+  const achievedAt = "2026-01-20T10:00:00.000Z";
+  const probeCalls: Record<string, unknown>[] = [];
+  const fullPage = Array.from({ length: 500 }, (_, index) => ({
+    id: `00000000-0000-4000-8000-${(0x1000 + index).toString(16).padStart(12, "0")}`,
+    local_profile_id: null,
+    exercise_id: null,
+    exercise_name: `Other ${index}`,
+    achieved_at: achievedAt,
+    record_type: "MAX_WEIGHT",
+    workout_phase: "COMBINED",
+    updated_at: achievedAt,
+    deleted_at: null,
+  }));
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name, args) => {
+      if (name === "get_personal_record_identity_candidates") {
+        probeCalls.push(args);
+        return { data: probeCalls.length === 1 ? fullPage : [], error: null };
+      }
+      if (name === "upsert_set_derived_personal_records") {
+        return { data: (args.p_rows as unknown[]).length, error: null };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const body = validPushBody();
+  (body.sessions as Record<string, unknown>[]).push(makePrSession());
+
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals(probeCalls.length, 2);
+  assertEquals(probeCalls[0].p_after_id, null);
+  assertEquals(probeCalls[0].p_limit, 500);
+  assertEquals(probeCalls[0].p_user_id, VALID_USER_ID);
+  assertEquals(probeCalls[0].p_achieved_at, [achievedAt]);
+  assertEquals(probeCalls[0].p_ids, []);
+  assertEquals(probeCalls[1].p_after_id, fullPage[499].id);
+  assertEquals(responseBody.personalRecordsInserted, 1);
+});
+
+Deno.test("PR 57: a tombstoned set-derived PR stays deleted when the session is re-pushed", async () => {
+  const store = personalRecordRpcStore();
+  const harness = makeHarness(undefined, { rpcBehavior: store.rpcBehavior });
+  const body = () => {
+    const pushBody = validPushBody();
+    (pushBody.sessions as Record<string, unknown>[]).push(makePrSession());
+    return pushBody;
+  };
+
+  const first = await harness.handler(requestFromBody(body()));
+  assertEquals((await json(first)).personalRecordsInserted, 1);
+  const [stored] = [...store.rows.values()];
+  stored.deleted_at = "2026-02-01T00:00:00.000Z";
+
+  const again = await harness.handler(requestFromBody(body()));
+  const againBody = await json(again);
+  assertEquals(again.status, 200, JSON.stringify(againBody));
+  assertEquals(againBody.personalRecordsInserted, 0);
+  assertEquals(
+    [...store.rows.values()].filter((row) => row.deleted_at == null),
+    [],
+  );
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "upsert_set_derived_personal_records"
+    ).length,
+    1,
+  );
+});
+
+Deno.test("PR 57: personalRecordsInserted is the set-derived RPC's own count", async () => {
+  // A concurrent push already wrote the same values: the RPC's ON CONFLICT
+  // guard changes nothing and returns 0.
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) =>
+      name === "upsert_set_derived_personal_records"
+        ? { data: 0, error: null }
+        : { data: [], error: null },
+  });
+  const body = validPushBody();
+  (body.sessions as Record<string, unknown>[]).push(makePrSession());
+
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals(responseBody.personalRecordsInserted, 0);
+});
+
+Deno.test("PR 57: a non-numeric set-derived RPC result fails the push loudly", async () => {
+  await withEnvironment("development", async () => {
+    // Every RPC, including upsert_set_derived_personal_records, answers [].
+    const harness = makeHarness(undefined, {
+      rpcBehavior: async () => ({ data: [], error: null }),
+    });
+    const body = validPushBody();
+    (body.sessions as Record<string, unknown>[]).push(makePrSession());
+
+    const response = await harness.handler(requestFromBody(body));
+    const responseBody = await json(response);
+
+    assertEquals(response.status, 500);
+    assertEquals(
+      responseBody.error,
+      "personal_records set-derived upsert returned an unexpected result",
+    );
+  });
+});
+
+Deno.test("PR 57: an FK violation from the set-derived RPC surfaces (no silent retry drops it)", async () => {
+  // Set-derived rows only reference the handler-sanitized profile (upserted
+  // or cleared earlier in the push) and payload sessions, so the FK-retry
+  // partitions find nothing to null out. A 23503 from the RPC must therefore
+  // keep its code through the RPC wrapper and fail the push, not vanish.
+  await withEnvironment("development", async () => {
+    const harness = makeHarness(undefined, {
+      rpcBehavior: async (name) =>
+        name === "upsert_set_derived_personal_records"
+          ? {
+            data: null,
+            error: {
+              code: "23503",
+              message: "insert or update on table \"personal_records\" violates foreign key constraint",
+            },
+          }
+          : { data: [], error: null },
+    });
+    const body = validPushBody();
+    (body.sessions as Record<string, unknown>[]).push(makePrSession());
+
+    const response = await harness.handler(requestFromBody(body));
+    const responseBody = await json(response);
+
+    assertEquals(response.status, 500);
+    assert(
+      String(responseBody.error).startsWith("personal_records insert failed:"),
+      String(responseBody.error),
+    );
+    assertEquals(
+      harness.adminRpcCalls.filter((call) =>
+        call.name === "upsert_set_derived_personal_records"
+      ).length,
+      1,
+    );
+  });
+});
+
+Deno.test("PR 57: the probe also looks dedicated ids up, so a moved tombstone cannot be resurrected", async () => {
+  const personalRecordId = "00000000-0000-4000-8000-000000000042";
+  const probeCalls: Record<string, unknown>[] = [];
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name, args) => {
+      if (name === "get_personal_record_identity_candidates") {
+        probeCalls.push(args);
+        // Stored tombstone has a different achieved_at: only the id matches.
+        const ids = args.p_ids as string[];
+        return {
+          data: ids.includes(personalRecordId)
+            ? [{
+              id: personalRecordId,
+              local_profile_id: null,
+              exercise_id: null,
+              exercise_name: "Row",
+              achieved_at: "2026-05-01T12:00:00.000Z",
+              record_type: "MAX_WEIGHT",
+              workout_phase: "COMBINED",
+              updated_at: "2026-07-02T12:00:00.000Z",
+              deleted_at: "2026-07-02T12:00:00.000Z",
+            }]
+            : [],
+          error: null,
+        };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    personalRecords: [{
+      id: personalRecordId,
+      exerciseName: "Row",
+      recordType: "MAX_WEIGHT",
+      value: 70,
+      achievedAt: "2026-06-01T12:00:00.000Z",
+      updatedAt: "2026-07-03T12:00:00.000Z",
+    }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(probeCalls[0].p_ids, [personalRecordId]);
+  assertEquals(body.personalRecordsInserted, 0);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table === "personal_records"),
+    [],
+  );
+});
+
 // ---------------------------------------------------------------------------
 // KD-4: routine/cycle tombstones on push (both SYNC_LWW_ENABLED values).
 // ---------------------------------------------------------------------------
@@ -3958,9 +4356,6 @@ function tombstoneRpcBehavior(
         error: null,
       };
     }
-    if (
-      name === "upsert_routine_lww" || name === "upsert_training_cycle_lww"
-    ) {
     if (name === "upsert_routine_lww") {
       // LWW on: accept every row so children are written.
       return {
@@ -3999,14 +4394,6 @@ function parentWriteIds(
   harness: PushHarness,
   table: "routines" | "training_cycles",
 ): string[] {
-  const rpcName = table === "routines"
-    ? "upsert_routine_lww"
-    : "upsert_training_cycle_lww";
-  const viaUpsert = harness.adminWriteArgs
-    .filter((call) => call.table === table && call.method === "upsert")
-    .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id));
-  const viaRpc = harness.adminRpcCalls
-    .filter((call) => call.name === rpcName)
   const viaUpsert = harness.adminWriteArgs
     .filter((call) => call.table === table && call.method === "upsert")
     .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id));
@@ -4299,12 +4686,6 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a deleted cycle beside a live o
     upsertedRows(harness, "cycle_days").map((row) => row.cycle_id),
     [LIVE_CYCLE_ID],
   );
-  // Orphan-day cleanup only touches the live cycle.
-  assertEquals(
-    harness.adminWriteArgs.filter((call) =>
-      call.table === "cycle_days" && call.method === "delete"
-    ).length,
-    1,
   // Orphan-day cleanup runs inside the merge, which only received the live
   // cycle; nothing touches cycle_days directly.
   assertEquals(
@@ -4535,6 +4916,12 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): an older build's cycle is sent
   assertEquals(response.status, 200, JSON.stringify(await json(response)));
   const [sent] = mergedCycles(harness);
   assertEquals(sent.base_updated_at, null);
+  // LWW compares updated_at; without LWW the merge inserts now().
+  if (SYNC_LWW_ENABLED) {
+    assertEquals(typeof sent.updated_at, "string");
+  } else {
+    assertEquals(sent.updated_at, null);
+  }
   // Undated-push rule (R-1/R-7, NF-15): an omitted updatedAt is dated at
   // receipt under BOTH flag values, so the merge never sees null and a NOT
   // NULL updated_at column can never be handed one.
@@ -4558,6 +4945,8 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycle
         accepted: true,
         server_updated_at: "2026-07-16T02:00:01+00:00",
         structure_applied: false,
+      },
+      {
         client_updated_at: "2026-07-16T01:50:01+00:00",
       },
       {
@@ -4586,6 +4975,7 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycle
   assertEquals(body.cyclesUpserted, 2);
   assertEquals((body.rejections as Record<string, unknown>).cycles, [{
     id: MERGE_CYCLE_3_ID,
+    serverUpdatedAt: "2026-07-16T02:00:02+00:00",
     serverUpdatedAt: "2026-07-16T01:50:02+00:00",
   }]);
 });
@@ -5637,6 +6027,335 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name:
+    "integration: set-derived PR concurrent and repeated pushes converge to one row, stay deleted once tombstoned, and a dedicated twin stays distinct",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    let authenticatedUserId: string | null = null;
+    try {
+      const sessionId = crypto.randomUUID();
+      const session = await fixture.admin.from("workout_sessions").insert({
+        id: sessionId,
+        user_id: fixture.ownerId,
+        started_at: "2026-01-20T10:00:00.000Z",
+      });
+      if (session.error) throw new Error("session fixture creation failed");
+
+      const prSession = {
+        ...makePrSession(),
+        id: sessionId,
+        userId: fixture.ownerId,
+      };
+      prSession.exercises = prSession.exercises.map((exercise) => ({
+        ...exercise,
+        sessionId,
+      }));
+      const pushBody = () => ({ ...validPushBody(), sessions: [prSession] });
+      const realPrRpcs = new Set([
+        "get_personal_record_identity_candidates",
+        "upsert_set_derived_personal_records",
+      ]);
+      const harness = makeHarness(async () => ({
+        data: { user: { id: fixture.ownerId } },
+        error: null,
+      }), {
+        rpcBehavior: async (name, args) =>
+          realPrRpcs.has(name)
+            ? await fixture.admin.rpc(name, args)
+            : { data: [], error: null },
+      });
+
+      // Two concurrent pushes: both TS probes may see an empty table; the
+      // partial unique index + ON CONFLICT must still leave one row, and both
+      // pushes succeed. Exactly one of them reports the insert.
+      const concurrent = await Promise.all([
+        harness.handler(requestFromBody(pushBody())),
+        harness.handler(requestFromBody(pushBody())),
+      ]);
+      const concurrentBodies = await Promise.all(concurrent.map(json));
+      assertEquals(
+        concurrent.map((response) => response.status),
+        [200, 200],
+        JSON.stringify(concurrentBodies),
+      );
+      assertEquals(
+        concurrentBodies.map((body) => body.personalRecordsInserted as number)
+          .reduce((sum, value) => sum + value, 0),
+        1,
+      );
+      // A later sequential re-push is filtered by the probe.
+      const repush = await harness.handler(requestFromBody(pushBody()));
+      const repushBody = await json(repush);
+      assertEquals(repush.status, 200, JSON.stringify(repushBody));
+      assertEquals(repushBody.personalRecordsInserted, 0);
+
+      const afterPushes = await fixture.admin.from("personal_records")
+        .select("id,source,session_id,exercise_name,exercise_id,achieved_at,record_type,workout_phase,local_profile_id,value")
+        .eq("user_id", fixture.ownerId);
+      if (afterPushes.error) throw new Error("post-push verification failed");
+      assertEquals(afterPushes.data.length, 1);
+      const stored = afterPushes.data[0];
+      assertEquals(stored.source, "set_derived");
+      assertEquals(stored.session_id, sessionId);
+
+      // The actual RPC path twice more, each call carrying a different
+      // caller-supplied id (which the RPC ignores): still one row, no error,
+      // and the stored id is kept.
+      const identity = {
+        local_profile_id: stored.local_profile_id,
+        exercise_name: stored.exercise_name,
+        exercise_id: stored.exercise_id,
+        record_type: stored.record_type,
+        workout_phase: stored.workout_phase,
+        // A different textual form of the same instant.
+        achieved_at: "2026-01-20T10:00:00+00:00",
+        weight_kg: 80,
+        reps: 10,
+        session_id: sessionId,
+      };
+      for (const value of [90, 95]) {
+        const rpc = await fixture.admin.rpc(
+          "upsert_set_derived_personal_records",
+          {
+            p_user_id: fixture.ownerId,
+            p_rows: [{ ...identity, id: crypto.randomUUID(), value }],
+          },
+        );
+        if (rpc.error) throw new Error(`set-derived RPC failed: ${rpc.error.message}`);
+        assertEquals(rpc.data, 1);
+      }
+      const unchanged = await fixture.admin.rpc(
+        "upsert_set_derived_personal_records",
+        {
+          p_user_id: fixture.ownerId,
+          p_rows: [
+            { ...identity, id: crypto.randomUUID(), value: 94 },
+            { ...identity, id: crypto.randomUUID(), value: 95 },
+          ],
+        },
+      );
+      if (unchanged.error) {
+        throw new Error(`duplicate-in-batch RPC failed: ${unchanged.error.message}`);
+      }
+      // Same identity twice in one batch: last wins, and it equals the stored
+      // value, so nothing is rewritten.
+      assertEquals(unchanged.data, 0);
+
+      const afterRpc = await fixture.admin.from("personal_records")
+        .select("id,value,source")
+        .eq("user_id", fixture.ownerId);
+      if (afterRpc.error) throw new Error("post-RPC verification failed");
+      assertEquals(afterRpc.data.length, 1);
+      assertEquals(afterRpc.data[0].id, stored.id);
+      assertEquals(Number(afterRpc.data[0].value), 95);
+
+      // JS Date.parse and the handler identity key have millisecond precision.
+      // The SQL identity uses the same resolution, so a timestamp differing
+      // only by PostgreSQL microseconds updates the same logical record.
+      const submillisecond = await fixture.admin.rpc(
+        "upsert_set_derived_personal_records",
+        {
+          p_user_id: fixture.ownerId,
+          p_rows: [{
+            ...identity,
+            achieved_at: "2026-01-20T10:00:00.000999Z",
+            value: 97,
+          }],
+        },
+      );
+      if (submillisecond.error) {
+        throw new Error(`submillisecond RPC failed: ${submillisecond.error.message}`);
+      }
+      assertEquals(submillisecond.data, 1);
+      const afterSubmillisecond = await fixture.admin.from("personal_records")
+        .select("id,value,achieved_at")
+        .eq("user_id", fixture.ownerId);
+      if (afterSubmillisecond.error) {
+        throw new Error("submillisecond verification failed");
+      }
+      assertEquals(afterSubmillisecond.data.length, 1);
+      assertEquals(afterSubmillisecond.data[0].id, stored.id);
+      assertEquals(Number(afterSubmillisecond.data[0].value), 97);
+      assertEquals(afterSubmillisecond.data[0].achieved_at, "2026-01-20T10:00:00+00:00");
+
+      // A deleted set-derived PR stays deleted when the old phone re-pushes
+      // the session: the partial index ignores tombstones, so only the probe
+      // (which returns tombstones) stops the resurrection.
+      const tombstone = await fixture.admin.from("personal_records")
+        .update({ deleted_at: "2026-02-01T00:00:00.000Z" })
+        .eq("id", stored.id);
+      if (tombstone.error) throw new Error("tombstone fixture failed");
+      const afterDelete = await harness.handler(requestFromBody(pushBody()));
+      const afterDeleteBody = await json(afterDelete);
+      assertEquals(afterDelete.status, 200, JSON.stringify(afterDeleteBody));
+      assertEquals(afterDeleteBody.personalRecordsInserted, 0);
+      const live = await fixture.admin.from("personal_records")
+        .select("id")
+        .eq("user_id", fixture.ownerId)
+        .is("deleted_at", null);
+      if (live.error) throw new Error("live-row verification failed");
+      assertEquals(live.data, []);
+
+      // F335: a dedicated PR with the same derived identity and its own id
+      // is a distinct row; the partial index does not constrain it.
+      const dedicatedId = crypto.randomUUID();
+      const dedicated = await fixture.admin.from("personal_records")
+        .upsert({
+          ...identity,
+          id: dedicatedId,
+          user_id: fixture.ownerId,
+          value: 100,
+          muscle_group: "Chest",
+          unit: "kg",
+          source: "dedicated",
+        }, { onConflict: "id" });
+      if (dedicated.error) {
+        throw new Error(`dedicated upsert failed: ${dedicated.error.message}`);
+      }
+      const probe = await fixture.admin.rpc(
+        "get_personal_record_identity_candidates",
+        {
+          p_user_id: fixture.ownerId,
+          p_achieved_at: ["2026-01-20T10:00:00.000Z"],
+          p_after_id: null,
+          p_limit: 1,
+        },
+      );
+      if (probe.error) throw new Error(`probe RPC failed: ${probe.error.message}`);
+      assertEquals(probe.data.length, 1);
+      const probeNext = await fixture.admin.rpc(
+        "get_personal_record_identity_candidates",
+        {
+          p_user_id: fixture.ownerId,
+          p_achieved_at: ["2026-01-20T10:00:00.000Z"],
+          p_after_id: probe.data[0].id,
+          p_limit: 1,
+        },
+      );
+      if (probeNext.error) {
+        throw new Error(`probe RPC page 2 failed: ${probeNext.error.message}`);
+      }
+      assertEquals(probeNext.data.length, 1);
+      assertEquals(
+        new Set([probe.data[0].id, probeNext.data[0].id]),
+        new Set([stored.id, dedicatedId]),
+      );
+
+      // Another user's write never touches the owner's row.
+      const other = await fixture.admin.rpc(
+        "upsert_set_derived_personal_records",
+        {
+          p_user_id: fixture.otherUserId,
+          p_rows: [{ ...identity, session_id: null, value: 1 }],
+        },
+      );
+      if (other.error) throw new Error(`other-user RPC failed: ${other.error.message}`);
+      const ownerRows = await fixture.admin.from("personal_records")
+        .select("id,value,source")
+        .eq("user_id", fixture.ownerId)
+        .order("source");
+      if (ownerRows.error) throw new Error("final verification failed");
+      assertEquals(
+        ownerRows.data.map((row) => [row.source, Number(row.value)]),
+        [["dedicated", 100], ["set_derived", 97]],
+      );
+
+      // A set-derived PR whose session row does not exist: the RPC raises the
+      // FK violation and the push fails loudly instead of dropping the PR or
+      // writing a partial row (the handler's FK retry has nothing to null
+      // out for set-derived rows; see the unit test).
+      const orphanSessionId = crypto.randomUUID();
+      const orphanSession = {
+        ...prSession,
+        id: orphanSessionId,
+        startedAt: "2026-03-01T10:00:00.000Z",
+        exercises: prSession.exercises.map((exercise) => {
+          const exerciseRowId = crypto.randomUUID();
+          return {
+            ...exercise,
+            id: exerciseRowId,
+            sessionId: orphanSessionId,
+            sets: exercise.sets.map((set) => ({
+              ...set,
+              id: crypto.randomUUID(),
+              exerciseId: exerciseRowId,
+            })),
+          };
+        }),
+      };
+      const orphan = await harness.handler(requestFromBody({
+        ...validPushBody(),
+        sessions: [orphanSession],
+      }));
+      const orphanBody = await json(orphan);
+      assertEquals(orphan.status, 500, JSON.stringify(orphanBody));
+      const orphanRows = await fixture.admin.from("personal_records")
+        .select("id")
+        .eq("user_id", fixture.ownerId)
+        .eq("achieved_at", "2026-03-01T10:00:00.000Z");
+      if (orphanRows.error) throw new Error("orphan verification failed");
+      assertEquals(orphanRows.data, []);
+
+      // Both RPCs are service_role-only: anon and a signed-in user (who could
+      // otherwise pass someone else's p_user_id to a SECURITY INVOKER
+      // function limited only by RLS) are both refused.
+      const anon = createClient(
+        localIntegrationEnvironment!.url,
+        localIntegrationEnvironment!.anonKey,
+        { auth: { persistSession: false, autoRefreshToken: false } },
+      );
+      const password = `pw-${crypto.randomUUID()}`;
+      const signedInEmail = `pr57-auth-${crypto.randomUUID()}@example.invalid`;
+      const signedInUser = await fixture.admin.auth.admin.createUser({
+        email: signedInEmail,
+        password,
+        email_confirm: true,
+      });
+      if (signedInUser.error || !signedInUser.data.user) {
+        throw new Error("authenticated fixture creation failed");
+      }
+      authenticatedUserId = signedInUser.data.user.id;
+      const authenticated = createClient(
+        localIntegrationEnvironment!.url,
+        localIntegrationEnvironment!.anonKey,
+        { auth: { persistSession: false, autoRefreshToken: false } },
+      );
+      const signIn = await authenticated.auth.signInWithPassword({
+        email: signedInEmail,
+        password,
+      });
+      if (signIn.error || !signIn.data.session) {
+        throw new Error("authenticated sign-in failed");
+      }
+      for (const [role, client] of [["anon", anon], ["authenticated", authenticated]] as const) {
+        for (const [name, args] of [
+          ["upsert_set_derived_personal_records", {
+            p_user_id: fixture.ownerId,
+            p_rows: [{ ...identity, session_id: null, value: 1 }],
+          }],
+          ["get_personal_record_identity_candidates", {
+            p_user_id: fixture.ownerId,
+            p_achieved_at: ["2026-01-20T10:00:00.000Z"],
+          }],
+        ] as const) {
+          const denied = await client.rpc(name, args);
+          assert(denied.error, `${name} must not be executable by ${role}`);
+          assertEquals(denied.error.code, "42501", `${role} ${name}`);
+        }
+      }
+    } finally {
+      if (authenticatedUserId) {
+        await fixture.admin.auth.admin.deleteUser(authenticatedUserId);
+      }
+      await fixture.admin.from("personal_records")
+        .delete()
+        .in("user_id", [fixture.ownerId, fixture.otherUserId]);
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
 // ---------------------------------------------------------------------------
 // PR 20 (F-009): replace_session_children keeps stored telemetry when a
 // session is re-pushed without it. Real SQL against the local stack.
@@ -6223,6 +6942,458 @@ Deno.test({
   },
 });
 
+// ---------------------------------------------------------------------------
+// PR 24 (F-069): an edited or re-pushed session refreshes its
+// exercise_progress rows inside replace_session_children (p_progress).
+// ---------------------------------------------------------------------------
+
+interface ProgressRowSnapshot {
+  exercise_name: string;
+  max_weight_kg: number;
+  estimated_1rm_kg: number;
+  total_volume_kg: number;
+  local_profile_id: string | null;
+}
+
+async function progressRowsForSession(
+  fixture: LocalIntegrationFixture,
+  sessionId: string,
+): Promise<ProgressRowSnapshot[]> {
+  const rows = await fixture.admin.from("exercise_progress")
+    .select(
+      "exercise_name,max_weight_kg,estimated_1rm_kg,total_volume_kg,local_profile_id",
+    )
+    .eq("session_id", sessionId)
+    .order("exercise_name");
+  if (rows.error) throw new Error("progress verification query failed");
+  return (rows.data as Array<Record<string, unknown>>).map((row) => ({
+    exercise_name: String(row.exercise_name),
+    max_weight_kg: Number(row.max_weight_kg),
+    estimated_1rm_kg: Number(row.estimated_1rm_kg),
+    total_volume_kg: Number(row.total_volume_kg),
+    local_profile_id: row.local_profile_id as string | null,
+  }));
+}
+
+Deno.test({
+  name:
+    "integration: handler re-push refreshes exercise_progress after a weight edit and drops a removed exercise's row",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const subscription = await fixture.admin.from("subscriptions").insert({
+        user_id: fixture.ownerId,
+        tier: "INFERNO",
+        status: "active",
+        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      if (subscription.error) {
+        throw new Error("subscription fixture creation failed");
+      }
+
+      // Custom (name-only) exercises: A has no mobile estimate, so the
+      // hybrid fallback runs; B ships estimatedOneRepMaxKg, stored verbatim.
+      const sessionId = crypto.randomUUID();
+      const exerciseA = crypto.randomUUID();
+      const exerciseB = crypto.randomUUID();
+      const buildBody = (
+        exercises: Array<{
+          id: string;
+          name: string;
+          weightKg: number;
+          estimate?: number;
+        }>,
+      ) => ({
+        ...validPushBody(),
+        profileId: fixture.profileId,
+        sessions: [{
+          id: sessionId,
+          userId: fixture.ownerId,
+          name: "PR24 session",
+          startedAt: "2026-09-18T10:00:00.000Z",
+          updatedAt: new Date().toISOString(),
+          exercises: exercises.map((exercise, index) => ({
+            id: exercise.id,
+            sessionId,
+            exerciseId: null,
+            name: exercise.name,
+            orderIndex: index,
+            ...(exercise.estimate === undefined
+              ? {}
+              : { estimatedOneRepMaxKg: exercise.estimate }),
+            sets: [{
+              id: crypto.randomUUID(),
+              exerciseId: exercise.id,
+              setNumber: 1,
+              targetReps: 10,
+              actualReps: 10,
+              weightKg: exercise.weightKg,
+              workoutMode: "OLD_SCHOOL",
+              repSummaries: [],
+            }],
+          })),
+        }],
+      });
+
+      const handler = makeRealSqlPushHandler(fixture);
+      const first = await handler(requestFromBody(buildBody([
+        { id: exerciseA, name: "PR24 Custom Row A", weightKg: 20 },
+        { id: exerciseB, name: "PR24 Custom Row B", weightKg: 40, estimate: 50 },
+      ])));
+      assertEquals(first.status, 200, await first.text());
+      assertEquals(await progressRowsForSession(fixture, sessionId), [
+        {
+          exercise_name: "PR24 Custom Row A",
+          max_weight_kg: 20,
+          estimated_1rm_kg: 26.67,
+          total_volume_kg: 200,
+          local_profile_id: fixture.profileId,
+        },
+        {
+          exercise_name: "PR24 Custom Row B",
+          max_weight_kg: 40,
+          estimated_1rm_kg: 50,
+          total_volume_kg: 400,
+          local_profile_id: fixture.profileId,
+        },
+      ]);
+
+      // Edit: A's weight 20 -> 30 (fallback 1RM 40), B's mobile estimate
+      // 50 -> 55. Before PR 24 the stale first-push rows were kept.
+      const edited = await handler(requestFromBody(buildBody([
+        { id: exerciseA, name: "PR24 Custom Row A", weightKg: 30 },
+        { id: exerciseB, name: "PR24 Custom Row B", weightKg: 44, estimate: 55 },
+      ])));
+      const editedBody = await json(edited);
+      assertEquals(edited.status, 200, JSON.stringify(editedBody));
+      assertEquals(editedBody.exerciseProgressInserted, 2);
+      assertEquals(await progressRowsForSession(fixture, sessionId), [
+        {
+          exercise_name: "PR24 Custom Row A",
+          max_weight_kg: 30,
+          estimated_1rm_kg: 40,
+          total_volume_kg: 300,
+          local_profile_id: fixture.profileId,
+        },
+        {
+          exercise_name: "PR24 Custom Row B",
+          max_weight_kg: 44,
+          estimated_1rm_kg: 55,
+          total_volume_kg: 440,
+          local_profile_id: fixture.profileId,
+        },
+      ]);
+
+      // Remove exercise B: its progress row goes, A's stays.
+      const removed = await handler(requestFromBody(buildBody([
+        { id: exerciseA, name: "PR24 Custom Row A", weightKg: 30 },
+      ])));
+      assertEquals(removed.status, 200, await removed.text());
+      assertEquals(await progressRowsForSession(fixture, sessionId), [
+        {
+          exercise_name: "PR24 Custom Row A",
+          max_weight_kg: 30,
+          estimated_1rm_kg: 40,
+          total_volume_kg: 300,
+          local_profile_id: fixture.profileId,
+        },
+      ]);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: the old 6-named-argument replace_session_children call still resolves and leaves exercise_progress untouched",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const sessionId = await createTelemetrySession(fixture);
+      const stored = await fixture.admin.from("exercise_progress").insert({
+        user_id: fixture.ownerId,
+        exercise_name: "PR24 Stored Progress",
+        session_id: sessionId,
+        max_weight_kg: 25,
+        estimated_1rm_kg: 33.33,
+      });
+      if (stored.error) throw new Error("progress fixture creation failed");
+
+      // Exactly today's shipping call shape (six named arguments, no
+      // p_progress): must not be ambiguous (PGRST203) after the migration.
+      const exerciseId = crypto.randomUUID();
+      const oldCall = await fixture.admin.rpc("replace_session_children", {
+        p_user_id: fixture.ownerId,
+        p_session_ids: [sessionId],
+        p_exercises: [{
+          id: exerciseId,
+          session_id: sessionId,
+          user_id: fixture.ownerId,
+          name: "PR24 Stored Progress",
+          exercise_id: null,
+          muscle_group: "General",
+          order_index: 0,
+        }],
+        p_sets: [],
+        p_rep_summaries: [],
+        p_rep_telemetry: [],
+      });
+      assertEquals(oldCall.error, null);
+      assertEquals((oldCall.data as Record<string, unknown>).exercises, 1);
+      assertEquals(
+        (await progressRowsForSession(fixture, sessionId)).map((row) =>
+          row.max_weight_kg
+        ),
+        [25],
+      );
+
+      // With p_progress = [] the session's progress is cleared.
+      const newCall = await fixture.admin.rpc("replace_session_children", {
+        p_user_id: fixture.ownerId,
+        p_session_ids: [sessionId],
+        p_exercises: [],
+        p_sets: [],
+        p_rep_summaries: [],
+        p_rep_telemetry: [],
+        p_progress: [],
+      });
+      assertEquals(newCall.error, null);
+      assertEquals(await progressRowsForSession(fixture, sessionId), []);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// PR 24 (F-069): an edited or re-pushed session refreshes its
+// exercise_progress rows inside replace_session_children (p_progress).
+// ---------------------------------------------------------------------------
+
+interface ProgressRowSnapshot {
+  exercise_name: string;
+  max_weight_kg: number;
+  estimated_1rm_kg: number;
+  total_volume_kg: number;
+  local_profile_id: string | null;
+}
+
+async function progressRowsForSession(
+  fixture: LocalIntegrationFixture,
+  sessionId: string,
+): Promise<ProgressRowSnapshot[]> {
+  const rows = await fixture.admin.from("exercise_progress")
+    .select(
+      "exercise_name,max_weight_kg,estimated_1rm_kg,total_volume_kg,local_profile_id",
+    )
+    .eq("session_id", sessionId)
+    .order("exercise_name");
+  if (rows.error) throw new Error("progress verification query failed");
+  return (rows.data as Array<Record<string, unknown>>).map((row) => ({
+    exercise_name: String(row.exercise_name),
+    max_weight_kg: Number(row.max_weight_kg),
+    estimated_1rm_kg: Number(row.estimated_1rm_kg),
+    total_volume_kg: Number(row.total_volume_kg),
+    local_profile_id: row.local_profile_id as string | null,
+  }));
+}
+
+Deno.test({
+  name:
+    "integration: handler re-push refreshes exercise_progress after a weight edit and drops a removed exercise's row",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const subscription = await fixture.admin.from("subscriptions").insert({
+        user_id: fixture.ownerId,
+        tier: "INFERNO",
+        status: "active",
+        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      if (subscription.error) {
+        throw new Error("subscription fixture creation failed");
+      }
+
+      // Custom (name-only) exercises: A has no mobile estimate, so the
+      // hybrid fallback runs; B ships estimatedOneRepMaxKg, stored verbatim.
+      const sessionId = crypto.randomUUID();
+      const exerciseA = crypto.randomUUID();
+      const exerciseB = crypto.randomUUID();
+      const buildBody = (
+        exercises: Array<{
+          id: string;
+          name: string;
+          weightKg: number;
+          estimate?: number;
+        }>,
+      ) => ({
+        ...validPushBody(),
+        profileId: fixture.profileId,
+        sessions: [{
+          id: sessionId,
+          userId: fixture.ownerId,
+          name: "PR24 session",
+          startedAt: "2026-09-18T10:00:00.000Z",
+          updatedAt: new Date().toISOString(),
+          exercises: exercises.map((exercise, index) => ({
+            id: exercise.id,
+            sessionId,
+            exerciseId: null,
+            name: exercise.name,
+            orderIndex: index,
+            ...(exercise.estimate === undefined
+              ? {}
+              : { estimatedOneRepMaxKg: exercise.estimate }),
+            sets: [{
+              id: crypto.randomUUID(),
+              exerciseId: exercise.id,
+              setNumber: 1,
+              targetReps: 10,
+              actualReps: 10,
+              weightKg: exercise.weightKg,
+              workoutMode: "OLD_SCHOOL",
+              repSummaries: [],
+            }],
+          })),
+        }],
+      });
+
+      const handler = makeRealSqlPushHandler(fixture);
+      const first = await handler(requestFromBody(buildBody([
+        { id: exerciseA, name: "PR24 Custom Row A", weightKg: 20 },
+        { id: exerciseB, name: "PR24 Custom Row B", weightKg: 40, estimate: 50 },
+      ])));
+      assertEquals(first.status, 200, await first.text());
+      assertEquals(await progressRowsForSession(fixture, sessionId), [
+        {
+          exercise_name: "PR24 Custom Row A",
+          max_weight_kg: 20,
+          estimated_1rm_kg: 26.67,
+          total_volume_kg: 200,
+          local_profile_id: fixture.profileId,
+        },
+        {
+          exercise_name: "PR24 Custom Row B",
+          max_weight_kg: 40,
+          estimated_1rm_kg: 50,
+          total_volume_kg: 400,
+          local_profile_id: fixture.profileId,
+        },
+      ]);
+
+      // Edit: A's weight 20 -> 30 (fallback 1RM 40), B's mobile estimate
+      // 50 -> 55. Before PR 24 the stale first-push rows were kept.
+      const edited = await handler(requestFromBody(buildBody([
+        { id: exerciseA, name: "PR24 Custom Row A", weightKg: 30 },
+        { id: exerciseB, name: "PR24 Custom Row B", weightKg: 44, estimate: 55 },
+      ])));
+      const editedBody = await json(edited);
+      assertEquals(edited.status, 200, JSON.stringify(editedBody));
+      assertEquals(editedBody.exerciseProgressInserted, 2);
+      assertEquals(await progressRowsForSession(fixture, sessionId), [
+        {
+          exercise_name: "PR24 Custom Row A",
+          max_weight_kg: 30,
+          estimated_1rm_kg: 40,
+          total_volume_kg: 300,
+          local_profile_id: fixture.profileId,
+        },
+        {
+          exercise_name: "PR24 Custom Row B",
+          max_weight_kg: 44,
+          estimated_1rm_kg: 55,
+          total_volume_kg: 440,
+          local_profile_id: fixture.profileId,
+        },
+      ]);
+
+      // Remove exercise B: its progress row goes, A's stays.
+      const removed = await handler(requestFromBody(buildBody([
+        { id: exerciseA, name: "PR24 Custom Row A", weightKg: 30 },
+      ])));
+      assertEquals(removed.status, 200, await removed.text());
+      assertEquals(await progressRowsForSession(fixture, sessionId), [
+        {
+          exercise_name: "PR24 Custom Row A",
+          max_weight_kg: 30,
+          estimated_1rm_kg: 40,
+          total_volume_kg: 300,
+          local_profile_id: fixture.profileId,
+        },
+      ]);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: the old 6-named-argument replace_session_children call still resolves and leaves exercise_progress untouched",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const sessionId = await createTelemetrySession(fixture);
+      const stored = await fixture.admin.from("exercise_progress").insert({
+        user_id: fixture.ownerId,
+        exercise_name: "PR24 Stored Progress",
+        session_id: sessionId,
+        max_weight_kg: 25,
+        estimated_1rm_kg: 33.33,
+      });
+      if (stored.error) throw new Error("progress fixture creation failed");
+
+      // Exactly today's shipping call shape (six named arguments, no
+      // p_progress): must not be ambiguous (PGRST203) after the migration.
+      const exerciseId = crypto.randomUUID();
+      const oldCall = await fixture.admin.rpc("replace_session_children", {
+        p_user_id: fixture.ownerId,
+        p_session_ids: [sessionId],
+        p_exercises: [{
+          id: exerciseId,
+          session_id: sessionId,
+          user_id: fixture.ownerId,
+          name: "PR24 Stored Progress",
+          exercise_id: null,
+          muscle_group: "General",
+          order_index: 0,
+        }],
+        p_sets: [],
+        p_rep_summaries: [],
+        p_rep_telemetry: [],
+      });
+      assertEquals(oldCall.error, null);
+      assertEquals((oldCall.data as Record<string, unknown>).exercises, 1);
+      assertEquals(
+        (await progressRowsForSession(fixture, sessionId)).map((row) =>
+          row.max_weight_kg
+        ),
+        [25],
+      );
+
+      // With p_progress = [] the session's progress is cleared.
+      const newCall = await fixture.admin.rpc("replace_session_children", {
+        p_user_id: fixture.ownerId,
+        p_session_ids: [sessionId],
+        p_exercises: [],
+        p_sets: [],
+        p_rep_summaries: [],
+        p_rep_telemetry: [],
+        p_progress: [],
+      });
+      assertEquals(newCall.error, null);
+      assertEquals(await progressRowsForSession(fixture, sessionId), []);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
 // Issue #99 regression: top-level catch surfaces underlying error in
 // known non-production environments and returns opaque message otherwise.
 // Helper: builds the pushed session object shared by every ENVIRONMENT case.
@@ -6378,6 +7549,172 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
   );
 });
 
+Deno.test("PR 24: exercise_progress rows ride in replace_session_children as p_progress, with no separate progress read or write", async () => {
+  const harness = makeHarness(undefined, {
+    catalogRows: [{
+      id: "pr24-lat-pulldown",
+      name: "Lat Pulldown",
+      display_name: "Lat Pulldown",
+      aliases: [],
+      user_id: null,
+      is_custom: false,
+      archived: false,
+    }],
+    rpcBehavior: async (name) =>
+      name === "replace_session_children"
+        ? { data: { exercise_progress: 2 }, error: null }
+        : { data: [], error: null },
+  });
+  const exercise = (
+    id: string,
+    setId: string,
+    name: string,
+    weightKg: number,
+    extra: Record<string, unknown> = {},
+  ) => ({
+    id,
+    sessionId: SESSION_ID,
+    name,
+    exerciseId: null,
+    muscleGroup: "Back",
+    ...extra,
+    sets: [{
+      id: setId,
+      exerciseId: id,
+      setNumber: 1,
+      targetReps: 10,
+      actualReps: 10,
+      weightKg,
+    }],
+  });
+  const body = validPushBody();
+  body.sessions = [{
+    id: SESSION_ID,
+    userId: VALID_USER_ID,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: [
+      exercise(
+        "00000000-0000-4000-8000-000000002401",
+        "00000000-0000-4000-8000-000000002501",
+        "PR24 Custom A",
+        30,
+      ),
+      exercise(
+        "00000000-0000-4000-8000-000000002402",
+        "00000000-0000-4000-8000-000000002502",
+        "PR24 Custom B",
+        40,
+        { estimatedOneRepMaxKg: 55.555 },
+      ),
+      // Same identity as A in the same session: the first row wins, as before.
+      exercise(
+        "00000000-0000-4000-8000-000000002403",
+        "00000000-0000-4000-8000-000000002503",
+        "PR24 Custom A",
+        90,
+      ),
+      // Catalog branch: same catalog id under two different names is one
+      // identity (id:<catalog id>); the first row wins.
+      exercise(
+        "00000000-0000-4000-8000-000000002404",
+        "00000000-0000-4000-8000-000000002504",
+        "Lat Pulldown (wide)",
+        50,
+        { exerciseId: "pr24-lat-pulldown" },
+      ),
+      exercise(
+        "00000000-0000-4000-8000-000000002405",
+        "00000000-0000-4000-8000-000000002505",
+        "Lat Pulldown (close)",
+        70,
+        { exerciseId: "pr24-lat-pulldown" },
+      ),
+    ],
+  }];
+
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  const replaceCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "replace_session_children"
+  );
+  assertEquals(replaceCalls.length, 1);
+  assertEquals(replaceCalls[0].args.p_session_ids, [SESSION_ID]);
+  const progress = replaceCalls[0].args.p_progress as Array<
+    Record<string, unknown>
+  >;
+  assertEquals(
+    progress.map((row) => ({
+      session_id: row.session_id,
+      user_id: row.user_id,
+      exercise_name: row.exercise_name,
+      exercise_id: row.exercise_id,
+      max_weight_kg: row.max_weight_kg,
+      estimated_1rm_kg: row.estimated_1rm_kg,
+    })),
+    [
+      {
+        session_id: SESSION_ID,
+        user_id: VALID_USER_ID,
+        exercise_name: "PR24 Custom A",
+        exercise_id: null,
+        max_weight_kg: 30,
+        // Hybrid fallback (Brzycki at 10 reps), rounded to 2dp.
+        estimated_1rm_kg: 40,
+      },
+      {
+        session_id: SESSION_ID,
+        user_id: VALID_USER_ID,
+        exercise_name: "PR24 Custom B",
+        exercise_id: null,
+        max_weight_kg: 40,
+        // Mobile estimate stored verbatim, never rounded.
+        estimated_1rm_kg: 55.555,
+      },
+      {
+        session_id: SESSION_ID,
+        user_id: VALID_USER_ID,
+        exercise_name: "Lat Pulldown (wide)",
+        exercise_id: "pr24-lat-pulldown",
+        max_weight_kg: 50,
+        estimated_1rm_kg: 66.67,
+      },
+    ],
+  );
+  // The response reports the count the RPC returns, not the rows sent (3):
+  // the stub returns 2 to prove the value comes from the RPC result.
+  assertEquals(responseBody.exerciseProgressInserted, 2);
+  assertEquals(
+    harness.adminFromCalls.filter((table) => table === "exercise_progress"),
+    [],
+  );
+});
+
+Deno.test("PR 24: an accepted session with no progress rows still sends p_progress as an empty array", async () => {
+  const harness = makeHarness();
+  const body = validPushBody();
+  body.sessions = [{
+    id: SESSION_ID,
+    userId: VALID_USER_ID,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: [],
+  }];
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  const replaceCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "replace_session_children"
+  );
+  assertEquals(replaceCalls.length, 1);
+  assertEquals(replaceCalls[0].args.p_progress, []);
+});
+
 // PR 58 (F-073, F-039): each client-supplied primary key is probed for
 // ownership exactly once, in the up-front directOwnerChecks pass.
 const DIRECT_OWNERSHIP_TABLES = [
@@ -6527,6 +7864,219 @@ Deno.test("a library row wins a name tie with the caller's custom row", async ()
   const response = await harness.handler(requestFromBody(body));
 
   assertEquals(response.status, 200);
+
+  const replace = harness.adminRpcCalls.find((call) =>
+    call.name === "replace_session_children"
+  );
+  assert(replace);
+  assertEquals(
+    (replace.args.p_exercises as Array<Record<string, unknown>>)[0].exercise_id,
+    "zz-library-bench",
+  );
+});
+
+Deno.test("PR 24: with LWW on, a rejected session is in neither p_session_ids nor p_progress, so its stored progress is kept", async () => {
+  const acceptedId = "00000000-0000-4000-8000-000000002610";
+  const rejectedId = "00000000-0000-4000-8000-000000002620";
+  const harness = makeHarness(undefined, {
+    syncLwwEnabled: true,
+    rpcBehavior: async (name) => {
+      if (name === "upsert_workout_session_lww") {
+        return {
+          data: [
+            { id: acceptedId, accepted: true, server_updated_at: null },
+            {
+              id: rejectedId,
+              accepted: false,
+              server_updated_at: "2026-01-21T00:00:00.000Z",
+            },
+          ],
+          error: null,
+        };
+      }
+      if (name === "replace_session_children") {
+        return { data: { exercise_progress: 1 }, error: null };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const session = (id: string, suffix: string) => ({
+    id,
+    userId: VALID_USER_ID,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: [{
+      id: `00000000-0000-4000-8000-0000000027${suffix}`,
+      sessionId: id,
+      name: `PR24 LWW ${suffix}`,
+      exerciseId: null,
+      muscleGroup: "Back",
+      sets: [{
+        id: `00000000-0000-4000-8000-0000000028${suffix}`,
+        exerciseId: `00000000-0000-4000-8000-0000000027${suffix}`,
+        setNumber: 1,
+        targetReps: 10,
+        actualReps: 10,
+        weightKg: 30,
+      }],
+    }],
+  });
+  const body = validPushBody();
+  body.sessions = [session(acceptedId, "10"), session(rejectedId, "20")];
+
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals(
+    (responseBody.rejections as Record<string, unknown>).sessions,
+    [{ id: rejectedId, serverUpdatedAt: "2026-01-21T00:00:00.000Z" }],
+  );
+  const replaceCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "replace_session_children"
+  );
+  assertEquals(replaceCalls.length, 1);
+  assertEquals(replaceCalls[0].args.p_session_ids, [acceptedId]);
+  assertEquals(
+    (replaceCalls[0].args.p_progress as Array<Record<string, unknown>>).map(
+      (row) => row.session_id,
+    ),
+    [acceptedId],
+  );
+  assertEquals(responseBody.exerciseProgressInserted, 1);
+});
+
+// ---------------------------------------------------------------------------
+// PR 28 (FP-4): per-exercise cable count rides in p_exercises as cable_count.
+// Optional and nested (KD-2): today's mobile shape sends nothing -> NULL.
+// ---------------------------------------------------------------------------
+
+function cableCountSession(
+  sessionId: string,
+  exercises: Array<{ suffix: string; extra?: Record<string, unknown> }>,
+) {
+  return {
+    id: sessionId,
+    userId: VALID_USER_ID,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: exercises.map(({ suffix, extra }, index) => ({
+      id: `00000000-0000-4000-8000-0000000029${suffix}`,
+      sessionId,
+      name: `PR28 Custom ${suffix}`,
+      exerciseId: null,
+      muscleGroup: "Back",
+      orderIndex: index,
+      ...(extra ?? {}),
+      sets: [{
+        id: `00000000-0000-4000-8000-0000000030${suffix}`,
+        exerciseId: `00000000-0000-4000-8000-0000000029${suffix}`,
+        setNumber: 1,
+        targetReps: 10,
+        actualReps: 10,
+        weightKg: 30,
+      }],
+    })),
+  };
+}
+
+for (const syncLwwEnabled of [false, true]) {
+  Deno.test(`PR 28: cableCount is sent to replace_session_children as cable_count; absent or null is NULL (LWW ${syncLwwEnabled ? "on" : "off"})`, async () => {
+    const harness = makeHarness(undefined, {
+      syncLwwEnabled,
+      rpcBehavior: async (name) => {
+        if (name === "upsert_workout_session_lww") {
+          return {
+            data: [{ id: SESSION_ID, accepted: true, server_updated_at: null }],
+            error: null,
+          };
+        }
+        return { data: [], error: null };
+      },
+    });
+    const body = validPushBody();
+    body.sessions = [cableCountSession(SESSION_ID, [
+      { suffix: "01", extra: { cableCount: 1 } },
+      { suffix: "02", extra: { cableCount: 2 } },
+      // Today's mobile shape: no cableCount key at all.
+      { suffix: "03" },
+      { suffix: "04", extra: { cableCount: null } },
+    ])];
+
+    const response = await harness.handler(requestFromBody(body));
+
+    assertEquals(response.status, 200, await response.text());
+    const replaceCalls = harness.adminRpcCalls.filter((call) =>
+      call.name === "replace_session_children"
+    );
+    assertEquals(replaceCalls.length, 1);
+    assertEquals(
+      (replaceCalls[0].args.p_exercises as Array<Record<string, unknown>>).map(
+        (row) => [row.name, row.cable_count],
+      ),
+      [
+        ["PR28 Custom 01", 1],
+        ["PR28 Custom 02", 2],
+        ["PR28 Custom 03", null],
+        ["PR28 Custom 04", null],
+      ],
+    );
+  });
+}
+
+for (const bad of [0, 3, 1.5, "2", true]) {
+  Deno.test(`PR 28: cableCount ${JSON.stringify(bad)} is a 400 before any privileged write`, async () => {
+    const harness = makeHarness();
+    const body = validPushBody();
+    body.sessions = [cableCountSession(SESSION_ID, [
+      { suffix: "11", extra: { cableCount: bad } },
+    ])];
+
+    const response = await harness.handler(requestFromBody(body));
+
+    assertEquals(response.status, 400);
+    assertEquals(harness.adminConstructionCount.value, 0);
+    assertEquals(harness.adminRpcCalls, []);
+  });
+}
+
+Deno.test({
+  name:
+    "integration: handler push stores exercises.cable_count and pull returns cableCount (1 stays 1, absent stays null)",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const subscription = await fixture.admin.from("subscriptions").insert({
+        user_id: fixture.ownerId,
+        tier: "INFERNO",
+        status: "active",
+        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      if (subscription.error) {
+        throw new Error("subscription fixture creation failed");
+      }
+
+      const sessionId = crypto.randomUUID();
+      const singleCable = crypto.randomUUID();
+      const unknownCable = crypto.randomUUID();
+      const exercise = (
+        id: string,
+        name: string,
+        orderIndex: number,
+        extra: Record<string, unknown>,
+      ) => ({
+        id,
+        sessionId,
+        exerciseId: null,
+        name,
+        orderIndex,
+        ...extra,
+        sets: [{
+          id: crypto.randomUUID(),
+          exerciseId: id,
   const replace = harness.adminRpcCalls.find((call) =>
     call.name === "replace_session_children"
   );
@@ -7074,6 +8624,7 @@ async function routineCount(
 
 Deno.test({
   name:
+    "integration: handler push stores exercises.cable_count and pull returns cableCount (1 stays 1, absent stays null)",
     `integration: tombstones (LWW=${SYNC_LWW_ENABLED}) old-build push of a portal-deleted routine is 200, skipped, not re-created, day NULL`,
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
@@ -7797,6 +9348,7 @@ Deno.test({
         progression_settings: stored.progression_settings,
         deload_settings: stored.deload_settings,
         template_id: stored.template_id,
+        updated_at: new Date(String(stored.updated_at)).toISOString(),
         // PR 21: the pushed updatedAt is the LWW key; updated_at (pull
         // cursor) is the server clock (NF-12).
         client_updated_at: new Date(String(stored.client_updated_at)).toISOString(),
@@ -7816,6 +9368,9 @@ Deno.test({
         progression_settings: { frequencyCycles: "2" },
         deload_settings: null,
         template_id: "template_18",
+        updated_at: "2026-07-02T09:30:00.000Z",
+        portal_edited_at: null,
+      });
         client_updated_at: "2026-07-02T09:30:00.000Z",
         portal_edited_at: null,
       });
@@ -7958,6 +9513,116 @@ Deno.test({
   fn: async () => {
     const fixture = await createLocalIntegrationFixture();
     try {
+      const subscription = await fixture.admin.from("subscriptions").insert({
+        user_id: fixture.ownerId,
+        tier: "INFERNO",
+        status: "active",
+        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      if (subscription.error) {
+        throw new Error("subscription fixture creation failed");
+      }
+
+      const sessionId = crypto.randomUUID();
+      const singleCable = crypto.randomUUID();
+      const unknownCable = crypto.randomUUID();
+      const exercise = (
+        id: string,
+        name: string,
+        orderIndex: number,
+        extra: Record<string, unknown>,
+      ) => ({
+        id,
+        sessionId,
+        exerciseId: null,
+        name,
+        orderIndex,
+        ...extra,
+        sets: [{
+          id: crypto.randomUUID(),
+          exerciseId: id,
+          setNumber: 1,
+          targetReps: 10,
+          actualReps: 10,
+          weightKg: 20,
+          workoutMode: "OLD_SCHOOL",
+          repSummaries: [],
+        }],
+      });
+      const body = {
+        ...validPushBody(),
+        profileId: fixture.profileId,
+        sessions: [{
+          id: sessionId,
+          userId: fixture.ownerId,
+          name: "PR28 session",
+          startedAt: "2026-09-18T10:00:00.000Z",
+          updatedAt: new Date().toISOString(),
+          exercises: [
+            exercise(singleCable, "PR28 Single Cable Row", 0, { cableCount: 1 }),
+            // Today's mobile shape: no cableCount key.
+            exercise(unknownCable, "PR28 Unknown Cable Row", 1, {}),
+          ],
+        }],
+      };
+
+      const pushed = await makeRealSqlPushHandler(fixture)(
+        requestFromBody(body),
+      );
+      assertEquals(pushed.status, 200, await pushed.text());
+
+      const stored = await fixture.admin.from("exercises")
+        .select("id,cable_count")
+        .eq("session_id", sessionId);
+      if (stored.error) throw new Error("exercise verification failed");
+      const storedById = new Map(
+        (stored.data as Array<{ id: string; cable_count: number | null }>)
+          .map((row) => [row.id, row.cable_count]),
+      );
+      assertEquals(storedById.get(singleCable), 1);
+      assertEquals(storedById.get(unknownCable), null);
+
+      const pull = createMobileSyncPullHandler({
+        createAuthClient() {
+          return {
+            auth: {
+              async getUser() {
+                return { data: { user: { id: fixture.ownerId } }, error: null };
+              },
+            },
+          };
+        },
+        createAdminClient() {
+          return fixture.admin;
+        },
+        logOperationalFailure: () => {},
+        now: () => Date.now(),
+      } as never);
+      const pulled = await pull(requestFromBody({
+        deviceId: "pr28-device",
+        lastSync: 0,
+        profileId: fixture.profileId,
+        pageSize: 75,
+        knownEntityIds: {
+          sessionIds: [],
+          routineIds: [],
+          cycleIds: [],
+          badgeIds: [],
+          personalRecordIds: [],
+        },
+      }));
+      const pulledBody = await json(pulled);
+      assertEquals(pulled.status, 200, JSON.stringify(pulledBody));
+      const session = (pulledBody.sessions as Array<Record<string, unknown>>)
+        .find((row) => row.id === sessionId);
+      assert(session, "pushed session is pulled back");
+      assertEquals(
+        (session.exercises as Array<Record<string, unknown>>).map((row) => [
+          row.id,
+          row.cableCount,
+        ]),
+        [[singleCable, 1], [unknownCable, null]],
+      );
       const authBehavior: AuthBehavior = async () => ({
         data: { user: { id: fixture.ownerId } },
         error: null,
@@ -8437,6 +10102,86 @@ function catalogProbeSession(
           targetReps: 10,
           actualReps: 10,
           weightKg: 20,
+          workoutMode: "OLD_SCHOOL",
+          repSummaries: [],
+        }],
+      });
+      const body = {
+        ...validPushBody(),
+        profileId: fixture.profileId,
+        sessions: [{
+          id: sessionId,
+          userId: fixture.ownerId,
+          name: "PR28 session",
+          startedAt: "2026-09-18T10:00:00.000Z",
+          updatedAt: new Date().toISOString(),
+          exercises: [
+            exercise(singleCable, "PR28 Single Cable Row", 0, { cableCount: 1 }),
+            // Today's mobile shape: no cableCount key.
+            exercise(unknownCable, "PR28 Unknown Cable Row", 1, {}),
+          ],
+        }],
+      };
+
+      const pushed = await makeRealSqlPushHandler(fixture)(
+        requestFromBody(body),
+      );
+      assertEquals(pushed.status, 200, await pushed.text());
+
+      const stored = await fixture.admin.from("exercises")
+        .select("id,cable_count")
+        .eq("session_id", sessionId);
+      if (stored.error) throw new Error("exercise verification failed");
+      const storedById = new Map(
+        (stored.data as Array<{ id: string; cable_count: number | null }>)
+          .map((row) => [row.id, row.cable_count]),
+      );
+      assertEquals(storedById.get(singleCable), 1);
+      assertEquals(storedById.get(unknownCable), null);
+
+      const pull = createMobileSyncPullHandler({
+        createAuthClient() {
+          return {
+            auth: {
+              async getUser() {
+                return { data: { user: { id: fixture.ownerId } }, error: null };
+              },
+            },
+          };
+        },
+        createAdminClient() {
+          return fixture.admin;
+        },
+        logOperationalFailure: () => {},
+        now: () => Date.now(),
+      } as never);
+      const pulled = await pull(requestFromBody({
+        deviceId: "pr28-device",
+        lastSync: 0,
+        profileId: fixture.profileId,
+        pageSize: 75,
+        knownEntityIds: {
+          sessionIds: [],
+          routineIds: [],
+          cycleIds: [],
+          badgeIds: [],
+          personalRecordIds: [],
+        },
+      }));
+      const pulledBody = await json(pulled);
+      assertEquals(pulled.status, 200, JSON.stringify(pulledBody));
+      const session = (pulledBody.sessions as Array<Record<string, unknown>>)
+        .find((row) => row.id === sessionId);
+      assert(session, "pushed session is pulled back");
+      assertEquals(
+        (session.exercises as Array<Record<string, unknown>>).map((row) => [
+          row.id,
+          row.cableCount,
+        ]),
+        [[singleCable, 1], [unknownCable, null]],
+      );
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
           isPr: false,
         }],
       };
@@ -9076,6 +10821,462 @@ Deno.test({
         ? [fixture.ownerId]
         : [fixture.ownerId, attackerId];
       await deleteTombstonePushFixture(fixture.admin, toDelete);
+    }
+  },
+});
+
+Deno.test("PR 24: exercise_progress rows ride in replace_session_children as p_progress, with no separate progress read or write", async () => {
+  const harness = makeHarness(undefined, {
+    catalogRows: [{
+      id: "pr24-lat-pulldown",
+      name: "Lat Pulldown",
+      display_name: "Lat Pulldown",
+      aliases: [],
+      user_id: null,
+      is_custom: false,
+      archived: false,
+    }],
+    rpcBehavior: async (name) =>
+      name === "replace_session_children"
+        ? { data: { exercise_progress: 2 }, error: null }
+        : { data: [], error: null },
+  });
+  const exercise = (
+    id: string,
+    setId: string,
+    name: string,
+    weightKg: number,
+    extra: Record<string, unknown> = {},
+  ) => ({
+    id,
+    sessionId: SESSION_ID,
+    name,
+    exerciseId: null,
+    muscleGroup: "Back",
+    ...extra,
+    sets: [{
+      id: setId,
+      exerciseId: id,
+      setNumber: 1,
+      targetReps: 10,
+      actualReps: 10,
+      weightKg,
+    }],
+  });
+  const body = validPushBody();
+  body.sessions = [{
+    id: SESSION_ID,
+    userId: VALID_USER_ID,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: [
+      exercise(
+        "00000000-0000-4000-8000-000000002401",
+        "00000000-0000-4000-8000-000000002501",
+        "PR24 Custom A",
+        30,
+      ),
+      exercise(
+        "00000000-0000-4000-8000-000000002402",
+        "00000000-0000-4000-8000-000000002502",
+        "PR24 Custom B",
+        40,
+        { estimatedOneRepMaxKg: 55.555 },
+      ),
+      // Same identity as A in the same session: the first row wins, as before.
+      exercise(
+        "00000000-0000-4000-8000-000000002403",
+        "00000000-0000-4000-8000-000000002503",
+        "PR24 Custom A",
+        90,
+      ),
+      // Catalog branch: same catalog id under two different names is one
+      // identity (id:<catalog id>); the first row wins.
+      exercise(
+        "00000000-0000-4000-8000-000000002404",
+        "00000000-0000-4000-8000-000000002504",
+        "Lat Pulldown (wide)",
+        50,
+        { exerciseId: "pr24-lat-pulldown" },
+      ),
+      exercise(
+        "00000000-0000-4000-8000-000000002405",
+        "00000000-0000-4000-8000-000000002505",
+        "Lat Pulldown (close)",
+        70,
+        { exerciseId: "pr24-lat-pulldown" },
+      ),
+    ],
+  }];
+
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  const replaceCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "replace_session_children"
+  );
+  assertEquals(replaceCalls.length, 1);
+  assertEquals(replaceCalls[0].args.p_session_ids, [SESSION_ID]);
+  const progress = replaceCalls[0].args.p_progress as Array<
+    Record<string, unknown>
+  >;
+  assertEquals(
+    progress.map((row) => ({
+      session_id: row.session_id,
+      user_id: row.user_id,
+      exercise_name: row.exercise_name,
+      exercise_id: row.exercise_id,
+      max_weight_kg: row.max_weight_kg,
+      estimated_1rm_kg: row.estimated_1rm_kg,
+    })),
+    [
+      {
+        session_id: SESSION_ID,
+        user_id: VALID_USER_ID,
+        exercise_name: "PR24 Custom A",
+        exercise_id: null,
+        max_weight_kg: 30,
+        // Hybrid fallback (Brzycki at 10 reps), rounded to 2dp.
+        estimated_1rm_kg: 40,
+      },
+      {
+        session_id: SESSION_ID,
+        user_id: VALID_USER_ID,
+        exercise_name: "PR24 Custom B",
+        exercise_id: null,
+        max_weight_kg: 40,
+        // Mobile estimate stored verbatim, never rounded.
+        estimated_1rm_kg: 55.555,
+      },
+      {
+        session_id: SESSION_ID,
+        user_id: VALID_USER_ID,
+        exercise_name: "Lat Pulldown (wide)",
+        exercise_id: "pr24-lat-pulldown",
+        max_weight_kg: 50,
+        estimated_1rm_kg: 66.67,
+      },
+    ],
+  );
+  // The response reports the count the RPC returns, not the rows sent (3):
+  // the stub returns 2 to prove the value comes from the RPC result.
+  assertEquals(responseBody.exerciseProgressInserted, 2);
+  assertEquals(
+    harness.adminFromCalls.filter((table) => table === "exercise_progress"),
+    [],
+  );
+});
+
+Deno.test("PR 24: an accepted session with no progress rows still sends p_progress as an empty array", async () => {
+  const harness = makeHarness();
+  const body = validPushBody();
+  body.sessions = [{
+    id: SESSION_ID,
+    userId: VALID_USER_ID,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: [],
+  }];
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  const replaceCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "replace_session_children"
+  );
+  assertEquals(replaceCalls.length, 1);
+  assertEquals(replaceCalls[0].args.p_progress, []);
+});
+
+Deno.test("PR 24: with LWW on, a rejected session is in neither p_session_ids nor p_progress, so its stored progress is kept", async () => {
+  const acceptedId = "00000000-0000-4000-8000-000000002610";
+  const rejectedId = "00000000-0000-4000-8000-000000002620";
+  const harness = makeHarness(undefined, {
+    syncLwwEnabled: true,
+    rpcBehavior: async (name) => {
+      if (name === "upsert_workout_session_lww") {
+        return {
+          data: [
+            { id: acceptedId, accepted: true, server_updated_at: null },
+            {
+              id: rejectedId,
+              accepted: false,
+              server_updated_at: "2026-01-21T00:00:00.000Z",
+            },
+          ],
+          error: null,
+        };
+      }
+      if (name === "replace_session_children") {
+        return { data: { exercise_progress: 1 }, error: null };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const session = (id: string, suffix: string) => ({
+    id,
+    userId: VALID_USER_ID,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: [{
+      id: `00000000-0000-4000-8000-0000000027${suffix}`,
+      sessionId: id,
+      name: `PR24 LWW ${suffix}`,
+      exerciseId: null,
+      muscleGroup: "Back",
+      sets: [{
+        id: `00000000-0000-4000-8000-0000000028${suffix}`,
+        exerciseId: `00000000-0000-4000-8000-0000000027${suffix}`,
+        setNumber: 1,
+        targetReps: 10,
+        actualReps: 10,
+        weightKg: 30,
+      }],
+    }],
+  });
+  const body = validPushBody();
+  body.sessions = [session(acceptedId, "10"), session(rejectedId, "20")];
+
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals(
+    (responseBody.rejections as Record<string, unknown>).sessions,
+    [{ id: rejectedId, serverUpdatedAt: "2026-01-21T00:00:00.000Z" }],
+  );
+  const replaceCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "replace_session_children"
+  );
+  assertEquals(replaceCalls.length, 1);
+  assertEquals(replaceCalls[0].args.p_session_ids, [acceptedId]);
+  assertEquals(
+    (replaceCalls[0].args.p_progress as Array<Record<string, unknown>>).map(
+      (row) => row.session_id,
+    ),
+    [acceptedId],
+  );
+  assertEquals(responseBody.exerciseProgressInserted, 1);
+});
+
+// ---------------------------------------------------------------------------
+// PR 28 (FP-4): per-exercise cable count rides in p_exercises as cable_count.
+// Optional and nested (KD-2): today's mobile shape sends nothing -> NULL.
+// ---------------------------------------------------------------------------
+
+function cableCountSession(
+  sessionId: string,
+  exercises: Array<{ suffix: string; extra?: Record<string, unknown> }>,
+) {
+  return {
+    id: sessionId,
+    userId: VALID_USER_ID,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: exercises.map(({ suffix, extra }, index) => ({
+      id: `00000000-0000-4000-8000-0000000029${suffix}`,
+      sessionId,
+      name: `PR28 Custom ${suffix}`,
+      exerciseId: null,
+      muscleGroup: "Back",
+      orderIndex: index,
+      ...(extra ?? {}),
+      sets: [{
+        id: `00000000-0000-4000-8000-0000000030${suffix}`,
+        exerciseId: `00000000-0000-4000-8000-0000000029${suffix}`,
+        setNumber: 1,
+        targetReps: 10,
+        actualReps: 10,
+        weightKg: 30,
+      }],
+    })),
+  };
+}
+
+for (const syncLwwEnabled of [false, true]) {
+  Deno.test(`PR 28: cableCount is sent to replace_session_children as cable_count; absent or null is NULL (LWW ${syncLwwEnabled ? "on" : "off"})`, async () => {
+    const harness = makeHarness(undefined, {
+      syncLwwEnabled,
+      rpcBehavior: async (name) => {
+        if (name === "upsert_workout_session_lww") {
+          return {
+            data: [{ id: SESSION_ID, accepted: true, server_updated_at: null }],
+            error: null,
+          };
+        }
+        return { data: [], error: null };
+      },
+    });
+    const body = validPushBody();
+    body.sessions = [cableCountSession(SESSION_ID, [
+      { suffix: "01", extra: { cableCount: 1 } },
+      { suffix: "02", extra: { cableCount: 2 } },
+      // Today's mobile shape: no cableCount key at all.
+      { suffix: "03" },
+      { suffix: "04", extra: { cableCount: null } },
+    ])];
+
+    const response = await harness.handler(requestFromBody(body));
+
+    assertEquals(response.status, 200, await response.text());
+    const replaceCalls = harness.adminRpcCalls.filter((call) =>
+      call.name === "replace_session_children"
+    );
+    assertEquals(replaceCalls.length, 1);
+    assertEquals(
+      (replaceCalls[0].args.p_exercises as Array<Record<string, unknown>>).map(
+        (row) => [row.name, row.cable_count],
+      ),
+      [
+        ["PR28 Custom 01", 1],
+        ["PR28 Custom 02", 2],
+        ["PR28 Custom 03", null],
+        ["PR28 Custom 04", null],
+      ],
+    );
+  });
+}
+
+for (const bad of [0, 3, 1.5, "2", true]) {
+  Deno.test(`PR 28: cableCount ${JSON.stringify(bad)} is a 400 before any privileged write`, async () => {
+    const harness = makeHarness();
+    const body = validPushBody();
+    body.sessions = [cableCountSession(SESSION_ID, [
+      { suffix: "11", extra: { cableCount: bad } },
+    ])];
+
+    const response = await harness.handler(requestFromBody(body));
+
+    assertEquals(response.status, 400);
+    assertEquals(harness.adminConstructionCount.value, 0);
+    assertEquals(harness.adminRpcCalls, []);
+  });
+}
+
+Deno.test({
+  name:
+    "integration: handler push stores exercises.cable_count and pull returns cableCount (1 stays 1, absent stays null)",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const subscription = await fixture.admin.from("subscriptions").insert({
+        user_id: fixture.ownerId,
+        tier: "INFERNO",
+        status: "active",
+        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+      if (subscription.error) {
+        throw new Error("subscription fixture creation failed");
+      }
+
+      const sessionId = crypto.randomUUID();
+      const singleCable = crypto.randomUUID();
+      const unknownCable = crypto.randomUUID();
+      const exercise = (
+        id: string,
+        name: string,
+        orderIndex: number,
+        extra: Record<string, unknown>,
+      ) => ({
+        id,
+        sessionId,
+        exerciseId: null,
+        name,
+        orderIndex,
+        ...extra,
+        sets: [{
+          id: crypto.randomUUID(),
+          exerciseId: id,
+          setNumber: 1,
+          targetReps: 10,
+          actualReps: 10,
+          weightKg: 20,
+          workoutMode: "OLD_SCHOOL",
+          repSummaries: [],
+        }],
+      });
+      const body = {
+        ...validPushBody(),
+        profileId: fixture.profileId,
+        sessions: [{
+          id: sessionId,
+          userId: fixture.ownerId,
+          name: "PR28 session",
+          startedAt: "2026-09-18T10:00:00.000Z",
+          updatedAt: new Date().toISOString(),
+          exercises: [
+            exercise(singleCable, "PR28 Single Cable Row", 0, { cableCount: 1 }),
+            // Today's mobile shape: no cableCount key.
+            exercise(unknownCable, "PR28 Unknown Cable Row", 1, {}),
+          ],
+        }],
+      };
+
+      const pushed = await makeRealSqlPushHandler(fixture)(
+        requestFromBody(body),
+      );
+      assertEquals(pushed.status, 200, await pushed.text());
+
+      const stored = await fixture.admin.from("exercises")
+        .select("id,cable_count")
+        .eq("session_id", sessionId);
+      if (stored.error) throw new Error("exercise verification failed");
+      const storedById = new Map(
+        (stored.data as Array<{ id: string; cable_count: number | null }>)
+          .map((row) => [row.id, row.cable_count]),
+      );
+      assertEquals(storedById.get(singleCable), 1);
+      assertEquals(storedById.get(unknownCable), null);
+
+      const pull = createMobileSyncPullHandler({
+        createAuthClient() {
+          return {
+            auth: {
+              async getUser() {
+                return { data: { user: { id: fixture.ownerId } }, error: null };
+              },
+            },
+          };
+        },
+        createAdminClient() {
+          return fixture.admin;
+        },
+        logOperationalFailure: () => {},
+        now: () => Date.now(),
+      } as never);
+      const pulled = await pull(requestFromBody({
+        deviceId: "pr28-device",
+        lastSync: 0,
+        profileId: fixture.profileId,
+        pageSize: 75,
+        knownEntityIds: {
+          sessionIds: [],
+          routineIds: [],
+          cycleIds: [],
+          badgeIds: [],
+          personalRecordIds: [],
+        },
+      }));
+      const pulledBody = await json(pulled);
+      assertEquals(pulled.status, 200, JSON.stringify(pulledBody));
+      const session = (pulledBody.sessions as Array<Record<string, unknown>>)
+        .find((row) => row.id === sessionId);
+      assert(session, "pushed session is pulled back");
+      assertEquals(
+        (session.exercises as Array<Record<string, unknown>>).map((row) => [
+          row.id,
+          row.cableCount,
+        ]),
+        [[singleCable, 1], [unknownCable, null]],
+      );
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
     }
   },
 });
