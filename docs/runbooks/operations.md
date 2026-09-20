@@ -940,13 +940,18 @@ exists, and never alters an existing one.
 | Job name (`cron.job.jobname`)    | Cadence                            | What it runs                                                                                              | Migration                                             | Cron secret | Created active?                        |
 | -------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------- | -------------------------------------- |
 | `process-sync-queue`             | `*/5 * * * *` (every 5 min)        | Edge `process-sync-queue` via `private.invoke_edge_function('process-sync-queue', '{}')`                   | `20260920003100_scheduler_and_sync_queue_cron.sql`    | shared      | Yes                                    |
-| `sync-tombstones-retention`      | `23 3 * * *` (daily 03:23)         | SQL: `DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval '180 days'`                  | `20260920003100_scheduler_and_sync_queue_cron.sql`    | --          | Yes                                    |
 | `cron-job-run-details-retention` | `41 3 * * *` (daily 03:41)         | SQL: `DELETE FROM cron.job_run_details WHERE end_time < now() - interval '7 days'`                        | `20260920003100_scheduler_and_sync_queue_cron.sql`    | --          | Yes                                    |
 | `delete-due-accounts`            | `17 * * * *` (hourly at :17)       | Edge `delete-account` with body `{"mode":"process_due"}`                                                   | `20260920003500_due_deletion_cron.sql`                | shared      | **No -- INACTIVE by design ([§10.2](#102-activating-delete-due-accounts-irreversible))** |
 | `refresh-leaderboard-snapshots`  | `*/15 * * * *` (every 15 min)      | SQL: `SELECT public.refresh_leaderboard_snapshots()`                                                       | `20260920005600_leaderboard_snapshots.sql`            | --          | Yes                                    |
 | `generate-insights`              | `*/15 * * * *` (every 15 min)      | Edge `generate-insights` with `{"mode":"batch","cursor":…}` read from `private.insights_batch_state`       | `20260920006400_schedule_generate_insights.sql`       | shared      | Yes (cache refresh, nothing to activate) |
 | `refresh-hot-scores`             | `*/15 * * * *` (every 15 min)      | SQL: `SELECT public.refresh_hot_scores()`                                                                  | `20260920000200_capture_dashboard_functions_and_cron.sql` (captured from prod) | --          | As already scheduled in prod           |
 | `refresh-community-benchmarks`   | `0 */6 * * *` (every 6 h, on the hour) | SQL: `SELECT public.refresh_community_benchmarks()`                                                    | `20260920000200_capture_dashboard_functions_and_cron.sql` (captured from prod) | --          | As already scheduled in prod           |
+
+Routine and training-cycle tombstones are durable deletion evidence so an
+offline device cannot recreate deleted data when it eventually reconnects.
+`20260920003100` removes the legacy `sync-tombstones-retention` job if it
+exists. Tombstones are deleted with their account through the
+`sync_tombstones.user_id` cascade.
 
 Cadences are pg_cron expressions, evaluated in the **database** timezone.
 Confirm it with `SHOW timezone;` before converting any of these to local time.
