@@ -1001,9 +1001,9 @@ LIMIT 20;
 
 | Observation                                                  | Meaning                                                                                                   |
 | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `status_code = 200`                                          | The pass ran. The body carries counts (`processed`/`failed`/`skipped`, or the deletion counters).           |
+| `status_code = 200`                                          | The pass ran. The body carries counts -- `processed`/`failed`/`skipped` for the sync queue, `processed`/`failed`/`nextCursor` for insights, the purge counters for deletions. |
 | `status_code = 401`                                          | Vault `edge_cron_secret` and the Edge `CRON_SECRET` differ, **or** `verify_jwt` is still `true` for that function. |
-| `timed_out = true`                                           | The pass ran past the pg_net timeout (400 s for `process-sync-queue`). Claimed rows wait out their lease.   |
+| `timed_out = true`                                           | The pass ran past the pg_net timeout. `private.invoke_edge_function` sets `timeout_milliseconds := 400000` for every Edge job, so this is 400 s in all three cases. Claimed rows wait out their lease. |
 | No new rows, while `cron.job_run_details` says `succeeded`   | Vault secret, `project_url` or `pg_net` is missing. The NOTICE is in the Postgres log.                       |
 
 `net._http_response` is pruned by pg_net itself. **Unverified from this repo:**
@@ -1197,9 +1197,9 @@ be shown in an example is written `[REDACTED]`.
 
 | Group                     | Where it is set                        | Variables                                                                                                                                                                       | Notes                                                                                             |
 | ------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| 1. Client (build-time)    | Cloudflare Pages env / `.env.local`    | `VITE_PADDLE_CLIENT_TOKEN`, `VITE_PADDLE_ENVIRONMENT`                                                                                                                              | Baked into the bundle. A change needs a **rebuild and redeploy**, not just an env edit.             |
-| 2. Client price IDs (6)   | Cloudflare Pages env / `.env.local`    | `VITE_PADDLE_{EMBER,FLAME,INFERNO}_{MONTHLY,ANNUAL}_PRICE_ID`                                                                                                                      | Read by `src/lib/pricing.ts` -- the single source of truth for what checkout opens.                 |
-| 3. Server env             | Supabase Edge Function secrets         | `PADDLE_ENVIRONMENT`, `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CUSTOM_DATA_SECRET`                                                                                       | Each is environment-specific: a sandbox API key cannot read production subscriptions.               |
+| 1. Client (build-time)    | Cloudflare dashboard (build env vars)  | `VITE_PADDLE_CLIENT_TOKEN`, `VITE_PADDLE_ENVIRONMENT`                                                                                                                              | Baked into the bundle. A change needs a **rebuild and redeploy**, not just an env edit.             |
+| 2. Client price IDs (6)   | Cloudflare dashboard (build env vars)  | `VITE_PADDLE_{EMBER,FLAME,INFERNO}_{MONTHLY,ANNUAL}_PRICE_ID`                                                                                                                      | Read by `src/lib/pricing.ts` -- the single source of truth for what checkout opens.                 |
+| 3. Server env             | Supabase Edge Function secrets         | `PADDLE_ENVIRONMENT`, `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CUSTOM_DATA_SECRET`                                                                                       | The first three are environment-specific -- a sandbox API key cannot read production subscriptions. `PADDLE_CUSTOM_DATA_SECRET` is **not** a Paddle credential (see below). |
 | 4. Server price IDs       | Supabase Edge Function secrets         | 3 comma-separated lists `PADDLE_{EMBER,FLAME,INFERNO}_PRICE_IDS`, **plus** the 6 singles `PADDLE_{EMBER,FLAME,INFERNO}_{MONTHLY,ANNUAL}_PRICE_ID`                                   | `_shared/paddlePriceIds.ts` unions the list and the two singles per tier. See the note below.        |
 
 **On the 6 server singles.** `getPaddlePriceIdSets` merges
@@ -1210,6 +1210,22 @@ singles are separately required by
 `paddle-update-subscription/index.ts:116` -- **a plan change to a
 tier/interval whose single is unset fails there even though webhooks map that
 price correctly.** Set both shapes.
+
+**On `PADDLE_CUSTOM_DATA_SECRET`.** This one is **self-issued**, not obtained
+from Paddle: `paddle-checkout-custom-data` HMACs the user id with it
+(`hmacSha256Hex(secret, user.id)`) and `paddle-webhooks` and
+`paddle-refresh-subscription` verify that signature. Do not go looking for it
+in the Paddle dashboard, and do not change it during a cutover -- signer and
+verifiers must share one value, and rotating it invalidates checkouts that are
+already open.
+
+**Where groups 1 and 2 actually live.** `wrangler.toml` states that the
+production build runs in Cloudflare Workers Builds (`npx wrangler deploy`,
+auto-triggered on push to `main` by the Cloudflare GitHub integration) and that
+the `VITE_*` variables are set in the Cloudflare dashboard, not in
+`wrangler.toml`. There is **no SPA deploy workflow in `.github/workflows/`** --
+`ci.yml` only runs `npm run build` as a check. If that ever changes, the
+variables move with the build and this row must be updated.
 
 Never use a `VITE_*` variable server-side (`_shared/paddlePriceIds.ts:4`).
 
@@ -1226,9 +1242,11 @@ switch.
    subscribe it to the same events as the environment you are leaving.
 3. Set group 3 and group 4 on Supabase (`supabase secrets set …`). Confirm the
    names are present with `supabase secrets list` -- it lists names, not values.
-4. Set groups 1 and 2 in Cloudflare Pages.
-5. **Rebuild and redeploy the SPA.** Until this happens the client is still on
-   the old environment regardless of what the dashboard shows.
+4. Set groups 1 and 2 in the Cloudflare dashboard's build environment
+   variables.
+5. **Rebuild and redeploy the SPA.** `VITE_*` values are embedded at build time,
+   so until a new build ships the client is still on the old environment
+   regardless of what the dashboard shows.
 6. Run the smoke test below before announcing the cutover.
 
 ### `PADDLE_API_KEY` is a hard dependency of `paddle-webhooks` (PR 44)
@@ -1325,8 +1343,9 @@ entry, or a file on disk.
    it ever lands in a backed-up or cloud-synced folder, treat the secret as
    compromised and rotate again.
 
-   Never `SELECT decrypted_secret` in the dashboard SQL editor: the result is
-   stored in the editor's query history.
+   Never render the value in the dashboard at all. The SQL editor saves the
+   query text and displays the result on screen, so a `SELECT decrypted_secret`
+   there puts the secret somewhere you cannot reliably clear.
 
 3. Confirm the next scheduled pass is not 401:
 
@@ -1342,8 +1361,10 @@ entry, or a file on disk.
    `delete-due-accounts` only if it is active.
 
 **The gap between steps 1 and 2 is a 401 window, and it is self-healing.** Jobs
-firing in that window are rejected at the gateway and simply run again on their
-next tick: `process-sync-queue` rows stay `pending`, `delete-due-accounts` rows
+firing in that window are rejected by the receiver's own `x-cron-secret`
+comparison (`_shared/cronSecret.ts`) -- not by the gateway, which is not
+checking JWTs for these functions -- and simply run again on their next tick:
+`process-sync-queue` rows stay `pending`, `delete-due-accounts` rows
 stay `pending` (nothing is deleted), and `generate-insights` leaves the batch
 cursor where it was. Keep the window short anyway.
 
