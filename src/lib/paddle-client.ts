@@ -213,9 +213,7 @@ export async function openUpdatePaymentMethodCheckout({
 	}
 
 	if (!window.Paddle) {
-		throw new Error(
-			"Billing checkout is unavailable. Please try again.",
-		);
+		throw new Error("Billing checkout is unavailable. Please try again.");
 	}
 
 	window.Paddle.Checkout.open({

@@ -2,10 +2,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { z } from "zod";
 import {
-	billingAction,
-	type BillingActionName,
-} from "../../supabase/functions/_shared/billingAction.ts";
-import {
 	getEffectiveSubscriptionTier,
 	isStaleActiveSubscription,
 	type SubscriptionStatus,
@@ -14,6 +10,10 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
+import {
+	type BillingActionName,
+	billingAction,
+} from "../../supabase/functions/_shared/billingAction.ts";
 
 const subscriptionTierSchema = z.enum(["FREE", "EMBER", "FLAME", "INFERNO"]);
 const subscriptionStatusSchema = z.enum([

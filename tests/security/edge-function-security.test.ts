@@ -2,6 +2,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+	billingAction,
+	EXISTING_SUBSCRIPTION_HTTP_STATUS,
+	existingSubscriptionResponseBody,
+	mayOpenNewCheckout,
+} from "../../supabase/functions/_shared/billingAction.ts";
+import {
 	buildGarminWebhookPersistRow,
 	extractGarminProviderUserId,
 	type GarminIdentityCandidate,
@@ -16,12 +22,6 @@ import {
 	parsePaddlePaidTier,
 } from "../../supabase/functions/_shared/paddlePriceIds.ts";
 import { buildSubscriptionUpsertFromPaddleState } from "../../supabase/functions/_shared/paddleSubscriptionState.ts";
-import {
-	billingAction,
-	EXISTING_SUBSCRIPTION_HTTP_STATUS,
-	existingSubscriptionResponseBody,
-	mayOpenNewCheckout,
-} from "../../supabase/functions/_shared/billingAction.ts";
 import {
 	buildPaddleSubscriptionPatch,
 	resolvePaddleCancelRequest,
@@ -328,7 +328,11 @@ describe("Paddle webhook security helpers", () => {
 		// check out — signing would refuse it with 409 (F-022).
 		expect(
 			billingAction(
-				{ ...pastDue, status: "active", current_period_end: "2026-05-01T00:00:00Z" },
+				{
+					...pastDue,
+					status: "active",
+					current_period_end: "2026-05-01T00:00:00Z",
+				},
 				now,
 			),
 		).toMatchObject({ action: "refresh", reason: "entitlement_lapsed" });
