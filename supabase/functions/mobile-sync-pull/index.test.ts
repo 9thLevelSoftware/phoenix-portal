@@ -1,7 +1,6 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { CHILD_PAGE_SIZE } from "../_shared/pagedByParent.ts";
-import { createMobileSyncPullHandler } from "./index.ts";
 import { createMobileSyncPullHandler, STALE_OVERLAP_MS } from "./index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 
@@ -1760,6 +1759,64 @@ Deno.test({
 Deno.test({
   name:
     "integration: pull subscription gate denies no row and FREE with 402 and allows EMBER",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      const ownerLogs: unknown[][] = [];
+      const ownerRequest = () =>
+        requestFromBody({
+          ...validPullBody(),
+          profileId: fixture.ownerProfileId,
+        });
+
+      const allowed = await realPullHandler(fixture, fixture.ownerId, ownerLogs)(
+        ownerRequest(),
+      );
+      const allowedBody = await json(allowed);
+      assertEquals(allowed.status, 200, JSON.stringify(allowedBody));
+      assert(Array.isArray(allowedBody.sessions));
+
+      const removed = await fixture.admin.from("subscriptions").delete().eq(
+        "user_id",
+        fixture.ownerId,
+      );
+      if (removed.error) throw new Error("subscription row removal failed");
+      const noRow = await realPullHandler(fixture, fixture.ownerId, ownerLogs)(
+        ownerRequest(),
+      );
+      const noRowBody = await json(noRow);
+      assertEquals(noRow.status, 402, JSON.stringify(noRowBody));
+      assertEquals(noRowBody.error, "subscription_required");
+      assertEquals(noRowBody.currentTier, "FREE");
+
+      const downgraded = await fixture.admin.from("subscriptions")
+        .update({ tier: "FREE" })
+        .eq("user_id", fixture.otherId);
+      if (downgraded.error) throw new Error("subscription downgrade failed");
+      const otherLogs: unknown[][] = [];
+      const free = await realPullHandler(fixture, fixture.otherId, otherLogs)(
+        requestFromBody({
+          ...validPullBody(),
+          profileId: fixture.otherProfileId,
+        }),
+      );
+      const freeBody = await json(free);
+      assertEquals(free.status, 402, JSON.stringify(freeBody));
+      assertEquals(freeBody.error, "subscription_required");
+      assertEquals(freeBody.currentTier, "FREE");
+      assertEquals(ownerLogs, []);
+      assertEquals(otherLogs, []);
+    } finally {
+      await deleteLocalPullFixtureRows(
+        fixture.admin,
+        [fixture.ownerId, fixture.otherId],
+      );
+      await assertLocalPullFixtureClean(fixture);
+    }
+  },
+});
+
 // ─── lastSync request shapes against real SQL (PR 26) ──────────────────────
 // Every body below is the verbatim wire shape of the mobile client's
 // PortalSyncPullRequest (PortalApiClient.pullPortalPayload): kotlinx
@@ -1926,57 +1983,10 @@ async function pullOnce(
 Deno.test({
   name:
     "integration: shipping build shape (lastSync 0 + full known ids) returns every row",
-Deno.test({
-  name:
-    "integration: tombstones deleted routine and cycle reach the device that knows them, first page only",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
     const fixture = await createLocalPullFixture();
     try {
-      const ownerLogs: unknown[][] = [];
-      const ownerRequest = () =>
-        requestFromBody({
-          ...validPullBody(),
-          profileId: fixture.ownerProfileId,
-        });
-
-      const allowed = await realPullHandler(fixture, fixture.ownerId, ownerLogs)(
-        ownerRequest(),
-      );
-      const allowedBody = await json(allowed);
-      assertEquals(allowed.status, 200, JSON.stringify(allowedBody));
-      assert(Array.isArray(allowedBody.sessions));
-
-      const removed = await fixture.admin.from("subscriptions").delete().eq(
-        "user_id",
-        fixture.ownerId,
-      );
-      if (removed.error) throw new Error("subscription row removal failed");
-      const noRow = await realPullHandler(fixture, fixture.ownerId, ownerLogs)(
-        ownerRequest(),
-      );
-      const noRowBody = await json(noRow);
-      assertEquals(noRow.status, 402, JSON.stringify(noRowBody));
-      assertEquals(noRowBody.error, "subscription_required");
-      assertEquals(noRowBody.currentTier, "FREE");
-
-      const downgraded = await fixture.admin.from("subscriptions")
-        .update({ tier: "FREE" })
-        .eq("user_id", fixture.otherId);
-      if (downgraded.error) throw new Error("subscription downgrade failed");
-      const otherLogs: unknown[][] = [];
-      const free = await realPullHandler(fixture, fixture.otherId, otherLogs)(
-        requestFromBody({
-          ...validPullBody(),
-          profileId: fixture.otherProfileId,
-        }),
-      );
-      const freeBody = await json(free);
-      assertEquals(free.status, 402, JSON.stringify(freeBody));
-      assertEquals(freeBody.error, "subscription_required");
-      assertEquals(freeBody.currentTier, "FREE");
-      assertEquals(ownerLogs, []);
-      assertEquals(otherLogs, []);
       const now = Date.now();
       const known = emptyKnown();
       for (const table of PARITY_TABLES) {
@@ -2334,6 +2344,17 @@ Deno.test({
         [fixture.ownerId, fixture.otherId],
       );
       await assertLocalPullFixtureClean(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: tombstones deleted routine and cycle reach the device that knows them, first page only",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
       const routineId = crypto.randomUUID();
       const liveRoutineId = crypto.randomUUID();
       const cycleId = crypto.randomUUID();
@@ -2500,6 +2521,27 @@ function exerciseRows(count: number): Record<string, unknown>[] {
 }
 
 Deno.test("child paging: exact PAGE for one parent is HTTP 200", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) => {
+      if (name === "get_sessions_excluding_ids") {
+        return { data: [sessionRpcRow()], error: null };
+      }
+      return undefined;
+    },
+    fromPages: {
+      exercises: [{ data: exerciseRows(CHILD_PAGE_SIZE), error: null }],
+    },
+  });
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  assertEquals((body.sessions as unknown[]).length, 1);
+  assertEquals(
+    ((body.sessions as Array<{ exercises: unknown[] }>)[0].exercises).length,
+    CHILD_PAGE_SIZE,
+  );
+});
+
 Deno.test("PR 28: each pulled exercise carries cableCount (1, 2, or null when unknown)", async () => {
   const rows = exerciseRows(4);
   rows[0].cable_count = 1;
@@ -2514,18 +2556,12 @@ Deno.test("PR 28: each pulled exercise carries cableCount (1, 2, or null when un
       return undefined;
     },
     fromPages: {
-      exercises: [{ data: exerciseRows(CHILD_PAGE_SIZE), error: null }],
       exercises: [{ data: rows, error: null }],
     },
   });
   const response = await harness.handler(requestFromBody(validPullBody()));
   assertEquals(response.status, 200);
   const body = await json(response);
-  assertEquals((body.sessions as unknown[]).length, 1);
-  assertEquals(
-    ((body.sessions as Array<{ exercises: unknown[] }>)[0].exercises).length,
-    CHILD_PAGE_SIZE,
-  );
   const exercises =
     (body.sessions as Array<{ exercises: Array<Record<string, unknown>> }>)[0]
       .exercises;
@@ -2789,59 +2825,6 @@ const MOBILE_BADGE_NON_NULLABLE_DEFAULTED: Record<string, MobileWireType> = {
 
 Deno.test("null routine exercise flags and badge tier are pulled as the mobile defaults, never null", async () => {
   const routineId = "00000000-0000-4000-8000-0000000000a1";
-const PULL_ROUTINE_ID = "00000000-0000-4000-8000-000000000040";
-
-function routineExerciseRow(
-  id: string,
-  durationSeconds: number | null,
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> {
-  return {
-    ...routineExerciseBase(id, durationSeconds),
-    ...overrides,
-  };
-}
-
-function routineExerciseBase(
-  id: string,
-  durationSeconds: number | null,
-): Record<string, unknown> {
-  return {
-    id,
-    routine_id: PULL_ROUTINE_ID,
-    exercise_id: null,
-    catalog: null,
-    name: "Plank",
-    muscle_group: "Core",
-    sets: 3,
-    reps: 10,
-    weight: 0,
-    rest_seconds: 60,
-    duration_seconds: durationSeconds,
-    mode: "OLD_SCHOOL",
-    order_index: 0,
-    superset_id: null,
-    superset_color: null,
-    superset_order: null,
-    per_set_weights: null,
-    per_set_rest: null,
-    per_set_reps: null,
-    is_amrap: false,
-    is_bodyweight: true,
-    pr_percentage: null,
-    rep_count_timing: null,
-    stop_at_position: null,
-    stall_detection: true,
-    eccentric_load: null,
-    echo_level: null,
-    per_set_echo_levels: null,
-    warmup_sets: null,
-    drop_set_enabled: false,
-    drop_set_min_weight_kg: null,
-  };
-}
-
-Deno.test("routine exercise DTO carries durationSeconds (timed and rep-based)", async () => {
   const harness = makeHarness(async () => VALID_AUTH_RESULT, {
     rpcImpl: (name) => {
       if (name === "get_routines_excluding_ids") {
@@ -2856,15 +2839,6 @@ Deno.test("routine exercise DTO carries durationSeconds (timed and rep-based)", 
             times_completed: 0,
             is_favorite: false,
             updated_at: "2026-08-01T00:00:00+00:00",
-            id: PULL_ROUTINE_ID,
-            user_id: VALID_USER_ID,
-            name: "Timed routine",
-            description: "",
-            exercise_count: 2,
-            estimated_duration: 10,
-            times_completed: 0,
-            is_favorite: false,
-            updated_at: "2026-09-01T00:00:00.000Z",
           }],
           error: null,
         };
@@ -2929,8 +2903,6 @@ Deno.test("routine exercise DTO carries durationSeconds (timed and rep-based)", 
             stall_detection: false,
             catalog: null,
           },
-          routineExerciseRow("00000000-0000-4000-8000-000000000041", 45),
-          routineExerciseRow("00000000-0000-4000-8000-000000000042", null),
         ],
         error: null,
       }],
@@ -2986,6 +2958,242 @@ Deno.test({
           `external activity fixture failed: ${inserted.error.code} ${inserted.error.message}`,
         );
       }
+
+      const logs: unknown[][] = [];
+      const handler = realPullHandler(fixture, fixture.ownerId, logs);
+      const response = await handler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.ownerProfileId,
+      }));
+      const body = await json(response);
+      assertEquals(response.status, 200);
+      assertEquals(logs, []);
+      const dtos = body.externalActivities as Record<string, unknown>[];
+      const dto = dtos.find((candidate) => candidate.id === activityId);
+      assert(dto, "seeded external activity must be pulled");
+      assertDecodesAsMobileExternalActivity(dto);
+      assertEquals(dto.activityType, "strength");
+      assertEquals(dto.durationSeconds, 0);
+    } finally {
+      const deleted = await fixture.admin.from("external_activities").delete()
+        .eq("id", activityId);
+      await deleteLocalPullFixtureRows(fixture.admin, [
+        fixture.ownerId,
+        fixture.otherId,
+      ]);
+      if (deleted.error) {
+        throw new Error(
+          `external activity cleanup failed: ${deleted.error.code} ${deleted.error.message}`,
+        );
+      }
+    }
+    await assertLocalPullFixtureClean(fixture);
+  },
+});
+
+const PULL_ROUTINE_ID = "00000000-0000-4000-8000-000000000040";
+
+function routineExerciseRow(
+  id: string,
+  durationSeconds: number | null,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...routineExerciseBase(id, durationSeconds),
+    ...overrides,
+  };
+}
+
+function routineExerciseBase(
+  id: string,
+  durationSeconds: number | null,
+): Record<string, unknown> {
+  return {
+    id,
+    routine_id: PULL_ROUTINE_ID,
+    exercise_id: null,
+    catalog: null,
+    name: "Plank",
+    muscle_group: "Core",
+    sets: 3,
+    reps: 10,
+    weight: 0,
+    rest_seconds: 60,
+    duration_seconds: durationSeconds,
+    mode: "OLD_SCHOOL",
+    order_index: 0,
+    superset_id: null,
+    superset_color: null,
+    superset_order: null,
+    per_set_weights: null,
+    per_set_rest: null,
+    per_set_reps: null,
+    is_amrap: false,
+    is_bodyweight: true,
+    pr_percentage: null,
+    rep_count_timing: null,
+    stop_at_position: null,
+    stall_detection: true,
+    eccentric_load: null,
+    echo_level: null,
+    per_set_echo_levels: null,
+    warmup_sets: null,
+    drop_set_enabled: false,
+    drop_set_min_weight_kg: null,
+  };
+}
+
+Deno.test("routine exercise DTO carries durationSeconds (timed and rep-based)", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) => {
+      if (name === "get_routines_excluding_ids") {
+        return {
+          data: [{
+            id: PULL_ROUTINE_ID,
+            user_id: VALID_USER_ID,
+            name: "Timed routine",
+            description: "",
+            exercise_count: 2,
+            estimated_duration: 10,
+            times_completed: 0,
+            is_favorite: false,
+            updated_at: "2026-09-01T00:00:00.000Z",
+          }],
+          error: null,
+        };
+      }
+      return undefined;
+    },
+    fromPages: {
+      routine_exercises: [{
+        data: [
+          routineExerciseRow("00000000-0000-4000-8000-000000000041", 45),
+          routineExerciseRow("00000000-0000-4000-8000-000000000042", null),
+        ],
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  const routines = body.routines as Array<{
+    exercises: Array<Record<string, unknown>>;
+  }>;
+  assertEquals(routines.length, 1);
+  assertEquals(routines[0].exercises[0].durationSeconds, 45);
+  assertEquals(routines[0].exercises[1].durationSeconds, null);
+});
+
+Deno.test("routine exercise DTO passes the stored settings through in mobile's keys", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) =>
+      name === "get_routines_excluding_ids"
+        ? {
+          data: [{
+            id: PULL_ROUTINE_ID,
+            user_id: VALID_USER_ID,
+            name: "Echo routine",
+            description: "",
+            exercise_count: 1,
+            estimated_duration: 10,
+            times_completed: 0,
+            is_favorite: false,
+            updated_at: "2026-09-01T00:00:00.000Z",
+          }],
+          error: null,
+        }
+        : undefined,
+    fromPages: {
+      routine_exercises: [{
+        data: [
+          routineExerciseRow("00000000-0000-4000-8000-000000000041", null, {
+            mode: "ECHO",
+            eccentric_load: "LOAD_120",
+            echo_level: "EPIC",
+            rep_count_timing: "BOTTOM",
+            stop_at_position: "TOP",
+            superset_id: "00000000-0000-4000-8000-000000000049",
+            superset_color: "amber",
+            superset_order: 0,
+          }),
+        ],
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  const [exercise] = (body.routines as Array<{
+    exercises: Array<Record<string, unknown>>;
+  }>)[0].exercises;
+  assertEquals(
+    {
+      mode: exercise.mode,
+      eccentricLoad: exercise.eccentricLoad,
+      echoLevel: exercise.echoLevel,
+      repCountTiming: exercise.repCountTiming,
+      stopAtPosition: exercise.stopAtPosition,
+      supersetColor: exercise.supersetColor,
+      supersetOrder: exercise.supersetOrder,
+      durationSeconds: exercise.durationSeconds,
+    },
+    {
+      mode: "ECHO",
+      eccentricLoad: "LOAD_120",
+      echoLevel: "EPIC",
+      repCountTiming: "BOTTOM",
+      stopAtPosition: "TOP",
+      supersetColor: "amber",
+      supersetOrder: 0,
+      durationSeconds: null,
+    },
+  );
+});
+
+Deno.test("routine exercise durationSeconds on the real-lastSync (non-RPC) routines path", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    fromPages: {
+      routines: [{
+        data: [{
+          id: PULL_ROUTINE_ID,
+          user_id: VALID_USER_ID,
+          name: "Timed routine",
+          description: "",
+          exercise_count: 1,
+          estimated_duration: 10,
+          times_completed: 0,
+          is_favorite: false,
+          updated_at: "2026-09-01T00:00:00.000Z",
+        }],
+        error: null,
+      }],
+      routine_exercises: [{
+        data: [routineExerciseRow("00000000-0000-4000-8000-000000000041", 45)],
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    lastSync: 1_700_000_000_000,
+  }));
+  assertEquals(response.status, 200);
+  assert(
+    !harness.adminCalls.some((call) => call.name === "get_routines_excluding_ids"),
+    "expected the timestamp (non-RPC) routines path",
+  );
+  const body = await json(response);
+  const routines = body.routines as Array<{
+    exercises: Array<Record<string, unknown>>;
+  }>;
+  assertEquals(routines[0].exercises[0].durationSeconds, 45);
+});
+
 
 // ---------------------------------------------------------------------------
 // PR 25 review round 1, R-10 (critical). The pull must keep serving the
@@ -3043,17 +3251,6 @@ Deno.test({
         profileId: fixture.ownerProfileId,
       }));
       const body = await json(response);
-      assertEquals(response.status, 200);
-      assertEquals(logs, []);
-      const dtos = body.externalActivities as Record<string, unknown>[];
-      const dto = dtos.find((candidate) => candidate.id === activityId);
-      assert(dto, "seeded external activity must be pulled");
-      assertDecodesAsMobileExternalActivity(dto);
-      assertEquals(dto.activityType, "strength");
-      assertEquals(dto.durationSeconds, 0);
-    } finally {
-      const deleted = await fixture.admin.from("external_activities").delete()
-        .eq("id", activityId);
 
       assertEquals(response.status, 200);
       assertEquals(logs, []);
@@ -3124,59 +3321,6 @@ Deno.test({
         fixture.ownerId,
         fixture.otherId,
       ]);
-      if (deleted.error) {
-        throw new Error(
-          `external activity cleanup failed: ${deleted.error.code} ${deleted.error.message}`,
-        );
-      }
-    }
-    await assertLocalPullFixtureClean(fixture);
-  },
-
-  const response = await harness.handler(requestFromBody(validPullBody()));
-  assertEquals(response.status, 200);
-  const body = await json(response);
-  const routines = body.routines as Array<{
-    exercises: Array<Record<string, unknown>>;
-  }>;
-  assertEquals(routines.length, 1);
-  assertEquals(routines[0].exercises[0].durationSeconds, 45);
-  assertEquals(routines[0].exercises[1].durationSeconds, null);
-});
-
-Deno.test("routine exercise DTO passes the stored settings through in mobile's keys", async () => {
-  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
-    rpcImpl: (name) =>
-      name === "get_routines_excluding_ids"
-        ? {
-          data: [{
-            id: PULL_ROUTINE_ID,
-            user_id: VALID_USER_ID,
-            name: "Echo routine",
-            description: "",
-            exercise_count: 1,
-            estimated_duration: 10,
-            times_completed: 0,
-            is_favorite: false,
-            updated_at: "2026-09-01T00:00:00.000Z",
-          }],
-          error: null,
-        }
-        : undefined,
-    fromPages: {
-      routine_exercises: [{
-        data: [
-          routineExerciseRow("00000000-0000-4000-8000-000000000041", null, {
-            mode: "ECHO",
-            eccentric_load: "LOAD_120",
-            echo_level: "EPIC",
-            rep_count_timing: "BOTTOM",
-            stop_at_position: "TOP",
-            superset_id: "00000000-0000-4000-8000-000000000049",
-            superset_color: "amber",
-            superset_order: 0,
-          }),
-        ],
     }
   },
 });
@@ -3254,54 +3398,6 @@ Deno.test("pull emits null when the columns exist but nothing was device-reporte
   });
 
   const response = await harness.handler(requestFromBody(validPullBody()));
-  assertEquals(response.status, 200);
-  const body = await json(response);
-  const [exercise] = (body.routines as Array<{
-    exercises: Array<Record<string, unknown>>;
-  }>)[0].exercises;
-  assertEquals(
-    {
-      mode: exercise.mode,
-      eccentricLoad: exercise.eccentricLoad,
-      echoLevel: exercise.echoLevel,
-      repCountTiming: exercise.repCountTiming,
-      stopAtPosition: exercise.stopAtPosition,
-      supersetColor: exercise.supersetColor,
-      supersetOrder: exercise.supersetOrder,
-      durationSeconds: exercise.durationSeconds,
-    },
-    {
-      mode: "ECHO",
-      eccentricLoad: "LOAD_120",
-      echoLevel: "EPIC",
-      repCountTiming: "BOTTOM",
-      stopAtPosition: "TOP",
-      supersetColor: "amber",
-      supersetOrder: 0,
-      durationSeconds: null,
-    },
-  );
-});
-
-Deno.test("routine exercise durationSeconds on the real-lastSync (non-RPC) routines path", async () => {
-  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
-    fromPages: {
-      routines: [{
-        data: [{
-          id: PULL_ROUTINE_ID,
-          user_id: VALID_USER_ID,
-          name: "Timed routine",
-          description: "",
-          exercise_count: 1,
-          estimated_duration: 10,
-          times_completed: 0,
-          is_favorite: false,
-          updated_at: "2026-09-01T00:00:00.000Z",
-        }],
-        error: null,
-      }],
-      routine_exercises: [{
-        data: [routineExerciseRow("00000000-0000-4000-8000-000000000041", 45)],
   const body = await json(response);
 
   assertEquals(response.status, 200);
@@ -3343,22 +3439,6 @@ Deno.test("pull serves the device shadow stats, never the derived columns", asyn
       }],
     },
   });
-
-  const response = await harness.handler(requestFromBody({
-    ...validPullBody(),
-    lastSync: 1_700_000_000_000,
-  }));
-  assertEquals(response.status, 200);
-  assert(
-    !harness.adminCalls.some((call) => call.name === "get_routines_excluding_ids"),
-    "expected the timestamp (non-RPC) routines path",
-  );
-  const body = await json(response);
-  const routines = body.routines as Array<{
-    exercises: Array<Record<string, unknown>>;
-  }>;
-  assertEquals(routines[0].exercises[0].durationSeconds, 45);
-});
 
   const response = await harness.handler(requestFromBody(validPullBody()));
   const body = await json(response);

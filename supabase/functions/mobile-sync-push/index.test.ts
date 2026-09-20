@@ -11,16 +11,17 @@ import {
   scanJsonArrayElementSpans,
   scanTopLevelJsonObject,
 } from "../_shared/profilePreferenceContract.ts";
-import { createMobileSyncPushHandler } from "./index.ts";
-import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
-import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 import {
   broadcastSyncComplete,
   createMobileSyncPushHandler,
   localProfilesPushChangesRows,
 } from "./index.ts";
-import { SYNC_LWW_ENABLED } from "../_shared/flags.ts";
-import { SYNC_LWW_ENABLED as SYNC_LWW_ENABLED_IN_TEST } from "../_shared/flags.ts";
+import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
+import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
+import {
+  SYNC_LWW_ENABLED,
+  SYNC_LWW_ENABLED as SYNC_LWW_ENABLED_IN_TEST,
+} from "../_shared/flags.ts";
 
 interface ByteGoldens {
   version: number;
@@ -421,42 +422,50 @@ const DEFAULT_SUBSCRIPTION_RESULT = {
   },
   error: null,
 };
+
 type TableResultValue = { data: unknown; error: unknown; count?: number };
-/** A fixed result, or one chosen from the query's `.eq()` filters. */
+/**
+ * A fixed result, or one chosen from the query. The callback receives PR 12's
+ * chained operations AND PR 16's `.eq()` filters, so fixtures from either PR
+ * work unchanged (PR 16's take the second parameter).
+ */
 type TableResult =
   | TableResultValue
-  | ((eqFilters: Record<string, unknown>) => TableResultValue);
+  | ((
+    operations: QueryOperation[],
+    eqFilters: Record<string, unknown>,
+  ) => TableResultValue);
 
 function permissiveQuery(
   table: string,
   onWrite: (method: string, args: unknown[]) => void,
-  onWrite: (method: string, payload: unknown) => void,
-  terminalResult: { data: unknown; error: unknown; count?: number } = {
   terminalResult: TerminalResult = {
-  terminalResult: TableResult = {
     data: [],
     error: null,
     count: 0,
   },
   subscriptionResult: { data: unknown; error: unknown } =
     DEFAULT_SUBSCRIPTION_RESULT,
+
   writeError?: (method: string) => unknown,
   onCall?: (method: string, args: unknown[]) => void,
+
   onProbe: () => void = () => {},
   probeResult: unknown[] = [],
   onChain: (method: string, args: unknown[]) => void = () => {},
   resolveTerminal?: () => { data: unknown; error: unknown; count?: number },
-  writeError?: (method: string) => unknown,
-  onCall?: (method: string, args: unknown[]) => void,
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
   let injectedWriteError: unknown = null;
+
   const eqFilters: Record<string, unknown> = {};
   const chainMethods = [
     "select",
     "eq",
     "neq",
+    "gt",
+
     "gt",
     "gte",
     "in",
@@ -476,27 +485,16 @@ function permissiveQuery(
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
       onCall?.(method, args);
-      if (method === "neq") ownershipProbe = true;
-      if (method === "eq") eqFilters[String(args[0])] = args[1];
-      if (["insert", "upsert", "update", "delete"].includes(method)) {
-        onWrite(method, args);
-      onCall?.(method, args);
-      if (method === "neq") ownershipProbe = true;
       onChain(method, args);
+      operations.push({ name: method, args });
       if (method === "neq") {
         ownershipProbe = true;
         onProbe();
       }
+      if (method === "eq") eqFilters[String(args[0])] = args[1];
       if (["insert", "upsert", "update", "delete"].includes(method)) {
-        onWrite(method);
+        onWrite(method, args);
         injectedWriteError = writeError?.(method) ?? injectedWriteError;
-      operations.push({ name: method, args });
-      if (method === "neq") ownershipProbe = true;
-      if (["insert", "upsert", "update", "delete"].includes(method)) {
-        onWrite(method, args);
-        onWrite(method, args[0]);
-      if (["insert", "upsert", "update", "delete"].includes(method)) {
-        onWrite(method, args);
       }
       return query;
     };
@@ -516,19 +514,11 @@ function permissiveQuery(
       injectedWriteError
         ? { data: null, error: injectedWriteError }
         : ownershipProbe
-        ? { data: [], error: null, count: 0 }
-      ownershipProbe
         ? { data: probeResult, error: null, count: probeResult.length }
         : resolveTerminal
         ? resolveTerminal()
-      ownershipProbe
-        ? { data: [], error: null, count: 0 }
         : typeof terminalResult === "function"
-        ? terminalResult(operations)
-      ownershipProbe
-        ? { data: [], error: null, count: 0 }
-        : typeof terminalResult === "function"
-        ? terminalResult(eqFilters)
+        ? terminalResult(operations, eqFilters)
         : terminalResult,
     ).then(resolve, reject);
   return query;
@@ -560,14 +550,14 @@ function isCustomCatalogLookup(query: CatalogQuery): boolean {
     column === "is_custom" && value === true
   );
 }
+
 interface QueryOperation {
   name: string;
   args: unknown[];
 }
 
-type TerminalResult =
-  | { data: unknown; error: unknown; count?: number }
-  | ((operations: QueryOperation[]) => { data: unknown; error: unknown });
+/** PR 12's name for the same thing. */
+type TerminalResult = TableResult;
 
 interface PushHarness {
   handler: (request: Request) => Promise<Response>;
@@ -577,11 +567,13 @@ interface PushHarness {
   adminRpcCalls: Array<{ name: string; args: Record<string, unknown> }>;
   adminFromCalls: string[];
   adminWriteCalls: Array<{ table: string; method: string }>;
-  adminWritePayloads: Array<{ table: string; method: string; args: unknown[] }>;
+  adminWritePayloads: Array<
+    { table: string; method: string; args: unknown[]; payload: unknown }
+  >;
+
   ownershipProbeTables: string[];
   catalogQueries: CatalogQuery[];
-  adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
-  adminWritePayloads: Array<{ table: string; method: string; payload: unknown }>;
+
   adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
   loggerCalls: unknown[][];
   operationEvents: string[];
@@ -591,6 +583,7 @@ interface PushHarness {
   setAuthCalls: { value: number };
   subscribeCalls: { value: number };
   removeChannelCalls: { value: number };
+
   /** Every admin query builder with its chained calls and arguments. */
   adminQueries: AdminQueryRecord[];
 }
@@ -610,24 +603,28 @@ function makeHarness(
     /** Result of the get_personal_record_identity_candidates probe RPC. */
     personalRecordsResult?: { data: unknown; error: unknown };
     localProfilesResult?: { data: unknown; error: unknown };
+
     subscriptionResult?: { data: unknown; error: unknown };
-    /** Terminal result for non-write queries on a table (e.g. catalog rows). */
-    tableResults?: Record<string, { data: unknown; error: unknown }>;
+
+    /**
+     * Terminal result for reads/writes on a table (catalog rows, probes). A
+     * function receives the chained operations (PR 12) and the `.eq()` filters
+     * (PR 16).
+     */
+    tableResults?: Record<string, TableResult>;
     /** Error injected into a write, keyed `table:method` (e.g. `routines:delete`). */
     writeErrors?: Record<string, unknown>;
+
     foreignOwnedTables?: string[];
     now?: () => number;
     catalogBehavior?: (
       query: CatalogQuery,
     ) => { data: unknown; error: unknown } | undefined;
-    /**
-     * Terminal result for reads/writes on these tables (e.g. probes); a
-     * function receives the chained operations (select/in/... with args).
-     */
-    tableResults?: Record<string, TerminalResult>;
-    tableResults?: Record<string, TableResult>;
+
+
     /** Real clients for chosen tables (real-SQL tests); others stay mocked. */
     tableClients?: Record<string, { from(table: string): unknown }>;
+
     syncLwwEnabled?: boolean;
     catalogRows?: unknown[];
   } = {},
@@ -640,15 +637,12 @@ function makeHarness(
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
   const adminWritePayloads: Array<
-    { table: string; method: string; args: unknown[] }
+    { table: string; method: string; args: unknown[]; payload: unknown }
   > = [];
+
   const ownershipProbeTables: string[] = [];
   const catalogQueries: CatalogQuery[] = [];
-  const adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }> =
-    [];
-  const adminWriteArgs: Array<
-    { table: string; method: string; args: unknown[] }
-    { table: string; method: string; payload: unknown }
+
   const adminWriteArgs: Array<
     { table: string; method: string; args: unknown[] }
   > = [];
@@ -662,6 +656,7 @@ function makeHarness(
   const subscribeCalls = { value: 0 };
   const setAuthCalls = { value: 0 };
   const removeChannelCalls = { value: 0 };
+
   const adminQueries: AdminQueryRecord[] = [];
 
   const admin = {
@@ -674,45 +669,33 @@ function makeHarness(
     from(table: string) {
       if (options.fromError !== undefined) throw options.fromError;
       adminFromCalls.push(table);
-      return permissiveQuery(table, (method, args) => {
-      const catalogQuery: CatalogQuery | null = table === "exercise_catalog"
-        ? { calls: [] }
-        : null;
-      if (catalogQuery) catalogQueries.push(catalogQuery);
-      return permissiveQuery(table, (method) => {
-        adminWriteCalls.push({ table, method });
-        adminWritePayloads.push({ table, method, args });
-        operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records"
-        ? options.personalRecordsResult
-        : table === "local_profiles"
-        ? options.localProfilesResult
-        : undefined);
-      }, table === "personal_records" ? options.personalRecordsResult : undefined,
-        options.subscriptionResult);
       const realClient = options.tableClients?.[table];
       if (realClient) return realClient.from(table);
       const record: AdminQueryRecord = { table, calls: [] };
       adminQueries.push(record);
-      return permissiveQuery(
-        table,
-        (method) => {
-          adminWriteCalls.push({ table, method });
+      const catalogQuery: CatalogQuery | null = table === "exercise_catalog"
+        ? { calls: [] }
+        : null;
+      if (catalogQuery) catalogQueries.push(catalogQuery);
       return permissiveQuery(
         table,
         (method, args) => {
           adminWriteCalls.push({ table, method });
+          // `args` is PR 22's shape, `payload` PR 57's (the first argument).
+          adminWritePayloads.push({ table, method, args, payload: args[0] });
           adminWriteArgs.push({ table, method, args });
           operationEvents.push(`write:${table}:${method}`);
         },
         table === "personal_records"
           ? options.personalRecordsResult
+          : table === "local_profiles"
+          ? options.localProfilesResult
+          : table === "exercise_catalog" && options.catalogRows
+          ? { data: options.catalogRows, error: null }
           : options.tableResults?.[table],
+        options.subscriptionResult,
         (method) => options.writeErrors?.[`${table}:${method}`],
         (method, args) => record.calls.push({ method, args }),
-      );
-      },
-        table === "personal_records" ? options.personalRecordsResult : undefined,
         () => ownershipProbeTables.push(table),
         (options.foreignOwnedTables ?? []).includes(table)
           ? [{ id: "foreign-row" }]
@@ -722,23 +705,8 @@ function makeHarness(
           ? () =>
             options.catalogBehavior!(catalogQuery) ??
               { data: [], error: null, count: 0 }
-          : undefined);
-        adminWriteCalls.push({ table, method });
-        adminWriteArgs.push({ table, method, args });
-        operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records"
-        ? options.personalRecordsResult
-        : options.tableResults?.[table]);
+          : undefined,
       );
-      return permissiveQuery(table, (method, payload) => {
-        adminWriteCalls.push({ table, method });
-        adminWritePayloads.push({ table, method, payload });
-        operationEvents.push(`write:${table}:${method}`);
-      });
-      );
-        : table === "exercise_catalog" && options.catalogRows
-        ? { data: options.catalogRows, error: null }
-        : undefined);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -832,7 +800,6 @@ function makeHarness(
     },
     logOperationalFailure: ((...args: unknown[]) => loggerCalls.push(args)),
     now: options.now ?? (() => 1_784_167_200_000),
-    now: () => 1_784_167_200_000,
     syncLwwEnabled: options.syncLwwEnabled,
   } as never);
 
@@ -845,8 +812,10 @@ function makeHarness(
     adminFromCalls,
     adminWriteCalls,
     adminWritePayloads,
+
     ownershipProbeTables,
     catalogQueries,
+
     adminWriteArgs,
     loggerCalls,
     operationEvents,
@@ -856,6 +825,7 @@ function makeHarness(
     setAuthCalls,
     subscribeCalls,
     removeChannelCalls,
+
     adminQueries,
   };
 }
@@ -2710,6 +2680,22 @@ Deno.test("external activity synced_at is server time, never the client's synced
       startedAt: "2020-01-01T00:00:00.000Z",
       durationSeconds: 600,
       syncedAt: "2020-01-01T00:05:00.000Z",
+    }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.syncTime, "2026-07-16T02:00:00.000Z");
+  const upserts = harness.adminWritePayloads.filter((call) =>
+    call.table === "external_activities" && call.method === "upsert"
+  );
+  assertEquals(upserts.length, 1);
+  const rows = upserts[0].args[0] as Array<Record<string, unknown>>;
+  assertEquals(rows.length, 1);
+  assertEquals(rows[0].synced_at, "2026-07-16T02:00:00.000Z");
+  assertEquals(rows[0].started_at, "2020-01-01T00:00:00.000Z");
+});
+
 // PR 22 (F-024): required sub-step failures fail the push with a retryable
 // 503 instead of a 200 that lets mobile advance lastSync and drop the work.
 const PARTIAL_WRITE_BODY = {
@@ -2815,10 +2801,6 @@ const CATALOG_RESULT = {
   error: null,
 };
 
-Deno.test("VBT insert failure keeps 200 and reports failed.assessments", async () => {
-  const harness = makeHarness(undefined, {
-    tableResults: { exercise_catalog: CATALOG_RESULT },
-    writeErrors: { "vbt_assessments:insert": INJECTED_DB_ERROR },
 Deno.test("VBT upsert failure keeps 200 and reports failed.assessments", async () => {
   const harness = makeHarness(undefined, {
     tableResults: { exercise_catalog: CATALOG_RESULT },
@@ -2840,7 +2822,6 @@ Deno.test("VBT upsert failure keeps 200 and reports failed.assessments", async (
 
 Deno.test("successful push reports an empty failed map", async () => {
   const harness = makeHarness(undefined, {
-    tableResults: { exercise_catalog: CATALOG_RESULT },
     tableResults: {
       exercise_catalog: CATALOG_RESULT,
       // What `.upsert(...).select('id')` returns: the rows actually inserted.
@@ -2859,9 +2840,6 @@ Deno.test("successful push reports an empty failed map", async () => {
     externalActivities: [],
   });
   // The client id used for failure reporting must never reach PostgREST.
-  const inserts = writeQueries(harness, "vbt_assessments", "insert");
-  assertEquals(inserts.length, 1);
-  const rows = callArgs(inserts[0]!, "insert")[0] as Array<
   const upserts = writeQueries(harness, "vbt_assessments", "upsert");
   assertEquals(upserts.length, 1);
   const rows = callArgs(upserts[0]!, "upsert")[0] as Array<
@@ -3211,16 +3189,6 @@ Deno.test("external activity upsert failure reports failed.externalActivities wi
   }));
   const body = await json(response);
 
-  assertEquals(response.status, 200);
-  assertEquals(body.syncTime, "2026-07-16T02:00:00.000Z");
-  const upserts = harness.adminWritePayloads.filter((call) =>
-    call.table === "external_activities" && call.method === "upsert"
-  );
-  assertEquals(upserts.length, 1);
-  const rows = upserts[0].args[0] as Array<Record<string, unknown>>;
-  assertEquals(rows.length, 1);
-  assertEquals(rows[0].synced_at, "2026-07-16T02:00:00.000Z");
-  assertEquals(rows[0].started_at, "2020-01-01T00:00:00.000Z");
   assertEquals(response.status, 200, JSON.stringify(body));
   assertEquals(body.externalActivitiesUpserted, 0);
   assertEquals(body.externalActivityKeys, []);
@@ -3394,9 +3362,6 @@ function tombstoneRpcBehavior(
         error: null,
       };
     }
-    if (
-      name === "upsert_routine_lww" || name === "upsert_training_cycle_lww"
-    ) {
     if (name === "upsert_routine_lww") {
       // LWW on: accept every row so children are written.
       return {
@@ -3435,14 +3400,6 @@ function parentWriteIds(
   harness: PushHarness,
   table: "routines" | "training_cycles",
 ): string[] {
-  const rpcName = table === "routines"
-    ? "upsert_routine_lww"
-    : "upsert_training_cycle_lww";
-  const viaUpsert = harness.adminWriteArgs
-    .filter((call) => call.table === table && call.method === "upsert")
-    .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id));
-  const viaRpc = harness.adminRpcCalls
-    .filter((call) => call.name === rpcName)
   const viaUpsert = harness.adminWriteArgs
     .filter((call) => call.table === table && call.method === "upsert")
     .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id));
@@ -3735,12 +3692,6 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a deleted cycle beside a live o
     upsertedRows(harness, "cycle_days").map((row) => row.cycle_id),
     [LIVE_CYCLE_ID],
   );
-  // Orphan-day cleanup only touches the live cycle.
-  assertEquals(
-    harness.adminWriteArgs.filter((call) =>
-      call.table === "cycle_days" && call.method === "delete"
-    ).length,
-    1,
   // Orphan-day cleanup runs inside the merge, which only received the live
   // cycle; nothing touches cycle_days directly.
   assertEquals(
@@ -3778,6 +3729,112 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle day pointing at another
   assertEquals(parentWriteIds(harness, "training_cycles"), []);
   assertEquals(
     harness.adminWriteCalls.filter((call) => call.table === "cycle_days"),
+    [],
+  );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a routine deleted concurrently with the push is deleted again and its day reference cleared`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    // The lookup saw no tombstone, but one appears for the routine before the
+    // post-write race check.
+    tableResults: {
+      sync_tombstones: (_operations, filters) => ({
+        data: filters.entity === "routine"
+          ? [{ entity_id: TOMB_ROUTINE_ID }]
+          : [],
+        error: null,
+      }),
+    },
+  });
+  const response = await harness.handler(
+    requestFromBody(oldBuildRoutineAndCycleBody()),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, {
+    routines: [TOMB_ROUTINE_ID],
+    cycles: [],
+  });
+  assertEquals(body.routinesUpserted, 0);
+  const routineDeletes = harness.adminWriteArgs.filter((call) =>
+    call.table === "routines" && call.method === "delete"
+  );
+  assertEquals(routineDeletes.length, 1);
+  const days = upsertedRows(harness, "cycle_days");
+  assertEquals(days.length, 1);
+  assertEquals(days[0].routine_id, null);
+  // Cycle kept: no cycle tombstone appeared.
+  assertEquals(parentWriteIds(harness, "training_cycles"), [TOMB_CYCLE_ID]);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "training_cycles" && call.method === "delete"
+    ),
+    [],
+  );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle deleted concurrently with the push is deleted again`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    tableResults: {
+      sync_tombstones: (_operations, filters) => ({
+        data: filters.entity === "cycle" ? [{ entity_id: TOMB_CYCLE_ID }] : [],
+        error: null,
+      }),
+    },
+  });
+  const response = await harness.handler(
+    requestFromBody(oldBuildRoutineAndCycleBody()),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [TOMB_CYCLE_ID] });
+  assertEquals(body.cyclesUpserted, 0);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "training_cycles" && call.method === "delete"
+    ).length,
+    1,
+  );
+  // The merge accepted it (structure applied), but the re-deleted cycle must
+  // not hand the device a base for a row that no longer exists (review R-11).
+  assertEquals(mergedCycles(harness).map((c) => c.id), [TOMB_CYCLE_ID]);
+  assertEquals(body.cycleVersions, {});
+});
+
+Deno.test("tombstones: a push without routines or cycles makes no tombstone lookup", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(validPushBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
+  assertEquals(
+    harness.adminRpcCalls.filter((call) => call.name === "get_sync_tombstones"),
+    [],
+  );
+});
+
+Deno.test("tombstones: a failed lookup fails the push before any routine or cycle write", async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([], {
+      name: "PostgrestError",
+      message: "lookup failed",
+    }),
+  });
+  const response = await harness.handler(
+    requestFromBody(oldBuildRoutineAndCycleBody()),
+  );
+
+  assertEquals(response.status, 500);
+  assertEquals(parentWriteIds(harness, "routines"), []);
+  assertEquals(parentWriteIds(harness, "training_cycles"), []);
+  assertEquals(upsertedRows(harness, "cycle_days"), []);
+});
+
 // PR 57: in-memory stand-in for personal_records behind the two service-role
 // RPCs. The identity mirrors uq_personal_records_set_derived_identity
 // (20260920005700_personal_records_source_identity.sql).
@@ -4134,108 +4191,6 @@ Deno.test("PR 57: the probe also looks dedicated ids up, so a moved tombstone ca
   );
 });
 
-Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a routine deleted concurrently with the push is deleted again and its day reference cleared`, async () => {
-  const harness = makeHarness(undefined, {
-    rpcBehavior: tombstoneRpcBehavior([]),
-    // The lookup saw no tombstone, but one appears for the routine before the
-    // post-write race check.
-    tableResults: {
-      sync_tombstones: (filters) => ({
-        data: filters.entity === "routine"
-          ? [{ entity_id: TOMB_ROUTINE_ID }]
-          : [],
-        error: null,
-      }),
-    },
-  });
-  const response = await harness.handler(
-    requestFromBody(oldBuildRoutineAndCycleBody()),
-  );
-  const body = await json(response);
-
-  assertEquals(response.status, 200, JSON.stringify(body));
-  assertEquals(body.skippedDeleted, {
-    routines: [TOMB_ROUTINE_ID],
-    cycles: [],
-  });
-  assertEquals(body.routinesUpserted, 0);
-  const routineDeletes = harness.adminWriteArgs.filter((call) =>
-    call.table === "routines" && call.method === "delete"
-  );
-  assertEquals(routineDeletes.length, 1);
-  const days = upsertedRows(harness, "cycle_days");
-  assertEquals(days.length, 1);
-  assertEquals(days[0].routine_id, null);
-  // Cycle kept: no cycle tombstone appeared.
-  assertEquals(parentWriteIds(harness, "training_cycles"), [TOMB_CYCLE_ID]);
-  assertEquals(
-    harness.adminWriteCalls.filter((call) =>
-      call.table === "training_cycles" && call.method === "delete"
-    ),
-    [],
-  );
-});
-
-Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle deleted concurrently with the push is deleted again`, async () => {
-  const harness = makeHarness(undefined, {
-    rpcBehavior: tombstoneRpcBehavior([]),
-    tableResults: {
-      sync_tombstones: (filters) => ({
-        data: filters.entity === "cycle" ? [{ entity_id: TOMB_CYCLE_ID }] : [],
-        error: null,
-      }),
-    },
-  });
-  const response = await harness.handler(
-    requestFromBody(oldBuildRoutineAndCycleBody()),
-  );
-  const body = await json(response);
-
-  assertEquals(response.status, 200, JSON.stringify(body));
-  assertEquals(body.skippedDeleted, { routines: [], cycles: [TOMB_CYCLE_ID] });
-  assertEquals(body.cyclesUpserted, 0);
-  assertEquals(
-    harness.adminWriteCalls.filter((call) =>
-      call.table === "training_cycles" && call.method === "delete"
-    ).length,
-    1,
-  );
-  // The merge accepted it (structure applied), but the re-deleted cycle must
-  // not hand the device a base for a row that no longer exists (review R-11).
-  assertEquals(mergedCycles(harness).map((c) => c.id), [TOMB_CYCLE_ID]);
-  assertEquals(body.cycleVersions, {});
-});
-
-Deno.test("tombstones: a push without routines or cycles makes no tombstone lookup", async () => {
-  const harness = makeHarness();
-  const response = await harness.handler(requestFromBody(validPushBody()));
-  const body = await json(response);
-
-  assertEquals(response.status, 200);
-  assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
-  assertEquals(
-    harness.adminRpcCalls.filter((call) => call.name === "get_sync_tombstones"),
-    [],
-  );
-});
-
-Deno.test("tombstones: a failed lookup fails the push before any routine or cycle write", async () => {
-  const harness = makeHarness(undefined, {
-    rpcBehavior: tombstoneRpcBehavior([], {
-      name: "PostgrestError",
-      message: "lookup failed",
-    }),
-  });
-  const response = await harness.handler(
-    requestFromBody(oldBuildRoutineAndCycleBody()),
-  );
-
-  assertEquals(response.status, 500);
-  assertEquals(parentWriteIds(harness, "routines"), []);
-  assertEquals(parentWriteIds(harness, "training_cycles"), []);
-  assertEquals(upsertedRows(harness, "cycle_days"), []);
-});
-
 // ---------------------------------------------------------------------------
 // KD-6 (PR 18): cycles go through merge_training_cycles_from_push for both
 // SYNC_LWW_ENABLED values. The SQL behaviour is covered by the real-SQL
@@ -4454,7 +4409,7 @@ Deno.test("present empty preference field is evaluated without an RPC", async ()
       assessments: [],
       externalActivities: [],
     },
-    skippedDeleted: { routines: [], cycles: [] },
+
     skippedDeleted: { routines: [], cycles: [] },
     cycleVersions: {},
     profilePreferencesAccepted: true,
@@ -4809,6 +4764,244 @@ for (const testCase of malformedRpcCases) {
     assertEquals(harness.loggerCalls, [[{ name: testCase.expectedName }]]);
   });
 }
+
+
+const DEVICE_STATS = {
+  userId: VALID_USER_ID,
+  // A crafted device claim for every server-derived counter.
+  totalWorkouts: 10_000,
+  totalReps: 999_999,
+  totalVolumeKg: 8_888_888,
+  totalTimeSeconds: 777_777,
+  longestStreak: 7,
+  currentStreak: 3,
+};
+
+const DEVICE_RPG = {
+  userId: VALID_USER_ID,
+  strength: 11,
+  power: 12,
+  stamina: 13,
+  consistency: 14,
+  mastery: 15,
+  characterClass: "FORGE",
+  level: 4,
+  experiencePoints: 1234,
+};
+
+Deno.test("stats push sends only device-owned columns through the LWW RPCs", async () => {
+  const harness = makeHarness();
+  const body = validPushBody();
+  body.profileId = "default";
+  body.allProfiles = [{ id: "default", name: "Default", colorIndex: 0 }];
+  // Two workouts: the newest one is the last-workout date the write carries.
+  body.sessions = [
+    {
+      id: SESSION_ID,
+      userId: VALID_USER_ID,
+      name: "Older workout",
+      startedAt: "2026-07-09T08:00:00.000Z",
+    },
+    {
+      id: MISMATCH_ID,
+      userId: VALID_USER_ID,
+      name: "Newest workout",
+      startedAt: "2026-07-11T12:00:00.000Z",
+    },
+  ];
+  body.gamificationStats = DEVICE_STATS;
+  body.rpgAttributes = DEVICE_RPG;
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  const lastWorkoutAt = "2026-07-11T12:00:00.000Z";
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "upsert_gamification_stats_lww"
+    ).map((call) => call.args.p_rows),
+    [[{
+      user_id: VALID_USER_ID,
+      // The device's own numbers go to the SHADOW columns, which
+      // mobile-sync-pull serves straight back to it. No derived counter and
+      // no streak is on the wire to the RPC (R-10).
+      device_total_workouts: 10_000,
+      device_total_reps: 999_999,
+      device_total_volume_kg: 8_888_888,
+      device_total_time_seconds: 777_777,
+      device_longest_streak: 7,
+      device_current_streak: 3,
+      last_workout_at: lastWorkoutAt,
+    }]],
+  );
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "upsert_rpg_attributes_lww"
+    ).map((call) => call.args.p_rows),
+    [[{
+      user_id: VALID_USER_ID,
+      strength: 11,
+      power: 12,
+      stamina: 13,
+      consistency: 14,
+      mastery: 15,
+      character_class: "FORGE",
+      level: 4,
+      experience_points: 1234,
+      last_workout_at: lastWorkoutAt,
+    }]],
+  );
+  // Both flag paths use the RPC; nothing writes these tables directly any
+  // more, so no server `new Date()` stamp reaches them either (F-070).
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "gamification_stats" || call.table === "rpg_attributes"
+    ),
+    [],
+  );
+});
+
+Deno.test("every push recomputes the server-derived counters, even without stats", async () => {
+  const harness = makeHarness();
+
+  const response = await harness.handler(requestFromBody(validPushBody()));
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "recompute_gamification_stats"
+    ),
+    [{
+      name: "recompute_gamification_stats",
+      args: { p_user_id: VALID_USER_ID },
+    }],
+  );
+});
+
+Deno.test("a stats-only push carries no last-workout date", async () => {
+  const harness = makeHarness();
+  const body = validPushBody();
+  body.gamificationStats = DEVICE_STATS;
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    harness.adminRpcCalls.find((call) =>
+      call.name === "upsert_gamification_stats_lww"
+    )?.args.p_rows,
+    [{
+      user_id: VALID_USER_ID,
+      device_total_workouts: 10_000,
+      device_total_reps: 999_999,
+      device_total_volume_kg: 8_888_888,
+      device_total_time_seconds: 777_777,
+      device_longest_streak: 7,
+      device_current_streak: 3,
+      last_workout_at: null,
+    }],
+  );
+});
+
+Deno.test("a future-dated startedAt is clamped to the server clock", async () => {
+  // R-2 / R-11 / R-24: startedAt is only checked for parseability, so a
+  // skewed phone clock or a crafted payload could otherwise park the
+  // conflict key in 2099 and freeze every device-reported column against
+  // every later honest push, with no path back down.
+  const harness = makeHarness();
+  const body = validPushBody();
+  body.profileId = "default";
+  body.allProfiles = [{ id: "default", name: "Default", colorIndex: 0 }];
+  body.sessions = [{
+    id: SESSION_ID,
+    userId: VALID_USER_ID,
+    name: "Clock-skewed workout",
+    startedAt: "2099-01-01T00:00:00.000Z",
+  }];
+  body.gamificationStats = DEVICE_STATS;
+  body.rpgAttributes = DEVICE_RPG;
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  const keys = harness.adminRpcCalls
+    .filter((call) =>
+      call.name === "upsert_gamification_stats_lww" ||
+      call.name === "upsert_rpg_attributes_lww"
+    )
+    .map((call) =>
+      ((call.args.p_rows as Array<Record<string, unknown>>)[0]).last_workout_at
+    );
+  // The harness clock is 2026-07-16T02:00:00.000Z.
+  assertEquals(keys, [
+    "2026-07-16T02:00:00.000Z",
+    "2026-07-16T02:00:00.000Z",
+  ]);
+});
+
+Deno.test("a failed recompute FAILS OPEN: the push still succeeds and broadcasts", async () => {
+  // Review round 1 (R-1) deliberately reverses the previous expectation
+  // ("a failed recompute fails the push"). The recompute runs in its own
+  // transaction AFTER every write has committed, so throwing returned 500
+  // for a push whose data all landed, suppressed the sync_complete
+  // broadcast, and made the device retry the whole payload — re-running the
+  // same full-history recompute on every batch of a multi-batch import. On a
+  // large history that meets a statement_timeout that is a permanent
+  // sync-failure loop. The counters are self-healing, so a stale counter
+  // beats a wedged sync.
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) =>
+      name === "recompute_gamification_stats"
+        ? { data: null, error: { message: "recompute boom" } }
+        : { data: [], error: null },
+  });
+
+  const response = await harness.handler(requestFromBody(validPushBody()));
+
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  assertEquals(harness.loggerCalls, [[{ name: "GamificationRecomputeFailure" }]]);
+  // Step 15 still runs, so the portal is told to refresh.
+  assertEquals(harness.broadcastPayloads.length, 1);
+});
+
+Deno.test("flag-off keeps the rejection response contract for stats and rpg", async () => {
+  // R-18: both flag paths now call the RPCs, so the `if (SYNC_LWW_ENABLED)`
+  // guard is the only thing keeping `rejections` empty when the flag is off.
+  // Nothing exercised it before, because the default rpcBehavior never
+  // returns accepted: false.
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) =>
+      name === "upsert_gamification_stats_lww" ||
+        name === "upsert_rpg_attributes_lww"
+        ? {
+          data: [{
+            id: VALID_USER_ID,
+            accepted: false,
+            server_updated_at: "2026-07-10T00:00:00.000Z",
+          }],
+          error: null,
+        }
+        : { data: [], error: null },
+  });
+  const body = validPushBody();
+  body.gamificationStats = DEVICE_STATS;
+  body.rpgAttributes = DEVICE_RPG;
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  const payload = await json(response) as {
+    rejections?: {
+      gamificationStats?: unknown[];
+      rpgAttributes?: unknown[];
+    };
+  };
+  const expected = SYNC_LWW_ENABLED_IN_TEST
+    ? [{ id: VALID_USER_ID, serverUpdatedAt: "2026-07-10T00:00:00.000Z" }]
+    : [];
+  assertEquals(payload.rejections?.gamificationStats ?? [], expected);
+  assertEquals(payload.rejections?.rpgAttributes ?? [], expected);
+});
 
 interface LocalIntegrationFixture {
   admin: SupabaseClient;
@@ -5301,6 +5494,10 @@ Deno.test({
           );
         }
       }
+    }
+  },
+});
+
 // ---------------------------------------------------------------------------
 // PR 20 (F-009): replace_session_children keeps stored telemetry when a
 // session is re-pushed without it. Real SQL against the local stack.
@@ -5750,6 +5947,13 @@ Deno.test({
         );
       }
     } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
     "integration: set-derived PR concurrent and repeated pushes converge to one row, stay deleted once tombstoned, and a dedicated twin stays distinct",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
@@ -6463,6 +6667,150 @@ async function deleteGateFixture(
 async function createGateFixture(
   subscription: Record<string, unknown> | null,
 ): Promise<GateFixture> {
+  assert(localIntegrationEnvironment);
+  const admin = createClient(
+    localIntegrationEnvironment.url,
+    localIntegrationEnvironment.serviceRoleKey,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const created = await admin.auth.admin.createUser({
+    email: `pr6-gate-${crypto.randomUUID()}@example.invalid`,
+    email_confirm: true,
+  });
+  if (created.error || !created.data.user) {
+    throw new Error("gate fixture user creation failed");
+  }
+  const userId = created.data.user.id;
+  try {
+    if (subscription !== null) {
+      const inserted = await admin.from("subscriptions").insert({
+        user_id: userId,
+        ...subscription,
+      });
+      if (inserted.error) throw new Error("gate fixture subscription failed");
+    }
+    return { admin, userId };
+  } catch (error) {
+    await deleteGateFixture(admin, userId);
+    throw error;
+  }
+}
+
+// Real SQL, but the realtime broadcast is recorded instead of opening a
+// websocket (which would leak past the test).
+function realGatePushHandler(
+  fixture: GateFixture,
+  broadcastTopics: string[] = [],
+): (request: Request) => Promise<Response> {
+  const admin = new Proxy(fixture.admin, {
+    get(target, property, receiver) {
+      if (property === "channel") {
+        return (topic: string) => ({
+          subscribe(callback: (status: string) => void) {
+            callback("SUBSCRIBED");
+            return {};
+          },
+          async send() {
+            broadcastTopics.push(topic);
+            return "ok";
+          },
+        });
+      }
+      if (property === "removeChannel") return async () => "ok";
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.userId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      return admin;
+    },
+    logOperationalFailure: () => {},
+    now: () => 1_784_167_200_000,
+  } as never);
+}
+
+async function countGateSessions(
+  fixture: GateFixture,
+  sessionId: string,
+): Promise<number> {
+  const audit = await fixture.admin.from("workout_sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("id", sessionId);
+  if (audit.error) throw new Error("gate session audit failed");
+  return audit.count ?? -1;
+}
+
+for (
+  const [label, subscription] of [
+    ["no subscriptions row", null],
+    ["an active FREE row", {
+      tier: "FREE",
+      status: "active",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+    }],
+  ] as const
+) {
+  Deno.test({
+    name:
+      `integration: push subscription gate denies ${label} with 402 and writes nothing`,
+    ignore: localIntegrationEnvironment === null,
+    fn: async () => {
+      const fixture = await createGateFixture(subscription);
+      try {
+        const sessionId = crypto.randomUUID();
+        const broadcastTopics: string[] = [];
+        const response = await realGatePushHandler(fixture, broadcastTopics)(
+          requestFromBody(singleSessionPushBody(sessionId, fixture.userId)),
+        );
+        const body = await json(response);
+        assertEquals(response.status, 402, JSON.stringify(body));
+        assertEquals(body.error, "subscription_required");
+        assertEquals(body.currentTier, "FREE");
+        assertEquals(await countGateSessions(fixture, sessionId), 0);
+        assertEquals(broadcastTopics, []);
+      } finally {
+        await deleteGateFixture(fixture.admin, fixture.userId);
+      }
+    },
+  });
+}
+
+Deno.test({
+  name: "integration: push subscription gate lets an active EMBER row write",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createGateFixture({
+      tier: "EMBER",
+      status: "active",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+    });
+    try {
+      const sessionId = crypto.randomUUID();
+      const broadcastTopics: string[] = [];
+      const response = await realGatePushHandler(fixture, broadcastTopics)(
+        requestFromBody(singleSessionPushBody(sessionId, fixture.userId)),
+      );
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+      assertEquals(await countGateSessions(fixture, sessionId), 1);
+      assertEquals(broadcastTopics, [`sync:${fixture.userId}`]);
+    } finally {
+      await deleteGateFixture(fixture.admin, fixture.userId);
+    }
+  },
+});
+
+
 // PR 58 (F-073, F-039): each client-supplied primary key is probed for
 // ownership exactly once, in the up-front directOwnerChecks pass.
 const DIRECT_OWNERSHIP_TABLES = [
@@ -6714,75 +7062,12 @@ interface CatalogIntegrationFixture {
 async function createCatalogIntegrationFixture(): Promise<
   CatalogIntegrationFixture
 > {
-// KD-4 real-SQL: routine/cycle tombstones through the real push handler.
-// Every table write goes to the local stack (no query doubles); only the
-// realtime broadcast is stubbed so the test leaves no socket open.
-// ---------------------------------------------------------------------------
-
-interface TombstonePushFixture {
-  admin: SupabaseClient;
-  ownerId: string;
-  email: string;
-  password: string;
-}
-
-const TOMBSTONE_FIXTURE_TABLES = [
-  "local_profiles",
-  "subscriptions",
-  "rate_limit_tracking",
-  "sync_tombstones",
-];
-
-async function deleteTombstonePushFixture(
-  admin: SupabaseClient,
-  userIds: string[],
-): Promise<void> {
-  if (userIds.length === 0) return;
-  for (const userId of userIds) {
-    // Cascades routines, cycles and their children. The tombstone trigger
-    // records nothing for a user whose auth row is gone.
-    const deleted = await admin.auth.admin.deleteUser(userId);
-    if (deleted.error) throw new Error("auth fixture cleanup failed");
-  }
-  for (const table of TOMBSTONE_FIXTURE_TABLES) {
-    const deleted = await admin.from(table).delete().in("user_id", userIds);
-    if (deleted.error) throw new Error(`${table} fixture cleanup failed`);
-  }
-  for (const table of [...TOMBSTONE_FIXTURE_TABLES, "routines", "training_cycles"]) {
-    const audit = await admin.from(table)
-      .select("user_id", { count: "exact", head: true })
-      .in("user_id", userIds);
-    if (audit.error) throw new Error(`${table} cleanup audit failed`);
-    assertEquals(audit.count, 0, table);
-  }
-}
-
-async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
   assert(localIntegrationEnvironment);
   const admin = createClient(
     localIntegrationEnvironment.url,
     localIntegrationEnvironment.serviceRoleKey,
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
-  const created = await admin.auth.admin.createUser({
-    email: `pr6-gate-${crypto.randomUUID()}@example.invalid`,
-    email_confirm: true,
-  });
-  if (created.error || !created.data.user) {
-    throw new Error("gate fixture user creation failed");
-  }
-  const userId = created.data.user.id;
-  try {
-    if (subscription !== null) {
-      const inserted = await admin.from("subscriptions").insert({
-        user_id: userId,
-        ...subscription,
-      });
-      if (inserted.error) throw new Error("gate fixture subscription failed");
-    }
-    return { admin, userId };
-  } catch (error) {
-    await deleteGateFixture(admin, userId);
   const suffix = crypto.randomUUID();
   const createdUserIds: string[] = [];
   try {
@@ -6798,21 +7083,6 @@ async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
     }
     const subscription = await admin.from("subscriptions").insert({
       user_id: createdUserIds[0],
-  const suffix = crypto.randomUUID();
-  const email = `pr16-owner-${suffix}@example.invalid`;
-  const password = `pw-${suffix}`;
-  const owner = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-  });
-  if (owner.error || !owner.data.user) {
-    throw new Error("owner fixture creation failed");
-  }
-  const ownerId = owner.data.user.id;
-  try {
-    const subscription = await admin.from("subscriptions").insert({
-      user_id: ownerId,
       tier: "EMBER",
       status: "active",
       current_period_end: "2099-01-01T00:00:00.000Z",
@@ -6830,39 +7100,10 @@ async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
     for (const userId of createdUserIds) {
       await admin.auth.admin.deleteUser(userId);
     }
-    if (subscription.error) throw new Error("subscription fixture failed");
-    return { admin, ownerId, email, password };
-  } catch (error) {
-    await deleteTombstonePushFixture(admin, [ownerId]);
     throw error;
   }
 }
 
-// Real SQL, but the realtime broadcast is recorded instead of opening a
-// websocket (which would leak past the test).
-function realGatePushHandler(
-  fixture: GateFixture,
-  broadcastTopics: string[] = [],
-): (request: Request) => Promise<Response> {
-  const admin = new Proxy(fixture.admin, {
-    get(target, property, receiver) {
-      if (property === "channel") {
-        return (topic: string) => ({
-          subscribe(callback: (status: string) => void) {
-            callback("SUBSCRIBED");
-            return {};
-          },
-          async send() {
-            broadcastTopics.push(topic);
-            return "ok";
-          },
-        });
-      }
-      if (property === "removeChannel") return async () => "ok";
-      const value = Reflect.get(target, property, receiver);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
 async function cleanupCatalogIntegrationFixture(
   fixture: CatalogIntegrationFixture,
 ): Promise<void> {
@@ -6877,115 +7118,17 @@ function realPushHandler(
   fixture: CatalogIntegrationFixture,
   now: () => number = () => Date.now(),
 ): (request: Request) => Promise<Response> {
-/** Real admin client for every query; only the broadcast is stubbed. */
-function realTombstonePushHandler(
-  fixture: TombstonePushFixture,
-): (request: Request) => Promise<Response> {
-  const admin = fixture.admin;
-  const client = {
-    from: (table: string) => admin.from(table),
-    rpc: (name: string, args?: Record<string, unknown>) => admin.rpc(name, args),
-    channel() {
-      return {
-        subscribe(callback: (status: string) => void) {
-          callback("SUBSCRIBED");
-          return {};
-        },
-        async send() {
-          return "ok";
-        },
-      };
-    },
-    async removeChannel() {
-      return "ok";
-    },
-  };
   return createMobileSyncPushHandler({
     createAuthClient() {
       return {
         auth: {
           async getUser() {
-            return { data: { user: { id: fixture.userId } }, error: null };
             return { data: { user: { id: fixture.ownerId } }, error: null };
           },
         },
       };
     },
     createAdminClient() {
-      return admin;
-    },
-    logOperationalFailure: () => {},
-    now: () => 1_784_167_200_000,
-  } as never);
-}
-
-async function countGateSessions(
-  fixture: GateFixture,
-  sessionId: string,
-): Promise<number> {
-  const audit = await fixture.admin.from("workout_sessions")
-    .select("id", { count: "exact", head: true })
-    .eq("id", sessionId);
-  if (audit.error) throw new Error("gate session audit failed");
-  return audit.count ?? -1;
-}
-
-for (
-  const [label, subscription] of [
-    ["no subscriptions row", null],
-    ["an active FREE row", {
-      tier: "FREE",
-      status: "active",
-      current_period_end: "2099-01-01T00:00:00.000Z",
-    }],
-  ] as const
-) {
-  Deno.test({
-    name:
-      `integration: push subscription gate denies ${label} with 402 and writes nothing`,
-    ignore: localIntegrationEnvironment === null,
-    fn: async () => {
-      const fixture = await createGateFixture(subscription);
-      try {
-        const sessionId = crypto.randomUUID();
-        const broadcastTopics: string[] = [];
-        const response = await realGatePushHandler(fixture, broadcastTopics)(
-          requestFromBody(singleSessionPushBody(sessionId, fixture.userId)),
-        );
-        const body = await json(response);
-        assertEquals(response.status, 402, JSON.stringify(body));
-        assertEquals(body.error, "subscription_required");
-        assertEquals(body.currentTier, "FREE");
-        assertEquals(await countGateSessions(fixture, sessionId), 0);
-        assertEquals(broadcastTopics, []);
-      } finally {
-        await deleteGateFixture(fixture.admin, fixture.userId);
-      }
-    },
-  });
-}
-
-Deno.test({
-  name: "integration: push subscription gate lets an active EMBER row write",
-  ignore: localIntegrationEnvironment === null,
-  fn: async () => {
-    const fixture = await createGateFixture({
-      tier: "EMBER",
-      status: "active",
-      current_period_end: "2099-01-01T00:00:00.000Z",
-    });
-    try {
-      const sessionId = crypto.randomUUID();
-      const broadcastTopics: string[] = [];
-      const response = await realGatePushHandler(fixture, broadcastTopics)(
-        requestFromBody(singleSessionPushBody(sessionId, fixture.userId)),
-      );
-      const body = await json(response);
-      assertEquals(response.status, 200, JSON.stringify(body));
-      assertEquals(await countGateSessions(fixture, sessionId), 1);
-      assertEquals(broadcastTopics, [`sync:${fixture.userId}`]);
-    } finally {
-      await deleteGateFixture(fixture.admin, fixture.userId);
       // Real PostgREST and RPCs; the realtime broadcast is stubbed so the
       // test leaves no open WebSocket behind.
       const admin = Object.create(fixture.admin) as SupabaseClient;
@@ -7247,6 +7390,8 @@ Deno.test({
     }
   },
 });
+
+
 // ─── routine exercise durationSeconds (KD-2: nested, optional) ───────────────
 
 const TIMED_ROUTINE_EXERCISE_ID = "00000000-0000-4000-8000-000000000022";
@@ -7305,91 +7450,6 @@ function routinePushBody(
       timesCompleted: 0,
       isFavorite: false,
       exercises,
-      return client;
-    },
-    logOperationalFailure: () => {},
-    now: () => Date.now(),
-  } as never);
-}
-
-/** Delete a routine the way the portal does: PostgREST as the signed-in user. */
-async function portalDeleteRoutine(
-  fixture: TombstonePushFixture,
-  routineId: string,
-): Promise<void> {
-  assert(localIntegrationEnvironment);
-  const browser = createClient(
-    localIntegrationEnvironment.url,
-    localIntegrationEnvironment.anonKey,
-    { auth: { persistSession: false, autoRefreshToken: false } },
-  );
-  const signIn = await browser.auth.signInWithPassword({
-    email: fixture.email,
-    password: fixture.password,
-  });
-  if (signIn.error) throw new Error("portal sign-in failed");
-  try {
-    const deleted = await browser.from("routines")
-      .delete({ count: "exact" })
-      .eq("id", routineId);
-    if (deleted.error) throw new Error("portal routine delete failed");
-    assertEquals(deleted.count, 1, "portal delete removed the routine");
-  } finally {
-    await browser.auth.signOut();
-  }
-}
-
-/** The shape the shipping mobile build pushes (profile, lastSync, nesting). */
-function tombstoneMobilePushBody(
-  ids: { routineId: string; exerciseId: string; cycleId: string; dayId: string },
-  options: { includeRoutine: boolean; lastSync?: number },
-): Record<string, unknown> {
-  return {
-    ...validPushBody(),
-    lastSync: options.lastSync ?? 0,
-    profileId: "default",
-    profileName: "Default",
-    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
-    routines: options.includeRoutine
-      ? [{
-        id: ids.routineId,
-        userId: "mobile-local-user",
-        name: "Push day",
-        description: "",
-        exerciseCount: 1,
-        estimatedDuration: 1800,
-        timesCompleted: 2,
-        isFavorite: false,
-        exercises: [{
-          id: ids.exerciseId,
-          routineId: ids.routineId,
-          name: "PR16 integration press",
-          muscleGroup: "Chest",
-          sets: 3,
-          reps: 10,
-          weight: 20,
-          restSeconds: 90,
-          mode: "OLD_SCHOOL",
-          orderIndex: 0,
-        }],
-      }]
-      : [],
-    cycles: [{
-      id: ids.cycleId,
-      userId: "mobile-local-user",
-      name: "PR16 cycle",
-      durationWeeks: 1,
-      workoutDays: 1,
-      restDays: 0,
-      currentWeek: 1,
-      status: "active",
-      days: [{
-        id: ids.dayId,
-        cycleId: ids.cycleId,
-        dayNumber: 1,
-        dayType: "workout",
-        routineId: ids.routineId,
-      }],
     }],
   };
 }
@@ -7524,6 +7584,209 @@ for (const bad of [-1, 1.5, "45", 2_147_483_648]) {
     assertNoPrivilegedActivity(harness);
   });
 }
+
+
+// ---------------------------------------------------------------------------
+// KD-4 real-SQL: routine/cycle tombstones through the real push handler.
+// Every table write goes to the local stack (no query doubles); only the
+// realtime broadcast is stubbed so the test leaves no socket open.
+// ---------------------------------------------------------------------------
+
+interface TombstonePushFixture {
+  admin: SupabaseClient;
+  ownerId: string;
+  email: string;
+  password: string;
+}
+
+const TOMBSTONE_FIXTURE_TABLES = [
+  "local_profiles",
+  "subscriptions",
+  "rate_limit_tracking",
+  "sync_tombstones",
+];
+
+async function deleteTombstonePushFixture(
+  admin: SupabaseClient,
+  userIds: string[],
+): Promise<void> {
+  if (userIds.length === 0) return;
+  for (const userId of userIds) {
+    // Cascades routines, cycles and their children. The tombstone trigger
+    // records nothing for a user whose auth row is gone.
+    const deleted = await admin.auth.admin.deleteUser(userId);
+    if (deleted.error) throw new Error("auth fixture cleanup failed");
+  }
+  for (const table of TOMBSTONE_FIXTURE_TABLES) {
+    const deleted = await admin.from(table).delete().in("user_id", userIds);
+    if (deleted.error) throw new Error(`${table} fixture cleanup failed`);
+  }
+  for (const table of [...TOMBSTONE_FIXTURE_TABLES, "routines", "training_cycles"]) {
+    const audit = await admin.from(table)
+      .select("user_id", { count: "exact", head: true })
+      .in("user_id", userIds);
+    if (audit.error) throw new Error(`${table} cleanup audit failed`);
+    assertEquals(audit.count, 0, table);
+  }
+}
+
+async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
+  assert(localIntegrationEnvironment);
+  const admin = createClient(
+    localIntegrationEnvironment.url,
+    localIntegrationEnvironment.serviceRoleKey,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const suffix = crypto.randomUUID();
+  const email = `pr16-owner-${suffix}@example.invalid`;
+  const password = `pw-${suffix}`;
+  const owner = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (owner.error || !owner.data.user) {
+    throw new Error("owner fixture creation failed");
+  }
+  const ownerId = owner.data.user.id;
+  try {
+    const subscription = await admin.from("subscriptions").insert({
+      user_id: ownerId,
+      tier: "EMBER",
+      status: "active",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+    });
+    if (subscription.error) throw new Error("subscription fixture failed");
+    return { admin, ownerId, email, password };
+  } catch (error) {
+    await deleteTombstonePushFixture(admin, [ownerId]);
+    throw error;
+  }
+}
+
+/** Real admin client for every query; only the broadcast is stubbed. */
+function realTombstonePushHandler(
+  fixture: TombstonePushFixture,
+): (request: Request) => Promise<Response> {
+  const admin = fixture.admin;
+  const client = {
+    from: (table: string) => admin.from(table),
+    rpc: (name: string, args?: Record<string, unknown>) => admin.rpc(name, args),
+    channel() {
+      return {
+        subscribe(callback: (status: string) => void) {
+          callback("SUBSCRIBED");
+          return {};
+        },
+        async send() {
+          return "ok";
+        },
+      };
+    },
+    async removeChannel() {
+      return "ok";
+    },
+  };
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      return client;
+    },
+    logOperationalFailure: () => {},
+    now: () => Date.now(),
+  } as never);
+}
+
+/** Delete a routine the way the portal does: PostgREST as the signed-in user. */
+async function portalDeleteRoutine(
+  fixture: TombstonePushFixture,
+  routineId: string,
+): Promise<void> {
+  assert(localIntegrationEnvironment);
+  const browser = createClient(
+    localIntegrationEnvironment.url,
+    localIntegrationEnvironment.anonKey,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const signIn = await browser.auth.signInWithPassword({
+    email: fixture.email,
+    password: fixture.password,
+  });
+  if (signIn.error) throw new Error("portal sign-in failed");
+  try {
+    const deleted = await browser.from("routines")
+      .delete({ count: "exact" })
+      .eq("id", routineId);
+    if (deleted.error) throw new Error("portal routine delete failed");
+    assertEquals(deleted.count, 1, "portal delete removed the routine");
+  } finally {
+    await browser.auth.signOut();
+  }
+}
+
+/** The shape the shipping mobile build pushes (profile, lastSync, nesting). */
+function tombstoneMobilePushBody(
+  ids: { routineId: string; exerciseId: string; cycleId: string; dayId: string },
+  options: { includeRoutine: boolean; lastSync?: number },
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    lastSync: options.lastSync ?? 0,
+    profileId: "default",
+    profileName: "Default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    routines: options.includeRoutine
+      ? [{
+        id: ids.routineId,
+        userId: "mobile-local-user",
+        name: "Push day",
+        description: "",
+        exerciseCount: 1,
+        estimatedDuration: 1800,
+        timesCompleted: 2,
+        isFavorite: false,
+        exercises: [{
+          id: ids.exerciseId,
+          routineId: ids.routineId,
+          name: "PR16 integration press",
+          muscleGroup: "Chest",
+          sets: 3,
+          reps: 10,
+          weight: 20,
+          restSeconds: 90,
+          mode: "OLD_SCHOOL",
+          orderIndex: 0,
+        }],
+      }]
+      : [],
+    cycles: [{
+      id: ids.cycleId,
+      userId: "mobile-local-user",
+      name: "PR16 cycle",
+      durationWeeks: 1,
+      workoutDays: 1,
+      restDays: 0,
+      currentWeek: 1,
+      status: "active",
+      days: [{
+        id: ids.dayId,
+        cycleId: ids.cycleId,
+        dayNumber: 1,
+        dayType: "workout",
+        routineId: ids.routineId,
+      }],
+    }],
+  };
+}
+
 /** Rows the account already holds on the server before the scenario. */
 async function seedRoutineAndCycle(
   fixture: TombstonePushFixture,
@@ -8345,6 +8608,11 @@ Deno.test({
       }]);
     } finally {
       await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+
 Deno.test({
   name:
     "integration: VBT push is idempotent on the timestamptz value and the unique index exists",
@@ -8457,6 +8725,9 @@ Deno.test({
       await cleanupLocalIntegrationFixture(fixture);
     }
   },
+});
+
+
 Deno.test("PR 24: exercise_progress rows ride in replace_session_children as p_progress, with no separate progress read or write", async () => {
   const harness = makeHarness(undefined, {
     catalogRows: [{
@@ -8675,248 +8946,6 @@ Deno.test("PR 24: with LWW on, a rejected session is in neither p_session_ids no
 
   const response = await harness.handler(requestFromBody(body));
   const responseBody = await json(response);
-const DEVICE_STATS = {
-  userId: VALID_USER_ID,
-  // A crafted device claim for every server-derived counter.
-  totalWorkouts: 10_000,
-  totalReps: 999_999,
-  totalVolumeKg: 8_888_888,
-  totalTimeSeconds: 777_777,
-  longestStreak: 7,
-  currentStreak: 3,
-};
-
-const DEVICE_RPG = {
-  userId: VALID_USER_ID,
-  strength: 11,
-  power: 12,
-  stamina: 13,
-  consistency: 14,
-  mastery: 15,
-  characterClass: "FORGE",
-  level: 4,
-  experiencePoints: 1234,
-};
-
-Deno.test("stats push sends only device-owned columns through the LWW RPCs", async () => {
-  const harness = makeHarness();
-  const body = validPushBody();
-  body.profileId = "default";
-  body.allProfiles = [{ id: "default", name: "Default", colorIndex: 0 }];
-  // Two workouts: the newest one is the last-workout date the write carries.
-  body.sessions = [
-    {
-      id: SESSION_ID,
-      userId: VALID_USER_ID,
-      name: "Older workout",
-      startedAt: "2026-07-09T08:00:00.000Z",
-    },
-    {
-      id: MISMATCH_ID,
-      userId: VALID_USER_ID,
-      name: "Newest workout",
-      startedAt: "2026-07-11T12:00:00.000Z",
-    },
-  ];
-  body.gamificationStats = DEVICE_STATS;
-  body.rpgAttributes = DEVICE_RPG;
-
-  const response = await harness.handler(requestFromBody(body));
-
-  assertEquals(response.status, 200, JSON.stringify(await json(response)));
-  const lastWorkoutAt = "2026-07-11T12:00:00.000Z";
-  assertEquals(
-    harness.adminRpcCalls.filter((call) =>
-      call.name === "upsert_gamification_stats_lww"
-    ).map((call) => call.args.p_rows),
-    [[{
-      user_id: VALID_USER_ID,
-      // The device's own numbers go to the SHADOW columns, which
-      // mobile-sync-pull serves straight back to it. No derived counter and
-      // no streak is on the wire to the RPC (R-10).
-      device_total_workouts: 10_000,
-      device_total_reps: 999_999,
-      device_total_volume_kg: 8_888_888,
-      device_total_time_seconds: 777_777,
-      device_longest_streak: 7,
-      device_current_streak: 3,
-      last_workout_at: lastWorkoutAt,
-    }]],
-  );
-  assertEquals(
-    harness.adminRpcCalls.filter((call) =>
-      call.name === "upsert_rpg_attributes_lww"
-    ).map((call) => call.args.p_rows),
-    [[{
-      user_id: VALID_USER_ID,
-      strength: 11,
-      power: 12,
-      stamina: 13,
-      consistency: 14,
-      mastery: 15,
-      character_class: "FORGE",
-      level: 4,
-      experience_points: 1234,
-      last_workout_at: lastWorkoutAt,
-    }]],
-  );
-  // Both flag paths use the RPC; nothing writes these tables directly any
-  // more, so no server `new Date()` stamp reaches them either (F-070).
-  assertEquals(
-    harness.adminWriteCalls.filter((call) =>
-      call.table === "gamification_stats" || call.table === "rpg_attributes"
-    ),
-    [],
-  );
-});
-
-Deno.test("every push recomputes the server-derived counters, even without stats", async () => {
-  const harness = makeHarness();
-
-  const response = await harness.handler(requestFromBody(validPushBody()));
-
-  assertEquals(response.status, 200);
-  assertEquals(
-    harness.adminRpcCalls.filter((call) =>
-      call.name === "recompute_gamification_stats"
-    ),
-    [{
-      name: "recompute_gamification_stats",
-      args: { p_user_id: VALID_USER_ID },
-    }],
-  );
-});
-
-Deno.test("a stats-only push carries no last-workout date", async () => {
-  const harness = makeHarness();
-  const body = validPushBody();
-  body.gamificationStats = DEVICE_STATS;
-
-  const response = await harness.handler(requestFromBody(body));
-
-  assertEquals(response.status, 200);
-  assertEquals(
-    harness.adminRpcCalls.find((call) =>
-      call.name === "upsert_gamification_stats_lww"
-    )?.args.p_rows,
-    [{
-      user_id: VALID_USER_ID,
-      device_total_workouts: 10_000,
-      device_total_reps: 999_999,
-      device_total_volume_kg: 8_888_888,
-      device_total_time_seconds: 777_777,
-      device_longest_streak: 7,
-      device_current_streak: 3,
-      last_workout_at: null,
-    }],
-  );
-});
-
-Deno.test("a future-dated startedAt is clamped to the server clock", async () => {
-  // R-2 / R-11 / R-24: startedAt is only checked for parseability, so a
-  // skewed phone clock or a crafted payload could otherwise park the
-  // conflict key in 2099 and freeze every device-reported column against
-  // every later honest push, with no path back down.
-  const harness = makeHarness();
-  const body = validPushBody();
-  body.profileId = "default";
-  body.allProfiles = [{ id: "default", name: "Default", colorIndex: 0 }];
-  body.sessions = [{
-    id: SESSION_ID,
-    userId: VALID_USER_ID,
-    name: "Clock-skewed workout",
-    startedAt: "2099-01-01T00:00:00.000Z",
-  }];
-  body.gamificationStats = DEVICE_STATS;
-  body.rpgAttributes = DEVICE_RPG;
-
-  const response = await harness.handler(requestFromBody(body));
-
-  assertEquals(response.status, 200, JSON.stringify(await json(response)));
-  const keys = harness.adminRpcCalls
-    .filter((call) =>
-      call.name === "upsert_gamification_stats_lww" ||
-      call.name === "upsert_rpg_attributes_lww"
-    )
-    .map((call) =>
-      ((call.args.p_rows as Array<Record<string, unknown>>)[0]).last_workout_at
-    );
-  // The harness clock is 2026-07-16T02:00:00.000Z.
-  assertEquals(keys, [
-    "2026-07-16T02:00:00.000Z",
-    "2026-07-16T02:00:00.000Z",
-  ]);
-});
-
-Deno.test("a failed recompute FAILS OPEN: the push still succeeds and broadcasts", async () => {
-  // Review round 1 (R-1) deliberately reverses the previous expectation
-  // ("a failed recompute fails the push"). The recompute runs in its own
-  // transaction AFTER every write has committed, so throwing returned 500
-  // for a push whose data all landed, suppressed the sync_complete
-  // broadcast, and made the device retry the whole payload — re-running the
-  // same full-history recompute on every batch of a multi-batch import. On a
-  // large history that meets a statement_timeout that is a permanent
-  // sync-failure loop. The counters are self-healing, so a stale counter
-  // beats a wedged sync.
-  const harness = makeHarness(undefined, {
-    rpcBehavior: async (name) =>
-      name === "recompute_gamification_stats"
-        ? { data: null, error: { message: "recompute boom" } }
-        : { data: [], error: null },
-  });
-
-  const response = await harness.handler(requestFromBody(validPushBody()));
-
-  assertEquals(response.status, 200, JSON.stringify(await json(response)));
-  assertEquals(harness.loggerCalls, [[{ name: "GamificationRecomputeFailure" }]]);
-  // Step 15 still runs, so the portal is told to refresh.
-  assertEquals(harness.broadcastPayloads.length, 1);
-});
-
-Deno.test("flag-off keeps the rejection response contract for stats and rpg", async () => {
-  // R-18: both flag paths now call the RPCs, so the `if (SYNC_LWW_ENABLED)`
-  // guard is the only thing keeping `rejections` empty when the flag is off.
-  // Nothing exercised it before, because the default rpcBehavior never
-  // returns accepted: false.
-  const harness = makeHarness(undefined, {
-    rpcBehavior: async (name) =>
-      name === "upsert_gamification_stats_lww" ||
-        name === "upsert_rpg_attributes_lww"
-        ? {
-          data: [{
-            id: VALID_USER_ID,
-            accepted: false,
-            server_updated_at: "2026-07-10T00:00:00.000Z",
-          }],
-          error: null,
-        }
-        : { data: [], error: null },
-  });
-  const body = validPushBody();
-  body.gamificationStats = DEVICE_STATS;
-  body.rpgAttributes = DEVICE_RPG;
-
-  const response = await harness.handler(requestFromBody(body));
-
-  assertEquals(response.status, 200);
-  const payload = await json(response) as {
-    rejections?: {
-      gamificationStats?: unknown[];
-      rpgAttributes?: unknown[];
-    };
-  };
-  const expected = SYNC_LWW_ENABLED_IN_TEST
-    ? [{ id: VALID_USER_ID, serverUpdatedAt: "2026-07-10T00:00:00.000Z" }]
-    : [];
-  assertEquals(payload.rejections?.gamificationStats ?? [], expected);
-  assertEquals(payload.rejections?.rpgAttributes ?? [], expected);
-});
-
-interface LocalIntegrationEnvironment {
-  url: string;
-  anonKey: string;
-  serviceRoleKey: string;
-}
 
   assertEquals(response.status, 200, JSON.stringify(responseBody));
   assertEquals(
@@ -9154,6 +9183,7 @@ Deno.test({
     }
   },
 });
+
 
 // ---------------------------------------------------------------------------
 // KD-5 (PR 21): real-SQL LWW clock. client_updated_at is the LWW key (the
@@ -9748,6 +9778,7 @@ Deno.test({
     }
   },
 });
+
 
 // ---------------------------------------------------------------------------
 // Real-SQL gamification derivation (PR 25). These run the handler against the

@@ -1,9 +1,4 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { createLiftosaurSyncHandler } from "./index.ts";
-
-// Handler tests with in-process doubles: an in-memory Supabase client and a
-// fake Liftosaur API whose `startDate` filters on workout date. No real
-// provider calls.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 import { createLiftosaurSyncHandler } from "./index.ts";
@@ -16,18 +11,6 @@ import { createLiftosaurSyncHandler } from "./index.ts";
 const USER_ID = "00000000-0000-4000-8000-0000000000b1";
 const SERVICE_ROLE_KEY = "test-service-role-key";
 const HOUR = 60 * 60 * 1000;
-
-interface DbState {
-  lastSyncAt: string | null;
-  activities: Array<Record<string, unknown>>;
-}
-
-function createDbDouble(state: DbState) {
-  const from = (table: string) => {
-    let pendingUpdate: Record<string, unknown> | null = null;
-    let inFilter: unknown[] | null = null;
-
-    const resolve = () => {
 const DAY = 24 * HOUR;
 
 interface QueueRow {
@@ -79,19 +62,6 @@ function createDbDouble(state: DbState) {
       }
       if (table === "user_integrations") {
         if (pendingUpdate) {
-          if ("last_sync_at" in pendingUpdate) {
-            state.lastSyncAt = pendingUpdate.last_sync_at as string;
-          }
-          return { data: null, error: null };
-        }
-        return { data: { last_sync_at: state.lastSyncAt }, error: null };
-      }
-      if (table === "external_activities" && inFilter) {
-        const ids = inFilter;
-        return {
-          data: state.activities
-            .filter((row) => ids.includes(row.external_id))
-            .map((row) => ({ external_id: row.external_id })),
           const u = pendingUpdate;
           if ("last_sync_at" in u) state.lastSyncAt = u.last_sync_at as string;
           if ("backfill_before" in u) state.backfillBefore = u.backfill_before as string | null;
@@ -130,11 +100,6 @@ function createDbDouble(state: DbState) {
     };
 
     const builder: Record<string, unknown> = {};
-    for (const method of ["select", "eq", "order", "limit"]) {
-      builder[method] = () => builder;
-    }
-    builder.in = (_column: string, values: unknown[]) => {
-      inFilter = values;
     for (const method of ["select", "order", "limit"]) {
       builder[method] = () => builder;
     }
@@ -146,12 +111,6 @@ function createDbDouble(state: DbState) {
       pendingUpdate = values;
       return builder;
     };
-    builder.upsert = (row: Record<string, unknown>) => {
-      if (table === "external_activities") {
-        const index = state.activities.findIndex((existing) =>
-          existing.external_id === row.external_id
-        );
-        // ON CONFLICT DO UPDATE only sets the columns that were sent.
     builder.insert = (row: QueueRow) => {
       if (table === "sync_queue") {
         if (state.failQueueInsert) {
@@ -218,7 +177,6 @@ interface UpstreamRecord {
 
 const FAKE_RESPONSE_DELAY_MS = 5;
 
-function installFakeLiftosaur(upstream: UpstreamRecord[]) {
 interface FakeOptions {
   /** Default "desc": newest first, as the real API returns /history. */
   order?: "desc" | "asc";
@@ -244,18 +202,6 @@ function installFakeLiftosaur(upstream: UpstreamRecord[], options: FakeOptions =
     }
     fake.requests.push(url);
     fake.firstRequestAt ??= Date.now();
-    const startDate = url.searchParams.get("startDate");
-    const records = upstream
-      .filter((record) =>
-        startDate === null || record.date === undefined ||
-        Date.parse(record.date) >= Date.parse(startDate)
-      )
-      .map((record) => ({
-        id: record.id,
-        text: `${record.date ? `${record.date} / ` : ""}program: "Test" / dayName: "Day ${record.id}" / duration: 3600s`,
-      }));
-    const response = new Response(
-      JSON.stringify({ data: { records, hasMore: false, nextCursor: null } }),
     if (options.failWith) {
       return Promise.resolve(
         new Response(options.failWith.body, { status: options.failWith.status }),
@@ -348,10 +294,6 @@ Deno.test("liftosaur-sync imports a workout logged late with a date before the l
   const lastSync = new Date(now - 6 * HOUR).toISOString();
   const state: DbState = { lastSyncAt: lastSync, activities: [] };
   // Performed three hours before the last sync, but logged only after it.
-  const lateWorkout = {
-    id: 7,
-    date: new Date(now - 9 * HOUR).toISOString().replace(/\.\d{3}Z$/, "Z"),
-  };
   const lateWorkout = { id: 7, date: isoSeconds(now - 9 * HOUR) };
   const liftosaur = installFakeLiftosaur([lateWorkout]);
   try {
