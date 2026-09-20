@@ -1,4 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
+import { ENTITLEMENT_KEEPING_STATUSES } from "../_shared/billingAction.ts";
 import { hmacSha256Hex } from "../_shared/hmac.ts";
 import {
   createPaddleWebhooksHandler,
@@ -110,8 +111,19 @@ class FakeDb implements PaddleWebhooksDbClient {
       this.row?.paddle_subscription_id &&
       incomingSubscriptionId &&
       incomingSubscriptionId !== this.row.paddle_subscription_id &&
-      !["active", "trialing", "past_due"].includes(String(args.p_status))
+      // The shared set, not a restated literal: five independent copies of
+      // this list is how the past_due asymmetry survived the first round.
+      !ENTITLEMENT_KEEPING_STATUSES.has(String(args.p_status))
     ) {
+      // The real function also audits the refusal.
+      this.subscriptionEventInserts.push({
+        user_id: args.p_user_id,
+        operation: "IGNORED",
+        note: "untracked_subscription",
+        status: args.p_status,
+        paddle_subscription_id: args.p_paddle_subscription_id,
+        last_event_id: args.p_last_event_id,
+      });
       return Promise.resolve({ data: false, error: null });
     }
 
@@ -1104,5 +1116,153 @@ Deno.test("paddle-webhooks: the customer listing asks Paddle for a deterministic
     calls[0]?.url,
     "https://sandbox-api.paddle.com/subscriptions?customer_id=ctm_01" +
       "&status=active,trialing,past_due&order_by=-created_at",
+  );
+});
+
+Deno.test("paddle-webhooks: a plant at [0] cannot hide the user's own sibling at [1]", async () => {
+  // order_by=-created_at puts the newest first, so a third party who checked
+  // out under this user's billing email occupies [0]. Inspecting only [0]
+  // would abandon the rescue and drop a still-paying customer to FREE
+  // (security round-2 R-6). The attacker gains nothing either way — the
+  // ownership proof still refuses their subscription.
+  const db = trackedActiveRow("sub_a");
+  const { result: response, lines } = await cancelTrackedSubscription(
+    db,
+    [
+      await liveCandidate({ id: "sub_plant", ownerUserId: VICTIM_USER_ID }),
+      await liveCandidate({ id: "sub_mine_2" }),
+    ],
+    "sub_a",
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), {
+    received: true,
+    switchedToUntrackedSubscription: true,
+  });
+  // The plant was refused, and the user's own sibling adopted.
+  assert(
+    lines.some((line) =>
+      line.includes("untracked_subscription_not_adopted") &&
+      line.includes("sub_plant")
+    ),
+    "expected the plant to be refused by id",
+  );
+  assertEquals(db.row?.paddle_subscription_id, "sub_mine_2");
+  assertEquals(db.row?.status, "active");
+});
+
+Deno.test("paddle-webhooks: a valid signature for this user under a DIFFERENT custom_data user_id is refused", async () => {
+  // The one shape where the two halves of the ownership check disagree:
+  // cd_sig is a correct HMAC(USER_ID) — so the signature half passes — but
+  // custom_data.user_id names somebody else. Without the `user_id === userId`
+  // half this would be adopted (tests review R-3).
+  const db = trackedActiveRow("sub_a");
+  const candidate = await liveCandidate({ id: "sub_mismatch" });
+  const mismatched = {
+    ...candidate,
+    custom_data: {
+      user_id: VICTIM_USER_ID,
+      cd_sig: await hmacSha256Hex(CUSTOM_DATA_SECRET, USER_ID),
+    },
+  };
+  const { result: response, lines } = await cancelTrackedSubscription(
+    db,
+    [mismatched],
+    "sub_a",
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { received: true });
+  assertEquals(db.row?.paddle_subscription_id, "sub_a");
+  assertEquals(db.row?.status, "canceled");
+  assert(
+    lines.some((line) =>
+      line.includes("untracked_subscription_not_adopted") &&
+      line.includes("cd_sig_valid=true")
+    ),
+    "the signature half passed, so the user_id half must be what refused it",
+  );
+});
+
+Deno.test("paddle-webhooks: a guard rejection on the direct path is labelled as one, not as a stale event", async () => {
+  // The race the SQL guard exists for: the row was re-pointed between our
+  // read and our write. The classifier let this through (the stored row is
+  // not entitled and the incoming status keeps access), so `false` from the
+  // RPC here means the guard fired, not that we lost an ordering race
+  // (tests review R-5, security round-2 log fidelity).
+  const db = new FakeDb({
+    last_event_id: "evt_prev",
+    last_event_occurred_at: "2026-09-18T11:00:00.000Z",
+    tier: "FREE",
+    paddle_subscription_id: "sub_old",
+    status: "canceled",
+    current_period_end: "2026-09-01T00:00:00.000Z",
+    cancel_at_period_end: false,
+  });
+  db.forceNotApplied = true;
+
+  const { result: response, lines } = await captureConsoleError(async () =>
+    await makeHandler(db)(
+      await signedRequest(
+        await subscriptionEvent({
+          eventId: "evt_new_active",
+          subscriptionId: "sub_new",
+          status: "active",
+        }),
+      ),
+    )
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), {
+    received: true,
+    ignored: "untracked_subscription",
+  });
+  assert(
+    lines.some((line) => line.includes("subscription_guard_rejected_write")),
+    "expected a [BILLING_ALERT] subscription_guard_rejected_write line",
+  );
+  assertEquals(db.rpcCalls.length, 1);
+});
+
+const candidateForOrderingRace = await liveCandidate({ id: "sub_race" });
+
+Deno.test("paddle-webhooks: an ordering race on the ADOPTION path is not mislabelled a guard rejection", async () => {
+  // On the adoption path the guard can never be what refused (the candidate
+  // status is always one the SQL guard admits), so a false there is only
+  // ever a lost ordering race and must say so.
+  const db = trackedActiveRow("sub_a");
+  db.forceNotApplied = true;
+  const { result: response, lines } = await captureConsole(
+    "warn",
+    async () =>
+      await makeHandler(db, {
+        PADDLE_API_KEY: "pdl_test_key",
+        PADDLE_ENVIRONMENT: "sandbox",
+      }, {
+        listResponse: () =>
+          new Response(
+            JSON.stringify({ data: [candidateForOrderingRace] }),
+            { status: 200 },
+          ),
+      })(
+        await signedRequest(
+          await subscriptionEvent({
+            eventId: "evt_a_canceled",
+            eventType: "subscription.canceled",
+            subscriptionId: "sub_a",
+            status: "canceled",
+            occurredAt: "2026-09-18T11:58:00.000Z",
+          }),
+        ),
+      ),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { received: true, stale: true });
+  assert(
+    lines.some((line) => line.includes("lost ordering race")),
+    "expected the stale wording on the adoption path",
   );
 });

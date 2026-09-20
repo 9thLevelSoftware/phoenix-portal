@@ -757,8 +757,13 @@ describe("SPA -> Edge _shared import boundary", () => {
 			// The tests may import anything; only shipped code matters.
 			if (/__tests__|\.test\.tsx?$/.test(file)) continue;
 			const source = readFileSync(join(process.cwd(), file), "utf8");
+			// Quote-agnostic, and covers `import … from`, `export … from` and
+			// dynamic `import(...)`. `supabase/functions/**` is outside
+			// biome.json's files.includes, so quote style there is unenforced
+			// and already mixed — a single-quote-only matcher would miss a
+			// real violation.
 			for (const [, path] of source.matchAll(
-				/from\s+"[^"]*supabase\/functions\/_shared\/([\w.-]+)"/g,
+				/(?:from|import)\s*\(?\s*["'][^"']*supabase\/functions\/_shared\/([\w.-]+)["']/g,
 			)) {
 				sharedImports.add(path);
 			}
@@ -778,9 +783,13 @@ describe("SPA -> Edge _shared import boundary", () => {
 			expect(source, `${file} must not name a secret`).not.toMatch(
 				/SERVICE_ROLE|_SECRET|API_KEY|createClient/,
 			);
-			// ...and it must not re-open the door by importing anything else
-			// from _shared beyond the allow-list.
-			for (const [, imported] of source.matchAll(/from\s+'\.\/([\w.-]+)'/g)) {
+			// ...and it must not re-open the door by importing or re-exporting
+			// anything else from _shared. Quote-agnostic, and covers
+			// `export … from` and dynamic `import(...)` as well as a plain
+			// import — a single-quote-only matcher missed all three.
+			for (const [, imported] of source.matchAll(
+				/(?:from|import)\s*\(?\s*["']\.\/([\w.-]+)["']/g,
+			)) {
 				expect(SPA_REACHABLE_SHARED_MODULES).toContain(imported);
 			}
 		}

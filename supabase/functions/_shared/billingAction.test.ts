@@ -3,7 +3,9 @@ import {
   billingAction,
   type BillingActionName,
   classifySubscriptionEventTarget,
+  ENTITLEMENT_KEEPING_STATUSES,
   mayOpenNewCheckout,
+  PADDLE_LIVE_STATUS_FILTER,
 } from './billingAction.ts';
 
 // The shared entitlement fixture (PR 8). Every state the portal recognises is
@@ -242,6 +244,70 @@ Deno.test('classifySubscriptionEventTarget: a resubscribe is adopted when the st
     }),
     'ignore_untracked_subscription',
   );
+});
+
+Deno.test('classifySubscriptionEventTarget: past_due keeps access, so it is adoptable', () => {
+  // The R-34 handler tests never reach this branch (they short-circuit on a
+  // matching subscription id), so without this the classifier could silently
+  // drop past_due from its allowed set and strand a paying user on FREE —
+  // exactly the bug the past_due round fixed.
+  const deadStoredRow = {
+    paddle_subscription_id: 'sub_old',
+    tier: 'EMBER',
+    status: 'canceled',
+    current_period_end: '2026-06-01T00:00:00Z',
+    cancel_at_period_end: false,
+  };
+
+  for (const incomingStatus of [...ENTITLEMENT_KEEPING_STATUSES]) {
+    assertEquals(
+      classifySubscriptionEventTarget({
+        incomingSubscriptionId: 'sub_new',
+        incomingStatus,
+        storedRow: deadStoredRow,
+        now: NOW,
+      }),
+      'apply',
+      `${incomingStatus}: an entitlement-keeping sibling must be adoptable`,
+    );
+  }
+  // Named explicitly so removing 'past_due' from the set fails here even if
+  // the set itself is what regressed.
+  assertEquals(ENTITLEMENT_KEEPING_STATUSES.has('past_due'), true);
+  assertEquals(
+    classifySubscriptionEventTarget({
+      incomingSubscriptionId: 'sub_new',
+      incomingStatus: 'past_due',
+      storedRow: deadStoredRow,
+      now: NOW,
+    }),
+    'apply',
+  );
+
+  // ...while a state that would NOT keep access is still refused.
+  for (const incomingStatus of ['canceled', 'incomplete', 'none']) {
+    assertEquals(
+      classifySubscriptionEventTarget({
+        incomingSubscriptionId: 'sub_new',
+        incomingStatus,
+        storedRow: deadStoredRow,
+        now: NOW,
+      }),
+      'ignore_untracked_subscription',
+      `${incomingStatus}: must never be adopted from an untracked subscription`,
+    );
+  }
+});
+
+Deno.test('billingAction: the Paddle status filter is derived from the adoptable set', () => {
+  // One source of truth: a listing that asks Paddle for a status the
+  // adoption path would refuse (or vice versa) is what made a past-due
+  // sibling un-adoptable.
+  assertEquals(
+    PADDLE_LIVE_STATUS_FILTER.split(',').sort(),
+    [...ENTITLEMENT_KEEPING_STATUSES].sort(),
+  );
+  assertEquals(PADDLE_LIVE_STATUS_FILTER.includes('past_due'), true);
 });
 
 Deno.test('classifySubscriptionEventTarget: a first event with no stored id is applied', () => {

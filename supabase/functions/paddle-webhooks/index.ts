@@ -14,6 +14,8 @@ import {
 } from "../_shared/paddleSubscriptionState.ts";
 import {
   classifySubscriptionEventTarget,
+  ENTITLEMENT_KEEPING_STATUSES,
+  PADDLE_LIVE_STATUS_FILTER,
 } from "../_shared/billingAction.ts";
 import {
   classifyPaddleEventOrder,
@@ -89,8 +91,6 @@ function defaultPaddleWebhooksDependencies(): PaddleWebhooksDependencies {
   };
 }
 
-/** Statuses the listing asks Paddle for, re-checked on the way back. */
-const LIVE_PADDLE_STATUSES = new Set(["active", "trialing", "past_due"]);
 
 /** Cap on the webhook's one outbound Paddle call. */
 const PADDLE_LISTING_TIMEOUT_MS = 10_000;
@@ -133,7 +133,7 @@ async function listLiveCustomerSubscriptions(
   // subscriptions resolve deterministically instead of by page order.
   const url =
     `${baseUrl}/subscriptions?customer_id=${encodeURIComponent(customerId)}` +
-    "&status=active,trialing,past_due&order_by=-created_at";
+    `&status=${PADDLE_LIVE_STATUS_FILTER}&order_by=-created_at`;
 
   let response: Response;
   try {
@@ -184,7 +184,7 @@ async function listLiveCustomerSubscriptions(
       );
       return false;
     }
-    if (!LIVE_PADDLE_STATUSES.has(subscription.status)) {
+    if (!ENTITLEMENT_KEEPING_STATUSES.has(subscription.status)) {
       console.error(
         "[BILLING_ALERT] Paddle listing returned a non-live subscription:",
         `${subscription.id}=${subscription.status}`,
@@ -571,9 +571,14 @@ async function paddleWebhooksHandler(
           { status: 500, headers: responseHeaders },
         );
       }
-      if (liveSubscriptions.length > 0) {
-        const candidate = liveSubscriptions[0]!;
-
+      // Walk every candidate, not just the newest: a third party who checked
+      // out under this user's billing email shares the Paddle customer, and
+      // with order_by=-created_at their (unadoptable) subscription sits at
+      // [0]. Stopping there would abandon the rescue and drop a customer who
+      // IS still paying to FREE, with their own provably-owned sibling
+      // sitting at [1] (security round-2 R-6). The ownership proof below is
+      // unchanged — this only stops one plant from hiding a real sibling.
+      for (const candidate of liveSubscriptions) {
         // AUTHORIZATION, not just identification. Sharing a Paddle customer
         // proves nothing: the customer is keyed by the email the buyer types
         // into the overlay, so anyone who checks out under this user's
@@ -585,8 +590,11 @@ async function paddleWebhooksHandler(
         //
         // The candidate must carry the same signed custom_data the webhook
         // demands of an incoming event: user_id === this user, with a cd_sig
-        // that verifies. `paddle_subscription_id` also has a partial UNIQUE
-        // index (20260920004400) as structural defence in depth.
+        // that verifies. Deliberately the RAW verifier, not
+        // evaluatePaddleCustomDataTrust — the legacy unsigned fallback must
+        // never be reachable here. `paddle_subscription_id` also has a
+        // partial UNIQUE index (20260920004400) as structural defence in
+        // depth.
         const candidateCustomData = candidate.custom_data ?? null;
         const candidateUserId = candidateCustomData?.user_id;
         const candidateSigValid = await verifyPaddleCustomDataSignature(
@@ -594,12 +602,6 @@ async function paddleWebhooksHandler(
           candidateCustomData?.cd_sig,
           customDataSecret,
         );
-        const candidatePriceId = resolveBasePlanPriceId(
-          candidate,
-          getAllAllowedPriceIds(env),
-        );
-        const candidateTier = mapPriceIdToTier(candidatePriceId, env);
-
         if (candidateUserId !== userId || !candidateSigValid) {
           console.error(
             "[BILLING_ALERT] untracked_subscription_not_adopted:",
@@ -610,7 +612,15 @@ async function paddleWebhooksHandler(
             `cd_sig_valid=${candidateSigValid}`,
             "reason=candidate does not prove it belongs to this user",
           );
-        } else if (!candidatePriceId || candidateTier === "FREE") {
+          continue;
+        }
+
+        const candidatePriceId = resolveBasePlanPriceId(
+          candidate,
+          getAllAllowedPriceIds(env),
+        );
+        const candidateTier = mapPriceIdToTier(candidatePriceId, env);
+        if (!candidatePriceId || candidateTier === "FREE") {
           // A missing or unknown price on the live subscription would adopt
           // the user onto FREE — worse than leaving the cancellation alone.
           // `!candidatePriceId` covers an items-less candidate, which would
@@ -621,11 +631,13 @@ async function paddleWebhooksHandler(
             `candidate_subscription_id=${candidate.id}`,
             `price_id=${candidatePriceId || "(none)"}`,
           );
-        } else {
-          untrackedSwitch = candidate;
-          untrackedSwitchTier = candidateTier;
-          untrackedSwitchPriceId = candidatePriceId;
+          continue;
         }
+
+        untrackedSwitch = candidate;
+        untrackedSwitchTier = candidateTier;
+        untrackedSwitchPriceId = candidatePriceId;
+        break;
       }
     }
 
@@ -635,6 +647,15 @@ async function paddleWebhooksHandler(
     // transient `canceled` (which would resolve FREE for requireSubscription
     // and offer the user a third checkout), and a failure leaves the row
     // exactly as it was — the redelivery re-runs the whole rescue.
+    //
+    // Known residual, not introduced here: the write still carries this
+    // event's occurred_at, so a sibling cancellation that occurred EARLIER
+    // than the tracked one comes back `stale` and the row stays active on an
+    // already-cancelled subscription until its period end. That follows from
+    // the pre-existing occurred_at ordering rule — the previous
+    // cancel-then-adopt sequence stamped the same clock and had it too — and
+    // it is not steerable by an attacker. paddle-refresh-subscription and the
+    // sibling's own later events correct it.
     const applyPayload = untrackedSwitch
       ? buildSubscriptionUpsertFromPaddleState({
         userId,
@@ -705,6 +726,11 @@ async function paddleWebhooksHandler(
       const storedSubscriptionId =
         existingSubscription?.paddle_subscription_id ?? null;
       if (
+        // On the adoption path the guard can never be what refused: the
+        // candidate's status is always in ('active','trialing','past_due'),
+        // which the SQL guard always admits. So a false there is only ever a
+        // lost ordering race, and must not be labelled a guard rejection.
+        !untrackedSwitch &&
         storedSubscriptionId &&
         writtenSubscriptionId &&
         writtenSubscriptionId !== storedSubscriptionId

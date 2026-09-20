@@ -172,6 +172,21 @@ export const ENTITLEMENT_KEEPING_STATUSES: ReadonlySet<string> = new Set([
   'past_due',
 ]);
 
+/**
+ * The same set as the `status=` filter Paddle's list-subscriptions API wants.
+ * Derived, not restated, so the listing cannot ask for a status the adoption
+ * path would then refuse (or vice versa) — that mismatch is what made a
+ * past-due sibling un-adoptable and stranded a paying user on FREE.
+ *
+ * The only copy that cannot be shared from here is the `p_status IN (…)` test
+ * inside `public.apply_subscription_event` (migration 20260920004400), which
+ * names this constant in its comment and is covered by
+ * supabase/tests/database/subscription_event_guard.test.sql.
+ */
+export const PADDLE_LIVE_STATUS_FILTER = [...ENTITLEMENT_KEEPING_STATUSES].join(
+  ',',
+);
+
 export interface SubscriptionEventTargetInput {
   /** `data.id` of the incoming Paddle event. */
   incomingSubscriptionId: string | null | undefined;
