@@ -320,24 +320,6 @@ describe("Paddle webhook security helpers", () => {
 		).toEqual({ action: "checkout_required", reason: "missing_subscription" });
 	});
 
-	it("paddle-update-subscription applies the plan-change gate before calling Paddle", () => {
-		const source = readFileSync(
-			join(
-				process.cwd(),
-				"supabase/functions/paddle-update-subscription/index.ts",
-			),
-			"utf8",
-		);
-		const gateAt = source.indexOf("decidePlanChangeGate(sub)");
-		const pastDueAt = source.indexOf("paymentPastDueResponseBody()");
-		const firstPaddleFetchAt = source.indexOf("await fetch(");
-		expect(gateAt).toBeGreaterThan(-1);
-		expect(pastDueAt).toBeGreaterThan(gateAt);
-		expect(firstPaddleFetchAt).toBeGreaterThan(pastDueAt);
-		expect(source).toContain("status: PAYMENT_PAST_DUE_HTTP_STATUS");
-		expect(source).not.toContain("isSubscriptionEntitled(");
-	});
-
 	it("lets past_due users cancel immediately and others at period end", () => {
 		expect(resolvePaddleCancelRequest("past_due")).toEqual({
 			allowed: true,
@@ -354,17 +336,6 @@ describe("Paddle webhook security helpers", () => {
 		for (const status of ["canceled", "incomplete", "none", null]) {
 			expect(resolvePaddleCancelRequest(status)).toEqual({ allowed: false });
 		}
-
-		const source = readFileSync(
-			join(
-				process.cwd(),
-				"supabase/functions/paddle-cancel-subscription/index.ts",
-			),
-			"utf8",
-		);
-		expect(source).toContain("resolvePaddleCancelRequest(sub.status)");
-		expect(source).toContain("effective_from: cancelRequest.effectiveFrom");
-		expect(source).not.toContain('["active", "trialing"].includes');
 	});
 
 	it("builds Paddle update bodies for switches, downgrades, and uncancel actions", () => {

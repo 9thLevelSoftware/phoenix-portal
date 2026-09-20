@@ -8,6 +8,8 @@ const functionsDir = "supabase/functions";
 const testFiles = [
 	`${functionsDir}/mobile-sync-push/index.test.ts`,
 	`${functionsDir}/mobile-sync-pull/index.test.ts`,
+	`${functionsDir}/paddle-update-subscription/index.test.ts`,
+	`${functionsDir}/paddle-cancel-subscription/index.test.ts`,
 ];
 
 const denoArgs = [
