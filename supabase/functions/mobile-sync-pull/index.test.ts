@@ -1602,3 +1602,82 @@ Deno.test({
     }
   },
 });
+
+// ---------------------------------------------------------------------------
+// Deploy-order tolerance. This handler must be safe to deploy BEFORE
+// 20260920002500 is applied, so the pull side of the migration window is
+// closed: with the device_* columns absent, `select('*')` returns a row
+// without those keys, and on a pre-migration database the canonical columns
+// ARE the device-reported values (nothing derives them yet).
+// ---------------------------------------------------------------------------
+Deno.test("pull falls back to the canonical columns when device_* do not exist yet", async () => {
+  const harness = makeHarness(undefined, {
+    fromPages: {
+      gamification_stats: [{
+        data: {
+          id: "gs-1",
+          user_id: VALID_USER_ID,
+          total_workouts: 42,
+          total_reps: 400,
+          total_volume_kg: 1234,
+          total_time_seconds: 5000,
+          longest_streak: 12,
+          current_streak: 3,
+          updated_at: "2026-07-10T00:00:00.000Z",
+        },
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.gamificationStats, {
+    id: "gs-1",
+    userId: VALID_USER_ID,
+    totalWorkouts: 42,
+    totalReps: 400,
+    totalVolumeKg: 1234,
+    longestStreak: 12,
+    currentStreak: 3,
+    totalTimeSeconds: 5000,
+    // No lastWorkoutAt key: the column does not exist on this database.
+    updatedAt: "2026-07-10T00:00:00.000Z",
+  });
+});
+
+Deno.test("pull emits null when the columns exist but nothing was device-reported", async () => {
+  const harness = makeHarness(undefined, {
+    fromPages: {
+      gamification_stats: [{
+        data: {
+          id: "gs-1",
+          user_id: VALID_USER_ID,
+          total_workouts: 42,
+          total_reps: 400,
+          total_volume_kg: 1234,
+          total_time_seconds: 5000,
+          longest_streak: 12,
+          current_streak: 3,
+          device_total_workouts: null,
+          device_total_reps: null,
+          device_total_volume_kg: null,
+          device_total_time_seconds: null,
+          device_current_streak: null,
+          device_longest_streak: null,
+          last_workout_at: null,
+          updated_at: "2026-07-10T00:00:00.000Z",
+        },
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.gamificationStats, null);
+});

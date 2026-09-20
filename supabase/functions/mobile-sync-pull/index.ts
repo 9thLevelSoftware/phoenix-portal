@@ -1288,24 +1288,51 @@ async function mobileSyncPullHandler(
       // progress on every installed build. The derived columns are for the
       // portal's Profile screen and the leaderboards.
       //
-      // `device_total_workouts IS NULL` means nothing was ever device-
-      // reported for this account, so there is nothing to tell the phone:
-      // emit null, which mobile's `?.let` leaves the local row alone for
-      // (as it did before this change, when no stats row existed at all).
+      // Three states, and the difference between the last two is what lets
+      // this function be deployed BEFORE the migration (see the deploy-order
+      // note in exec/operator-notes.md):
+      //   * key ABSENT (undefined) — the columns do not exist yet, i.e. this
+      //     build is running against a pre-20260920002500 database. The
+      //     canonical columns ARE the device-reported values there, because
+      //     nothing derives them yet, so fall back to them.
+      //   * key NULL — the columns exist and nothing was ever device-reported
+      //     for this account. Emit null; mobile's `?.let` then leaves the
+      //     local row alone, exactly as it did when no stats row existed.
+      //   * key present — serve the shadow value.
+      const deviceStatsMissing =
+        gamificationStats !== null &&
+        (gamificationStats as Record<string, unknown>).device_total_workouts ===
+          undefined;
+      const deviceStats = deviceStatsMissing
+        ? {
+          device_total_workouts: gamificationStats.total_workouts,
+          device_total_reps: gamificationStats.total_reps,
+          device_total_volume_kg: gamificationStats.total_volume_kg,
+          device_total_time_seconds: gamificationStats.total_time_seconds,
+          device_current_streak: gamificationStats.current_streak,
+          device_longest_streak: gamificationStats.longest_streak,
+          // No last_workout_at column exists pre-migration, so the key is
+          // simply absent from the response rather than a fabricated null.
+          last_workout_at: undefined,
+        }
+        : gamificationStats;
+
       gamificationDto =
-        gamificationStats && gamificationStats.device_total_workouts !== null
+        gamificationStats && deviceStats &&
+          deviceStats.device_total_workouts !== null
           ? {
               id: gamificationStats.id,
               userId: gamificationStats.user_id,
-              totalWorkouts: gamificationStats.device_total_workouts,
-              totalReps: gamificationStats.device_total_reps,
-              totalVolumeKg: gamificationStats.device_total_volume_kg,
-              longestStreak: gamificationStats.device_longest_streak,
-              currentStreak: gamificationStats.device_current_streak,
-              totalTimeSeconds: gamificationStats.device_total_time_seconds,
+              totalWorkouts: deviceStats.device_total_workouts,
+              totalReps: deviceStats.device_total_reps,
+              totalVolumeKg: deviceStats.device_total_volume_kg,
+              longestStreak: deviceStats.device_longest_streak,
+              currentStreak: deviceStats.device_current_streak,
+              totalTimeSeconds: deviceStats.device_total_time_seconds,
               // The conflict key the device must beat to have a write
-              // accepted. Additive response key; old builds ignore it (R-8).
-              lastWorkoutAt: gamificationStats.last_workout_at,
+              // accepted. Additive response key; mobile's PortalWireJson sets
+              // ignoreUnknownKeys, so old builds drop it (R-8).
+              lastWorkoutAt: deviceStats.last_workout_at,
               updatedAt: gamificationStats.updated_at,
             }
           : null;

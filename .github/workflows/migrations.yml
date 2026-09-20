@@ -131,7 +131,7 @@ jobs:
       # an equality check, so adding tests never fails the gate.
       - name: pgTAP test-count floor
         env:
-          PGTAP_TEST_FLOOR: "755"
+          PGTAP_TEST_FLOOR: "757"
         run: |
           set -euo pipefail
           summary="$(supabase test db 2>&1 | tee /dev/stderr | grep -oE 'Tests=[0-9]+' | tail -1 || true)"

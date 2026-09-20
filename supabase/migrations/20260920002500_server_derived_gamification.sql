@@ -585,13 +585,33 @@ BEGIN
       v_incoming,
       now()
     )
+    -- A key the payload did not carry leaves the stored value alone. This is
+    -- not cosmetic: between this migration applying and the new Edge
+    -- deploying, the OLD mobile-sync-push (flag-on path) calls this RPC with
+    -- the canonical column names and no device_* keys at all, so a plain
+    -- `= EXCLUDED.device_x` would write COALESCE(NULL, 0) = 0 and ZERO that
+    -- user's shadow columns — which the `IS NULL` seed guard cannot repair,
+    -- because 0 is not NULL, and the next pull would then hand the phone
+    -- zeroes. Exactly the R-10 regression, inside the deploy window.
     ON CONFLICT (user_id) DO UPDATE SET
-      device_total_workouts     = EXCLUDED.device_total_workouts,
-      device_total_reps         = EXCLUDED.device_total_reps,
-      device_total_volume_kg    = EXCLUDED.device_total_volume_kg,
-      device_total_time_seconds = EXCLUDED.device_total_time_seconds,
-      device_current_streak     = EXCLUDED.device_current_streak,
-      device_longest_streak     = EXCLUDED.device_longest_streak,
+      device_total_workouts     = CASE WHEN rec.device_total_workouts IS NULL
+                                       THEN gs.device_total_workouts
+                                       ELSE EXCLUDED.device_total_workouts END,
+      device_total_reps         = CASE WHEN rec.device_total_reps IS NULL
+                                       THEN gs.device_total_reps
+                                       ELSE EXCLUDED.device_total_reps END,
+      device_total_volume_kg    = CASE WHEN rec.device_total_volume_kg IS NULL
+                                       THEN gs.device_total_volume_kg
+                                       ELSE EXCLUDED.device_total_volume_kg END,
+      device_total_time_seconds = CASE WHEN rec.device_total_time_seconds IS NULL
+                                       THEN gs.device_total_time_seconds
+                                       ELSE EXCLUDED.device_total_time_seconds END,
+      device_current_streak     = CASE WHEN rec.device_current_streak IS NULL
+                                       THEN gs.device_current_streak
+                                       ELSE EXCLUDED.device_current_streak END,
+      device_longest_streak     = CASE WHEN rec.device_longest_streak IS NULL
+                                       THEN gs.device_longest_streak
+                                       ELSE EXCLUDED.device_longest_streak END,
       last_workout_at           = COALESCE(EXCLUDED.last_workout_at, gs.last_workout_at),
       updated_at                = now()
     RETURNING gs.last_workout_at INTO v_stored_key;

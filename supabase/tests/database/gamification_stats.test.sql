@@ -22,7 +22,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(46);
+SELECT plan(48);
 
 SELECT diag('database:gamification-derivation-catalog');
 
@@ -535,6 +535,48 @@ SELECT results_eq(
     $sql$,
     $values$ VALUES (4, 4, 4) $values$,
     'the same first write does store the device-reported shadow values'
+);
+
+-- DEPLOY WINDOW (found in review round 1 while re-reading the rollout): the
+-- seed in 20260920002500 leaves last_workout_at NULL on every pre-existing
+-- row, so between the migration applying and the new Edge deploying, the OLD
+-- mobile-sync-push (flag-on path) calls this RPC with the canonical column
+-- names, no device_* keys and no last_workout_at — and that write is
+-- ACCEPTED, because there is no stored key to lose against. A plain
+-- `device_x = EXCLUDED.device_x` would then write COALESCE(NULL, 0) = 0 and
+-- zero that user's shadow columns, which the `IS NULL` seed guard cannot
+-- repair (0 is not NULL) and which the next pull would hand straight to the
+-- phone — R-10 all over again, inside the deploy window. A key the payload
+-- did not carry must leave the stored value alone.
+SELECT results_eq(
+    $sql$
+        SELECT accepted
+        FROM public.upsert_gamification_stats_lww(
+            jsonb_build_array(jsonb_build_object(
+                'user_id', 'f6f6f6f6-0000-4000-8000-000000000006',
+                'total_workouts', 3,
+                'total_reps', 30,
+                'total_volume_kg', 75,
+                'total_time_seconds', 180,
+                'longest_streak', 20,
+                'current_streak', 5,
+                'updated_at', now()
+            ))
+        )
+    $sql$,
+    $values$ VALUES (TRUE) $values$,
+    'an old-shape payload (canonical keys, no device_*, no key) is accepted'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT device_total_workouts, device_total_reps, device_total_volume_kg,
+               device_total_time_seconds, device_current_streak, device_longest_streak
+        FROM public.gamification_stats
+        WHERE user_id = 'f6f6f6f6-0000-4000-8000-000000000006'::uuid
+    $sql$,
+    $values$ VALUES (4, 0, 0::numeric, 0, 4, 4) $values$,
+    'an old-shape payload leaves every device_* shadow column untouched'
 );
 
 SELECT diag('database:gamification-derivation-no-insert');
