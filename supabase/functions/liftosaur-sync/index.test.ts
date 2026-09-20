@@ -154,7 +154,7 @@ Deno.test("liftosaur-sync: a capped initial history fails without persisting, co
   // Eleven pages at 200/page. The handler may fetch only the first ten, but
   // must not treat that truncated prefix as a completed initial import.
   const res = await harness(db, 2001)({ sync_type: "initial", queue_id: QUEUE_ID });
-  assertEquals(res.status, 502);
+  assertEquals(res.status, 422);
   assertEquals(await res.json(), {
     error: "Liftosaur history sync is incomplete",
     code: "history_page_limit_exceeded",

@@ -159,6 +159,35 @@ Deno.test("syncQueue: a created row is `processing` and leased from the start", 
   assertEquals(inserted.retry_count, 0);
 });
 
+Deno.test("syncQueue: a non-conflict insert failure yields no ownership row", async () => {
+  const db = queueDb([]);
+  const from = db.from.bind(db);
+  db.from = (table: string) => {
+    const query = from(table);
+    if (table === "sync_queue") {
+      query.insert = () => ({
+        select: () => ({
+          maybeSingle: () => Promise.resolve({
+            data: null,
+            error: { code: "08006", message: "connection failure" },
+          }),
+        }),
+      }) as never;
+    }
+    return query;
+  };
+
+  const created = await createSyncQueueEntry(client(db), {
+    userId: USER_ID,
+    provider: "strava",
+    syncType: "manual",
+    now: NOW,
+  });
+
+  assertEquals(created, { queueId: null, conflict: false });
+  assertEquals(db.rows("sync_queue"), []);
+});
+
 Deno.test("syncQueue: a second row of the same kind conflicts and is not inserted", async () => {
   for (const existingStatus of ["pending", "processing"]) {
     const db = queueDb([

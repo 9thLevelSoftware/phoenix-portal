@@ -13,6 +13,7 @@ import {
 	type OwnedQueueRow,
 	releaseOwnedQueueRow,
 	syncAlreadyQueuedResponse,
+	syncQueueUnavailableResponse,
 } from "../_shared/syncQueue.ts";
 import { isServiceRoleBearer } from "../_shared/timingSafe.ts";
 
@@ -263,6 +264,7 @@ async function runLiftosaurSync(
 				now: deps.now(),
 			});
 			if (created.conflict) return syncAlreadyQueuedResponse(cors);
+			if (!created.queueId) return syncQueueUnavailableResponse(cors);
 			ownedQueueId = created.queueId;
 			owned.supabase = supabase;
 			owned.queueId = ownedQueueId;
@@ -451,7 +453,8 @@ async function runLiftosaurSync(
 		// The page cap is a safety bound, not a successful end-of-history signal.
 		// Persisting these first pages and advancing last_sync_at would make every
 		// unread older record unreachable to later incremental syncs. Fail before
-		// any activity write or watermark update so the queue can retry safely.
+		// any activity write or watermark update. This bound is deterministic, so
+		// return a terminal client error rather than retrying the same ten pages.
 		if (hasMore) {
 			const pageLimitMessage =
 				`Liftosaur history still has more records after ${MAX_PAGES} pages`;
@@ -471,7 +474,7 @@ async function runLiftosaurSync(
 					code: "history_page_limit_exceeded",
 				}),
 				{
-					status: 502,
+					status: 422,
 					headers: { ...cors, "Content-Type": "application/json" },
 				},
 			);

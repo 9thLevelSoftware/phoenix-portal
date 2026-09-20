@@ -12,6 +12,7 @@ import {
   type OwnedQueueRow,
   releaseOwnedQueueRow,
   syncAlreadyQueuedResponse,
+  syncQueueUnavailableResponse,
 } from '../_shared/syncQueue.ts';
 import { nextWatermark } from '../_shared/syncWatermark.ts';
 import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
@@ -316,6 +317,7 @@ async function runFitbitSync(req: Request, owned: OwnedQueueRow): Promise<Respon
         syncType: sync_type,
       });
       if (created.conflict) return syncAlreadyQueuedResponse(cors);
+      if (!created.queueId) return syncQueueUnavailableResponse(cors);
       ownedQueueId = created.queueId;
       owned.supabase = supabase;
       owned.queueId = ownedQueueId;
