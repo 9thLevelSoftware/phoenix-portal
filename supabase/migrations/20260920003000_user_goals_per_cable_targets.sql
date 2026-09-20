@@ -14,18 +14,23 @@
 -- converted, then marked 'per_cable'. Re-running finds no NULL rows and
 -- changes nothing.
 --
--- Deploy order: NONE REQUIRED. This migration and the PR 30 SPA may ship in
--- either order.
---   * The new SPA writes target_basis = 'per_cable' explicitly on every goal
---     insert and on every target_value update (src/mutations/goals.ts), so a
---     goal it creates before this migration runs is already stamped and the
---     one-shot backfill below skips it.
+-- Deploy order: this migration first, as AGENTS.md "Release order" requires.
+-- What changed in round 2 is that the *stale-client window* that order opens
+-- is now safe, rather than being managed by operator timing:
 --   * An OLD SPA sends no target_basis at all. The BEFORE INSERT trigger
 --     below halves such a PR target (it is a doubled total) and stamps it
 --     per_cable, so an insert from a stale client lands correct. The column
---     therefore has NO DEFAULT: the default would silently mislabel an old
+--     therefore has NO DEFAULT: a default would silently mislabel an old
 --     client's doubled target as per-cable, which is exactly the corruption
 --     this trigger exists to prevent.
+--   * The new SPA writes target_basis = 'per_cable' explicitly on every goal
+--     insert and on every target_value update (src/mutations/goals.ts), so
+--     nothing it writes is ever mistaken for a legacy doubled total.
+-- The reverse order (SPA first) no longer corrupts anything, but it is not
+-- supported either: PostgREST rejects the new SPA's writes with 400 PGRST204
+-- ("Could not find the 'target_basis' column ... in the schema cache") until
+-- this migration is applied, so goal creation and target edits fail loudly
+-- and write nothing. Goal completion (status/completed_at only) still works.
 --
 -- Residual (cannot be fixed server-side): an OLD SPA *updating* an existing
 -- goal's target_value sends no target_basis, and the row's basis is already
