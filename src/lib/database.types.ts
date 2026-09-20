@@ -2662,6 +2662,56 @@ export type Database = {
 				Args: { p_provider: string; p_timestamp: string; p_user_id: string };
 				Returns: undefined;
 			};
+			exercise_frequency: {
+				Args: { p_profile_id?: string };
+				Returns: {
+					exercise_name: string;
+					muscle_group: string;
+					sessions: number;
+				}[];
+			};
+			exercise_names: {
+				Args: { p_profile_id?: string };
+				Returns: {
+					exercise_name: string;
+				}[];
+			};
+			exercise_progress_series: {
+				Args: { p_exercise: string; p_limit?: number; p_profile_id?: string };
+				Returns: {
+					estimated_1rm_kg: number;
+					exercise_id: string | null;
+					exercise_name: string;
+					id: string;
+					local_profile_id: string | null;
+					max_reps: number;
+					max_weight_kg: number;
+					recorded_at: string;
+					session_id: string;
+					set_count: number;
+					total_volume_kg: number;
+					user_id: string;
+					velocity_estimated_1rm_kg: number | null;
+				}[];
+				SetofOptions: {
+					from: "*";
+					to: "exercise_progress";
+					isOneToOne: false;
+					isSetofReturn: true;
+				};
+			};
+			exercise_progress_series_many: {
+				Args: {
+					p_exercises?: string[];
+					p_limit_per_exercise?: number;
+					p_profile_id?: string;
+				};
+				Returns: {
+					exercise_name: string;
+					latest_recorded_at: string;
+					rows: Json;
+				}[];
+			};
 			get_acwr: {
 				Args: {
 					p_acute_days?: number;
@@ -3044,6 +3094,48 @@ export type Database = {
 					server_revision: number;
 				}[];
 			};
+			personal_record_history: {
+				Args: {
+					p_before?: string;
+					p_before_id?: string;
+					p_limit?: number;
+					p_profile_id?: string;
+				};
+				Returns: {
+					achieved_at: string;
+					deleted_at: string | null;
+					exercise_id: string | null;
+					exercise_name: string;
+					id: string;
+					local_profile_id: string | null;
+					muscle_group: string;
+					previous_value: number | null;
+					record_type: string;
+					reps: number | null;
+					session_id: string | null;
+					unit: string;
+					updated_at: string;
+					user_id: string;
+					value: number;
+					weight_kg: number | null;
+					workout_phase: string | null;
+				}[];
+				SetofOptions: {
+					from: "*";
+					to: "personal_records";
+					isOneToOne: false;
+					isSetofReturn: true;
+				};
+			};
+			profile_workout_stats: {
+				Args: { p_profile_id?: string; p_tz?: string };
+				Returns: {
+					best_streak: number;
+					pr_count: number;
+					total_volume: number;
+					total_workouts: number;
+				}[];
+			};
 			refresh_community_benchmarks: { Args: never; Returns: undefined };
 			refresh_hot_scores: { Args: never; Returns: undefined };
 			replace_session_children: {
@@ -3089,6 +3181,16 @@ export type Database = {
 			safe_jsonb_numeric: {
 				Args: { p_default: number; p_key: string; p_obj: Json };
 				Returns: number;
+			};
+			session_volume_buckets: {
+				Args: { p_period?: string; p_profile_id?: string; p_tz?: string };
+				Returns: {
+					sessions: number;
+					total_duration_seconds: number;
+					total_sets: number;
+					total_volume: number;
+					week_start: string;
+				}[];
 			};
 			subscription_tier_for: { Args: { p_user_id: string }; Returns: string };
 			update_cycle_with_days: {
