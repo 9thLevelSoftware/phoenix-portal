@@ -367,7 +367,7 @@ portal keeps a single row per user. Work them through §10.
 | `[BILLING_ALERT] foreign_subscription_event_ignored:`   | An event arrived for a subscription id that is not the tracked one, and applying it would have cost the user their entitlement. It was ignored and audited as a `subscription_events` row with `operation='IGNORED'`, `note='untracked_subscription'`. | Nothing is broken — this is the guard working. But the customer has two subscriptions: go to §10 and decide which one they are keeping. The audit row carries the untracked id/status, and `row_snapshot` carries the tracked id/status. |
 | `[BILLING_ALERT] switched_to_untracked_subscription:`   | The tracked subscription was cancelled while another of this customer's subscriptions was live **and proved ownership** (its `custom_data.user_id` is this user and its `cd_sig` verifies). The row now follows the live one. | Success, not a failure. Still go to §10: the customer is (or was) paying for two subscriptions and may be owed a refund on the cancelled one.                                                                        |
 | `[BILLING_ALERT] untracked_subscription_not_adopted:`   | A live sibling was found but could not be adopted: its `custom_data.user_id` is someone else, or the `cd_sig` did not verify. The cancellation proceeds and the user drops to FREE.          | Check whether a real second subscription of theirs exists in Paddle (a shared Paddle customer is only an email match, so an unadoptable candidate may belong to a different person). If theirs, resolve via §10.     |
-| `[BILLING_ALERT] Untracked live subscription has no usable price ID; not adopting it:` | The sibling's price is not in the `PADDLE_*_PRICE_IDS` env vars, so adopting it would put a paying user on FREE.                                                | Add the price id to that function's env and redeploy, then run `paddle-refresh-subscription` for the user.                                                                                                          |
+| `[BILLING_ALERT] Untracked live subscription has no usable price ID; not adopting it:` | The sibling's price is not in the `PADDLE_*_PRICE_IDS` env vars, so adopting it would put a paying user on FREE.                                                | Add the price id to that function's env and redeploy. Note that a plain refresh will **not** fix the user: the cancellation already applied, so the row points at the cancelled subscription and re-reading it changes nothing. The sibling is picked up by its own next Paddle event, or by a refresh against the sibling's transaction. Resolve via §10. |
 | `[BILLING_ALERT] untracked_subscription_lookup_failed:` | Paddle could not be asked whether a live sibling exists (429/5xx/timeout). The handler returns 500 and **does not** apply the cancellation, so the user keeps access.                       | Self-healing: Paddle redelivers and the listing is retried. If it persists, check `PADDLE_API_KEY` is set in `paddle-webhooks`' secrets — this function did not call the Paddle API before PR 44, so the key may never have been set there. |
 | `[BILLING_ALERT] switch_to_untracked_subscription_failed:` | The adoption write itself errored. The row is left **untouched** — still the (now cancelled in Paddle) tracked subscription, so the user keeps access rather than dropping to FREE.       | Self-healing: the 500 makes Paddle redeliver, `last_event_occurred_at` did not move, so the redelivery is accepted and the whole rescue runs again. Act only if it keeps firing across Paddle's retry window (§9) — then fix the DB error and run `paddle-refresh-subscription`. |
 
@@ -491,12 +491,19 @@ FROM subscriptions WHERE user_id = '<uuid>';
 
 -- Every event the guard ignored for this user, newest first. row_snapshot
 -- carries what the tracked row looked like at the time.
-SELECT created_at, operation, note, status,
-       paddle_subscription_id AS untracked_id, last_event_id, row_snapshot
+SELECT event_recorded_at, operation, note, status,
+       paddle_subscription_id AS untracked_id, last_event_id,
+       last_event_occurred_at, row_snapshot
 FROM subscription_events
 WHERE user_id = '<uuid>' AND operation = 'IGNORED'
-ORDER BY created_at DESC;
+ORDER BY event_recorded_at DESC;
 ```
+
+`subscription_events` is created only where it is absent
+(`20260920000200`), and both the webhook and `apply_subscription_event` write
+the `IGNORED` rows. If the query errors with "relation does not exist" you are
+on a database without it — there is no audit trail to read, so work from
+Paddle's subscription list below instead.
 
 Then list the customer's subscriptions in **Paddle Dashboard > Customers >
 (customer) > Subscriptions**, or:
@@ -568,6 +575,12 @@ WHERE user_id = '<losing uuid>';
 ```
 
 Then run `paddle-refresh-subscription` for the true owner.
+
+If the losing account had a real subscription of its own that the contested id
+had overwritten, the statement above leaves them on FREE with no local link to
+it. They need a refresh against their own subscription's transaction, or their
+subscription's next Paddle event, before their access comes back — check
+Paddle for a live subscription in their name before closing the case.
 
 The same duplicate condition blocks migration `20260920004400` from applying:
 it runs a pre-check and aborts, naming every subscription bound to more than
