@@ -270,10 +270,17 @@ export function partitionPersonalRecordRowsBySessionValidity(
 	const validRows: PersonalRecordRow[] = [];
 	const invalidSessionRows: PersonalRecordRow[] = [];
 	const rowsWithInvalidSessionsNulled: PersonalRecordRow[] = [];
+	const normalizedValidSessionIds = new Set(
+		[...validSessionIds].map((id) => id.toLowerCase()),
+	);
 
 	for (const row of rows) {
 		const sessionId = row.session_id;
-		if (sessionId !== null && sessionId !== undefined && !validSessionIds.has(sessionId)) {
+		if (
+			sessionId !== null &&
+			sessionId !== undefined &&
+			!normalizedValidSessionIds.has(sessionId.toLowerCase())
+		) {
 			invalidSessionRows.push(row);
 			rowsWithInvalidSessionsNulled.push({ ...row, session_id: null });
 		} else {

@@ -90,6 +90,10 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 /** PostgreSQL serializes UUID columns in lowercase; mobile UUID casing varies. */
 const normalizeUuid = (id: string): string => id.toLowerCase();
 
+/** Normalize a TEXT identity only when it is actually a UUID. */
+const normalizeUuidShapedText = (id: string): string =>
+  UUID_REGEX.test(id) ? normalizeUuid(id) : id;
+
 /** Deduplicate UUIDs case-insensitively while retaining a caller-supplied form. */
 function uniqueUuidValues(ids: string[]): string[] {
   const byNormalizedId = new Map<string, string>();
@@ -422,6 +426,44 @@ interface ExternalActivityAckDto {
   externalId: string;
   provider: string;
   updatedAt: string;
+}
+
+export function buildExternalActivityAcks(
+  activityRows: ReadonlyArray<{
+    id: string;
+    external_id: string;
+    provider: string;
+  }>,
+  acceptedRows: ReadonlyArray<{
+    id: string;
+    accepted: boolean;
+    server_updated_at: string | null;
+  }>,
+  fallbackUpdatedAt: string,
+): ExternalActivityAckDto[] {
+  const byId = new Map<string, { externalId: string; provider: string }>();
+  for (const row of activityRows) {
+    byId.set(normalizeUuid(row.id), {
+      externalId: row.external_id,
+      provider: row.provider,
+    });
+  }
+
+  return acceptedRows
+    .filter((row) => row.accepted)
+    .map((row) => {
+      const metadata = byId.get(normalizeUuid(row.id)) ?? {
+        externalId: '',
+        provider: '',
+      };
+      return {
+        localId: row.id,
+        serverId: row.id,
+        externalId: metadata.externalId,
+        provider: metadata.provider,
+        updatedAt: row.server_updated_at ?? fallbackUpdatedAt,
+      };
+    });
 }
 
 interface PersonalRecordDto {
@@ -1071,9 +1113,9 @@ async function mobileSyncPushHandler(
     const allPersonalRecordIds = (payload.personalRecords ?? [])
       .map((pr) => pr.id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0);
-    const sessionIdSet = new Set(allSessionIds);
-    const setIdSet = new Set(allSetIds);
-    const routineIdSet = new Set(allRoutineIds);
+    const sessionIdSet = new Set(allSessionIds.map(normalizeUuid));
+    const setIdSet = new Set(allSetIds.map(normalizeUuid));
+    const routineIdSet = new Set(allRoutineIds.map(normalizeUuid));
 
     const fkMismatchResponse = (msg: string): Response =>
       new Response(
@@ -1083,15 +1125,15 @@ async function mobileSyncPushHandler(
 
     for (const s of payload.sessions ?? []) {
       for (const e of s.exercises) {
-        if (e.sessionId !== s.id) {
+        if (normalizeUuid(e.sessionId) !== normalizeUuid(s.id)) {
           return fkMismatchResponse(`exercise ${e.id} sessionId must equal parent session ${s.id}`);
         }
         for (const st of e.sets) {
-          if (st.exerciseId !== e.id) {
+          if (normalizeUuid(st.exerciseId) !== normalizeUuid(e.id)) {
             return fkMismatchResponse(`set ${st.id} exerciseId must equal parent exercise ${e.id}`);
           }
           for (const r of st.repSummaries) {
-            if (r.setId !== st.id) {
+            if (normalizeUuid(r.setId) !== normalizeUuid(st.id)) {
               return fkMismatchResponse(`rep_summary ${r.id} setId must equal parent set ${st.id}`);
             }
           }
@@ -1100,7 +1142,7 @@ async function mobileSyncPushHandler(
     }
     for (const r of payload.routines ?? []) {
       for (const e of r.exercises) {
-        if (e.routineId !== r.id) {
+        if (normalizeUuid(e.routineId) !== normalizeUuid(r.id)) {
           return fkMismatchResponse(
             `routine_exercise ${e.id} routineId must equal parent routine ${r.id}`,
           );
@@ -1109,7 +1151,7 @@ async function mobileSyncPushHandler(
     }
     for (const c of payload.cycles ?? []) {
       for (const d of c.days) {
-        if (d.cycleId !== c.id) {
+        if (normalizeUuid(d.cycleId) !== normalizeUuid(c.id)) {
           return fkMismatchResponse(
             `cycle_day ${d.id} cycleId must equal parent cycle ${c.id}`,
           );
@@ -1511,7 +1553,7 @@ async function mobileSyncPushHandler(
     // Use the strict parent-reference variant (missing → 400) for all of these.
     const telemetrySetIdsToVerify = (payload.telemetry ?? [])
       .map((t) => t.setId)
-      .filter((sid) => !setIdSet.has(sid));
+      .filter((sid) => !setIdSet.has(normalizeUuid(sid)));
     const telParentProbe = await assertParentRowsExistAndOwnedByUser(
       supabase,
       'sets',
@@ -1523,7 +1565,7 @@ async function mobileSyncPushHandler(
 
     const phaseSessionIdsToVerify = (payload.phaseStatistics ?? [])
       .map((p) => p.sessionId)
-      .filter((sid) => !sessionIdSet.has(sid));
+      .filter((sid) => !sessionIdSet.has(normalizeUuid(sid)));
     const phaseParentProbe = await assertParentRowsExistAndOwnedByUser(
       supabase,
       'workout_sessions',
@@ -1540,7 +1582,11 @@ async function mobileSyncPushHandler(
 
     const dayRoutineIdsToVerify = (payload.cycles ?? [])
       .flatMap((c) => c.days.map((d) => d.routineId))
-      .filter((rid): rid is string => typeof rid === 'string' && rid.length > 0 && !routineIdSet.has(rid));
+      .filter((rid): rid is string =>
+        typeof rid === 'string' &&
+        rid.length > 0 &&
+        !routineIdSet.has(normalizeUuid(rid))
+      );
     // KD-4 / R-24: a missing routine is one that was deleted (on the portal or
     // another device). Mobile pushes every cycle on every sync but routines
     // only as a delta, so an old build keeps sending a day that points at the
@@ -1572,7 +1618,11 @@ async function mobileSyncPushHandler(
       ...new Set(
         (payload.personalRecords ?? [])
           .map((pr) => pr.sessionId)
-          .filter((sid): sid is string => typeof sid === 'string' && sid.length > 0 && !sessionIdSet.has(sid)),
+          .filter((sid): sid is string =>
+            typeof sid === 'string' &&
+            sid.length > 0 &&
+            !sessionIdSet.has(normalizeUuid(sid))
+          ),
       ),
     ];
     const personalRecordSessionProbe = await assertParentRowsExistAndOwnedByUser(
@@ -1589,7 +1639,7 @@ async function mobileSyncPushHandler(
     // the FK retry runs they exist on the server.
     const validPersonalRecordSessionIds = new Set<string>(sessionIdSet);
     for (const id of personalRecordSessionProbe.validIds) {
-      validPersonalRecordSessionIds.add(id);
+      validPersonalRecordSessionIds.add(normalizeUuid(id));
     }
 
     // =========================================================================
@@ -1963,9 +2013,9 @@ async function mobileSyncPushHandler(
       // transaction (now atomic) would roll back on that FK violation, blocking
       // every other session's data in the same push. Drop the stale telemetry
       // instead — we are keeping the server's newer version of that session.
-      const acceptedSetIds = new Set(dedupedSetRows.map((r) => r.id));
+      const acceptedSetIds = new Set(dedupedSetRows.map((r) => normalizeUuid(r.id)));
       const telemetryRows = (payload.telemetry ?? [])
-        .filter((t) => acceptedSetIds.has(t.setId))
+        .filter((t) => acceptedSetIds.has(normalizeUuid(t.setId)))
         .map((t) => ({
           id: t.id,
           set_id: t.setId,
@@ -2048,9 +2098,12 @@ async function mobileSyncPushHandler(
         }) => {
           const exerciseKey =
             typeof row.exercise_id === 'string' && row.exercise_id.length > 0
-              ? `id:${row.exercise_id}`
+              ? `id:${normalizeUuidShapedText(row.exercise_id)}`
               : `name:${String(row.exercise_name ?? '')}`;
-          return `${String(row.session_id ?? '')}:${exerciseKey}`;
+          const sessionKey = typeof row.session_id === 'string'
+            ? normalizeUuid(row.session_id)
+            : String(row.session_id ?? '');
+          return `${sessionKey}:${exerciseKey}`;
         };
         const existingProgressKeys = new Set(
           (existingProgress ?? []).map((row) => progressIdentityKey(row))
@@ -2216,7 +2269,10 @@ async function mobileSyncPushHandler(
       const dedupedPrRows = [...latestPayloadRowsByIdentity.values()].filter((row) => {
         const key = personalRecordIdentityKey(row);
         const existingId = existingPrIdsByIdentity.get(key);
-        if (existingId && (!row.id || row.id !== existingId)) return false;
+        if (
+          existingId &&
+          (!row.id || normalizeUuid(row.id) !== normalizeUuid(existingId))
+        ) return false;
         existingPrIdsByIdentity.set(key, row.id ?? existingId ?? null);
         return true;
       });
@@ -2442,7 +2498,7 @@ async function mobileSyncPushHandler(
               ),
             });
             existingDurations.set(
-              row.id,
+              normalizeUuid(row.id),
               typeof row.duration_seconds === 'number' ? row.duration_seconds : null,
             );
           }
@@ -2488,7 +2544,7 @@ async function mobileSyncPushHandler(
           ? {
             duration_seconds: e.durationSeconds !== undefined
               ? e.durationSeconds
-              : existingDurations.get(e.id) ?? null,
+              : existingDurations.get(normalizeUuid(e.id)) ?? null,
           }
           : {}),
       }));
@@ -2509,7 +2565,9 @@ async function mobileSyncPushHandler(
         .map((r) => r.id);
       for (const routineId of routineIds) {
         const idsForRoutine = syncedExerciseIds.length > 0
-          ? reRows.filter((r) => r.routine_id === routineId).map((r) => r.id)
+          ? reRows
+            .filter((r) => normalizeUuid(r.routine_id) === normalizeUuid(routineId))
+            .map((r) => r.id)
           : [];
 
         if (idsForRoutine.length > 0) {
@@ -2695,7 +2753,7 @@ async function mobileSyncPushHandler(
       );
       const keepableDayRoutineIds = new Set<string>([
         ...liveRoutines.map((r) => normalizeUuid(r.id)),
-        ...dayRoutineProbe.validIds,
+        ...[...dayRoutineProbe.validIds].map(normalizeUuid),
       ]);
       const skippedRoutineIds = new Set(skippedDeleted.routines.map(normalizeUuid));
       // Cleared references are logged, never dropped silently (R-3).
@@ -3025,23 +3083,13 @@ async function mobileSyncPushHandler(
           externalActivityKeys = [];
         } else {
           const acceptedRows = (lwwData ?? []) as LwwUpsertRow[];
-          // Preserve compound-key metadata by matching back against activityRows.
-          const byIdx = new Map<string, { externalId: string; provider: string }>();
-          for (const r of activityRows) {
-            byIdx.set(r.id, { externalId: r.external_id, provider: r.provider });
-          }
-          externalActivityKeys = acceptedRows
-            .filter((r) => r.accepted)
-            .map((r) => {
-              const meta = byIdx.get(r.id) ?? { externalId: '', provider: '' };
-              return {
-                localId: r.id,
-                serverId: r.id,
-                externalId: meta.externalId,
-                provider: meta.provider,
-                updatedAt: r.server_updated_at ?? new Date().toISOString(),
-              };
-            });
+          // Preserve compound-key metadata by matching the UUID returned by
+          // Postgres back to the mobile row case-insensitively.
+          externalActivityKeys = buildExternalActivityAcks(
+            activityRows,
+            acceptedRows,
+            new Date().toISOString(),
+          );
           for (const r of acceptedRows) {
             if (!r.accepted) {
               rejections.externalActivities.push({
