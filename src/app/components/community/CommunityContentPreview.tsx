@@ -7,6 +7,7 @@ import type {
 	RoutineExerciseSnapshot,
 } from "@/schemas/community";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
+import { workoutModeLabel } from "../../../../supabase/functions/_shared/workoutModes.ts";
 
 function orderedExercises(exercises: RoutineExerciseSnapshot[]) {
 	return [...exercises].sort((a, b) => a.order_index - b.order_index);
@@ -46,7 +47,7 @@ function formatPrescription(
 
 function exerciseBadges(exercise: RoutineExerciseSnapshot) {
 	return [
-		exercise.mode,
+		workoutModeLabel(exercise.mode),
 		exercise.is_amrap ? "AMRAP" : null,
 		exercise.is_bodyweight ? "Bodyweight" : null,
 		exercise.eccentric_load ? `Eccentric ${exercise.eccentric_load}` : null,
