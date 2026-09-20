@@ -54,6 +54,7 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PHOENIX } from "@/lib/colors";
+import { cancelSuccessMessage } from "@/lib/paddle";
 import { supabase } from "@/lib/supabase";
 import { formatVolume, type WeightUnit } from "@/lib/units";
 import { useUpdateProfile } from "@/mutations/profile";
@@ -111,8 +112,14 @@ export function formatProfileVolume(
 export function Profile() {
 	const { user, signOut } = useAuth();
 	const userId = user?.id ?? "";
-	const { tier, currentPeriodEnd, cancelAtPeriodEnd, isEntitled, isStale } =
-		useSubscription();
+	const {
+		tier,
+		status: subscriptionStatus,
+		currentPeriodEnd,
+		cancelAtPeriodEnd,
+		isEntitled,
+		isStale,
+	} = useSubscription();
 	const { activeProfileId } = useProfileFilterStore();
 	const queryClient = useQueryClient();
 	const [confirmCancel, setConfirmCancel] = useState(false);
@@ -124,16 +131,14 @@ export function Profile() {
 	const handleCancelSubscription = async () => {
 		setIsCanceling(true);
 		try {
-			const { error } = await supabase.functions.invoke(
-				"paddle-cancel-subscription",
-			);
+			const { data, error } = await supabase.functions.invoke<{
+				canceledImmediately?: boolean;
+			}>("paddle-cancel-subscription");
 			if (error) {
 				toast.error(error.message || "Failed to cancel subscription");
 				return;
 			}
-			toast.success(
-				"Subscription canceled. You'll retain access until the end of your billing period.",
-			);
+			toast.success(cancelSuccessMessage(data));
 			if (user) {
 				queryClient.invalidateQueries({
 					queryKey: queryKeys.subscription.byUser(user.id),
@@ -430,7 +435,9 @@ export function Profile() {
 									</div>
 									{isStale && (
 										<div className="text-sm text-muted-foreground">
-											Subscription expired. Refreshing billing status...
+											{subscriptionStatus === "past_due"
+												? "Payment past due. Checking billing status..."
+												: "Subscription expired. Refreshing billing status..."}
 										</div>
 									)}
 									{isEntitled && currentPeriodEnd && (
@@ -1100,12 +1107,18 @@ export function Profile() {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Cancel subscription?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Your subscription will remain active until the end of your current
-							billing period
-							{currentPeriodEnd
-								? ` (${format(new Date(currentPeriodEnd), "MMM d, yyyy")})`
-								: ""}
-							. After that, you'll be downgraded to the Free plan.
+							{subscriptionStatus === "past_due" ? (
+								"Your last payment failed, so canceling ends your paid access immediately and moves you to the Free plan."
+							) : (
+								<>
+									Your subscription will remain active until the end of your
+									current billing period
+									{currentPeriodEnd
+										? ` (${format(new Date(currentPeriodEnd), "MMM d, yyyy")})`
+										: ""}
+									. After that, you'll be downgraded to the Free plan.
+								</>
+							)}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

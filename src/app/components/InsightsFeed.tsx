@@ -17,7 +17,15 @@ export interface InsightsFeedProps {
 	loading?: boolean;
 	/** Failed fetch is an error, not “complete more workouts.” */
 	isError?: boolean;
+	/**
+	 * Where these insights came from (KD-14). The feed shows either a fresh
+	 * server batch or the browser-computed fallback, never a mix; when it is
+	 * the fallback, say so instead of letting it pass for a server result.
+	 */
+	source?: "server" | "local";
 }
+
+export const LOCAL_INSIGHTS_LABEL = "Calculated on this device";
 
 const TYPE_CONFIG = {
 	success: {
@@ -64,6 +72,7 @@ export function InsightsFeed({
 	insights,
 	loading = false,
 	isError = false,
+	source = "server",
 }: InsightsFeedProps) {
 	if (loading) {
 		return (
@@ -155,6 +164,10 @@ export function InsightsFeed({
 					</Card>
 				);
 			})}
+
+			{source === "local" && (
+				<p className="text-xs text-muted-foreground">{LOCAL_INSIGHTS_LABEL}</p>
+			)}
 		</div>
 	);
 }

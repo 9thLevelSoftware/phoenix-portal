@@ -2032,6 +2032,27 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			sync_tombstones: {
+				Row: {
+					deleted_at: string;
+					entity: string;
+					entity_id: string;
+					user_id: string;
+				};
+				Insert: {
+					deleted_at?: string;
+					entity: string;
+					entity_id: string;
+					user_id: string;
+				};
+				Update: {
+					deleted_at?: string;
+					entity?: string;
+					entity_id?: string;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
 			telemetry_analysis: {
 				Row: {
 					analysis_type: string;
@@ -2934,6 +2955,19 @@ export type Database = {
 					workout_mode: string;
 				}[];
 			};
+			get_sync_tombstones: {
+				Args: {
+					p_entity?: string;
+					p_ids?: string[];
+					p_since?: string;
+					p_user_id: string;
+				};
+				Returns: {
+					deleted_at: string;
+					entity: string;
+					entity_id: string;
+				}[];
+			};
 			get_user_pr_rank: {
 				Args: { target_user_id: string };
 				Returns: {
@@ -2994,6 +3028,12 @@ export type Database = {
 				Args: { p_routine_id: string; p_snapshot: Json };
 				Returns: undefined;
 			};
+			insights_batch_candidates: {
+				Args: { p_cursor?: string; p_limit?: number };
+				Returns: {
+					user_id: string;
+				}[];
+			};
 			jsonb_redact_token_keys: { Args: { data: Json }; Returns: Json };
 			local_profile_preference_section_canonical: {
 				Args: {
@@ -3043,6 +3083,11 @@ export type Database = {
 				Args: { p_default: number; p_key: string; p_obj: Json };
 				Returns: number;
 			};
+			set_insights_batch_cursor: {
+				Args: { p_cursor: string };
+				Returns: undefined;
+			};
+			subscription_tier_for: { Args: { p_user_id: string }; Returns: string };
 			update_cycle_with_days: {
 				Args: {
 					p_cycle_id: string;
