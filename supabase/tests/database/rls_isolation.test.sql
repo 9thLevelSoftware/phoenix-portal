@@ -431,6 +431,13 @@ VALUES (
     'strava'
 );
 
+INSERT INTO public.sync_tombstones (user_id, entity, entity_id)
+VALUES (
+    'a1a1a1a1-0000-4000-8000-00000000000a',
+    'routine',
+    'a1a1a1a1-0035-4000-8000-00000000000a'
+);
+
 INSERT INTO public.telemetry_analysis (id, set_id, user_id, analysis_type, result)
 VALUES (
     'a1a1a1a1-0031-4000-8000-00000000000a',
@@ -509,6 +516,7 @@ INSERT INTO rls_cases VALUES
     ('exercise_catalog',          'id', 'rls-custom-exercise-a',                1, 1,    1,    $s$display_name = 'rls-probe'$s$),
     ('exercise_signatures',       'id', 'a1a1a1a1-0019-4000-8000-00000000000a', 1, NULL, NULL, $s$exercise_id = 'rls-probe'$s$),
     ('external_activities',       'id', 'a1a1a1a1-0020-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
+    ('gamification_stats',        'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$pr_count = 99$s$),
     ('gamification_stats',        'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, NULL, NULL, $s$pr_count = 99$s$),
     ('goal_snapshots',            'id', 'a1a1a1a1-0021-4000-8000-00000000000a', 1, NULL, NULL, $s$progress_pct = 99$s$),
     -- Client DML is revoked; access goes through definer RPCs
@@ -520,11 +528,13 @@ INSERT INTO rls_cases VALUES
     ('paddle_webhook_events',     'id', 'a1a1a1a1-0024-4000-8000-00000000000a', NULL, NULL, NULL, $s$payload = '{}'::jsonb$s$),
     ('profiles',                  'id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1,    NULL, $s$display_name = 'rls-probe'$s$),
     ('rate_limit_tracking',       'id', 'a1a1a1a1-0025-4000-8000-00000000000a', NULL, NULL, NULL, $s$provider = 'rls-probe'$s$),
+    ('rpg_attributes',            'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$level = 99$s$),
     ('rpg_attributes',            'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, NULL, NULL, $s$level = 99$s$),
     ('saved_community_items',     'id', 'a1a1a1a1-0026-4000-8000-00000000000a', 1, NULL, 1,    $s$item_type = 'cycle'$s$),
     ('session_phase_statistics',  'id', 'a1a1a1a1-0028-4000-8000-00000000000a', 1, NULL, NULL, $s$concentric_kg_avg = 99$s$),
     ('subscription_events',       'id', 'a1a1a1a1-0029-4000-8000-00000000000a', NULL, NULL, NULL, $s$operation = 'UPDATE'$s$),
     ('sync_queue',                'id', 'a1a1a1a1-0030-4000-8000-00000000000a', 1, NULL, NULL, $s$provider = 'rls-probe'$s$),
+    ('sync_tombstones',           'entity_id', 'a1a1a1a1-0035-4000-8000-00000000000a', 1, NULL, NULL, $s$deleted_at = '2000-01-01T00:00:00Z'$s$),
     ('telemetry_analysis',        'id', 'a1a1a1a1-0031-4000-8000-00000000000a', 1, NULL, NULL, $s$result = '{}'::jsonb$s$),
     ('user_insights',             'id', 'a1a1a1a1-0032-4000-8000-00000000000a', 1, NULL, NULL, $s$title = 'rls-probe'$s$),
     ('user_onboarding',           'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$version_seen = 'rls-probe'$s$),
@@ -877,6 +887,8 @@ INSERT INTO spoof_cases VALUES
     ('cycle_days: INSERT under A''s cycle', NULL,
      $q$INSERT INTO public.cycle_days (cycle_id, day_number) VALUES ('a1a1a1a1-0008-4000-8000-00000000000a', 2)$q$),
     -- Re-parent B's own row to A.
+    ('workout_sessions: UPDATE own row to user_id = A',
+     $q$INSERT INTO public.workout_sessions (id, user_id) VALUES ('b2b2b2b2-0001-4000-8000-00000000000b', 'b2b2b2b2-0000-4000-8000-00000000000b')$q$,
     -- Clients cannot INSERT sessions (server-written only) and may UPDATE
     -- only `notes`, so the user_id rewrite is refused by the column grant
     -- before any row is matched; no setup row is needed.

@@ -2059,6 +2059,27 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			sync_tombstones: {
+				Row: {
+					deleted_at: string;
+					entity: string;
+					entity_id: string;
+					user_id: string;
+				};
+				Insert: {
+					deleted_at?: string;
+					entity: string;
+					entity_id: string;
+					user_id: string;
+				};
+				Update: {
+					deleted_at?: string;
+					entity?: string;
+					entity_id?: string;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
 			telemetry_analysis: {
 				Row: {
 					analysis_type: string;
@@ -2091,6 +2112,7 @@ export type Database = {
 			};
 			training_cycles: {
 				Row: {
+					client_updated_at: string | null;
 					current_week: number;
 					deload_settings: Json | null;
 					description: string | null;
@@ -2099,6 +2121,8 @@ export type Database = {
 					last_used_at: string | null;
 					local_profile_id: string | null;
 					name: string;
+					portal_duration_set_at: string | null;
+					portal_edited_at: string | null;
 					progression_settings: Json | null;
 					progress_state: Json | null;
 					rest_days: number;
@@ -2110,6 +2134,7 @@ export type Database = {
 					workout_days: number;
 				};
 				Insert: {
+					client_updated_at?: string | null;
 					current_week?: number;
 					deload_settings?: Json | null;
 					description?: string | null;
@@ -2118,6 +2143,8 @@ export type Database = {
 					last_used_at?: string | null;
 					local_profile_id?: string | null;
 					name: string;
+					portal_duration_set_at?: string | null;
+					portal_edited_at?: string | null;
 					progression_settings?: Json | null;
 					progress_state?: Json | null;
 					rest_days?: number;
@@ -2129,6 +2156,7 @@ export type Database = {
 					workout_days?: number;
 				};
 				Update: {
+					client_updated_at?: string | null;
 					current_week?: number;
 					deload_settings?: Json | null;
 					description?: string | null;
@@ -2137,6 +2165,8 @@ export type Database = {
 					last_used_at?: string | null;
 					local_profile_id?: string | null;
 					name?: string;
+					portal_duration_set_at?: string | null;
+					portal_edited_at?: string | null;
 					progression_settings?: Json | null;
 					progress_state?: Json | null;
 					rest_days?: number;
@@ -2442,6 +2472,7 @@ export type Database = {
 				Row: {
 					avg_asymmetry_pct: number | null;
 					avg_velocity_mps: number | null;
+					client_updated_at: string | null;
 					deload_warnings: number | null;
 					dominant_side: string | null;
 					duration_seconds: number;
@@ -2475,6 +2506,7 @@ export type Database = {
 				Insert: {
 					avg_asymmetry_pct?: number | null;
 					avg_velocity_mps?: number | null;
+					client_updated_at?: string | null;
 					deload_warnings?: number | null;
 					dominant_side?: string | null;
 					duration_seconds?: number;
@@ -2508,6 +2540,7 @@ export type Database = {
 				Update: {
 					avg_asymmetry_pct?: number | null;
 					avg_velocity_mps?: number | null;
+					client_updated_at?: string | null;
 					deload_warnings?: number | null;
 					dominant_side?: string | null;
 					duration_seconds?: number;
@@ -2681,6 +2714,7 @@ export type Database = {
 				};
 				Returns: boolean;
 			};
+			backfill_client_updated_at: { Args: never; Returns: undefined };
 			check_rate_limit: {
 				Args: {
 					p_key: string;
@@ -2971,6 +3005,7 @@ export type Database = {
 				Returns: {
 					avg_asymmetry_pct: number;
 					avg_velocity_mps: number;
+					client_updated_at: string;
 					deload_warnings: number;
 					dominant_side: string;
 					duration_seconds: number;
@@ -3000,6 +3035,19 @@ export type Database = {
 					warmup_reps: number;
 					working_reps: number;
 					workout_mode: string;
+				}[];
+			};
+			get_sync_tombstones: {
+				Args: {
+					p_entity?: string;
+					p_ids?: string[];
+					p_since?: string;
+					p_user_id: string;
+				};
+				Returns: {
+					deleted_at: string;
+					entity: string;
+					entity_id: string;
 				}[];
 			};
 			get_user_pr_rank: {

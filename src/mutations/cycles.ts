@@ -4,6 +4,7 @@ import type { Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
+import type { CycleProgressionSettings } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 interface CycleDayInput {
@@ -17,14 +18,9 @@ interface CycleDayInput {
 	rest_type?: string | null;
 }
 
-interface ProgressionSettings {
-	type: "percentage" | "fixed" | "manual";
-	amount: number;
-	frequency: number;
-	trigger: "all_sets" | "target_rpe" | "cycle_complete";
-	upperIncrement: number;
-	lowerIncrement: number;
-}
+// String-valued so mobile can decode it as Map<String, String>; built by
+// buildCycleProgressionSettings.
+type ProgressionSettings = CycleProgressionSettings;
 
 interface DeloadSettings {
 	frequency: number;

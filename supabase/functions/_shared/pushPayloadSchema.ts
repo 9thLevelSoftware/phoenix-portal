@@ -273,6 +273,11 @@ const routineExerciseSchema = z.object({
 	// value written by the portal or a newer device (SYNC_LWW_ENABLED is off).
 	dropSetEnabled: nullableField(z.boolean()),
 	dropSetMinWeightKg: nullableField(z.number()),
+	// Timed exercise length. Shipping mobile builds don't send it; absent
+	// (undefined) keeps the stored value, so they can't erase a duration set in
+	// the portal. Nested field only (KD-2): an older server strips it.
+	// Bounded to the INT column (and Kotlin Int) so it can't fail the upsert.
+	durationSeconds: nullableField(nonNegInt.max(2_147_483_647)),
 });
 
 const customExerciseSchema = z.object({
@@ -331,14 +336,21 @@ const cycleSchema = z.object({
 	userId: z.string(),
 	name: z.string(),
 	description: nullableField(z.string()),
-	durationWeeks: nonNegIntDefault(4),
+	// KD-6: no ingress default. An absent/null duration or status keeps the
+	// stored value in merge_training_cycles_from_push; the merge's INSERT
+	// applies the column defaults (4 / 'draft').
+	durationWeeks: nullableField(nonNegInt),
 	workoutDays: nonNegIntDefault(0),
 	restDays: nonNegIntDefault(0),
 	currentWeek: nonNegIntDefault(1),
-	status: z.string().nullish().transform((v) => v ?? "draft"),
+	status: nullableField(z.string()),
 	startedAt: nullableDatetime(),
 	lastUsedAt: nullableDatetime(),
 	updatedAt: nullableDatetime(),
+	// KD-6: server updatedAt the device last received for this cycle.
+	// Optional and nested, so older builds (absent) and older servers
+	// (stripped) keep working.
+	baseUpdatedAt: nullableDatetime(),
 	progressionSettings: nullableField(z.string()),
 	progressionSettingsPresent: z.boolean().optional(),
 	deloadSettings: nullableField(z.string()),
