@@ -127,9 +127,10 @@ describe("personalRecordsOptions", () => {
 		const opts = personalRecordsOptions("user-1");
 		const result = await opts.queryFn?.({} as never);
 
-		expect(exercisesChain.in).toHaveBeenCalledWith("session_id", [
-			"33333333-3333-4333-8333-333333333333",
-		]);
+		// Scoped by user_id: the session id list used to grow with the PR count
+		// and blew the GET URL limit (F-035).
+		expect(exercisesChain.in).not.toHaveBeenCalled();
+		expect(exercisesChain.eq).toHaveBeenCalledWith("user_id", "user-1");
 		expect(result[0].exercise_name).toBe("Cable Curl (Handles)");
 	});
 

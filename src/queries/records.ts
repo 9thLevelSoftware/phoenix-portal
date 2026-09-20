@@ -29,7 +29,7 @@ export function personalRecordsOptions(
 			});
 			if (error) throw error;
 			return personalRecordListSchema.parse(
-				await resolvePersonalRecordDisplayNames(data),
+				await resolvePersonalRecordDisplayNames(data, userId),
 			);
 		},
 		enabled: !!userId,

@@ -7,7 +7,28 @@ import {
 	STRENGTH_PROGRESS_WITH_CATALOG_SELECT,
 } from "./personal-record-normalization";
 
-/** Volume trend over time (for area/bar chart) */
+/**
+ * The browser's IANA zone, used by the SQL aggregates that bucket by calendar
+ * day/week so they keep the local-calendar semantics the charts used to get
+ * from `new Date(...).getDay()`.
+ */
+export function browserTimeZone(): string {
+	try {
+		return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+	} catch {
+		return "UTC";
+	}
+}
+
+/**
+ * Weekly volume buckets (for area/bar chart).
+ *
+ * Aggregated in SQL by `session_volume_buckets`: one row per week instead of
+ * one row per session, so the "all" period can no longer lose its newest
+ * months to PostgREST's silent 1,000-row cap (F-034/F-012). `week_start` is
+ * the Monday of the week in the caller's zone, which is the rule the chart
+ * used to apply client-side.
+ */
 export function volumeTrendOptions(
 	userId: string,
 	period: string = "4w",
@@ -20,35 +41,13 @@ export function volumeTrendOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			let query = supabase
-				.from("workout_sessions")
-				.select("started_at, total_volume")
-				.eq("user_id", userId);
-
-			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
-			}
-
-			query = query.order("started_at", { ascending: true });
-
-			// Apply date filter unless "all" (fetch everything)
-			if (period !== "all") {
-				const daysBack =
-					period === "52w"
-						? 365
-						: period === "12w"
-							? 84
-							: period === "4w"
-								? 28
-								: 7;
-				const since = new Date();
-				since.setDate(since.getDate() - daysBack);
-				query = query.gte("started_at", since.toISOString());
-			}
-
-			const { data, error } = await query;
+			const { data, error } = await supabase.rpc("session_volume_buckets", {
+				p_period: period,
+				p_tz: browserTimeZone(),
+				...(profileId ? { p_profile_id: profileId } : {}),
+			});
 			if (error) throw error;
-			return data;
+			return data ?? [];
 		},
 	});
 }
@@ -58,27 +57,16 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
 		queryKey: queryKeys.analytics.summary(userId, "muscle-groups", profileId),
 		queryFn: async () => {
-			// Two-step approach: get user's session IDs, then get exercises grouped by muscle_group
-			let sessionQuery = supabase
-				.from("workout_sessions")
-				.select("id")
-				.eq("user_id", userId);
-
-			if (profileId) {
-				sessionQuery = sessionQuery.eq("local_profile_id", profileId);
-			}
-
-			const { data: sessions, error: sessionError } = await sessionQuery;
-			if (sessionError) throw sessionError;
-
-			if (!sessions || sessions.length === 0) return [];
-
-			const sessionIds = sessions.map((s) => s.id);
-			const { data: exercises, error: exerciseError } = await supabase
-				.from("exercises")
-				.select("name, muscle_group")
-				.in("session_id", sessionIds);
-			if (exerciseError) throw exerciseError;
+			// One RPC, grouped in SQL. The previous "select every session id, then
+			// .in(session_id, ids)" round trip put every UUID in the GET URL and
+			// started failing at ~200 sessions (F-035), and the exercise rows it
+			// fetched were themselves capped at 1,000 rows.
+			// `sessions` counts an exercise once per session it appears in.
+			const { data: exercises, error } = await supabase.rpc(
+				"exercise_frequency",
+				profileId ? { p_profile_id: profileId } : {},
+			);
+			if (error) throw error;
 
 			// Classify by exercise NAME (canonical 6 groups), falling back to a
 			// real muscle_group hint only when the name is unclassifiable. The DB
@@ -88,9 +76,12 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 			// Genuinely unclassifiable rows are dropped from the distribution.
 			const counts: Record<string, number> = {};
 			for (const ex of exercises ?? []) {
-				const group = classifyMuscleGroup(ex.name ?? "", ex.muscle_group);
+				const group = classifyMuscleGroup(
+					ex.exercise_name ?? "",
+					ex.muscle_group,
+				);
 				if (group === "General") continue;
-				counts[group] = (counts[group] ?? 0) + 1;
+				counts[group] = (counts[group] ?? 0) + (ex.sessions ?? 0);
 			}
 
 			const total = Object.values(counts).reduce((sum, c) => sum + c, 0);
@@ -102,7 +93,24 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 	});
 }
 
-/** Strength progress (exercise-specific 1RM trends for line chart) */
+/**
+ * How many personal-record events the phase-aware strength chart reads.
+ *
+ * `personal_record_history` clamps its own limit to 1,000, so this is "the
+ * newest 1,000 PR events" — an explicit, documented bound. The previous
+ * implementation selected every record ASCENDING with no limit, so PostgREST's
+ * `max_rows` silently dropped the NEWEST ones — the chart stopped moving once
+ * a user passed about 1,000 PR events (F-034).
+ */
+const STRENGTH_PROGRESS_RECORD_LIMIT = 1000;
+
+/**
+ * Strength progress (phase-aware personal-record trends for the line chart).
+ *
+ * Read through `personal_record_history`, which is newest-first and excludes
+ * tombstones in SQL. `exercise_progress` cannot serve this chart: it has no
+ * `workout_phase`, which is the dimension the chart is built on.
+ */
 export function strengthProgressOptions(
 	userId: string,
 	profileId?: string | null,
@@ -114,21 +122,19 @@ export function strengthProgressOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			let query = supabase
-				.from("personal_records")
-				.select(STRENGTH_PROGRESS_WITH_CATALOG_SELECT)
-				.eq("user_id", userId)
-				.is("deleted_at", null);
-
-			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
-			}
-
-			const { data, error } = await query.order("achieved_at", {
-				ascending: true,
-			});
+			const { data, error } = await supabase
+				.rpc("personal_record_history", {
+					p_limit: STRENGTH_PROGRESS_RECORD_LIMIT,
+					// Generated types mark defaulted arguments optional: omit them
+					// rather than passing null.
+					...(profileId ? { p_profile_id: profileId } : {}),
+				})
+				.select(STRENGTH_PROGRESS_WITH_CATALOG_SELECT);
 			if (error) throw error;
-			return resolvePersonalRecordDisplayNames(data);
+
+			// The RPC orders achieved_at DESC; the chart plots time ascending.
+			const ascending = [...(data ?? [])].reverse();
+			return resolvePersonalRecordDisplayNames(ascending, userId);
 		},
 	});
 }

@@ -93,7 +93,7 @@ export function progressionWorkbenchOptions(
 			return {
 				progressRows: z.array(exerciseProgressSchema).parse(progressRes.data),
 				records: personalRecordListSchema.parse(
-					await resolvePersonalRecordDisplayNames(recordsRes.data),
+					await resolvePersonalRecordDisplayNames(recordsRes.data, userId),
 				),
 			};
 		},

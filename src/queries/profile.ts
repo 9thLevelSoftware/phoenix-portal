@@ -4,7 +4,6 @@ import {
 	earnedBadgeListSchema,
 	gamificationStatsSchema,
 	rpgAttributesSchema,
-	WEIGHT_MULTIPLIER,
 } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
 
@@ -30,107 +29,65 @@ export function profileOptions(userId: string) {
 }
 
 /**
- * Compute real profile stats from Supabase:
+ * Profile stats, aggregated in SQL by `profile_workout_stats`:
  * - Total workouts (COUNT)
- * - Total volume (SUM, with weight multiplier applied)
- * - Personal records count
- * - Best streak (max consecutive workout days)
+ * - Total volume (SUM of the STORED per-cable volume — KD-8: never doubled
+ *   here; the display layer owns per-cable vs total presentation)
+ * - Personal records count (live rows only)
+ * - Best streak (longest run of consecutive workout days)
+ *
+ * The previous implementation fetched every session row ascending, so from
+ * 1,000 sessions on it reported exactly 1,000 workouts and computed volume and
+ * the best streak from the OLDEST 1,000 sessions (F-034).
+ *
+ * `p_tz` is deliberately 'UTC': `best_streak` is account-wide, and the current
+ * streak the Profile page shows next to it (`useStreak` / `utcDateKey`) is
+ * computed in UTC. Passing the browser zone here would let the current streak
+ * exceed the best one.
  */
 export function profileStatsOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
 		queryKey: queryKeys.profile.stats(userId, profileId),
 		queryFn: async () => {
-			// Fetch all workout sessions for stats computation
-			let sessionQuery = supabase
-				.from("workout_sessions")
-				.select("started_at, total_volume")
-				.eq("user_id", userId);
+			const { data, error } = await supabase.rpc("profile_workout_stats", {
+				p_tz: "UTC",
+				...(profileId ? { p_profile_id: profileId } : {}),
+			});
+			if (error) throw error;
 
-			if (profileId) {
-				sessionQuery = sessionQuery.eq("local_profile_id", profileId);
-			}
-
-			const { data: sessions, error: sessionsError } = await sessionQuery.order(
-				"started_at",
-				{ ascending: true },
-			);
-			if (sessionsError) throw sessionsError;
-
-			const totalWorkouts = sessions?.length ?? 0;
-			const totalVolume = (sessions ?? []).reduce(
-				(sum, s) => sum + (s.total_volume ?? 0) * WEIGHT_MULTIPLIER,
-				0,
-			);
-
-			// Compute best streak from sessions
-			const bestStreak = computeBestStreak(sessions ?? []);
-
-			// Count personal_records rows. Phase-specific records are distinct PRs.
-			let prQuery = supabase
-				.from("personal_records")
-				.select("id", { count: "exact", head: true })
-				.eq("user_id", userId)
-				.is("deleted_at", null);
-
-			if (profileId) {
-				prQuery = prQuery.eq("local_profile_id", profileId);
-			}
-
-			const { count: prCount, error: prError } = await prQuery;
-			if (prError) throw prError;
-
+			const stats = data?.[0];
 			return {
-				totalWorkouts,
-				totalVolume,
-				bestStreak,
-				prCount: prCount ?? 0,
+				totalWorkouts: stats?.total_workouts ?? 0,
+				totalVolume: Number(stats?.total_volume ?? 0),
+				bestStreak: stats?.best_streak ?? 0,
+				prCount: stats?.pr_count ?? 0,
 			};
 		},
 	});
 }
 
 /**
- * Fetch top 5 exercises by frequency from the exercises table.
+ * Top 5 exercises by the number of sessions they appear in.
+ *
+ * Counted in SQL by `exercise_frequency` (already ordered by sessions DESC,
+ * name ASC). The previous two-step "every session id, then .in(session_id,
+ * ids)" read put every UUID in the GET URL and failed at ~200 sessions
+ * (F-035). An exercise repeated within one session now counts once.
  */
 export function topExercisesOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
 		queryKey: queryKeys.profile.topExercises(userId, profileId),
 		queryFn: async () => {
-			// Get all session IDs for this user
-			let sessionQuery = supabase
-				.from("workout_sessions")
-				.select("id")
-				.eq("user_id", userId);
+			const { data, error } = await supabase.rpc(
+				"exercise_frequency",
+				profileId ? { p_profile_id: profileId } : {},
+			);
+			if (error) throw error;
 
-			if (profileId) {
-				sessionQuery = sessionQuery.eq("local_profile_id", profileId);
-			}
-
-			const { data: sessions, error: sessionsError } = await sessionQuery;
-			if (sessionsError) throw sessionsError;
-
-			if (!sessions || sessions.length === 0) return [];
-
-			const sessionIds = sessions.map((s) => s.id);
-
-			// Fetch all exercises for these sessions
-			const { data: exercises, error: exercisesError } = await supabase
-				.from("exercises")
-				.select("name")
-				.in("session_id", sessionIds);
-			if (exercisesError) throw exercisesError;
-
-			// Count frequency by exercise name
-			const countMap = new Map<string, number>();
-			for (const ex of exercises ?? []) {
-				countMap.set(ex.name, (countMap.get(ex.name) ?? 0) + 1);
-			}
-
-			// Sort by frequency and take top 5
-			return Array.from(countMap.entries())
-				.sort((a, b) => b[1] - a[1])
-				.slice(0, 5)
-				.map(([name, count]) => ({ name, count }));
+			return (data ?? []).slice(0, 5).map((row) => ({
+				name: row.exercise_name,
+				count: row.sessions,
+			}));
 		},
 	});
 }
@@ -184,42 +141,4 @@ export function gamificationStatsOptions(userId: string) {
 			return data ? gamificationStatsSchema.parse(data) : null;
 		},
 	});
-}
-
-/** Compute the best (max) consecutive workout day streak */
-function computeBestStreak(
-	sessions: { started_at: string; total_volume: number }[],
-): number {
-	if (sessions.length === 0) return 0;
-
-	const uniqueDays = new Set(
-		sessions.map((s) => {
-			const d = new Date(s.started_at);
-			return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-		}),
-	);
-
-	// Sort unique day strings by actual date
-	const sortedDays = Array.from(uniqueDays)
-		.map((key) => {
-			const [y, m, d] = key.split("-").map(Number);
-			return new Date(y, m, d);
-		})
-		.sort((a, b) => a.getTime() - b.getTime());
-
-	let best = 1;
-	let current = 1;
-
-	for (let i = 1; i < sortedDays.length; i++) {
-		const diffMs = sortedDays[i].getTime() - sortedDays[i - 1].getTime();
-		const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-		if (diffDays === 1) {
-			current++;
-			if (current > best) best = current;
-		} else {
-			current = 1;
-		}
-	}
-
-	return best;
 }
