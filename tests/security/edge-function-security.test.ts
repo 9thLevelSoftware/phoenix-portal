@@ -230,11 +230,10 @@ describe("Paddle webhook security helpers", () => {
 		expect(findCrossTierDuplicatePriceIds(env)).toEqual(["pri_shared"]);
 	});
 
-	it("locks webhook and refresh to reject duplicate price IDs before apply", () => {
-		const webhook = readFileSync(
-			join(process.cwd(), "supabase/functions/paddle-webhooks/index.ts"),
-			"utf8",
-		);
+	// paddle-webhooks is covered behaviourally by
+	// supabase/functions/paddle-webhooks/index.test.ts; refresh keeps this
+	// source tripwire until it has a handler test.
+	it("locks refresh to reject duplicate price IDs before mapping", () => {
 		const refresh = readFileSync(
 			join(
 				process.cwd(),
@@ -242,12 +241,6 @@ describe("Paddle webhook security helpers", () => {
 			),
 			"utf8",
 		);
-
-		const webhookDup = webhook.indexOf("findCrossTierDuplicatePriceIds(");
-		const webhookApply = webhook.indexOf("apply_subscription_event");
-		expect(webhookDup).toBeGreaterThan(-1);
-		expect(webhookApply).toBeGreaterThan(webhookDup);
-		expect(webhook).toMatch(/Billing configuration invalid/);
 
 		const refreshDup = refresh.indexOf("findCrossTierDuplicatePriceIds(");
 		const refreshMap = refresh.indexOf("mapPriceIdToTier(");
