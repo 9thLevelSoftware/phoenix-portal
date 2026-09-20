@@ -113,6 +113,32 @@ describe("useRequestDeletion", () => {
 			expect.stringContaining("duplicate key"),
 		);
 	});
+
+	it("says a request already exists when the unique constraint refuses it", async () => {
+		const { useRequestDeletion } = await import("../account");
+
+		// UNIQUE(user_id): typically a request that is being executed right now.
+		mockChain.insert.mockResolvedValue({
+			error: Object.assign(new Error("duplicate key"), { code: "23505" }),
+		});
+
+		const { queryClient, wrapper } = createWrapper();
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+		const { result } = renderHook(() => useRequestDeletion(TEST_USER_ID), {
+			wrapper,
+		});
+
+		result.current.mutate();
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Your account already has a deletion request. Reload the page to see it.",
+		);
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: [DELETION_REQUEST_KEY, TEST_USER_ID],
+		});
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -182,6 +208,37 @@ describe("useCancelDeletion", () => {
 			"Failed to cancel account deletion. Please try again.",
 		);
 	});
+
+	it("says the deletion has already started when the row is no longer pending", async () => {
+		const { useCancelDeletion } = await import("../account");
+
+		// RLS only lets a user cancel a `pending` row, so a claimed (executing)
+		// request matches nothing — that is not "try again", it has started.
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: null, error: null }),
+		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqStatus = vi.fn(() => ({ select }));
+		const eqUserId = vi.fn(() => ({ eq: eqStatus }));
+		mockChain.update.mockImplementation(() => ({ eq: eqUserId }));
+
+		const { queryClient, wrapper } = createWrapper();
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+		const { result } = renderHook(() => useCancelDeletion(TEST_USER_ID), {
+			wrapper,
+		});
+
+		result.current.mutate();
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Your account deletion has already started and can no longer be cancelled.",
+		);
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: [DELETION_REQUEST_KEY, TEST_USER_ID],
+		});
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -199,7 +256,9 @@ describe("useExecuteDeletion", () => {
 		mockInvoke.mockResolvedValue({ data: { ok: true }, error: null });
 
 		const { wrapper } = createWrapper();
-		const { result } = renderHook(() => useExecuteDeletion(), { wrapper });
+		const { result } = renderHook(() => useExecuteDeletion(TEST_USER_ID), {
+			wrapper,
+		});
 
 		result.current.mutate();
 
@@ -221,18 +280,26 @@ describe("useExecuteDeletion", () => {
 			error: { message: "Edge Function returned a non-2xx status code" },
 		});
 
-		const { wrapper } = createWrapper();
-		const { result } = renderHook(() => useExecuteDeletion(), { wrapper });
+		const { queryClient, wrapper } = createWrapper();
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+		const { result } = renderHook(() => useExecuteDeletion(TEST_USER_ID), {
+			wrapper,
+		});
 
 		result.current.mutate();
 
 		await waitFor(() => expect(result.current.isError).toBe(true));
 
 		expect(mockToast.error).toHaveBeenCalledWith(
-			"Failed to delete account. Please try again.",
+			"We could not delete your account. Check the message on this page for what to do next.",
 		);
 		// Must NOT sign out on failure
 		expect(mockSignOut).not.toHaveBeenCalled();
+		// A failed purge may park the request for support; refetch so Danger
+		// Zone can say so instead of leaving the pre-click copy on screen.
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: [DELETION_REQUEST_KEY, TEST_USER_ID],
+		});
 	});
 });
 
@@ -256,5 +323,27 @@ describe("deletionRequestOptions", () => {
 		const options = deletionRequestOptions("");
 
 		expect(options.enabled).toBe(false);
+	});
+
+	it("reads executing requests too, and the support reason", async () => {
+		const { deletionRequestOptions } = await import("../account");
+
+		// A purge in flight leaves the row `executing`. A pending-only query
+		// renders Danger Zone as "no request", so a click hits UNIQUE(user_id)
+		// and a cancel silently matches nothing while the account is erased.
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: null, error: null }),
+		);
+		const inFilter = vi.fn(() => ({ maybeSingle }));
+		const eqUserId = vi.fn(() => ({ in: inFilter }));
+		const select = vi.fn(() => ({ eq: eqUserId }));
+		mockChain.select.mockImplementation(select);
+
+		await deletionRequestOptions(TEST_USER_ID).queryFn();
+
+		expect(from).toHaveBeenCalledWith("deletion_requests");
+		expect(select.mock.calls[0][0]).toContain("needs_support_reason");
+		expect(eqUserId).toHaveBeenCalledWith("user_id", TEST_USER_ID);
+		expect(inFilter).toHaveBeenCalledWith("status", ["pending", "executing"]);
 	});
 });

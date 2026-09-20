@@ -2270,7 +2270,23 @@ Deno.test({
       assert(report.residue.deleted.sync_tombstones >= 1, JSON.stringify(report.residue));
       assert(report.residue.avatar_folders_removed >= 1, JSON.stringify(report.residue));
 
-      assertEquals(await rowsReferencing(admin, gone.id), []);
+      // Everything keyed by a user_id column is gone. A webhook row whose only
+      // link is the client-supplied checkout custom data is deliberately kept
+      // (R-5): an event naming a user that no longer — or never — existed is
+      // what support and fraud review need, and the sweep is unbounded, unlike
+      // purgeUser's payload match which is scoped to one named user.
+      const leftBehind = await rowsReferencing(admin, gone.id);
+      assertEquals(
+        leftBehind.filter((row) => !row.startsWith("paddle_webhook_events.payload")),
+        [],
+        leftBehind.join(", "),
+      );
+      const payloadRows = await admin.from("paddle_webhook_events")
+        .select("id", { count: "exact", head: true })
+        .eq("payload->data->custom_data->>user_id", gone.id);
+      if (!payloadRows.error) {
+        assertEquals(payloadRows.count, 1, "the payload-only webhook row is kept");
+      }
       assertEquals(await avatarNames(admin, gone.id), []);
 
       // The live user and the app-wide limiter are untouched.

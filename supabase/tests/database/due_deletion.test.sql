@@ -278,6 +278,31 @@ SELECT is(
     'app-wide limiter rows (NULL user_id) stay'
 );
 
+-- R-23: a table whose user_id column is absent (the prod drift purgeUser's
+-- fallbackColumn hedges against) is reported in `skipped` instead of aborting
+-- the whole function and rolling back the other tables' deletes.
+INSERT INTO public.sync_tombstones (user_id, entity, entity_id) VALUES
+    ('35353535-0000-4000-8000-0000000000dd', 'routine', gen_random_uuid());
+ALTER TABLE public.rate_limit_tracking DROP COLUMN user_id CASCADE;
+
+CREATE TEMP TABLE drift_result AS
+SELECT public.sweep_deleted_account_residue(100) AS r;
+
+SELECT ok(
+    (SELECT r->'skipped' FROM drift_result)
+      @> '["rate_limit_tracking:no_uuid_user_id"]'::jsonb,
+    'a table whose user_id column is missing is reported as skipped'
+);
+SELECT is(
+    (SELECT (r->'deleted'->>'sync_tombstones')::int FROM drift_result),
+    1,
+    'one table''s schema variance does not roll back the other tables'' deletes'
+);
+SELECT ok(
+    NOT jsonb_exists((SELECT r->'deleted' FROM drift_result), 'rate_limit_tracking'),
+    'a skipped table reports no deleted count'
+);
+
 SELECT diag('database:due-deletion-cron-job');
 
 -- pg_cron is not installed by the clean apply (prod has it). Install it for
