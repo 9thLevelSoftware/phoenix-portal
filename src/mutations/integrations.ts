@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import type { IntegrationProvider } from "@/lib/integrations/types";
 import { supabase } from "@/lib/supabase";
+import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { queryKeys } from "@/queries/keys";
 
 /**
@@ -106,6 +108,20 @@ export function useManualSync() {
 			queryClient.invalidateQueries({
 				queryKey: queryKeys.integrations.external(userId),
 			});
+		},
+		onError: (error: Error) => {
+			console.error("[useManualSync] failed:", error);
+			// The sync_queue INSERT (RLS 42501) and the `<provider>-sync` Edge
+			// Function (402) both refuse below FLAME; the user was told nothing
+			// before this.
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
+			toast.error("Sync failed. Please try again.");
 		},
 	});
 }
