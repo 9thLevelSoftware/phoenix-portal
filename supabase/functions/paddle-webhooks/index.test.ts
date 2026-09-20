@@ -1266,3 +1266,119 @@ Deno.test("paddle-webhooks: an ordering race on the ADOPTION path is not mislabe
     "expected the stale wording on the adoption path",
   );
 });
+
+Deno.test("paddle-webhooks: a transient Paddle listing failure never downgrades a paying customer", async () => {
+  // The branch between a Paddle 429/5xx/timeout and a wrongly-downgraded
+  // customer (plan-alignment R-43). Applying the cancellation on a failed
+  // lookup would drop someone who may still be paying AND leave them on a
+  // `canceled` row, which billingAction maps to `checkout` — an invitation
+  // to open a third subscription.
+  for (
+    const listResponse of [
+      () => new Response("rate limited", { status: 429 }),
+      () => new Response("upstream error", { status: 503 }),
+      () => new Response("not json", { status: 200 }),
+    ]
+  ) {
+    const db = trackedActiveRow("sub_a");
+    const { result: response, lines } = await captureConsoleError(async () =>
+      await makeHandler(db, {
+        PADDLE_API_KEY: "pdl_test_key",
+        PADDLE_ENVIRONMENT: "sandbox",
+      }, { listResponse })(
+        await signedRequest(
+          await subscriptionEvent({
+            eventId: "evt_a_canceled",
+            eventType: "subscription.canceled",
+            subscriptionId: "sub_a",
+            status: "canceled",
+            occurredAt: "2026-09-18T11:58:00.000Z",
+          }),
+        ),
+      )
+    );
+
+    // 500 so Paddle redelivers and the listing is retried.
+    assertEquals(response.status, 500);
+    assertEquals(await response.json(), {
+      error: "Could not check for a live subscription",
+    });
+    assert(
+      lines.some((line) =>
+        line.includes("untracked_subscription_lookup_failed")
+      ),
+      "expected a [BILLING_ALERT] untracked_subscription_lookup_failed line",
+    );
+    // Nothing was written: the row keeps its entitled state.
+    assertEquals(db.rpcCalls.length, 0);
+    assertEquals(db.row?.paddle_subscription_id, "sub_a");
+    assertEquals(db.row?.status, "active");
+  }
+});
+
+Deno.test("paddle-webhooks: a thrown fetch (timeout) is treated as a failed lookup too", async () => {
+  const db = trackedActiveRow("sub_a");
+  const env = new Map(
+    Object.entries({
+      ...BASE_ENV,
+      PADDLE_API_KEY: "pdl_test_key",
+      PADDLE_ENVIRONMENT: "sandbox",
+    }),
+  );
+  const handler = createPaddleWebhooksHandler({
+    env: { get: (key) => env.get(key) },
+    createAdminClient: () => db,
+    now: () => NOW_MS,
+    fetch: () => Promise.reject(new DOMException("timed out", "TimeoutError")),
+  });
+
+  const { result: response, lines } = await captureConsoleError(async () =>
+    await handler(
+      await signedRequest(
+        await subscriptionEvent({
+          eventId: "evt_a_canceled",
+          eventType: "subscription.canceled",
+          subscriptionId: "sub_a",
+          status: "canceled",
+          occurredAt: "2026-09-18T11:58:00.000Z",
+        }),
+      ),
+    )
+  );
+
+  assertEquals(response.status, 500);
+  assert(
+    lines.some((line) => line.includes("untracked_subscription_lookup_failed")),
+    "expected the lookup-failed alert",
+  );
+  assertEquals(db.rpcCalls.length, 0);
+  assertEquals(db.row?.status, "active");
+});
+
+Deno.test("paddle-webhooks: a missing PADDLE_API_KEY fails closed rather than downgrading", async () => {
+  // The hard dependency recorded in operator-notes (plan-alignment R-42):
+  // paddle-webhooks never called the Paddle API before this PR, so an
+  // unset key must not silently resume downgrading cancellations.
+  const db = trackedActiveRow("sub_a");
+  const { result: response } = await captureConsole(
+    "warn",
+    async () =>
+      await captureConsoleError(async () =>
+        await makeHandler(db)(
+          await signedRequest(
+            await subscriptionEvent({
+              eventId: "evt_a_canceled",
+              eventType: "subscription.canceled",
+              subscriptionId: "sub_a",
+              status: "canceled",
+              occurredAt: "2026-09-18T11:58:00.000Z",
+            }),
+          ),
+        )
+      ).then((r) => r.result),
+  );
+
+  assertEquals(response.status, 500);
+  assertEquals(db.rpcCalls.length, 0);
+  assertEquals(db.row?.status, "active");
+});

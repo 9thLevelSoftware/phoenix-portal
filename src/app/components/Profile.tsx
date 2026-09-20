@@ -108,6 +108,7 @@ export function Profile() {
 		cancelAtPeriodEnd,
 		isEntitled,
 		isStale,
+		needsPaymentUpdate,
 	} = useSubscription();
 	const { activeProfileId } = useProfileFilterStore();
 	const queryClient = useQueryClient();
@@ -422,12 +423,29 @@ export function Profile() {
 									<div className="text-white font-medium">
 										{PLAN_LABELS[subscriptionDisplayTier]}
 									</div>
-									{isStale && (
-										<div className="text-sm text-muted-foreground">
-											{subscriptionStatus === "past_due"
-												? "Payment past due. Checking billing status..."
-												: "Subscription expired. Refreshing billing status..."}
+									{/*
+									 * A failed payment must be visible DURING Paddle's retry
+									 * window, which is exactly when `isStale` is still false
+									 * for a past_due row (it only flips
+									 * PAST_DUE_REFRESH_AFTER_DAYS past the period end). Gate
+									 * this on the billing action instead, so the user is told
+									 * while they can still act on it (R-33, plan-alignment
+									 * R-41).
+									 */}
+									{needsPaymentUpdate ? (
+										<div
+											className="text-sm text-warning"
+											data-testid="profile-past-due-notice"
+										>
+											Your last payment failed — update your card to keep your
+											plan.
 										</div>
+									) : (
+										isStale && (
+											<div className="text-sm text-muted-foreground">
+												Subscription expired. Refreshing billing status...
+											</div>
+										)
 									)}
 									{isEntitled && currentPeriodEnd && (
 										<div className="text-sm text-muted-foreground">
@@ -444,8 +462,17 @@ export function Profile() {
 									</Button>
 								) : (
 									<>
-										<Button asChild variant="outline" size="sm">
-											<Link to="/pricing">Manage Plan</Link>
+										<Button
+											asChild
+											variant={needsPaymentUpdate ? "cta" : "outline"}
+											size="sm"
+										>
+											{/* The full update-payment flow lives on the billing
+											    page; point at it rather than duplicating the
+											    Paddle transaction handling here. */}
+											<Link to="/pricing">
+												{needsPaymentUpdate ? "Update payment" : "Manage Plan"}
+											</Link>
 										</Button>
 										{canCancel && (
 											<Button

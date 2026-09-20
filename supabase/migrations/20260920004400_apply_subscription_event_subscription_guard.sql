@@ -93,6 +93,26 @@ $$;
 -- duplicates may already exist in prod. Name them in the exception rather than
 -- letting CREATE UNIQUE INDEX fail with a single opaque pair: the operator has
 -- to decide which user legitimately owns the subscription before this applies.
+--
+-- OPERATOR PREVIEW — run this BEFORE `supabase db push` to see whether this
+-- migration will abort, and on which rows. It is read-only and is the exact
+-- query the DO block below uses to decide:
+--
+--   SELECT s.paddle_subscription_id,
+--          string_agg(s.user_id::text, ', ' ORDER BY s.user_id) AS user_ids,
+--          count(*) AS bound_users
+--     FROM public.subscriptions s
+--    WHERE s.paddle_subscription_id IS NOT NULL
+--    GROUP BY s.paddle_subscription_id
+--   HAVING count(*) > 1
+--    ORDER BY s.paddle_subscription_id;
+--
+-- Zero rows -> this migration applies cleanly. Any rows -> it RAISEs and
+-- names them; decide the true owner of each subscription and clear
+-- paddle_subscription_id on the other row(s) first. (This migration aborts by
+-- design rather than picking a winner: every billing function keys off the
+-- stored id, so guessing would hand one user control of another's
+-- subscription.)
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE
