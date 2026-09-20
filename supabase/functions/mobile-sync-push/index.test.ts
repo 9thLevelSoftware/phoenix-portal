@@ -424,8 +424,6 @@ function permissiveQuery(
   },
   writeError?: (method: string) => unknown,
   onCall?: (method: string, args: unknown[]) => void,
-  subscriptionResult: { data: unknown; error: unknown } =
-    DEFAULT_SUBSCRIPTION_RESULT,
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
@@ -462,7 +460,7 @@ function permissiveQuery(
   query.maybeSingle = () =>
     Promise.resolve(
       table === "subscriptions"
-        ? subscriptionResult
+        ? terminalResult
         : { data: null, error: null },
     );
   query.single = () => Promise.resolve({ data: null, error: null });
@@ -539,17 +537,14 @@ function makeHarness(
           adminWriteCalls.push({ table, method });
           operationEvents.push(`write:${table}:${method}`);
         },
-        table === "personal_records"
+        table === "subscriptions"
+          ? options.subscriptionResult ?? DEFAULT_SUBSCRIPTION_RESULT
+          : table === "personal_records"
           ? options.personalRecordsResult
           : options.tableResults?.[table],
         (method) => options.writeErrors?.[`${table}:${method}`],
         (method, args) => record.calls.push({ method, args }),
       );
-      return permissiveQuery(table, (method) => {
-        adminWriteCalls.push({ table, method });
-        operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records" ? options.personalRecordsResult : undefined,
-        options.subscriptionResult);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
