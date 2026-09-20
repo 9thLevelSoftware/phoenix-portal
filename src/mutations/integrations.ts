@@ -56,14 +56,31 @@ export function useDisconnectIntegration() {
 	});
 }
 
+/** Text shown when the provider function refuses a duplicate run (HTTP 409). */
+export const SYNC_ALREADY_RUNNING_MESSAGE = "A sync is already running";
+
+/**
+ * True when a `functions.invoke` failure carries an HTTP 409 response.
+ *
+ * `FunctionsHttpError.context` is the raw `Response`; the other two invoke
+ * errors (fetch/relay) carry no status, hence the duck-typed read. The only
+ * 409 emitter in this stack is `_shared/syncQueue.ts#syncAlreadyQueuedResponse`,
+ * which the provider sync functions return when `sync_queue_one_active`
+ * rejects their insert.
+ */
+function isAlreadyRunningError(error: unknown): boolean {
+	const context = (error as { context?: { status?: unknown } } | null)?.context;
+	return context?.status === 409;
+}
+
 /**
  * Trigger manual sync - invokes the provider-specific Edge Function directly.
  * The Edge Function handles token refresh, API calls, and activity normalization.
  *
- * No sync_queue row is inserted: the scheduled process-sync-queue drains
- * pending rows, so a row inserted here would be claimed by a cron pass while
- * this direct call is still running and dispatched a second time (PR 31
- * review R-1). This is the PR 52 plan for useManualSync, taken early.
+ * The browser never writes `sync_queue`. The provider function owns its own
+ * row (PR 52: inserted directly as `processing`, because a `pending` row would
+ * be claimed by the next process-sync-queue pass and dispatched a second time
+ * — PR 31 review R-1), and answers a duplicate run with HTTP 409.
  */
 export function useManualSync() {
 	const queryClient = useQueryClient();
@@ -92,6 +109,9 @@ export function useManualSync() {
 				},
 			);
 
+			if (isAlreadyRunningError(invokeError)) {
+				throw new Error(SYNC_ALREADY_RUNNING_MESSAGE);
+			}
 			if (invokeError) throw invokeError;
 		},
 		onSettled: async (_, __, { userId }) => {
@@ -110,54 +130,15 @@ export function useManualSync() {
 	});
 }
 
-/**
- * Connect integration - for non-OAuth providers (e.g., Hevy API key).
- * OAuth providers (Strava, Fitbit, Garmin) use redirect flow via initiateXxxConnect()
- * functions, not this mutation.
+/*
+ * There is deliberately no "connect integration" mutation here. Connecting is
+ * never a browser table write:
+ *  - OAuth providers (Strava, Fitbit, Garmin) go through `initiate-oauth` and
+ *    the `<provider>-oauth` callback, which write `user_integrations` and any
+ *    `sync_queue` row as the service role;
+ *  - API-key providers (Hevy, Liftosaur) go through `<provider>-sync` with an
+ *    `api_key` in the body, which stores the key in `oauth_tokens` (a
+ *    server-only table) — never in the client-readable `user_integrations`.
+ * The removed `useConnectIntegration` had no caller (it was the F-10 /
+ * NF-23 hook) and was the last browser writer of either table.
  */
-export function useConnectIntegration() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async ({
-			userId,
-			provider,
-		}: {
-			userId: string;
-			provider: IntegrationProvider;
-		}) => {
-			// API keys must only flow through provider sync Edge Functions
-			// which store them in oauth_tokens (server-only table).
-			// Never write api_key to user_integrations (client-readable via RLS).
-			const { error } = await supabase.from("user_integrations").upsert(
-				{
-					user_id: userId,
-					provider,
-					status: "connected",
-					connected_at: new Date().toISOString(),
-				},
-				{
-					onConflict: "user_id,provider",
-				},
-			);
-
-			if (error) throw error;
-
-			// Queue initial sync after connecting. A duplicate (23505,
-			// `sync_already_queued`) means an initial import is already queued
-			// or running for this provider — the outcome we wanted.
-			const { error: queueError } = await supabase.from("sync_queue").insert({
-				user_id: userId,
-				provider,
-				sync_type: "initial",
-				status: "pending",
-			});
-			if (queueError && queueError.code !== "23505") throw queueError;
-		},
-		onSuccess: (_, { userId }) => {
-			queryClient.invalidateQueries({
-				queryKey: queryKeys.integrations.byUser(userId),
-			});
-		},
-	});
-}

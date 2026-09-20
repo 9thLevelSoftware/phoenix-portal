@@ -16,10 +16,13 @@ test.describe("Integrations", () => {
 		await expect(page).toHaveURL(/\/integrations$/);
 	});
 
+	// The queue row in "Recent Activity" is created by the provider sync Edge
+	// Function, not by the browser (PR 52/53). `forbiddenWrites` fails this test
+	// if a browser-side sync_queue write ever comes back.
 	test("manual sync updates status and disconnect returns the provider to a connect state", async ({
 		page,
 	}) => {
-		await mockAuthenticatedApp(page, {
+		const state = await mockAuthenticatedApp(page, {
 			tier: "FLAME",
 			integrations: [
 				{
@@ -43,6 +46,7 @@ test.describe("Integrations", () => {
 		await page.getByRole("button", { name: "Sync Now" }).click();
 		await expect(page.getByText("Recent Activity")).toBeVisible();
 		await expect(page.getByText("completed")).toBeVisible();
+		expect(state.forbiddenWrites).toEqual([]);
 
 		await page.getByRole("button", { name: "Disconnect" }).click();
 		await expect(

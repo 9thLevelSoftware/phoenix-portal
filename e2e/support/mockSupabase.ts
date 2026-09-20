@@ -147,6 +147,15 @@ export async function installMockSupabase(
 		sets: options.sets ?? [],
 		personalRecords: options.personalRecords ?? [],
 		phaseStatistics: options.phaseStatistics ?? [],
+		/**
+		 * PostgREST writes the browser is not allowed to make. Provider sync
+		 * Edge Functions own their `sync_queue` rows (PR 52); a row the browser
+		 * inserted would be claimed by the next process-sync-queue pass and
+		 * dispatched a second time (PR 31 review R-1). Specs assert this is
+		 * empty — a reintroduced browser write shows up here rather than
+		 * silently passing.
+		 */
+		forbiddenWrites: [] as string[],
 		onboarding: {
 			id: "onboarding-1",
 			user_id: userId,
@@ -220,16 +229,43 @@ export async function installMockSupabase(
 		});
 	};
 
-	const completeLatestSync = (provider: IntegrationProvider) => {
-		const syncItem = [...state.syncQueue]
-			.reverse()
-			.find((item) => item.provider === provider);
+	/**
+	 * Mirrors PR 52: the provider sync Edge Function owns its queue row. A
+	 * run dispatched by process-sync-queue completes the row it was given; a
+	 * browser-initiated run (no `queue_id`) inserts its own row as the service
+	 * role and completes that. Either way the browser never POSTs sync_queue,
+	 * so the mock must create the row here and not wait for one to appear.
+	 */
+	const runProviderSync = (
+		provider: IntegrationProvider,
+		syncType: string,
+	) => {
+		const timestamp = new Date().toISOString();
+		let syncItem = state.syncQueue.find(
+			(item) =>
+				item.provider === provider &&
+				["pending", "processing"].includes(item.status),
+		);
 
-		if (syncItem) {
-			syncItem.status = "completed";
-			syncItem.error_message = null;
-			syncItem.completed_at = new Date().toISOString();
+		if (!syncItem) {
+			syncItem = {
+				id: nextId("sync"),
+				user_id: state.userId,
+				provider,
+				sync_type: syncType,
+				status: "processing",
+				error_message: null,
+				created_at: timestamp,
+				started_at: timestamp,
+				completed_at: null,
+				retry_count: 0,
+			} satisfies SyncQueueRow;
+			state.syncQueue.unshift(syncItem);
 		}
+
+		syncItem.status = "completed";
+		syncItem.error_message = null;
+		syncItem.completed_at = timestamp;
 
 		const integration = state.integrations.find((item) => item.provider === provider);
 		if (integration) {
@@ -287,7 +323,10 @@ export async function installMockSupabase(
 			}
 
 			if (functionName === "strava-sync" || functionName === "fitbit-sync") {
-				completeLatestSync(functionName.replace("-sync", "") as IntegrationProvider);
+				runProviderSync(
+					functionName.replace("-sync", "") as IntegrationProvider,
+					(body.sync_type as string | undefined) ?? "manual",
+				);
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
@@ -316,7 +355,7 @@ export async function installMockSupabase(
 				}
 
 				if (body.sync_type === "manual") {
-					completeLatestSync("hevy");
+					runProviderSync("hevy", "manual");
 				}
 
 				await route.fulfill({
@@ -451,30 +490,17 @@ export async function installMockSupabase(
 				return;
 			}
 			case "sync_queue": {
-				if (method === "POST") {
-					const rawBody = request.postData();
-					const payload = rawBody ? JSON.parse(rawBody) : {};
-					const row = {
-						id: nextId("sync"),
-						user_id: payload.user_id ?? userId,
-						provider: payload.provider,
-						sync_type: payload.sync_type ?? "manual",
-						status: payload.status ?? "pending",
-						error_message: null,
-						created_at: new Date().toISOString(),
-						started_at: null,
-						completed_at: null,
-						retry_count: 0,
-					} satisfies SyncQueueRow;
-					state.syncQueue.unshift(row);
-
+				if (method !== "GET" && method !== "HEAD") {
+					// The browser only reads sync_queue. Record the attempt so the
+					// spec can fail on it: a mutation error would otherwise be
+					// swallowed silently (nothing surfaces it — NF-26).
+					state.forbiddenWrites.push(`${method} sync_queue`);
 					await route.fulfill({
-						status: 201,
+						status: 403,
 						contentType: "application/json",
-						body:
-							request.headers().accept?.includes("application/vnd.pgrst.object+json")
-								? JSON.stringify({ id: row.id })
-								: JSON.stringify([row]),
+						body: JSON.stringify({
+							message: "the browser must not write sync_queue",
+						}),
 					});
 					return;
 				}

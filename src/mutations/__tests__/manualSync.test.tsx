@@ -47,6 +47,46 @@ describe("useManualSync", () => {
 		});
 	});
 
+	it("maps the provider function's 409 to 'A sync is already running'", async () => {
+		const { useManualSync } = await import("../integrations");
+		// Shape of a supabase-js FunctionsHttpError: `context` is the Response.
+		invoke.mockResolvedValue({
+			data: null,
+			error: Object.assign(
+				new Error("Edge Function returned a non-2xx status code"),
+				{ name: "FunctionsHttpError", context: { status: 409 } },
+			),
+		});
+
+		const { result } = renderHook(() => useManualSync(), {
+			wrapper: createWrapper(),
+		});
+		result.current.mutate({ userId: "user-1", provider: "strava" });
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+		expect(result.current.error?.message).toBe("A sync is already running");
+		expect(from).not.toHaveBeenCalled();
+	});
+
+	it("leaves a non-409 invoke error's message alone", async () => {
+		const { useManualSync } = await import("../integrations");
+		invoke.mockResolvedValue({
+			data: null,
+			error: Object.assign(new Error("Edge Function returned 500"), {
+				name: "FunctionsHttpError",
+				context: { status: 500 },
+			}),
+		});
+
+		const { result } = renderHook(() => useManualSync(), {
+			wrapper: createWrapper(),
+		});
+		result.current.mutate({ userId: "user-1", provider: "strava" });
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+		expect(result.current.error?.message).toBe("Edge Function returned 500");
+	});
+
 	it("surfaces an invoke error without touching sync_queue", async () => {
 		const { useManualSync } = await import("../integrations");
 		invoke.mockResolvedValue({ data: null, error: new Error("boom") });
