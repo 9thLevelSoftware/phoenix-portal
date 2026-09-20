@@ -272,6 +272,9 @@ test.describe("Account deletion flow", () => {
 		// The RPC was called; row is now pending and the UI shows State B
 		await expect.poll(() => state.rpcCalls).toBeGreaterThanOrEqual(1);
 		await expect(page.getByText(/Deletion Scheduled/i)).toBeVisible();
+		// Let any in-flight request land before asserting a negative, so a
+		// fire-and-forget direct insert cannot slip past this check.
+		await page.waitForLoadState("networkidle");
 		expect(state.insertCalls).toBe(0); // No direct table insert
 		expect(state.deleteAccountCalls).toBe(0); // No immediate purge
 	});
