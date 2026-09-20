@@ -33,6 +33,9 @@ const UNIQUE_VIOLATION = '23505';
 /** Error code returned to the caller when another sync is already queued. */
 export const SYNC_ALREADY_QUEUED = 'sync_already_queued';
 
+/** Error code returned when a browser run cannot acquire its ownership row. */
+export const SYNC_QUEUE_UNAVAILABLE = 'sync_queue_unavailable';
+
 export interface CompleteSyncQueueEntryOptions {
   userId: string;
   provider: string;
@@ -95,8 +98,9 @@ export interface CreateSyncQueueEntryResult {
  *
  * Returns `{ conflict: true }` when either queue index rejects the insert —
  * another sync of the same kind is queued, or any class is already running
- * for this (user, provider). Any other insert failure yields no row: the sync
- * still runs, it just holds no lease (the pre-PR-52 behaviour).
+ * for this (user, provider). Any other insert failure yields no row. Callers
+ * must fail closed before provider or credential work when `queueId` is null:
+ * running without ownership would reopen the concurrency race this row closes.
  */
 export async function createSyncQueueEntry(
   supabase: DbClient,
@@ -122,7 +126,6 @@ export async function createSyncQueueEntry(
     if ((error as { code?: string }).code === UNIQUE_VIOLATION) {
       return { queueId: null, conflict: true };
     }
-    // Never fail the sync over queue bookkeeping: run without a lease.
     console.error(`Failed to queue ${options.provider} sync:`, error);
     return { queueId: null, conflict: false };
   }
@@ -233,5 +236,16 @@ export function syncAlreadyQueuedResponse(cors: Record<string, string>): Respons
       code: SYNC_ALREADY_QUEUED,
     }),
     { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } },
+  );
+}
+
+/** 503 when a browser sync cannot establish exclusive ownership. */
+export function syncQueueUnavailableResponse(cors: Record<string, string>): Response {
+  return new Response(
+    JSON.stringify({
+      error: 'Unable to start sync right now. Please retry.',
+      code: SYNC_QUEUE_UNAVAILABLE,
+    }),
+    { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
   );
 }

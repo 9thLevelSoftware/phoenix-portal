@@ -201,6 +201,35 @@ Deno.test("hevy-sync: a manual sync with no queue_id creates its row; a concurre
   assertEquals(created.created_at, new Date(NOW).toISOString());
 });
 
+Deno.test("hevy-sync: a browser run fails closed when its ownership row cannot be created", async () => {
+  const db = queueDb([]);
+  const from = db.from.bind(db);
+  db.from = (table: string) => {
+    const query = from(table);
+    if (table === "sync_queue") {
+      query.insert = () => ({
+        select: () => ({
+          maybeSingle: () => Promise.resolve({
+            data: null,
+            error: { code: "08006", message: "connection failure" },
+          }),
+        }),
+      }) as never;
+    }
+    return query;
+  };
+
+  const res = await harness(db, 1, USER_ID)({ sync_type: "manual" });
+
+  assertEquals(res.status, 503);
+  assertEquals(await res.json(), {
+    error: "Unable to start sync right now. Please retry.",
+    code: "sync_queue_unavailable",
+  });
+  assertEquals(db.rows("external_activities"), []);
+  assertEquals(db.rows("sync_queue"), []);
+});
+
 Deno.test("hevy-sync: saving an API key with no sync_type still takes a queue row", async () => {
   const db = queueDb([]);
   const res = await harness(db, 1, USER_ID)({ api_key: "new-key" });
