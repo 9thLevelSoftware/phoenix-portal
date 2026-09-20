@@ -686,6 +686,12 @@ function makeHarness(
     from(table: string) {
       if (options.fromError !== undefined) throw options.fromError;
       adminFromCalls.push(table);
+      const record: AdminQueryRecord = { table, calls: [] };
+      adminQueries.push(record);
+      const catalogQuery: CatalogQuery | null = table === "exercise_catalog"
+        ? { calls: [] }
+        : null;
+      if (catalogQuery) catalogQueries.push(catalogQuery);
       return permissiveQuery(table, (method, args) => {
         adminWriteCalls.push({ table, method });
         adminWriteArgs.push({ table, method, args });
@@ -701,13 +707,7 @@ function makeHarness(
         ? options.personalRecordsResult
         : table === "exercise_catalog" && options.catalogRows
         ? { data: options.catalogRows, error: null }
-        : undefined);
-      const record: AdminQueryRecord = { table, calls: [] };
-      adminQueries.push(record);
-      const catalogQuery: CatalogQuery | null = table === "exercise_catalog"
-        ? { calls: [] }
-        : null;
-      if (catalogQuery) catalogQueries.push(catalogQuery);
+        : undefined,
       return permissiveQuery(
         table,
         (method) => {
@@ -872,7 +872,6 @@ function makeHarness(
       return admin;
     },
     logOperationalFailure: ((...args: unknown[]) => loggerCalls.push(args)),
-    now: () => 1_784_167_200_000,
     syncLwwEnabled: options.syncLwwEnabled,
     now: options.now ?? (() => 1_784_167_200_000),
     now: () => 1_784_167_200_000,
@@ -7705,6 +7704,17 @@ Deno.test("PR 24: an accepted session with no progress rows still sends p_progre
     workoutMode: "OLD_SCHOOL",
     exercises: [],
   }];
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  const replaceCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "replace_session_children"
+  );
+  assertEquals(replaceCalls.length, 1);
+  assertEquals(replaceCalls[0].args.p_progress, []);
+});
+
 // PR 58 (F-073, F-039): each client-supplied primary key is probed for
 // ownership exactly once, in the up-front directOwnerChecks pass.
 const DIRECT_OWNERSHIP_TABLES = [
@@ -7854,11 +7864,15 @@ Deno.test("a library row wins a name tie with the caller's custom row", async ()
   const response = await harness.handler(requestFromBody(body));
 
   assertEquals(response.status, 200);
-  const replaceCalls = harness.adminRpcCalls.filter((call) =>
+
+  const replace = harness.adminRpcCalls.find((call) =>
     call.name === "replace_session_children"
   );
-  assertEquals(replaceCalls.length, 1);
-  assertEquals(replaceCalls[0].args.p_progress, []);
+  assert(replace);
+  assertEquals(
+    (replace.args.p_exercises as Array<Record<string, unknown>>)[0].exercise_id,
+    "zz-library-bench",
+  );
 });
 
 Deno.test("PR 24: with LWW on, a rejected session is in neither p_session_ids nor p_progress, so its stored progress is kept", async () => {

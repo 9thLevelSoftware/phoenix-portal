@@ -166,8 +166,9 @@ BEGIN
              count(*) OVER (PARTITION BY n.session_id, n.exercise_row_id, n.set_number) AS id_key_count,
              count(*) OVER (PARTITION BY n.session_id, n.identity, n.order_index, n.set_number) AS legacy_key_count,
              EXISTS (
-               SELECT 1 FROM old_sets o
-               WHERE o.exercise_row_id = n.exercise_row_id AND o.session_id = n.session_id
+               SELECT 1 FROM public.exercises e
+               WHERE e.id = n.exercise_row_id AND e.session_id = n.session_id
+                 AND e.user_id = p_user_id
              ) AS exercise_row_kept
       FROM new_sets n
     ),

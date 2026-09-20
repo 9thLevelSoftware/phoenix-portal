@@ -433,6 +433,30 @@ SELECT is(pg_temp.tel_on(6181), ARRAY[pg_temp.u(6281)],
 SELECT is(pg_temp.tel_on(6182), ARRAY[]::uuid[],
     'a replaced curve of a kept row never moves to a new legacy exercise');
 
+SELECT diag('database:tier2-kept-exercise-without-old-sets-is-not-a-legacy-replacement');
+
+INSERT INTO public.workout_sessions (id, user_id, started_at)
+VALUES (pg_temp.u(119), pg_temp.uid(), now());
+
+-- The retained row has no old sets, but its stable id must still exclude it
+-- from legacy matching against the removed row with the same identity/order.
+SELECT pg_temp.push(119,
+    jsonb_build_array(pg_temp.ex(191, 119, 'pr20-bench-press', 'Bench Press', 0),
+                      pg_temp.ex(192, 119, 'pr20-bench-press', 'Bench Press', 0)),
+    jsonb_build_array(pg_temp.st(5192, 192, 1)),
+    jsonb_build_array(pg_temp.tm(5292, 5192, 1)));
+SELECT is(pg_temp.tel_on(5192), ARRAY[pg_temp.u(5292)],
+    'the removed exercise initially owns the stored telemetry');
+SELECT is(
+    pg_temp.push(119,
+        jsonb_build_array(pg_temp.ex(191, 119, 'pr20-bench-press', 'Bench Press', 0)),
+        jsonb_build_array(pg_temp.st(6191, 191, 1)),
+        '[]'::jsonb) ->> 'rep_telemetry_preserved',
+    '0',
+    'adding the first set to a retained exercise does not preserve another row''s curve');
+SELECT is(pg_temp.tel_on(6191), ARRAY[]::uuid[],
+    'the retained exercise receives no telemetry from the removed exercise');
+
 -- ===========================================================================
 -- Per-session bound (50000 = MAX_TELEMETRY_POINTS)
 -- ===========================================================================
