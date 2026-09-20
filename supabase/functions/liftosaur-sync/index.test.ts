@@ -67,6 +67,7 @@ function fakeLiftosaur(count: number) {
 }
 
 function harness(db: FakeDb, recordCount: number, jwtUserId: string | null = null) {
+  const now = () => new Date(NOW);
   const handler = createLiftosaurSyncHandler({
     env: (key) =>
       ({
@@ -74,10 +75,12 @@ function harness(db: FakeDb, recordCount: number, jwtUserId: string | null = nul
         SUPABASE_ANON_KEY: "anon",
         SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
       } as Record<string, string>)[key],
+    // The rate-limit RPC double runs on the handler's clock, not the wall
+    // clock, so window arithmetic is deterministic.
     // deno-lint-ignore no-explicit-any
-    createClient: () => fakeClient(db, jwtUserId) as any,
+    createClient: () => fakeClient(db, jwtUserId, now) as any,
     fetch: fakeLiftosaur(recordCount) as typeof fetch,
-    now: () => new Date(NOW),
+    now,
   });
   return (body: Record<string, unknown>) =>
     handler(
@@ -467,4 +470,42 @@ Deno.test("liftosaur-sync keeps the stored date of an undated record re-fetched 
   } finally {
     liftosaur.restore();
   }
+});
+
+Deno.test("liftosaur-sync: a browser sync is capped at 3 per 15 minutes", async () => {
+  const db = new FakeDb(tables([]));
+  const call = harness(db, 1, USER_ID);
+
+  for (const attempt of [1, 2, 3]) {
+    const res = await call({ sync_type: "manual" });
+    assertEquals(res.status, 200, `attempt ${attempt}: ${await res.clone().text()}`);
+  }
+  // The key literal is per-provider: a wrong one would silently share or split
+  // a bucket and stay invisible until someone read rate_limit_tracking.
+  assertEquals(db.rows("rate_limit_tracking").length, 1);
+  assertEquals(db.rows("rate_limit_tracking")[0].key, "liftosaur-sync");
+  assertEquals(db.rows("rate_limit_tracking")[0].requests_this_window, 3);
+
+  const limited = await call({ sync_type: "manual" });
+  assertEquals(limited.status, 429);
+  assertEquals(limited.headers.get("Retry-After"), "900");
+});
+
+Deno.test("liftosaur-sync: saving an API key charges both credential and provider-read budgets", async () => {
+  const db = new FakeDb(tables([]));
+  const call = harness(db, 1, USER_ID);
+
+  for (const attempt of [1, 2, 3]) {
+    const res = await call({ api_key: `key-attempt-${attempt}` });
+    assertEquals(res.status, 200, `attempt ${attempt}: ${await res.clone().text()}`);
+  }
+  const limited = await call({ api_key: "valid-key-again" });
+  assertEquals(limited.status, 429);
+
+  const buckets = db.rows("rate_limit_tracking");
+  assertEquals(buckets.length, 2);
+  assertEquals(
+    buckets.map((row) => [row.key, row.requests_this_window]).sort(),
+    [["liftosaur-sync", 3], ["liftosaur-sync-connect", 4]],
+  );
 });

@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { errorMessage } from '../_shared/errorMessage.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
+import { checkManualSyncRateLimit } from '../_shared/manualSyncRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
   completeSyncQueueEntry,
@@ -14,6 +15,7 @@ import {
   syncQueueUnavailableResponse,
 } from '../_shared/syncQueue.ts';
 import { nextWatermark } from '../_shared/syncWatermark.ts';
+import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
 
 /**
  * Loose Supabase client type for helper signatures. Annotating helpers with the
@@ -265,10 +267,13 @@ async function runFitbitSync(req: Request, owned: OwnedQueueRow): Promise<Respon
       // Browser-initiated: use JWT-verified user ID, ignore body.user_id
       userId = jwtUser.id;
     } else {
-      // Not a valid user JWT -- must be service-role call from process-sync-queue
-      // Verify the caller is actually using the service role key
-      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-      const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
+      // Not a valid user JWT -- must be service-role call from process-sync-queue.
+      // Verify the caller is actually using the service role key, in constant
+      // time so the comparison leaks neither the key's bytes nor its length.
+      const isServiceRole = isServiceRoleBearer(
+        authHeader,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+      );
 
       if (!isServiceRole || !body.user_id) {
         return new Response(
@@ -288,6 +293,18 @@ async function runFitbitSync(req: Request, owned: OwnedQueueRow): Promise<Respon
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    // Cap browser-initiated invocations per user. Keyed on the JWT-verified
+    // id, so nobody can spend another user's budget; the queue path (service
+    // role) is exempt and has its own budget under the `fitbit` key.
+    if (jwtUser) {
+      const rateCheck = await checkManualSyncRateLimit(
+        supabase,
+        { provider: 'fitbit', userId },
+        cors,
+      );
+      if (!rateCheck.allowed) return rateCheck.response!;
+    }
 
     // Subscription gate — FLAME or higher required for integrations
     const gate = await requireSubscription(supabase, userId, 'FLAME', cors);
@@ -461,9 +478,12 @@ async function runFitbitSync(req: Request, owned: OwnedQueueRow): Promise<Respon
       { headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
+    // `errorMessage` is a deliberate passthrough of `.message`, which for a
+    // driver error carries constraint/column/relation names and for a parse
+    // failure carries a slice of the provider's body. Log it, return a code.
     console.error('Fitbit sync error:', err);
     return new Response(
-      JSON.stringify({ error: errorMessage(err) }),
+      JSON.stringify({ error: 'Fitbit sync failed', code: 'internal_error' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }

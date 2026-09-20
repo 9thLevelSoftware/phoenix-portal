@@ -5,17 +5,13 @@
  * value as the Edge secret `CRON_SECRET`.
  */
 
+import { timingSafeEqualString } from './timingSafe.ts';
+
 export type EnvReader = (key: string) => string | undefined;
 
-/** Constant-time string comparison (length is not secret). */
-export function timingSafeEqualString(a: string, b: string): boolean {
-  const ea = new TextEncoder().encode(a);
-  const eb = new TextEncoder().encode(b);
-  if (ea.length !== eb.length) return false;
-  let diff = 0;
-  for (let i = 0; i < ea.length; i++) diff |= ea[i] ^ eb[i];
-  return diff === 0;
-}
+// The comparison itself now lives in _shared/timingSafe.ts so the provider
+// sync handlers can use the same one for their service-role bearer check.
+export { timingSafeEqualString };
 
 /**
  * True when `x-cron-secret` equals CRON_SECRET (or, if that is unset, the
@@ -36,5 +32,5 @@ export function hasValidCronSecret(
   }
   if (!expected) return false;
   const provided = req.headers.get('x-cron-secret') ?? '';
-  return timingSafeEqualString(expected, provided);
+  return timingSafeEqualString({ expected, provided });
 }

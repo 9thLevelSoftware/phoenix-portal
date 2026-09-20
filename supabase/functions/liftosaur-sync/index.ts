@@ -5,6 +5,7 @@ import { getCorsHeaders } from "../_shared/cors.ts";
 import { errorMessage } from "../_shared/errorMessage.ts";
 import { computeIncrementalWindow } from "../_shared/incrementalWindow.ts";
 import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
+import { checkManualSyncRateLimit } from "../_shared/manualSyncRateLimit.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 import {
 	completeSyncQueueEntry,
@@ -17,6 +18,7 @@ import {
 	syncAlreadyQueuedResponse,
 	syncQueueUnavailableResponse,
 } from "../_shared/syncQueue.ts";
+import { isServiceRoleBearer } from "../_shared/timingSafe.ts";
 
 /**
  * Liftosaur Sync Edge Function
@@ -215,10 +217,13 @@ async function liftosaurSyncHandler(
 			// Browser-initiated: use JWT-verified user ID, ignore body.user_id
 			userId = jwtUser.id;
 		} else {
-			// Not a valid user JWT -- must be service-role call from process-sync-queue
-			// Verify the caller is actually using the service role key
-			const serviceRoleKey = deps.env("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-			const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
+			// Not a valid user JWT -- must be service-role call from process-sync-queue.
+			// Verify the caller is actually using the service role key, in constant
+			// time so the comparison leaks neither the key's bytes nor its length.
+			const isServiceRole = isServiceRoleBearer(
+				authHeader,
+				deps.env("SUPABASE_SERVICE_ROLE_KEY"),
+			);
 
 			if (!isServiceRole || !body.user_id) {
 				return new Response(
@@ -248,6 +253,30 @@ async function liftosaurSyncHandler(
 			deps.env("SUPABASE_SERVICE_ROLE_KEY")!
 		);
 		const supabase = deps.createAdminClient();
+
+		// Cap browser-initiated invocations per user. Keyed on the JWT-verified
+		// id, so nobody can spend another user's budget; the queue path (service
+		// role) is exempt and has its own budget under the `liftosaur` key.
+		//
+		// A call carrying `api_key` is both a credential write and a full sync. It
+		// spends the roomier connect bucket first, then the ordinary sync bucket;
+		// otherwise resending a valid key would bypass the provider-read limit.
+		if (jwtUser) {
+			if (api_key) {
+				const credentialRateCheck = await checkManualSyncRateLimit(
+					supabase,
+					{ provider: "liftosaur", userId, credentialWrite: true },
+					cors,
+				);
+				if (!credentialRateCheck.allowed) return credentialRateCheck.response!;
+			}
+			const syncRateCheck = await checkManualSyncRateLimit(
+				supabase,
+				{ provider: "liftosaur", userId },
+				cors,
+			);
+			if (!syncRateCheck.allowed) return syncRateCheck.response!;
+		}
 
 		// Renew the lease immediately: the processor claimed this row before it
 		// called us, so the work below must not run on that claim's clock.
@@ -432,21 +461,28 @@ async function liftosaurSyncHandler(
 				await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 			}
 		} catch (fetchError) {
+			// The thrown error is logged above and goes no further. The fetch+parse
+			// is wrapped as a whole, so besides our own fixed "Liftosaur API
+			// returned N" it can be a V8 JSON parse message quoting the provider's
+			// body, or a transport/TLS internal.
+			// `user_integrations.error_message` is rendered by ProviderCard and the
+			// response body is copied into `sync_queue.error_message` by the
+			// processor, so both get fixed text.
 			console.error("Liftosaur API fetch error:", fetchError);
-			const fetchMessage = errorMessage(fetchError);
 
 			await supabase
 				.from("user_integrations")
 				.update({
 					status: "error",
-					error_message: `Sync failed: ${fetchMessage}`,
+					error_message: "Liftosaur sync failed; will retry",
 				})
 				.eq("user_id", userId)
 				.eq("provider", "liftosaur");
 
 			return new Response(
 				JSON.stringify({
-					error: `Liftosaur API error: ${fetchMessage}`,
+					error: "Liftosaur API error",
+					code: "provider_fetch_failed",
 				}),
 				{
 					status: 502,
@@ -626,11 +662,17 @@ async function liftosaurSyncHandler(
 			}
 		);
 	} catch (err) {
+		// `errorMessage` is a deliberate passthrough of `.message`, which for a
+		// driver error carries constraint/column/relation names and for a parse
+		// failure carries a slice of the provider's body. Log it, return a code.
 		console.error("Liftosaur sync error:", err);
-		return new Response(JSON.stringify({ error: errorMessage(err) }), {
-			status: 500,
-			headers: { ...cors, "Content-Type": "application/json" },
-		});
+		return new Response(
+			JSON.stringify({ error: "Liftosaur sync failed", code: "internal_error" }),
+			{
+				status: 500,
+				headers: { ...cors, "Content-Type": "application/json" },
+			}
+		);
 	}
 }
 

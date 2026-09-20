@@ -8,6 +8,7 @@ import {
   recordStravaUsage,
   type StravaRateLimitSnapshot,
 } from '../_shared/providerRateLimit.ts';
+import { checkManualSyncRateLimit } from '../_shared/manualSyncRateLimit.ts';
 import { computeIncrementalWindow } from '../_shared/incrementalWindow.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
@@ -22,6 +23,7 @@ import {
 } from '../_shared/syncQueue.ts';
 import { refreshStravaAccessToken, stravaTokenNeedsRefresh } from '../_shared/stravaToken.ts';
 import { nextWatermark } from '../_shared/syncWatermark.ts';
+import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
 
 /**
  * Loose Supabase client type for helper signatures. The bare
@@ -489,10 +491,13 @@ async function stravaSyncHandler(
       // Browser-initiated: use JWT-verified user ID, ignore body.user_id
       userId = jwtUser.id;
     } else {
-      // Not a valid user JWT -- must be service-role call from process-sync-queue
-      // Verify the caller is actually using the service role key
-      const serviceRoleKey = deps.env('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-      const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
+      // Not a valid user JWT -- must be service-role call from process-sync-queue.
+      // Verify the caller is actually using the service role key, in constant
+      // time so the comparison leaks neither the key's bytes nor its length.
+      const isServiceRole = isServiceRoleBearer(
+        authHeader,
+        deps.env('SUPABASE_SERVICE_ROLE_KEY'),
+      );
 
       if (!isServiceRole || !body.user_id) {
         return new Response(
@@ -517,6 +522,22 @@ async function stravaSyncHandler(
       deps.env('SUPABASE_SERVICE_ROLE_KEY')!
     );
     const supabase = deps.createAdminClient();
+
+    // Cap browser-initiated invocations per user: they hit Strava's
+    // application-wide read quota. Keyed on the JWT-verified id, so an
+    // unauthenticated caller never reaches this point and nobody can spend
+    // another user's budget. The queue path (service role) is deliberately
+    // exempt — process-sync-queue has its own per-provider budget, tracked
+    // under the separate `strava` key. See _shared/manualSyncRateLimit.ts for
+    // what the bucket does and does not count.
+    if (jwtUser) {
+      const rateCheck = await checkManualSyncRateLimit(
+        supabase,
+        { provider: 'strava', userId },
+        cors,
+      );
+      if (!rateCheck.allowed) return rateCheck.response!;
+    }
 
     // Renew the lease immediately: the processor claimed this row before it
     // called us, and the work below (subscription check, token refresh, page
@@ -887,6 +908,16 @@ async function stravaSyncHandler(
           break;
         }
 
+        // The provider's body is logged above and never returned: it is
+        // attacker-influenced text that would otherwise be echoed to the
+        // browser and copied into sync_queue.error_message by the processor.
+        return new Response(
+          JSON.stringify({
+            error: 'Failed to fetch Strava activities',
+            code: `provider_fetch_failed_${activitiesResponse.status}`,
+          }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
         if (!activitiesResponse.ok) {
           const errorText = await activitiesResponse.text();
           console.error('Strava activities fetch failed:', activitiesResponse.status, errorText);
@@ -1003,6 +1034,9 @@ async function stravaSyncHandler(
     // ---------------------------------------------------------------
     if (errors.length > 0) {
       const failMessage = `Failed to persist ${failedCount} of ${uniqueActivities.length} activities`;
+      // `errors` carries raw Postgres/driver text (constraint names, column
+      // names, sometimes row values). Log it, never return it.
+      console.error('Strava activity persistence failures:', errors);
       // Keep status 'connected' so the queued 502 retry can re-enter this
       // handler (it rejects any non-connected integration with a 404). We only
       // record the error and withhold the last_sync_at advance.
@@ -1013,7 +1047,12 @@ async function stravaSyncHandler(
         .eq('provider', 'strava');
 
       return new Response(
-        JSON.stringify({ error: failMessage, synced_count: syncedCount, errors }),
+        JSON.stringify({
+          error: failMessage,
+          code: 'persist_failed',
+          synced_count: syncedCount,
+          failed_count: failedCount,
+        }),
         { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
       );
     }
@@ -1166,9 +1205,12 @@ async function stravaSyncHandler(
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
+    // Whatever threw (a driver error, a provider parse failure) is logged
+    // here and summarised to the caller as a stable code: its message can
+    // carry DB internals or provider text.
     console.error('Strava sync error:', err);
     return new Response(
-      JSON.stringify({ error: (err as Error).message }),
+      JSON.stringify({ error: 'Strava sync failed', code: 'internal_error' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }

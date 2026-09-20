@@ -459,25 +459,8 @@ async function mobileIntegrationSyncHandler(
           ? await fetchHevyActivities(apiKey)
           : await fetchLiftosaurActivities(apiKey);
       } catch (fetchErr) {
-        const isApiKeyError = fetchErr instanceof ApiKeyError;
-        const errorMessage = (fetchErr as Error).message;
-
-        // Update integration status to error
-        await supabase
-          .from('user_integrations')
-          .update({
-            status: 'error',
-            error_message: errorMessage,
-          })
-          .eq('user_id', userId)
-          .eq('provider', provider);
-
-        return new Response(
-          JSON.stringify({ status: 'error', error: errorMessage }),
-          {
-            status: isApiKeyError ? 403 : 502,
-            headers: { ...cors, 'Content-Type': 'application/json' },
-          }
+        return await providerFetchFailureResponse(
+          supabase, userId, provider, fetchErr, cors,
         );
       }
 
@@ -555,24 +538,8 @@ async function mobileIntegrationSyncHandler(
         ? await fetchHevyActivities(storedApiKey)
         : await fetchLiftosaurActivities(storedApiKey);
     } catch (fetchErr) {
-      const isApiKeyError = fetchErr instanceof ApiKeyError;
-      const errorMessage = (fetchErr as Error).message;
-
-      await supabase
-        .from('user_integrations')
-        .update({
-          status: 'error',
-          error_message: errorMessage,
-        })
-        .eq('user_id', userId)
-        .eq('provider', provider);
-
-      return new Response(
-        JSON.stringify({ status: 'error', error: errorMessage }),
-        {
-          status: isApiKeyError ? 403 : 502,
-          headers: { ...cors, 'Content-Type': 'application/json' },
-        }
+      return await providerFetchFailureResponse(
+        supabase, userId, provider, fetchErr, cors,
       );
     }
 
@@ -604,9 +571,15 @@ async function mobileIntegrationSyncHandler(
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
+    // The thrown message can carry DB internals or provider text; it is
+    // logged here and summarised to the caller as a stable code.
     console.error('mobile-integration-sync error:', err);
     return new Response(
-      JSON.stringify({ status: 'error', error: (err as Error).message ?? 'Internal server error' }),
+      JSON.stringify({
+        status: 'error',
+        error: 'Internal server error',
+        code: 'internal_error',
+      }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
@@ -672,6 +645,51 @@ async function persistActivities(
  * Mark the integration as a partial-persistence failure and build the 502 the
  * caller should return. Does NOT advance `last_sync_at` so the next sync retries.
  */
+/**
+ * Shared failure path for `fetchHevyActivities` / `fetchLiftosaurActivities`.
+ *
+ * The thrown message is NOT returned and NOT stored. Our own throws are fixed
+ * sentences, but the fetch+parse is wrapped as a whole: an unguarded
+ * `await response.json()` on a 200 with a non-JSON body (an upstream HTML
+ * error page, say) throws a `SyntaxError` whose message quotes a slice of that
+ * body, and a transport failure throws a fetch/TLS internal.
+ * `user_integrations.error_message` is browser-readable and rendered by the
+ * integration card, so it gets fixed text and the detail goes to the log.
+ */
+async function providerFetchFailureResponse(
+  supabase: DbClient,
+  userId: string,
+  provider: string,
+  fetchErr: unknown,
+  cors: Record<string, string>,
+): Promise<Response> {
+  const isApiKeyError = fetchErr instanceof ApiKeyError;
+  console.error(`mobile-integration-sync ${provider} fetch failed:`, fetchErr);
+
+  await supabase
+    .from('user_integrations')
+    .update({
+      status: 'error',
+      error_message: isApiKeyError
+        ? 'API key rejected by the provider. Reconnect to resume syncing.'
+        : 'Provider sync failed; will retry',
+    })
+    .eq('user_id', userId)
+    .eq('provider', provider);
+
+  return new Response(
+    JSON.stringify({
+      status: 'error',
+      error: isApiKeyError ? 'Provider rejected the API key' : 'Provider request failed',
+      code: isApiKeyError ? 'provider_auth_failed' : 'provider_fetch_failed',
+    }),
+    {
+      status: isApiKeyError ? 403 : 502,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    }
+  );
+}
+
 async function partialPersistFailureResponse(
   supabase: DbClient,
   userId: string,
