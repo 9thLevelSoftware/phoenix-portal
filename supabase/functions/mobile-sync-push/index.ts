@@ -423,6 +423,22 @@ interface ExternalActivityAckDto {
   updatedAt: string;
 }
 
+/** Row shape returned by get_personal_record_identity_candidates. */
+interface PersonalRecordIdentityCandidate {
+  id: string;
+  local_profile_id: string | null;
+  exercise_id: string | null;
+  exercise_name: string;
+  achieved_at: string;
+  record_type: string;
+  workout_phase: string | null;
+  updated_at: string | null;
+  deleted_at: string | null;
+}
+
+/** Keyset page size for the PR probe; must stay <= PostgREST max_rows (1000). */
+const PERSONAL_RECORD_PROBE_PAGE_SIZE = 500;
+
 interface PersonalRecordDto {
   id?: string | null;
   userId?: string | null;
@@ -2494,13 +2510,45 @@ async function mobileSyncPushHandler(
 
       const dedicatedPrsPresent = (payload.personalRecords ?? []).length > 0;
       const achievedAtValues = [...new Set(prRows.map((row) => row.achieved_at as string))];
-      const { data: existingPrs, error: existingPrErr } = await supabase
-        .from('personal_records')
-        .select('id, local_profile_id, exercise_id, exercise_name, achieved_at, record_type, workout_phase, updated_at, deleted_at')
-        .eq('user_id', userId)
-        .in('achieved_at', achievedAtValues);
-      if (existingPrErr) {
-        throw new Error(`personal_records lookup failed: ${existingPrErr.message}`);
+      // Dedicated ids too, so a stored row whose achieved_at was edited is
+      // still found by id for the LWW / tombstone guard below.
+      const probeIds = [
+        ...new Set(
+          prRows
+            .map((row) => row.id)
+            .filter((id): id is string => typeof id === 'string' && UUID_REGEX.test(id)),
+        ),
+      ];
+      // Existing-row probe via RPC: the timestamps travel in the POST body
+      // (no GET `.in()` URL wall) and results are keyset-paged by id, so
+      // PostgREST max_rows can never silently truncate the de-dup lookup.
+      const existingPrs: PersonalRecordIdentityCandidate[] = [];
+      let existingPrCursor: string | null = null;
+      for (;;) {
+        const { data: page, error: existingPrErr } = await supabase.rpc(
+          'get_personal_record_identity_candidates',
+          {
+            p_user_id: userId,
+            p_achieved_at: achievedAtValues,
+            p_ids: probeIds,
+            p_after_id: existingPrCursor,
+            p_limit: PERSONAL_RECORD_PROBE_PAGE_SIZE,
+          },
+        );
+        if (existingPrErr) {
+          throw new Error(`personal_records lookup failed: ${existingPrErr.message}`);
+        }
+        const rows = (page ?? []) as PersonalRecordIdentityCandidate[];
+        existingPrs.push(...rows);
+        const lastId = rows.length > 0 ? rows[rows.length - 1].id : null;
+        if (
+          rows.length < PERSONAL_RECORD_PROBE_PAGE_SIZE ||
+          typeof lastId !== 'string' ||
+          lastId === existingPrCursor
+        ) {
+          break;
+        }
+        existingPrCursor = lastId;
       }
 
       // Index existing rows under BOTH their id-key and their derived-identity
@@ -2562,15 +2610,32 @@ async function mobileSyncPushHandler(
       });
 
       if (prRowsToWrite.length > 0) {
+        // Dedicated rows keep the id-keyed upsert (F335: same derived
+        // identity with a different id is a distinct record). Set-derived
+        // rows go through SQL so ON CONFLICT can target the partial unique
+        // index on their derived identity (R-3): a re-push or a concurrent
+        // push of the same PR updates one row instead of inserting another.
         const writePersonalRecords = (rows: typeof prRowsToWrite) => dedicatedPrsPresent
           ? supabase
               .from('personal_records')
               .upsert(rows, { onConflict: 'id' })
-          : supabase
-              .from('personal_records')
-              .insert(rows);
+          : supabase.rpc('upsert_set_derived_personal_records', {
+              p_user_id: userId,
+              p_rows: rows,
+            });
+        // The set-derived RPC returns how many rows it actually inserted or
+        // changed (0 when a concurrent push already wrote the same values).
+        // The dedicated PostgREST upsert reports nothing, so it counts rows
+        // submitted, as before.
+        const countWritten = (data: unknown, submitted: number): number => {
+          if (dedicatedPrsPresent) return submitted;
+          if (typeof data !== 'number' || !Number.isInteger(data) || data < 0) {
+            throw new Error('personal_records set-derived upsert returned an unexpected result');
+          }
+          return data;
+        };
 
-        const { error: prErr } = await writePersonalRecords(prRowsToWrite);
+        const { data: prData, error: prErr } = await writePersonalRecords(prRowsToWrite);
         if (prErr && isPostgresForeignKeyViolation(prErr)) {
           // Issue #99 RCA layer 2: always partition by local_profile_id
           // validity when the valid set is populated, even for derived PR
@@ -2633,15 +2698,18 @@ async function mobileSyncPushHandler(
             );
           }
 
-          const { error: retryErr } = await writePersonalRecords(
+          const { data: retryData, error: retryErr } = await writePersonalRecords(
             sessionPartition.rowsWithInvalidSessionsNulled,
           );
           if (retryErr) throw new Error(`personal_records retry after FK fix failed: ${retryErr.message}`);
-          personalRecordsInserted = sessionPartition.rowsWithInvalidSessionsNulled.length;
+          personalRecordsInserted = countWritten(
+            retryData,
+            sessionPartition.rowsWithInvalidSessionsNulled.length,
+          );
         } else if (prErr) {
           throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
         } else {
-          personalRecordsInserted = prRowsToWrite.length;
+          personalRecordsInserted = countWritten(prData, prRowsToWrite.length);
         }
       }
     }
