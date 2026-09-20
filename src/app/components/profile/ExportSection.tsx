@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Archive, Download, FileSpreadsheet, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -29,9 +29,12 @@ export function ExportSection() {
 	const { data: workouts, isLoading: workoutsLoading } = useQuery(
 		workoutListOptions(user?.id ?? ""),
 	);
-	const { data: records, isLoading: recordsLoading } = useQuery(
-		personalRecordsOptions(user?.id ?? ""),
-	);
+	const {
+		data: records,
+		isLoading: recordsLoading,
+		hasNextPage: hasMoreRecords,
+		fetchNextPage: fetchMoreRecords,
+	} = useInfiniteQuery(personalRecordsOptions(user?.id ?? ""));
 	const { data: profile } = useQuery({
 		...profileOptions(user?.id ?? ""),
 		enabled: !!user?.id,
@@ -110,7 +113,19 @@ export function ExportSection() {
 		}
 	};
 
-	const handleExportRecords = () => {
+	// The records query is keyset-paged, so the export drains the remaining
+	// pages first: a CSV that stops at the first page would be an incomplete
+	// export rather than a visible failure.
+	const loadAllRecords = async () => {
+		let page = { data: records, hasNextPage: hasMoreRecords };
+		// Bounded so a server that keeps reporting another page cannot spin.
+		for (let i = 0; i < 200 && page.hasNextPage; i++) {
+			page = await fetchMoreRecords();
+		}
+		return page.data ?? [];
+	};
+
+	const handleExportRecords = async () => {
 		if (!records?.length) {
 			toast.error("No personal records to export");
 			return;
@@ -118,10 +133,11 @@ export function ExportSection() {
 
 		setExporting("records");
 		try {
-			const csv = generateRecordsCSV(records, unit);
+			const allRecords = await loadAllRecords();
+			const csv = generateRecordsCSV(allRecords, unit);
 			const filename = `phoenix-records-${new Date().toISOString().split("T")[0]}`;
 			downloadCSV(csv, filename);
-			toast.success(`Exported ${records.length} personal records`);
+			toast.success(`Exported ${allRecords.length} personal records`);
 		} catch (error) {
 			toast.error("Failed to export records");
 			console.error("Export error:", error);
@@ -160,7 +176,9 @@ export function ExportSection() {
 
 					<Button
 						variant="outline"
-						onClick={handleExportRecords}
+						onClick={() => {
+							void handleExportRecords();
+						}}
 						disabled={recordsLoading || exporting !== null}
 						className="flex-1 border-secondary text-white hover:bg-secondary/50"
 					>
