@@ -58,10 +58,11 @@ function createWrapper() {
 }
 
 // ---------------------------------------------------------------------------
-// deletionRequestOptions
+// deletionRequestOptions — the query itself (key/enabled are covered further
+// down, next to the other query-helper assertions)
 // ---------------------------------------------------------------------------
 
-describe("deletionRequestOptions", () => {
+describe("deletionRequestOptions status filter", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
