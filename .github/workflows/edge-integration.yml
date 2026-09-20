@@ -125,6 +125,7 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           SYNC_LWW_ENABLED: "true"
+      - name: Run real-SQL Edge integration tests
         run: npm run test:edge:integration
 
       - name: Stop stack

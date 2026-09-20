@@ -80,7 +80,7 @@ const baseExercise = {
 	reps: 10,
 	weight: 100,
 	rest_seconds: 90,
-	mode: "eccentric",
+	mode: "ECCENTRIC_ONLY",
 	order_index: 0,
 };
 
@@ -163,6 +163,58 @@ describe("useSaveRoutine", () => {
 		);
 		expect(mockToast.error).not.toHaveBeenCalledWith(
 			expect.stringContaining("duplicate key"),
+		);
+	});
+
+	it("stores display-name modes as wire names", async () => {
+		const { useSaveRoutine } = await import("../routines");
+		let exerciseRows: Array<Record<string, unknown>> = [];
+
+		mockSelectSingle.mockResolvedValue({
+			data: { id: "routine-1" },
+			error: null,
+		});
+		mockChain.insert.mockImplementation((rows: unknown) => {
+			if (Array.isArray(rows)) {
+				exerciseRows = rows as Array<Record<string, unknown>>;
+				return Promise.resolve({ error: null });
+			}
+			return { select: vi.fn(() => ({ single: mockSelectSingle })) };
+		});
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useSaveRoutine(), { wrapper });
+
+		result.current.mutate({
+			name: "Test Routine",
+			exercises: [
+				{ ...baseExercise, mode: "TUT Beast" },
+				{ ...baseExercise, mode: "CLASSIC", order_index: 1 },
+			],
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+		expect(exerciseRows.map((row) => row.mode)).toEqual([
+			"TUT_BEAST",
+			"OLD_SCHOOL",
+		]);
+	});
+
+	it("rejects an unknown mode before inserting the routine", async () => {
+		const { useSaveRoutine } = await import("../routines");
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useSaveRoutine(), { wrapper });
+
+		result.current.mutate({
+			name: "Test Routine",
+			exercises: [{ ...baseExercise, mode: "eccentric" }],
+		});
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+		expect(from).not.toHaveBeenCalled();
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Failed to save routine. Please try again.",
 		);
 	});
 
@@ -268,10 +320,104 @@ describe("useUpdateRoutine", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(exerciseRows).toHaveLength(1);
-		expect(exerciseRows[0]?.weight).toBe(baseExercise.weight / 2);
-		// per_set_weights must follow the same per-cable halving as `weight` so
-		// the stored and displayed values round-trip consistently.
-		expect(exerciseRows[0]?.per_set_weights).toEqual([25, 27.5, 30]);
+		// The builder collects per-cable weights, which is what is stored (KD-8):
+		// no halving on write.
+		expect(exerciseRows[0]?.weight).toBe(baseExercise.weight);
+		expect(exerciseRows[0]?.per_set_weights).toEqual([50, 55, 60]);
+	});
+
+	it("round-trips a per-cable weight: enter 20, store 20, read back 20", async () => {
+		const { useUpdateRoutine } = await import("../routines");
+		const { routineExerciseSchema } = await import("@/schemas/transforms");
+		let exerciseRows: Array<Record<string, unknown>> = [];
+
+		rpc.mockImplementation(
+			(_fn: string, args: { p_exercises: Array<Record<string, unknown>> }) => {
+				exerciseRows = args.p_exercises;
+				return Promise.resolve({ data: "routine-1", error: null });
+			},
+		);
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateRoutine(), { wrapper });
+
+		result.current.mutate({
+			routineId: "routine-1",
+			name: "Per-cable Routine",
+			exercises: [
+				{
+					...baseExercise,
+					weight: 20,
+					per_set_weights: [20, 20, 20],
+					drop_set_enabled: true,
+					drop_set_min_weight_kg: 10,
+				},
+			],
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+		const stored = exerciseRows[0];
+		expect(stored?.weight).toBe(20);
+		expect(stored?.per_set_weights).toEqual([20, 20, 20]);
+		expect(stored?.drop_set_min_weight_kg).toBe(10);
+
+		const readBack = routineExerciseSchema.parse({
+			...stored,
+			id: "00000000-0000-4000-a000-000000000001",
+			routine_id: "00000000-0000-4000-a000-000000000002",
+			created_at: "2026-01-15T08:00:00Z",
+		});
+		expect(readBack.weight).toBe(20);
+		expect(readBack.per_set_weights).toEqual([20, 20, 20]);
+		expect(readBack.drop_set_min_weight_kg).toBe(10);
+	});
+
+	it("sends wire-name modes through the update RPC and keeps preserved unknown modes", async () => {
+		const { useUpdateRoutine } = await import("../routines");
+		let exerciseRows: Array<Record<string, unknown>> = [];
+
+		rpc.mockImplementation(
+			(_fn: string, args: { p_exercises: Array<Record<string, unknown>> }) => {
+				exerciseRows = args.p_exercises;
+				return Promise.resolve({ data: "routine-1", error: null });
+			},
+		);
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateRoutine(), { wrapper });
+
+		result.current.mutate({
+			routineId: "routine-1",
+			name: "Updated Routine",
+			exercises: [
+				{ ...baseExercise, mode: "Echo" },
+				{ ...baseExercise, mode: "FUTURE_MODE", order_index: 1 },
+			],
+			preservedModes: ["FUTURE_MODE"],
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+		expect(exerciseRows.map((row) => row.mode)).toEqual([
+			"ECHO",
+			"FUTURE_MODE",
+		]);
+	});
+
+	it("rejects an unknown, non-preserved mode before calling the update RPC", async () => {
+		const { useUpdateRoutine } = await import("../routines");
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateRoutine(), { wrapper });
+
+		result.current.mutate({
+			routineId: "routine-1",
+			name: "Updated Routine",
+			exercises: [{ ...baseExercise, mode: "eccentric" }],
+		});
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+		expect(rpc).not.toHaveBeenCalled();
 	});
 
 	it("shows user-friendly error on update failure", async () => {
@@ -304,12 +450,23 @@ describe("useToggleFavorite", () => {
 		vi.clearAllMocks();
 	});
 
+	/** `.update().eq("id").eq("user_id").select("id").maybeSingle()`. */
+	function mockFavoriteChain(outcome: {
+		data: { id: string } | null;
+		error: { message: string; code?: string } | null;
+	}) {
+		const maybeSingle = vi.fn(() => Promise.resolve(outcome));
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqSecond = vi.fn(() => ({ select }));
+		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
+		mockChain.update.mockImplementation(() => ({ eq: eqFirst }));
+		return { select };
+	}
+
 	it("calls Supabase update with is_favorite and invalidates user-specific cache", async () => {
 		const { useToggleFavorite } = await import("../routines");
 
-		const eqSecond = vi.fn(() => Promise.resolve({ error: null }));
-		const eqFirst = vi.fn(() => ({ eq: eqSecond }));
-		mockChain.update.mockImplementation(() => ({ eq: eqFirst }));
+		const chain = mockFavoriteChain({ data: { id: "routine-1" }, error: null });
 
 		const { queryClient, wrapper } = createWrapper();
 		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
@@ -321,9 +478,58 @@ describe("useToggleFavorite", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(from).toHaveBeenCalledWith("routines");
+		expect(chain.select).toHaveBeenCalledWith("id");
 		// Should invalidate all routines cache (prefix invalidation for profile filtering)
 		expect(invalidateSpy).toHaveBeenCalledWith({
 			queryKey: queryKeys.routines.all,
+		});
+	});
+
+	it("fails instead of silently doing nothing when the update matches no row", async () => {
+		// The routines UPDATE policy is owner AND FLAME. If the plan lapsed
+		// while the page was open, PostgREST answers success with an empty
+		// body and the UI would keep the star it just drew.
+		const { useToggleFavorite } = await import("../routines");
+
+		mockFavoriteChain({ data: null, error: null });
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useToggleFavorite(), { wrapper });
+
+		result.current.mutate({ routineId: "routine-1", isFavorite: true });
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Routine not found, or you can no longer edit it.",
+		);
+	});
+
+	it("explains a server-side tier denial instead of failing silently", async () => {
+		const { useToggleFavorite } = await import("../routines");
+		const { TIER_DENIED_MESSAGE } = await import("@/lib/tierErrors");
+
+		mockFavoriteChain({
+			data: null,
+			error: {
+				code: "42501",
+				message: "new row violates row-level security policy",
+			},
+		});
+
+		const { queryClient, wrapper } = createWrapper();
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+		const { result } = renderHook(() => useToggleFavorite(), { wrapper });
+
+		result.current.mutate({ routineId: "routine-1", isFavorite: true });
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(TIER_DENIED_MESSAGE);
+		// The route gate must re-evaluate, so billing status is refetched.
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.subscription.all,
 		});
 	});
 });

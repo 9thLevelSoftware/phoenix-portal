@@ -21,6 +21,11 @@ import {
 const USER_ID = "00000000-0000-4000-8000-00000000aaaa";
 const ROUTINE_COLUMNS = getUserDataTable("routines")!.columns;
 const ROUTINE_OPTIONAL = getUserDataTable("routines")!.optionalColumns ?? [];
+// `routines` has no optional columns any more (PR 16's migration added
+// `created_at`, so it is a migrated column). The drop-on-42703 retry needs a
+// table that still carries prod-only drift columns.
+const GOAL_COLUMNS = getUserDataTable("user_goals")!.columns;
+const GOAL_OPTIONAL = getUserDataTable("user_goals")!.optionalColumns ?? [];
 
 function request(
   body: unknown,
@@ -266,6 +271,23 @@ Deno.test("scopes by the JWT user id, selects explicit columns, and charges 600/
 });
 
 Deno.test("prod-only optional columns are dropped when the database lacks them", async () => {
+  assert(GOAL_OPTIONAL.length > 0, "user_goals must still have an optional column");
+  const { handler, recorded } = doubleHandler([
+    {
+      data: null,
+      error: {
+        code: "42703",
+        message: `column user_goals.${GOAL_OPTIONAL[0]} does not exist`,
+      },
+    },
+    { data: [{ id: "g1" }], error: null, count: 1 },
+  ]);
+  const response = await handler(request({ table: "user_goals" }));
+  assertEquals(response.status, 200);
+  const selects = recorded.ops.filter(([name]) => name === "select").map(([, args]) => args[0]);
+  assertEquals(selects, [
+    [...GOAL_COLUMNS, ...GOAL_OPTIONAL].join(","),
+    GOAL_COLUMNS.join(","),
   const { handler, recorded } = doubleHandler([
     { data: null, error: { code: "42703", message: "column routines.created_at does not exist" } },
     { data: [{ id: "r1" }], error: null, count: 1 },

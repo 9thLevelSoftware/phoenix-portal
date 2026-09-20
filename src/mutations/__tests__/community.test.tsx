@@ -160,7 +160,8 @@ describe("useShareContent", () => {
 						mode: "OLD_SCHOOL",
 						order_index: 0,
 						superset_id: null,
-						superset_color: null,
+						// Legacy portal values: published in mobile's vocabulary.
+						superset_color: "#EC4899",
 						superset_order: null,
 						per_set_weights: null,
 						per_set_rest: null,
@@ -169,11 +170,11 @@ describe("useShareContent", () => {
 						is_amrap: false,
 						is_bodyweight: false,
 						pr_percentage: null,
-						rep_count_timing: null,
-						stop_at_position: null,
+						rep_count_timing: "2-0-2",
+						stop_at_position: "TOP",
 						stall_detection: true,
-						eccentric_load: null,
-						echo_level: null,
+						eccentric_load: "heavy",
+						echo_level: "hard",
 						warmup_sets: null,
 						drop_set_enabled: true,
 						drop_set_min_weight_kg: 12.5,
@@ -215,6 +216,11 @@ describe("useShareContent", () => {
 						weight: 40,
 						drop_set_enabled: true,
 						drop_set_min_weight_kg: 12.5,
+						superset_color: "pink",
+						rep_count_timing: null,
+						stop_at_position: "TOP",
+						eccentric_load: null,
+						echo_level: "HARD",
 					}),
 				],
 			}),
@@ -752,5 +758,55 @@ describe("useSaveItem", () => {
 			importedId: "imported-cycle-1",
 			itemType: "cycle",
 		});
+	});
+
+	it("explains a FLAME_REQUIRED import instead of the generic save failure", async () => {
+		// import_shared_routine / import_shared_cycle raise P0001
+		// FLAME_REQUIRED below FLAME, which the route gate only hides while
+		// the cached subscription is still stale.
+		const { useSaveItem } = await import("../community");
+		const { TIER_DENIED_MESSAGE } = await import("@/lib/tierErrors");
+
+		rpc.mockResolvedValue({
+			data: null,
+			error: { code: "P0001", message: "FLAME_REQUIRED" },
+		});
+
+		const { queryClient, wrapper } = createWrapper();
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+		const { result } = renderHook(() => useSaveItem(), { wrapper });
+
+		result.current.mutate({ sharedItemId: "shared-3", itemType: "routine" });
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(TIER_DENIED_MESSAGE);
+		expect(mockToast.error).not.toHaveBeenCalledWith(
+			"Failed to save content. Please try again.",
+		);
+		expect(invalidateSpy).toHaveBeenCalledWith({
+			queryKey: queryKeys.subscription.all,
+		});
+	});
+
+	it("still shows the generic message for a non-tier import failure", async () => {
+		const { useSaveItem } = await import("../community");
+
+		rpc.mockResolvedValue({
+			data: null,
+			error: { code: "23503", message: "violates foreign key constraint" },
+		});
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useSaveItem(), { wrapper });
+
+		result.current.mutate({ sharedItemId: "shared-4", itemType: "routine" });
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Failed to save content. Please try again.",
+		);
 	});
 });

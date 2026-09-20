@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	analyticsSummarySchema,
+	exerciseSchema,
 	gamificationStatsSchema,
 	personalRecordSchema,
 	routineExerciseSchema,
@@ -12,13 +13,10 @@ import {
 /**
  * Weight Transform Validation Tests (Plan 04-01)
  *
- * The Phoenix fitness machine has dual cables. All weight values are stored
- * in the database as per-cable values (0-220kg range). The portal
- * applies a x2 multiplier for display to show total weight lifted.
- *
- * WEIGHT_MULTIPLIER = 2 (defined in transforms.ts line 6)
+ * All loads are stored per cable and the schemas pass them through
+ * unchanged (KD-8). Totals are derived only by src/lib/units/loadDisplay.ts
+ * when the exercise's cable count is known; schemas never double.
  */
-const WEIGHT_MULTIPLIER = 2;
 const MAX_PER_CABLE_KG = 110; // Practical machine limit per cable
 
 // Valid UUID for test data
@@ -47,10 +45,9 @@ describe("workoutSessionSchema", () => {
 		expect(result.name).toBe("Morning Workout");
 	});
 
-	it("passes total_volume through without doubling (Phase 40 fix)", () => {
+	it("passes total_volume through without doubling", () => {
 		const result = workoutSessionSchema.parse(validSession);
-		// total_volume is already total (not per-cable), so no transform applied.
-		// Phase 40 fix: bodyweight volume was being incorrectly doubled.
+		// total_volume is per cable as stored (KD-8); no transform applied.
 		expect(result.total_volume).toBe(100);
 	});
 
@@ -121,13 +118,12 @@ describe("workoutSessionSchema", () => {
 
 	// === Plan 04-01: Weight Transform Edge Cases ===
 
-	it("doubles heaviest_lift_kg (per-cable to total)", () => {
+	it("passes heaviest_lift_kg through per cable (no doubling)", () => {
 		const result = workoutSessionSchema.parse({
 			...validSession,
 			heaviest_lift_kg: 75,
 		});
-		// Input 75 -> output 150
-		expect(result.heaviest_lift_kg).toBe(150);
+		expect(result.heaviest_lift_kg).toBe(75);
 	});
 
 	it("handles null heaviest_lift_kg gracefully", () => {
@@ -161,8 +157,36 @@ describe("workoutSessionSchema", () => {
 			...validSession,
 			heaviest_lift_kg: MAX_PER_CABLE_KG,
 		});
-		// 110 * 2 = 220
-		expect(result.heaviest_lift_kg).toBe(MAX_PER_CABLE_KG * WEIGHT_MULTIPLIER);
+		expect(result.heaviest_lift_kg).toBe(MAX_PER_CABLE_KG);
+	});
+});
+
+describe("exerciseSchema cable_count", () => {
+	const base = {
+		id: UUID,
+		session_id: UUID2,
+		name: "Bench Press",
+		muscle_group: "Chest",
+		order_index: 0,
+	};
+
+	it("keeps a known cable count of 1 or 2", () => {
+		expect(exerciseSchema.parse({ ...base, cable_count: 1 }).cable_count).toBe(
+			1,
+		);
+		expect(exerciseSchema.parse({ ...base, cable_count: 2 }).cable_count).toBe(
+			2,
+		);
+	});
+
+	it("treats NULL, absent, or out-of-range counts as unknown (never 2)", () => {
+		expect(
+			exerciseSchema.parse({ ...base, cable_count: null }).cable_count,
+		).toBeNull();
+		expect(exerciseSchema.parse(base).cable_count).toBeNull();
+		expect(
+			exerciseSchema.parse({ ...base, cable_count: 3 }).cable_count,
+		).toBeNull();
 	});
 });
 
@@ -179,10 +203,9 @@ describe("setSchema", () => {
 		notes: null,
 	};
 
-	it("doubles weight_kg (per-cable to total)", () => {
+	it("passes weight_kg through per cable (no doubling)", () => {
 		const result = setSchema.parse(validSet);
-		// Input 50 -> output 100
-		expect(result.weight_kg).toBe(100);
+		expect(result.weight_kg).toBe(50);
 	});
 
 	it("preserves other fields unchanged", () => {
@@ -208,7 +231,6 @@ describe("setSchema", () => {
 			...validSet,
 			weight_kg: 0,
 		});
-		// 0 * 2 = 0
 		expect(result.weight_kg).toBe(0);
 	});
 
@@ -217,8 +239,7 @@ describe("setSchema", () => {
 			...validSet,
 			weight_kg: 1,
 		});
-		// 1 * 2 = 2
-		expect(result.weight_kg).toBe(2);
+		expect(result.weight_kg).toBe(1);
 	});
 
 	it("handles decimal weight with precision", () => {
@@ -226,8 +247,7 @@ describe("setSchema", () => {
 			...validSet,
 			weight_kg: 55.5,
 		});
-		// 55.5 * 2 = 111
-		expect(result.weight_kg).toBe(111);
+		expect(result.weight_kg).toBe(55.5);
 	});
 
 	it("handles max per-cable weight correctly", () => {
@@ -235,8 +255,7 @@ describe("setSchema", () => {
 			...validSet,
 			weight_kg: MAX_PER_CABLE_KG,
 		});
-		// 110 * 2 = 220
-		expect(result.weight_kg).toBe(MAX_PER_CABLE_KG * WEIGHT_MULTIPLIER);
+		expect(result.weight_kg).toBe(MAX_PER_CABLE_KG);
 	});
 });
 
@@ -253,16 +272,14 @@ describe("personalRecordSchema", () => {
 		previous_value: 60,
 	};
 
-	it("doubles value (per-cable to total)", () => {
+	it("passes value through per cable (no doubling)", () => {
 		const result = personalRecordSchema.parse(validPR);
-		// Input 75 -> output 150
-		expect(result.value).toBe(150);
+		expect(result.value).toBe(75);
 	});
 
-	it("doubles previous_value when not null", () => {
+	it("passes previous_value through per cable when not null", () => {
 		const result = personalRecordSchema.parse(validPR);
-		// Input 60 -> output 120
-		expect(result.previous_value).toBe(120);
+		expect(result.previous_value).toBe(60);
 	});
 
 	it("keeps previous_value as null when null", () => {
@@ -285,7 +302,6 @@ describe("personalRecordSchema", () => {
 			...validPR,
 			value: 0,
 		});
-		// 0 * 2 = 0
 		expect(result.value).toBe(0);
 	});
 
@@ -294,8 +310,7 @@ describe("personalRecordSchema", () => {
 			...validPR,
 			value: 55.5,
 		});
-		// 55.5 * 2 = 111
-		expect(result.value).toBe(111);
+		expect(result.value).toBe(55.5);
 	});
 
 	it("handles max per-cable PR value correctly", () => {
@@ -303,8 +318,7 @@ describe("personalRecordSchema", () => {
 			...validPR,
 			value: MAX_PER_CABLE_KG,
 		});
-		// 110 * 2 = 220
-		expect(result.value).toBe(MAX_PER_CABLE_KG * WEIGHT_MULTIPLIER);
+		expect(result.value).toBe(MAX_PER_CABLE_KG);
 	});
 
 	it("defaults workout_phase to 'Combined' when null", () => {
@@ -350,20 +364,18 @@ describe("routineExerciseSchema", () => {
 		created_at: "2026-01-15T08:00:00Z",
 	};
 
-	it("doubles weight (per-cable to total) to match set/PR schemas", () => {
+	it("passes weight through per cable, like set/PR schemas", () => {
 		const result = routineExerciseSchema.parse(validRoutineExercise);
-		// Routine weights are stored per-cable and displayed as total (×2).
-		expect(result.weight).toBe(100);
+		expect(result.weight).toBe(50);
 	});
 
-	it("doubles per_set_weights (per-cable to total) for display consistency", () => {
+	it("passes per_set_weights through per cable", () => {
 		const perSetWeights = [50, 55, 60, 55]; // Pyramid scheme stored per-cable
 		const result = routineExerciseSchema.parse({
 			...validRoutineExercise,
 			per_set_weights: perSetWeights,
 		});
-		// Per-set weights follow the same per-cable → total rule as `weight`.
-		expect(result.per_set_weights).toEqual([100, 110, 120, 110]);
+		expect(result.per_set_weights).toEqual([50, 55, 60, 55]);
 	});
 
 	it("handles null per_set_weights", () => {
@@ -374,7 +386,7 @@ describe("routineExerciseSchema", () => {
 		expect(result.per_set_weights).toBeNull();
 	});
 
-	it("defaults omitted drop-set fields and doubles the stored floor", () => {
+	it("defaults omitted drop-set fields and keeps the per-cable floor", () => {
 		expect(routineExerciseSchema.parse(validRoutineExercise)).toMatchObject({
 			drop_set_enabled: false,
 			drop_set_min_weight_kg: null,
@@ -386,7 +398,7 @@ describe("routineExerciseSchema", () => {
 			drop_set_min_weight_kg: 12.5,
 		});
 		expect(enabled.drop_set_enabled).toBe(true);
-		expect(enabled.drop_set_min_weight_kg).toBe(25);
+		expect(enabled.drop_set_min_weight_kg).toBe(12.5);
 	});
 });
 
@@ -405,9 +417,9 @@ describe("analyticsSummarySchema", () => {
 		computed_at: "2026-01-15T08:00:00Z",
 	};
 
-	it("passes total_volume through without doubling (Phase 40 fix)", () => {
+	it("passes total_volume through without doubling", () => {
 		const result = analyticsSummarySchema.parse(validSummary);
-		// total_volume is already total (not per-cable), so no transform applied.
+		// total_volume is per cable as stored (KD-8); no transform applied.
 		expect(result.total_volume).toBe(10000);
 	});
 

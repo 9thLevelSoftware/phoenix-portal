@@ -77,8 +77,31 @@ describe("personal record tombstone database types", () => {
 });
 
 describe("server-side active personal record reads", () => {
+	// compute-rankings reads leaderboard_snapshots; its PR counts are built in
+	// SQL by refresh_leaderboard_snapshots (asserted below and in pgTAP
+	// supabase/tests/database/leaderboard.test.sql).
+	it("leaderboard snapshot and PR ranking RPCs exclude tombstones", () => {
+		const migration = readWorkspaceFile(
+			"supabase",
+			"migrations",
+			"20260920005600_leaderboard_snapshots.sql",
+		);
+		for (const fn of [
+			"refresh_leaderboard_snapshots",
+			"get_pr_count_rankings",
+			"get_user_pr_rank",
+		]) {
+			const body = migration.match(
+				new RegExp(
+					`CREATE\\s+OR\\s+REPLACE\\s+FUNCTION\\s+public\\.${fn}[\\s\\S]*?\\$\\$;`,
+					"i",
+				),
+			)?.[0];
+			expect(body, fn).toMatch(/pr\.deleted_at\s+IS\s+NULL/i);
+		}
+	});
+
 	for (const path of [
-		["supabase", "functions", "compute-rankings", "index.ts"],
 		["supabase", "functions", "generate-insights", "index.ts"],
 		["src", "lib", "export", "data-export.ts"],
 	]) {

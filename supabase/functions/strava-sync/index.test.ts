@@ -1,3 +1,215 @@
+import { assertEquals } from "jsr:@std/assert@1";
+import {
+  buildExternalActivityRow,
+  STRAVA_LOCATION_KEYS,
+  stripStravaLocationData,
+} from "./index.ts";
+
+// A trimmed but faithful `/athlete/activities` element, including the three
+// keys F-095 is about.
+function stravaActivity(): Record<string, unknown> {
+  return {
+    id: 987654321,
+    name: "Morning Run",
+    sport_type: "Run",
+    start_date: "2026-09-20T06:30:00Z",
+    elapsed_time: 2100,
+    distance: 5012.4,
+    kilojoules: 420,
+    average_heartrate: 148,
+    max_heartrate: 176,
+    total_elevation_gain: 63,
+    achievement_count: 2,
+    map: {
+      id: "a987654321",
+      summary_polyline: "u{~vFvyys@fS]",
+      resource_state: 2,
+    },
+    start_latlng: [51.5074, -0.1278],
+    end_latlng: [51.5081, -0.1265],
+  };
+}
+
+const USER_ID = "00000000-0000-4000-8000-000000000001";
+const SYNCED_AT = "2026-09-20T12:00:00.000Z";
+
+Deno.test("strava-sync stores no route or endpoint coordinates", async (t) => {
+  const row = buildExternalActivityRow(
+    USER_ID,
+    stravaActivity() as never,
+    SYNCED_AT,
+  );
+  const stored = row.raw_data as Record<string, unknown>;
+
+  for (const key of STRAVA_LOCATION_KEYS) {
+    await t.step(`raw_data has no ${key}`, () => {
+      assertEquals(Object.hasOwn(stored, key), false);
+    });
+  }
+
+  // Belt and braces: the polyline string itself is nowhere in the payload.
+  assertEquals(JSON.stringify(row).includes("summary_polyline"), false);
+  assertEquals(JSON.stringify(row).includes("51.5074"), false);
+});
+
+Deno.test("strava-sync keeps every non-location field in raw_data", () => {
+  const raw = stravaActivity();
+  const row = buildExternalActivityRow(USER_ID, raw as never, SYNCED_AT);
+  const stored = row.raw_data as Record<string, unknown>;
+
+  const expectedKeys = Object.keys(raw)
+    .filter((key) => !(STRAVA_LOCATION_KEYS as readonly string[]).includes(key))
+    .sort();
+  assertEquals(Object.keys(stored).sort(), expectedKeys);
+
+  // Including fields the normalizer does not read — the stripping is targeted,
+  // not a whitelist that would silently drop future provider data.
+  assertEquals(stored.achievement_count, 2);
+  assertEquals(stored.id, 987654321);
+});
+
+Deno.test("strava-sync still normalizes the columns it reads", () => {
+  const row = buildExternalActivityRow(
+    USER_ID,
+    stravaActivity() as never,
+    SYNCED_AT,
+  );
+
+  assertEquals(row.user_id, USER_ID);
+  assertEquals(row.provider, "strava");
+  assertEquals(row.external_id, "987654321");
+  assertEquals(row.activity_type, "running");
+  assertEquals(row.duration_seconds, 2100);
+  assertEquals(row.distance_meters, 5012.4);
+  assertEquals(row.avg_heart_rate, 148);
+  assertEquals(row.max_heart_rate, 176);
+  assertEquals(row.elevation_gain_meters, 63);
+  assertEquals(row.synced_at, SYNCED_AT);
+});
+
+Deno.test("stripStravaLocationData does not mutate the provider payload", () => {
+  const raw = stravaActivity();
+  const stripped = stripStravaLocationData(raw);
+
+  assertEquals(Object.hasOwn(stripped, "map"), false);
+  // The caller's object is untouched, so nothing downstream sees a surprise.
+  assertEquals(Object.hasOwn(raw, "map"), true);
+});
+
+Deno.test("stripStravaLocationData is a no-op on a payload without them", () => {
+  const raw = { id: 1, name: "Indoor Ride", sport_type: "VirtualRide" };
+
+  assertEquals(stripStravaLocationData(raw), raw);
+import { createStravaSyncHandler } from "./index.ts";
+import { FakeDb, fakeClient, type Row } from "../_shared/testing/fakeSupabase.ts";
+
+const SERVICE_ROLE_KEY = "test-service-role-key";
+const USER_ID = "00000000-0000-4000-8000-000000000001";
+const DAY = 24 * 60 * 60 * 1000;
+const NOW = Date.parse("2026-09-19T12:00:00.000Z");
+const at = (daysAgo: number) => new Date(NOW - daysAgo * DAY).toISOString();
+
+interface StravaActivity {
+  id: number;
+  name: string;
+  sport_type: string;
+  start_date: string;
+  elapsed_time: number;
+}
+
+const activity = (id: number, daysAgo: number): StravaActivity => ({
+  id,
+  name: `Run ${id}`,
+  sport_type: "Run",
+  start_date: at(daysAgo),
+  elapsed_time: 1800,
+});
+
+/** Strava's /athlete/activities: `after` ascending, otherwise newest first. */
+function fakeStrava(activities: StravaActivity[], calls: URLSearchParams[]) {
+  return (input: string | URL | Request): Promise<Response> => {
+    const url = new URL(String(input));
+    calls.push(url.searchParams);
+    const after = url.searchParams.get("after");
+    const before = url.searchParams.get("before");
+    const perPage = Number(url.searchParams.get("per_page") ?? 30);
+    const page = Number(url.searchParams.get("page") ?? 1);
+    let list = activities.filter((a) => {
+      const t = Date.parse(a.start_date) / 1000;
+      return (after === null || t > Number(after)) && (before === null || t < Number(before));
+    });
+    list = list.sort((a, b) =>
+      after !== null
+        ? Date.parse(a.start_date) - Date.parse(b.start_date)
+        : Date.parse(b.start_date) - Date.parse(a.start_date)
+    );
+    const body = list.slice((page - 1) * perPage, page * perPage);
+    return Promise.resolve(
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  };
+}
+
+function baseTables(lastSyncAt: string | null, stored: StravaActivity[]): Record<string, Row[]> {
+  return {
+    subscriptions: [
+      {
+        user_id: USER_ID,
+        tier: "FLAME",
+        status: "active",
+        current_period_end: "2099-01-01T00:00:00.000Z",
+      },
+    ],
+    oauth_tokens: [
+      {
+        user_id: USER_ID,
+        provider: "strava",
+        access_token: "plain-access-token",
+        refresh_token: "plain-refresh-token",
+        token_expires_at: "2099-01-01T00:00:00.000Z",
+      },
+    ],
+    user_integrations: [
+      { user_id: USER_ID, provider: "strava", status: "connected", last_sync_at: lastSyncAt },
+    ],
+    external_activities: stored.map((a) => ({
+      user_id: USER_ID,
+      provider: "strava",
+      external_id: String(a.id),
+      started_at: a.start_date,
+    })),
+    sync_queue: [],
+    rate_limit_tracking: [],
+  };
+}
+
+function harness(tables: Record<string, Row[]>, activities: StravaActivity[]) {
+  const db = new FakeDb(tables);
+  const stravaCalls: URLSearchParams[] = [];
+  let clock = NOW;
+  const handler = createStravaSyncHandler({
+    env: (key) =>
+      ({
+        SUPABASE_URL: "http://edge.test",
+        SUPABASE_ANON_KEY: "anon",
+        SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
+      } as Record<string, string>)[key],
+    // deno-lint-ignore no-explicit-any
+    createClient: () => fakeClient(db) as any,
+    fetch: fakeStrava(activities, stravaCalls) as typeof fetch,
+    now: () => new Date(clock),
+  });
+  const run = async (syncType: string) => {
+    clock += 60_000;
+    const res = await handler(
+      new Request("http://edge.test/functions/v1/strava-sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createStravaSyncHandler } from "./index.ts";
 
@@ -242,6 +454,59 @@ async function runSync(state: DbState, syncType: string): Promise<Response> {
         body: JSON.stringify({ user_id: USER_ID, sync_type: syncType }),
       }),
     );
+    assertEquals(res.status, 200, await res.clone().text());
+    return res;
+  };
+  const storedIds = () =>
+    db.rows("external_activities").map((r) => r.external_id as string).sort();
+  const watermark = () => db.rows("user_integrations")[0].last_sync_at as string | null;
+  return { run, storedIds, watermark, stravaCalls };
+}
+
+// The user connected, never had their queued `initial` drained, and ran a
+// manual sync at T0 (7 days ago) that stored A1/A2 and set last_sync_at=T0.
+// A3..A5 happened since. The stale `initial` and a newer `incremental` are
+// both dispatched now, in either order: nothing may be skipped.
+const T0 = at(7);
+const HISTORY = [activity(1, 10), activity(2, 8)];
+const SINCE_T0 = [activity(3, 6), activity(4, 4), activity(5, 2)];
+const ALL_IDS = ["1", "2", "3", "4", "5"];
+
+for (const order of [["initial", "incremental"], ["incremental", "initial"]]) {
+  Deno.test(`strava-sync: after a manual sync, stale initial + incremental (${order.join(" then ")}) leave no gap`, async () => {
+    const h = harness(baseTables(T0, HISTORY), [...HISTORY, ...SINCE_T0]);
+    for (const syncType of order) await h.run(syncType);
+    assertEquals(h.storedIds(), ALL_IDS);
+    // The watermark is where the incremental run started, never later.
+    assertEquals(Date.parse(h.watermark()!) <= NOW + 2 * 60_000, true);
+    assertEquals(Date.parse(h.watermark()!) > Date.parse(T0), true);
+  });
+}
+
+Deno.test("strava-sync: an initial against an existing watermark never moves it", async () => {
+  const h = harness(baseTables(T0, HISTORY), [...HISTORY, ...SINCE_T0]);
+  await h.run("initial");
+  assertEquals(h.watermark(), T0);
+  // It only reached into the past (before the oldest stored activity).
+  assertEquals(h.stravaCalls[0].has("before"), true);
+  assertEquals(h.stravaCalls[0].has("after"), false);
+  // The next incremental still fetches from T0.
+  await h.run("incremental");
+  assertEquals(h.stravaCalls[1].get("after"), String(Math.floor(Date.parse(T0) / 1000)));
+  assertEquals(h.storedIds(), ALL_IDS);
+});
+
+Deno.test("strava-sync: a first backfill sets the watermark to the newest stored activity, not the clock", async () => {
+  const h = harness(baseTables(null, []), [...HISTORY, ...SINCE_T0]);
+  await h.run("initial");
+  assertEquals(h.storedIds(), ALL_IDS);
+  assertEquals(h.watermark(), at(2));
+});
+
+Deno.test("strava-sync: an incremental advances the watermark to its own start time", async () => {
+  const h = harness(baseTables(T0, HISTORY), [...HISTORY, ...SINCE_T0]);
+  await h.run("incremental");
+  assertEquals(h.watermark(), new Date(NOW + 60_000).toISOString());
   } finally {
     if (previousKey === undefined) Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
     else Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", previousKey);

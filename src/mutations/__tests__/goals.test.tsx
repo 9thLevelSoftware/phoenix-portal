@@ -199,6 +199,39 @@ describe("useCreateGoal", () => {
 		expect(capturedPayload?.exercise_id).toBe("catalog-squat");
 		expect(capturedPayload?.deadline).toBe("2026-06-01");
 		expect(capturedPayload?.period).toBe("monthly");
+		// KD-8 / deploy-order independence: the column has no default and a
+		// NULL basis is taken to mean a pre-PR-30 client (halved server-side).
+		expect(capturedPayload?.target_basis).toBe("per_cable");
+	});
+
+	it("always states the per-cable target basis on insert", async () => {
+		const { useCreateGoal } = await import("../goals");
+
+		let capturedPayload: Record<string, unknown> | null = null;
+
+		mockChain.insert.mockImplementation((payload: Record<string, unknown>) => {
+			capturedPayload = payload;
+			return {
+				select: vi.fn(() => ({
+					single: vi
+						.fn()
+						.mockResolvedValue({ data: { id: "goal-3" }, error: null }),
+				})),
+			};
+		});
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useCreateGoal(), { wrapper });
+
+		result.current.mutate({
+			goal_type: "frequency",
+			target_value: 4,
+			target_unit: "sessions",
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+		expect(capturedPayload?.target_basis).toBe("per_cable");
 	});
 });
 
@@ -273,6 +306,38 @@ describe("useUpdateGoal", () => {
 
 		expect(capturedPayload?.exercise_name).toBe("Deadlift");
 		expect(capturedPayload?.exercise_id).toBeNull();
+		// No target_value in this update, so the basis is not restated.
+		expect(capturedPayload).not.toHaveProperty("target_basis");
+	});
+
+	it("states the per-cable target basis whenever it writes a target", async () => {
+		const { useUpdateGoal } = await import("../goals");
+
+		let capturedPayload: Record<string, unknown> | null = null;
+		const selectSingle = vi.fn().mockResolvedValue({
+			data: { id: "goal-1", target_value: 42 },
+			error: null,
+		});
+		const selectFn = vi.fn(() => ({ single: selectSingle }));
+		const eqUser = vi.fn(() => ({ select: selectFn }));
+		const eqId = vi.fn(() => ({ eq: eqUser }));
+		mockChain.update.mockImplementation((payload: Record<string, unknown>) => {
+			capturedPayload = payload;
+			return { eq: eqId };
+		});
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateGoal(), { wrapper });
+
+		result.current.mutate({
+			goalId: "goal-1",
+			updates: { target_value: 42 },
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+		expect(capturedPayload?.target_value).toBe(42);
+		expect(capturedPayload?.target_basis).toBe("per_cable");
 	});
 
 	it("shows user-friendly error on update failure", async () => {
@@ -298,6 +363,42 @@ describe("useUpdateGoal", () => {
 		await waitFor(() => expect(result.current.isError).toBe(true));
 
 		expect(mockToast.error).toHaveBeenCalledWith(
+			"Failed to update goal. Please try again.",
+		);
+	});
+
+	it("shows the goal-limit error when re-activating a goal at the cap (P0001)", async () => {
+		const { useUpdateGoal } = await import("../goals");
+
+		const selectSingle = vi.fn().mockResolvedValue({
+			data: null,
+			error: {
+				message: "Goal limit reached for your subscription tier",
+				code: "P0001",
+			},
+		});
+		const selectFn = vi.fn(() => ({ single: selectSingle }));
+		const eqUser = vi.fn(() => ({ select: selectFn }));
+		const eqId = vi.fn(() => ({ eq: eqUser }));
+		mockChain.update.mockImplementation(() => ({ eq: eqId }));
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateGoal(), { wrapper });
+
+		result.current.mutate({
+			goalId: "archived-goal",
+			updates: { status: "active" },
+		});
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(result.current.error?.message).toBe(
+			"Goal limit reached for your subscription tier",
+		);
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Goal limit reached for your subscription tier.",
+		);
+		expect(mockToast.error).not.toHaveBeenCalledWith(
 			"Failed to update goal. Please try again.",
 		);
 	});

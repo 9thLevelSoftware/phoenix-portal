@@ -11,6 +11,7 @@ import {
 import { computeIncrementalWindow } from '../_shared/incrementalWindow.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import { refreshStravaAccessToken, stravaTokenNeedsRefresh } from '../_shared/stravaToken.ts';
+import { nextWatermark } from '../_shared/syncWatermark.ts';
 
 /**
  * Loose Supabase client type for helper signatures. The bare
@@ -178,6 +179,60 @@ function normalizeStravaActivity(raw: StravaActivityRaw): NormalizedActivity {
   };
 }
 
+/**
+ * Keys in a Strava activity payload that describe *where* the activity
+ * happened: `map` is the encoded polyline of the whole route, and
+ * `start_latlng` / `end_latlng` are its endpoints — which, for most people, is
+ * their home address.
+ *
+ * F-095 / FP-5: nothing in the portal reads any of them. `normalizeStravaActivity`
+ * above takes name, type, time, distance, calories, heart rate and elevation and
+ * never touches the route, and no query, export or view selects these keys out
+ * of `raw_data`. Keeping them means holding location data we have no use for,
+ * inside a JSONB blob that the GDPR export and every `external_activities` read
+ * carry along.
+ *
+ * Migration 20260920004800 strips the same three keys from rows already stored.
+ */
+export const STRAVA_LOCATION_KEYS = [
+  'map',
+  'start_latlng',
+  'end_latlng',
+] as const;
+
+/**
+ * Drop the location keys from a raw Strava activity. Returns a copy; the input
+ * is untouched. Top-level only, which is the whole surface the
+ * `/athlete/activities` list endpoint returns these on — detailed
+ * `segment_efforts` are not requested by this function.
+ */
+export function stripStravaLocationData(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const stripped: Record<string, unknown> = { ...raw };
+  for (const key of STRAVA_LOCATION_KEYS) {
+    delete stripped[key];
+  }
+  return stripped;
+}
+
+/**
+ * The exact row written to `external_activities`. Extracted so a test can
+ * assert what gets stored without standing up the whole handler.
+ */
+export function buildExternalActivityRow(
+  userId: string,
+  raw: StravaActivityRaw,
+  syncedAt: string,
+): Record<string, unknown> {
+  return {
+    user_id: userId,
+    ...normalizeStravaActivity(raw),
+    raw_data: stripStravaLocationData(raw as unknown as Record<string, unknown>),
+    synced_at: syncedAt,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Token refresh (shared with the disconnect path: _shared/stravaToken.ts)
 // ---------------------------------------------------------------------------
@@ -194,21 +249,47 @@ function refreshAccessToken(refreshToken: string) {
 // Main handler
 // ---------------------------------------------------------------------------
 
-export interface StravaSyncAuthClient {
-  auth: {
-    getUser(): Promise<{ data: { user: { id: string } | null } }>;
+// Guarded by `import.meta.main` at the bottom so the exported helpers above can
+// be imported by a test without this module binding a port.
+const stravaSyncHandler = async (req: Request): Promise<Response> => {
+export interface StravaSyncDependencies {
+  env: (key: string) => string | undefined;
+  // deno-lint-ignore no-explicit-any
+  createClient: (url: string, key: string, options?: any) => DbClient;
+  /** Used for Strava API calls. */
+  fetch: typeof fetch;
+  now: () => Date;
+}
+
+function defaultStravaSyncDependencies(): StravaSyncDependencies {
+  return {
+    env: (key) => Deno.env.get(key),
+    createClient: (url, key, options) => createClient(url, key, options),
+    fetch: (input, init) => fetch(input, init),
+    now: () => new Date(),
   };
 }
 
+export function createStravaSyncHandler(
+  dependencies: StravaSyncDependencies = defaultStravaSyncDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => stravaSync(req, dependencies);
+}
+
+if (import.meta.main) {
+  Deno.serve(createStravaSyncHandler());
+}
+
+async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<Response> {
+export interface StravaSyncAuthClient {
+  auth: {
+    getUser(): Promise<{ data: { user: { id: string } | null } }>;
 export interface StravaSyncHandlerDependencies {
   createAuthClient(authorization: string): StravaSyncAuthClient;
   createAdminClient(): DbClient;
   /** Pause between Strava pages. Injectable so tests need not wait. */
   sleep?(ms: number): Promise<void>;
-}
-
 function defaultStravaSyncDependencies(): StravaSyncHandlerDependencies {
-  return {
     createAuthClient(authorization: string) {
       return createClient(
         Deno.env.get('SUPABASE_URL')!,
@@ -222,9 +303,6 @@ function defaultStravaSyncDependencies(): StravaSyncHandlerDependencies {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
       );
     },
-  };
-}
-
 async function stravaSyncHandler(
   req: Request,
   deps: StravaSyncHandlerDependencies,
@@ -254,6 +332,11 @@ async function stravaSyncHandler(
     let userId: string;
 
     // Try JWT auth first (browser-initiated calls)
+    const supabaseAuth = deps.createClient(
+      deps.env('SUPABASE_URL')!,
+      deps.env('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
     const supabaseAuth = deps.createAuthClient(authHeader);
     const { data: { user: jwtUser } } = await supabaseAuth.auth.getUser();
 
@@ -263,7 +346,7 @@ async function stravaSyncHandler(
     } else {
       // Not a valid user JWT -- must be service-role call from process-sync-queue
       // Verify the caller is actually using the service role key
-      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      const serviceRoleKey = deps.env('SUPABASE_SERVICE_ROLE_KEY') ?? '';
       const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
 
       if (!isServiceRole || !body.user_id) {
@@ -279,6 +362,10 @@ async function stravaSyncHandler(
     const queueId = typeof body.queue_id === 'string' ? body.queue_id : null;
     const calledByQueueProcessor = !jwtUser;
 
+    const supabase = deps.createClient(
+      deps.env('SUPABASE_URL')!,
+      deps.env('SUPABASE_SERVICE_ROLE_KEY')!
+    );
     const supabase = deps.createAdminClient();
 
     // Subscription gate — FLAME or higher required for integrations
@@ -361,6 +448,11 @@ async function stravaSyncHandler(
     // ---------------------------------------------------------------
     // Fetch activities from Strava
     // ---------------------------------------------------------------
+    const baseParams = new URLSearchParams({ per_page: '200' });
+    // Captured before the first request: an incremental run fetches
+    // everything after the old watermark up to (at least) this instant, so
+    // this — not the end of the run — is where the next window must start.
+    const syncStartedAt = deps.now().toISOString();
     // Capture the new watermark BEFORE fetching: anything Strava records while
     // this run is in flight falls inside the next window instead of behind it.
     const syncStartedAt = new Date().toISOString();
@@ -466,6 +558,15 @@ async function stravaSyncHandler(
     let pagesUsed = 0;
     let lastSnapshot: StravaRateLimitSnapshot | null = null;
 
+    while (page <= MAX_PAGES_PER_RUN) {
+      const params = new URLSearchParams(baseParams);
+      params.set('page', String(page));
+
+      const activitiesResponse = await deps.fetch(
+        `https://www.strava.com/api/v3/athlete/activities?${params}`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
     const reserveReached = (snapshot: StravaRateLimitSnapshot | null) => {
       if (!snapshot) return false;
       const budget = checkReadBudget(snapshot, RESERVED_REQUESTS);
@@ -580,17 +681,10 @@ async function stravaSyncHandler(
 
     for (const raw of rawActivities) {
       try {
-        const normalized = normalizeStravaActivity(raw);
-
         const { error: upsertError } = await supabase
           .from('external_activities')
           .upsert(
-            {
-              user_id: userId,
-              ...normalized,
-              raw_data: raw,
-              synced_at: new Date().toISOString(),
-            },
+            buildExternalActivityRow(userId, raw, new Date().toISOString()),
             { onConflict: 'user_id,provider,external_id' }
           );
 
@@ -718,10 +812,46 @@ async function stravaSyncHandler(
     }
 
     // ---------------------------------------------------------------
-    // Update last_sync_at (all activities persisted)
+    // Advance last_sync_at (all activities persisted) — only to the end of a
+    // window fetched contiguously from the previous watermark:
+    //  - incremental/manual with a watermark: [last_sync_at, syncStartedAt];
+    //  - first backfill (no watermark): runs newest-first and may resume
+    //    across queue passes, so the contiguous window ends at the newest
+    //    activity stored, not at this run's clock (activities uploaded
+    //    between the first and the final backfill pass are then fetched by
+    //    the next incremental, idempotently);
+    //  - `initial` against an existing watermark only reached further into
+    //    the past, so the watermark stays put (see _shared/syncWatermark.ts).
     // ---------------------------------------------------------------
+    let contiguousUpTo = syncStartedAt;
+    if (!integration.last_sync_at) {
+      const { data: newestStored } = await supabase
+        .from('external_activities')
+        .select('started_at')
+        .eq('user_id', userId)
+        .eq('provider', 'strava')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const newestMs = newestStored?.started_at
+        ? Date.parse(newestStored.started_at as string)
+        : Number.NaN;
+      if (Number.isFinite(newestMs) && newestMs < Date.parse(syncStartedAt)) {
+        contiguousUpTo = new Date(newestMs).toISOString();
+      }
+    }
+    const watermark = nextWatermark({
+      syncType: sync_type,
+      previous: integration.last_sync_at as string | null,
+      contiguousUpTo,
+    });
     await supabase
       .from('user_integrations')
+      .update({
+        ...(watermark ? { last_sync_at: watermark } : {}),
+        status: 'connected',
+        error_message: null,
+      })
       .update({ last_sync_at: syncStartedAt, status: 'connected', error_message: null })
       .eq('user_id', userId)
       .eq('provider', 'strava');
@@ -745,14 +875,15 @@ async function stravaSyncHandler(
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
-}
+};
 
+if (import.meta.main) {
+  Deno.serve(stravaSyncHandler);
+}
 export function createStravaSyncHandler(
   deps: StravaSyncHandlerDependencies = defaultStravaSyncDependencies(),
 ): (req: Request) => Promise<Response> {
   return (req) => stravaSyncHandler(req, deps);
 }
-
-if (import.meta.main) {
   Deno.serve(createStravaSyncHandler());
 }
