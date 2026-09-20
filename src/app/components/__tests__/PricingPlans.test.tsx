@@ -150,12 +150,18 @@ describe("PricingPlans billing actions", () => {
 
 		renderWithProviders(<PricingPlans />);
 
-		await waitFor(() => {
-			expect(mockInvoke).toHaveBeenCalledWith("paddle-refresh-subscription");
-		});
+		// While the refresh is in flight the CTA is a disabled spinner...
 		expect(
 			screen.getAllByRole("button", { name: /refreshing your plan/i }).length,
 		).toBe(3);
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith("paddle-refresh-subscription");
+		});
+		// ...and once it settles without repairing the row, a Retry, never a
+		// Subscribe: the user still has a live Paddle subscription.
+		await waitFor(() => {
+			expect(screen.getAllByRole("button", { name: /retry/i }).length).toBe(3);
+		});
 		expect(
 			screen.queryByRole("button", { name: /subscribe/i }),
 		).not.toBeInTheDocument();
@@ -179,14 +185,26 @@ describe("PricingPlans billing actions", () => {
 			isStale: true,
 		});
 
+		const user = userEvent.setup();
 		renderWithProviders(<PricingPlans />);
 
-		await waitFor(() => {
-			expect(mockInvoke).toHaveBeenCalledWith("paddle-refresh-subscription");
-		});
 		expect(
 			screen.getAllByRole("button", { name: /refreshing your plan/i })[0],
 		).toBeDisabled();
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith("paddle-refresh-subscription");
+		});
+
+		// The stalled refresh must not leave every CTA dead: a retry is offered
+		// and really re-invokes the refresh (review R-6).
+		const retry = await screen.findAllByRole("button", { name: /retry/i });
+		expect(retry[0]).toBeEnabled();
+		mockInvoke.mockClear();
+		await user.click(retry[0]);
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith("paddle-refresh-subscription");
+		});
+
 		expect(mockOpenCheckout).not.toHaveBeenCalled();
 		expect(
 			mockInvoke.mock.calls.some(
@@ -290,6 +308,11 @@ describe("PricingPlans billing actions", () => {
 				expect.objectContaining({ transactionId: "txn_from_plan_change" }),
 			);
 		});
+		// The user asked to change plan and got a card update — say why
+		// instead of silently opening a different overlay (review R-8).
+		expect(toast.error).toHaveBeenCalledWith(
+			"Your last payment failed — update your card before changing plan.",
+		);
 		expect(mockOpenCheckout).not.toHaveBeenCalled();
 	});
 

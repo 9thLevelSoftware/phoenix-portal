@@ -286,6 +286,12 @@ export function PricingPlans() {
 	const [refreshAttemptedForUser, setRefreshAttemptedForUser] = useState<
 		string | null
 	>(null);
+	// "running" only while a refresh is actually in flight. Once it settles
+	// without repairing the row the CTA must offer a retry rather than a
+	// spinner that never stops (review R-6/R-9).
+	const [refreshState, setRefreshState] = useState<
+		"idle" | "running" | "settled"
+	>("idle");
 
 	useEffect(() => {
 		if (
@@ -299,6 +305,7 @@ export function PricingPlans() {
 		}
 
 		setRefreshAttemptedForUser(user.id);
+		setRefreshState("running");
 		void supabase.functions
 			.invoke("paddle-refresh-subscription")
 			.then(({ error }) => {
@@ -307,6 +314,7 @@ export function PricingPlans() {
 				}
 			})
 			.finally(() => {
+				setRefreshState("settled");
 				void queryClient.invalidateQueries({
 					queryKey: queryKeys.subscription.byUser(user.id),
 				});
@@ -455,19 +463,33 @@ export function PricingPlans() {
 		}
 	};
 
-	/** Ask Paddle for the current state and re-read the row. */
+	/**
+	 * Ask Paddle for the current state and re-read the row. Reports the
+	 * OUTCOME — a pre-emptive "success" toast in front of a call that can fail
+	 * tells the user their plan was refreshed when it was not (review R-9).
+	 */
 	const refreshFromPaddle = async () => {
-		toast.success("Refreshing your plan…");
-		const { error } = await supabase.functions.invoke(
-			"paddle-refresh-subscription",
-		);
-		if (error) {
-			console.warn("Failed to refresh subscription", error);
-		}
-		if (user) {
-			await queryClient.invalidateQueries({
-				queryKey: queryKeys.subscription.byUser(user.id),
-			});
+		setRefreshState("running");
+		try {
+			const { error } = await supabase.functions.invoke(
+				"paddle-refresh-subscription",
+			);
+			if (error) {
+				console.warn("Failed to refresh subscription", error);
+				toast.error(
+					"Couldn't reach billing to refresh your plan. Please try again.",
+				);
+				return false;
+			}
+			toast.success("Plan refreshed.");
+			return true;
+		} finally {
+			setRefreshState("settled");
+			if (user) {
+				await queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+			}
 		}
 	};
 
@@ -549,6 +571,11 @@ export function PricingPlans() {
 			}
 
 			if (data?.action === "update_payment") {
+				// Say why the plan change turned into something else, rather
+				// than silently opening a different overlay (review R-8).
+				toast.error(
+					"Your last payment failed — update your card before changing plan.",
+				);
 				await openUpdateCard(data.transactionId);
 				return;
 			}
@@ -724,6 +751,26 @@ export function PricingPlans() {
 		// A live Paddle subscription whose stored state has lapsed: the portal
 		// is asking Paddle for the truth, not selling a second subscription.
 		if (currentBillingAction === "refresh") {
+			// Once the refresh has settled without repairing the row, offer a
+			// retry: a spinner that never stops leaves every CTA dead with no
+			// way forward (review R-6).
+			if (refreshState === "settled") {
+				return (
+					<div className="flex flex-col gap-2 w-full">
+						<Button
+							variant="outline"
+							className="w-full"
+							onClick={() => void refreshFromPaddle()}
+						>
+							<RefreshCw className="w-4 h-4 mr-2" />
+							Retry
+						</Button>
+						<p className="text-xs text-muted-foreground text-center">
+							We couldn't confirm your plan with billing.
+						</p>
+					</div>
+				);
+			}
 			return (
 				<Button variant="outline" className="w-full" disabled>
 					<Loader2 className="w-4 h-4 mr-2 animate-spin" />
