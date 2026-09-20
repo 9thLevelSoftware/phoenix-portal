@@ -32,6 +32,9 @@ verify_jwt = true
 [functions.disconnect-integration]
 verify_jwt = true
 
+[functions.export-user-data]
+verify_jwt = true
+
 [functions.fitbit-oauth]
 verify_jwt = false
 
