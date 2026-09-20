@@ -8,7 +8,7 @@ import {
 } from "@/lib/body-muscle-analytics";
 import { supabase } from "@/lib/supabase";
 import { convertWeight, getUnitLabel, type WeightUnit } from "@/lib/units";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
+import { normalizeCableCount } from "@/lib/units/loadDisplay";
 
 const SUPABASE_PAGE_SIZE = 1000;
 const SUPABASE_FILTER_CHUNK_SIZE = 100;
@@ -36,8 +36,12 @@ export interface AnalyticsWorkoutExerciseSummaryRow {
 	muscleGroup: string | null;
 	sets: number;
 	reps: number;
+	/** Volume per cable, as stored (KD-8). */
 	volumeKg: number;
+	/** Heaviest set per cable, as stored (KD-8). */
 	maxWeightKg: number;
+	/** 1 | 2, or null when unknown. Totals are only emitted when known. */
+	cableCount: number | null;
 }
 
 export interface AnalyticsRepSummaryRow {
@@ -70,6 +74,7 @@ export interface AnalyticsRawExerciseRow {
 	name: string;
 	muscle_group: string | null;
 	session_id: string;
+	cable_count?: number | null;
 }
 
 export interface AnalyticsRawSetRow {
@@ -113,8 +118,8 @@ function round(value: number, digits = 2): number {
 	return Math.round(value * factor) / factor;
 }
 
-function toTotalWeightKg(weightKg: number | null | undefined): number {
-	return (weightKg ?? 0) * WEIGHT_MULTIPLIER;
+function toPerCableWeightKg(weightKg: number | null | undefined): number {
+	return weightKg ?? 0;
 }
 
 export async function fetchAllSupabasePages<T>(
@@ -174,8 +179,9 @@ export function generateWorkoutExerciseSummaryCsv(
 		"Muscle Group",
 		"Sets",
 		"Reps",
-		`Volume (${unitLabel})`,
-		`Max Weight (${unitLabel})`,
+		`Volume per Cable (${unitLabel})`,
+		`Max Weight per Cable (${unitLabel})`,
+		`Max Weight Total (${unitLabel})`,
 	];
 	const data = rows.map((row) => ({
 		Date: dateKey(row.date),
@@ -184,11 +190,19 @@ export function generateWorkoutExerciseSummaryCsv(
 		"Muscle Group": row.muscleGroup ?? "",
 		Sets: row.sets,
 		Reps: row.reps,
-		[`Volume (${unitLabel})`]: round(convertWeight(row.volumeKg, unit), 1),
-		[`Max Weight (${unitLabel})`]: round(
+		[`Volume per Cable (${unitLabel})`]: round(
+			convertWeight(row.volumeKg, unit),
+			1,
+		),
+		[`Max Weight per Cable (${unitLabel})`]: round(
 			convertWeight(row.maxWeightKg, unit),
 			1,
 		),
+		// Blank when the cable count is unknown: never assume 2 cables (KD-8).
+		[`Max Weight Total (${unitLabel})`]:
+			row.cableCount == null
+				? ""
+				: round(convertWeight(row.maxWeightKg * row.cableCount, unit), 1),
 	}));
 	return csv(fields, data);
 }
@@ -213,6 +227,8 @@ export function generateDailyExerciseSummaryCsv(
 		current.reps += row.reps;
 		current.volumeKg += row.volumeKg;
 		current.maxWeightKg = Math.max(current.maxWeightKg, row.maxWeightKg);
+		// A day mixing cable counts (or unknown ones) has no single total.
+		if (current.cableCount !== row.cableCount) current.cableCount = null;
 	}
 
 	return generateWorkoutExerciseSummaryCsv(
@@ -323,13 +339,14 @@ export function buildWorkoutExerciseSummaryRows(
 			reps: exerciseSets.reduce((sum, set) => sum + (set.actual_reps ?? 0), 0),
 			volumeKg: exerciseSets.reduce(
 				(sum, set) =>
-					sum + (set.actual_reps ?? 0) * toTotalWeightKg(set.weight_kg),
+					sum + (set.actual_reps ?? 0) * toPerCableWeightKg(set.weight_kg),
 				0,
 			),
 			maxWeightKg: Math.max(
 				0,
-				...exerciseSets.map((set) => toTotalWeightKg(set.weight_kg)),
+				...exerciseSets.map((set) => toPerCableWeightKg(set.weight_kg)),
 			),
+			cableCount: normalizeCableCount(exercise.cable_count),
 		};
 	});
 }
@@ -419,7 +436,9 @@ async function fetchUserAnalyticsRows(userId: string) {
 					(ids, from, to) =>
 						supabase
 							.from("exercises")
-							.select("id, exercise_id, name, muscle_group, session_id")
+							.select(
+								"id, exercise_id, name, muscle_group, session_id, cable_count",
+							)
 							.in("session_id", ids)
 							.range(from, to),
 				)

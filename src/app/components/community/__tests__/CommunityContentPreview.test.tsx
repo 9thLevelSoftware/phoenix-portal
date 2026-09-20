@@ -35,8 +35,13 @@ describe("CommunityContentPreview", () => {
 
 		expect(screen.getByText("Bench Press")).toBeInTheDocument();
 		expect(screen.getByText("Drop set")).toBeInTheDocument();
-		expect(screen.getByText(/3 sets \/ 8 reps \/ 80 kg/i)).toBeInTheDocument();
-		expect(screen.getByText(/Weights:/i)).toBeInTheDocument();
+		// Stored per cable and shown per cable, as on the phone (KD-8).
+		expect(
+			screen.getByText(/3 sets \/ 8 reps \/ 40 kg per cable/i),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(/Weights per cable: 40 kg, 43 kg, 45 kg/i),
+		).toBeInTheDocument();
 		expect(screen.getByText(/Rest: 90s between sets/i)).toBeInTheDocument();
 	});
 
@@ -66,10 +71,10 @@ describe("CommunityContentPreview", () => {
 		);
 
 		expect(
-			screen.getByText(/3 sets \/ 8 reps \/ 176.4 lbs/),
+			screen.getByText(/3 sets \/ 8 reps \/ 88.2 lbs per cable/),
 		).toBeInTheDocument();
 		expect(
-			screen.getByText(/Weights: 176.4 lbs, 198.4 lbs/),
+			screen.getByText(/Weights per cable: 88.2 lbs, 99.2 lbs/),
 		).toBeInTheDocument();
 	});
 

@@ -57,7 +57,7 @@ These entities and transforms pass round-trip validation with mocks:
 - [x] Multi-provider batch
 
 ### Transforms
-- [x] Weight stored as per-cable (WEIGHT_MULTIPLIER = 2)
+- [x] Weight stored and displayed per cable (total only with a known cable count)
 - [x] Weight edge cases: 0, 1, 110 (max per-cable)
 - [x] Workout modes: OLD_SCHOOL, ECHO, PUMP, TUT, TUT_BEAST, ECCENTRIC_ONLY
 - [x] CLASSIC legacy alias maps to Old School

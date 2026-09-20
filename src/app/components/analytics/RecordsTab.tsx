@@ -19,7 +19,8 @@ import { Card } from "@/app/components/ui/card";
 import { EmptyState } from "@/app/components/ui/empty-state";
 import { CardSkeleton, Skeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
-import { convertWeight, type WeightUnit } from "@/lib/units";
+import type { WeightUnit } from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 import {
 	formatWorkoutPhase,
 	isNonCombinedWorkoutPhase,
@@ -63,10 +64,8 @@ function formatRecordMeasurement(
 	if (originalUnit !== "kg") {
 		return `${value} ${originalUnit}`;
 	}
-	const converted = convertWeight(value, unit);
-	return unit === "lbs"
-		? `${converted.toFixed(1)} lbs`
-		: `${Math.round(converted)} kg`;
+	// Records are per cable and carry no cable count, so no total (KD-8).
+	return formatLoad(value, null, unit);
 }
 
 function getMuscleGroupColor(muscleGroup: string): string {

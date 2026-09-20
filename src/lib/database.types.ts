@@ -462,6 +462,7 @@ export type Database = {
 			};
 			exercises: {
 				Row: {
+					cable_count: number | null;
 					id: string;
 					muscle_group: string;
 					name: string;
@@ -470,6 +471,7 @@ export type Database = {
 					user_id: string;
 				};
 				Insert: {
+					cable_count?: number | null;
 					id?: string;
 					muscle_group?: string;
 					name: string;
@@ -478,6 +480,7 @@ export type Database = {
 					user_id: string;
 				};
 				Update: {
+					cable_count?: number | null;
 					id?: string;
 					muscle_group?: string;
 					name?: string;
@@ -1804,6 +1807,7 @@ export type Database = {
 					period: string;
 					predicted_completion_date: string | null;
 					status: string;
+					target_basis: string;
 					target_unit: string;
 					target_value: number;
 					updated_at: string;
@@ -1821,6 +1825,7 @@ export type Database = {
 					period?: string;
 					predicted_completion_date?: string | null;
 					status?: string;
+					target_basis: string;
 					target_unit: string;
 					target_value: number;
 					updated_at?: string;
@@ -1838,6 +1843,7 @@ export type Database = {
 					period?: string;
 					predicted_completion_date?: string | null;
 					status?: string;
+					target_basis?: string;
 					target_unit?: string;
 					target_value?: number;
 					updated_at?: string;
