@@ -1,9 +1,15 @@
 import { assertEquals } from "jsr:@std/assert@1";
 import { createStravaSyncHandler } from "./index.ts";
-import { FakeDb, fakeClient, type Row } from "../_shared/testing/fakeSupabase.ts";
+import {
+  FakeDb,
+  fakeClient,
+  type Row,
+  syncQueueOneActiveIndex,
+} from "../_shared/testing/fakeSupabase.ts";
 
 const SERVICE_ROLE_KEY = "test-service-role-key";
 const USER_ID = "00000000-0000-4000-8000-000000000001";
+const OTHER_USER_ID = "00000000-0000-4000-8000-000000000002";
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.parse("2026-09-19T12:00:00.000Z");
 const at = (daysAgo: number) => new Date(NOW - daysAgo * DAY).toISOString();
@@ -208,6 +214,8 @@ function stravaActivitiesResponse(activities: StravaActivity[], url: URL): Respo
 interface QueueHarnessOptions {
   /** Drive the browser (JWT) path as this user instead of the service role. */
   jwtUserId?: string;
+  /** Share one database between two harnesses (concurrency tests). */
+  db?: FakeDb;
   /** 0-based index of an external_activities chunk whose upsert must fail. */
   failChunk?: number;
   /** Environment overrides (e.g. a missing STRAVA_CLIENT_SECRET). */
@@ -227,7 +235,9 @@ function queueHarness(
   route: (url: URL) => Response,
   options: QueueHarnessOptions = {},
 ) {
-  const db = new FakeDb(tables);
+  // With migration 20260920005200's `sync_queue_one_active` in force, so a
+  // duplicate browser sync is rejected here exactly as Postgres rejects it.
+  const db = options.db ?? new FakeDb(tables, [syncQueueOneActiveIndex]);
   const upserts: Array<{ table: string; rows: number }> = [];
   const heartbeats: string[] = [];
   const fetchUrls: string[] = [];
@@ -536,37 +546,104 @@ Deno.test("strava-sync: a run without queue_id neither heartbeats nor completes 
   assertEquals(h.db.rows("sync_queue")[0].started_at, CLAIMED_AT);
 });
 
-Deno.test("strava-sync: a browser (JWT) run holds no lease and cannot complete a processing row", async () => {
+Deno.test("strava-sync: a browser (JWT) run creates, leases and completes a queue row of its own", async () => {
   const tables = baseTables(T0, HISTORY);
+  // A kept `initial` of the user's own (the other class) and a foreign row:
+  // neither is this run's, and neither may be touched or block it.
   tables.sync_queue = [
-    queueRow(QUEUE_ID, "manual", "processing", CLAIMED_AT),
-    queueRow(OTHER_QUEUE_ID, "manual", "pending", null),
+    queueRow(QUEUE_ID, "initial", "pending", null),
+    { ...queueRow(OTHER_QUEUE_ID, "manual", "processing", CLAIMED_AT), user_id: OTHER_USER_ID },
   ];
   const h = queueHarness(tables, (url) => stravaActivitiesResponse(SINCE_T0, url), {
     jwtUserId: USER_ID,
   });
 
   // The JWT user sends a queue_id and someone else's user_id; both are ignored
-  // in favour of the JWT identity, and the browser path holds no lease.
+  // in favour of the JWT identity and of the row this run creates.
   const res = await h.call({
     sync_type: "manual",
-    queue_id: QUEUE_ID,
-    user_id: "00000000-0000-4000-8000-000000000002",
+    queue_id: OTHER_QUEUE_ID,
+    user_id: OTHER_USER_ID,
   });
   assertEquals(res.status, 200, await res.clone().text());
-  assertEquals(h.heartbeats, []);
-  const [processing, pending] = h.db.rows("sync_queue");
-  // The named row is `processing`, which a browser run does not own, so
-  // nothing is completed — not even its own pending row.
-  assertEquals(processing.status, "processing");
-  assertEquals(processing.started_at, CLAIMED_AT);
-  assertEquals(pending.status, "pending");
 
-  // Without a queue_id the same run completes its own newest pending row of
-  // that sync_type, and still never touches the processing row.
-  const withoutQueueId = await h.call({ sync_type: "manual" });
-  assertEquals(withoutQueueId.status, 200);
+  const [ownInitial, foreign, created] = h.db.rows("sync_queue");
+  assertEquals(ownInitial.status, "pending");
+  assertEquals(foreign.status, "processing");
+  assertEquals(foreign.started_at, CLAIMED_AT);
+  // Created for the JWT user, in `processing`, then completed by id.
+  assertEquals(created.user_id, USER_ID);
+  assertEquals(created.provider, "strava");
+  assertEquals(created.sync_type, "manual");
+  assertEquals(created.status, "completed");
+  // A browser-owned row heartbeats while it runs, like a dispatched one.
+  assertEquals(h.heartbeats.length > 0, true);
+  assertEquals(new Set(h.heartbeats), new Set([new Date(NOW).toISOString()]));
+});
+
+Deno.test("strava-sync: two concurrent browser syncs create one row; the loser gets 409", async () => {
+  const tables = baseTables(T0, HISTORY);
+  tables.sync_queue = [];
+  const db = new FakeDb(tables, [syncQueueOneActiveIndex]);
+  const first = queueHarness(tables, (url) => stravaActivitiesResponse(SINCE_T0, url), {
+    jwtUserId: USER_ID,
+    db,
+  });
+  const second = queueHarness(tables, (url) => stravaActivitiesResponse(SINCE_T0, url), {
+    jwtUserId: USER_ID,
+    db,
+  });
+
+  const [a, b] = await Promise.all([
+    first.call({ sync_type: "manual" }),
+    second.call({ sync_type: "manual" }),
+  ]);
+
+  const statuses = [a.status, b.status].sort();
+  assertEquals(statuses, [200, 409]);
+  const conflict = a.status === 409 ? a : b;
+  const body = await conflict.json();
+  assertEquals(body.code, "sync_already_queued");
+  // Exactly one row, and the winner completed it.
+  assertEquals(db.rows("sync_queue").length, 1);
+  assertEquals(db.rows("sync_queue")[0].status, "completed");
+});
+
+Deno.test("strava-sync: a browser sync while a queued task is live is refused with 409", async () => {
+  const tables = baseTables(T0, HISTORY);
+  // process-sync-queue is running this user's incremental right now.
+  tables.sync_queue = [queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT)];
+  const h = queueHarness(tables, (url) => stravaActivitiesResponse(SINCE_T0, url), {
+    jwtUserId: USER_ID,
+  });
+
+  const res = await h.call({ sync_type: "manual" });
+  assertEquals(res.status, 409);
+  assertEquals((await res.json()).code, "sync_already_queued");
+  assertEquals(h.db.rows("sync_queue").length, 1);
+  // The live row keeps its lease and its status: the refused run owns nothing.
   assertEquals(h.db.rows("sync_queue")[0].status, "processing");
-  assertEquals(h.db.rows("sync_queue")[1].status, "completed");
-  assertEquals(h.heartbeats, []);
+  assertEquals(h.db.rows("sync_queue")[0].started_at, CLAIMED_AT);
+  assertEquals(h.fetchUrls, []);
+});
+
+Deno.test("strava-sync: a failed browser run hands its own row back instead of holding the lease", async () => {
+  const many: StravaActivity[] = Array.from({ length: 250 }, (_, i) => ({
+    ...activity(4000 + i, 6),
+    start_date: new Date(Date.parse(T0) + (i + 1) * 60_000).toISOString(),
+  }));
+  const tables = baseTables(T0, HISTORY);
+  tables.sync_queue = [];
+  const h = queueHarness(tables, (url) => stravaActivitiesResponse(many, url), {
+    jwtUserId: USER_ID,
+    failChunk: 1,
+  });
+
+  const res = await h.call({ sync_type: "manual" });
+  assertEquals(res.status, 502);
+  const [created] = h.db.rows("sync_queue");
+  // `failed`, not left `processing`: the next manual sync must not be 409'd
+  // for the length of the lease. A dispatched row would stay `processing`.
+  assertEquals(created.status, "failed");
+  assertEquals(created.error_message, "Sync run failed");
 });
