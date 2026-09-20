@@ -18,6 +18,12 @@ import {
  * service role (so tier-gated RLS can never hide a user's own data from
  * their export), select only the manifest's explicit columns, are scoped by
  * the entry's ownership path and ordered by its key columns. `nextCursor`
+ * is set when a one-row probe after the page's last key finds another row,
+ * not from the page length, so a PostgREST `max_rows` below the requested
+ * limit cannot end the export early, and an exact multiple of the page size
+ * needs no trailing empty page. (PR 37 R-8: the probe replaced a per-page
+ * exact count of the remaining rows, which rescanned the rest of a large
+ * table on every page and made a long export quadratic.)
  * is derived from an exact count of the remaining rows, not from the page
  * length, so a PostgREST `max_rows` below the requested limit cannot end the
  * export early.
@@ -191,11 +197,13 @@ async function queryPage(
   userId: string,
   cursor: ExportCursor | null,
   columns: readonly string[],
+  limit: number = USER_DATA_PAGE_SIZE,
 ) {
   const { ownership, keyColumns } = entry;
   const select = ownership.kind === 'parent'
     ? `${columns.join(',')},${ownership.parentTable}!${ownership.fkColumn}!inner(${ownership.parentColumn})`
     : columns.join(',');
+  let query = admin.from(entry.table).select(select);
   let query = admin.from(entry.table).select(select, { count: 'exact' });
   query = ownership.kind === 'parent'
     ? query.eq(`${ownership.parentTable}.${ownership.parentColumn}`, userId)
@@ -206,6 +214,7 @@ async function queryPage(
       : query.or(buildKeysetOrFilter(keyColumns, cursor));
   }
   for (const column of keyColumns) query = query.order(column, { ascending: true });
+  return await query.limit(limit);
   return await query.limit(USER_DATA_PAGE_SIZE);
 }
 
@@ -221,6 +230,7 @@ export async function readExportPage(
     // Prod-only drift columns are absent in this database.
     result = await queryPage(admin, entry, userId, cursor, entry.columns);
   }
+  const { data, error } = result;
   const { data, error, count } = result;
 
   if (error) {
@@ -241,6 +251,15 @@ export async function readExportPage(
     return out;
   });
 
+  if (raw.length === 0) return { ok: true, rows, nextCursor: null, tableMissing: false };
+  const last = raw[raw.length - 1];
+  const lastKey: ExportCursor = {};
+  for (const column of entry.keyColumns) lastKey[column] = last[column] as CursorValue;
+
+  // More pages remain exactly when a row exists after this page's last key.
+  const probe = await queryPage(admin, entry, userId, lastKey, entry.keyColumns, 1);
+  if (probe.error) return { ok: false, reason: 'query_failed', error: probe.error };
+  const nextCursor = (probe.data ?? []).length > 0 ? lastKey : null;
   // `count` is the number of rows after the cursor (the filters ignore the
   // limit), so more pages remain exactly when it exceeds this page.
   if (typeof count !== 'number') {

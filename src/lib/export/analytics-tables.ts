@@ -12,7 +12,7 @@ import {
 	fetchAllSupabasePagesForChunks,
 } from "@/lib/supabasePaging";
 import { convertWeight, getUnitLabel, type WeightUnit } from "@/lib/units";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
+import { normalizeCableCount } from "@/lib/units/loadDisplay";
 
 // Re-exported for existing callers; the helpers now live in supabasePaging.ts.
 export { fetchAllSupabasePages, fetchAllSupabasePagesForChunks };
@@ -27,8 +27,12 @@ export interface AnalyticsWorkoutExerciseSummaryRow {
 	muscleGroup: string | null;
 	sets: number;
 	reps: number;
+	/** Volume per cable, as stored (KD-8). */
 	volumeKg: number;
+	/** Heaviest set per cable, as stored (KD-8). */
 	maxWeightKg: number;
+	/** 1 | 2, or null when unknown. Totals are only emitted when known. */
+	cableCount: number | null;
 }
 
 export interface AnalyticsRepSummaryRow {
@@ -61,6 +65,7 @@ export interface AnalyticsRawExerciseRow {
 	name: string;
 	muscle_group: string | null;
 	session_id: string;
+	cable_count?: number | null;
 }
 
 export interface AnalyticsRawSetRow {
@@ -104,8 +109,53 @@ function round(value: number, digits = 2): number {
 	return Math.round(value * factor) / factor;
 }
 
-function toTotalWeightKg(weightKg: number | null | undefined): number {
-	return (weightKg ?? 0) * WEIGHT_MULTIPLIER;
+function toPerCableWeightKg(weightKg: number | null | undefined): number {
+	return weightKg ?? 0;
+}
+
+export async function fetchAllSupabasePages<T>(
+	fetchPage: FetchSupabasePage<T>,
+	pageSize = SUPABASE_PAGE_SIZE,
+): Promise<T[]> {
+	const rows: T[] = [];
+
+	for (let offset = 0; ; offset += pageSize) {
+		const { data, error } = await fetchPage(offset, offset + pageSize - 1);
+		if (error) {
+			throw error;
+		}
+
+		const page = data ?? [];
+		rows.push(...page);
+		if (page.length < pageSize) {
+			return rows;
+		}
+	}
+}
+
+export async function fetchAllSupabasePagesForChunks<T, V>(
+	values: V[],
+	fetchPage: FetchSupabaseChunkPage<T, V>,
+	options: {
+		chunkSize?: number;
+		pageSize?: number;
+	} = {},
+): Promise<T[]> {
+	const chunkSize = options.chunkSize ?? SUPABASE_FILTER_CHUNK_SIZE;
+	const pageSize = options.pageSize ?? SUPABASE_PAGE_SIZE;
+	const rows: T[] = [];
+
+	for (let offset = 0; offset < values.length; offset += chunkSize) {
+		const chunk = values.slice(offset, offset + chunkSize);
+		rows.push(
+			...(await fetchAllSupabasePages(
+				(from, to) => fetchPage(chunk, from, to),
+				pageSize,
+			)),
+		);
+	}
+
+	return rows;
 }
 
 export function generateWorkoutExerciseSummaryCsv(
@@ -120,8 +170,9 @@ export function generateWorkoutExerciseSummaryCsv(
 		"Muscle Group",
 		"Sets",
 		"Reps",
-		`Volume (${unitLabel})`,
-		`Max Weight (${unitLabel})`,
+		`Volume per Cable (${unitLabel})`,
+		`Max Weight per Cable (${unitLabel})`,
+		`Max Weight Total (${unitLabel})`,
 	];
 	const data = rows.map((row) => ({
 		Date: dateKey(row.date),
@@ -130,11 +181,19 @@ export function generateWorkoutExerciseSummaryCsv(
 		"Muscle Group": row.muscleGroup ?? "",
 		Sets: row.sets,
 		Reps: row.reps,
-		[`Volume (${unitLabel})`]: round(convertWeight(row.volumeKg, unit), 1),
-		[`Max Weight (${unitLabel})`]: round(
+		[`Volume per Cable (${unitLabel})`]: round(
+			convertWeight(row.volumeKg, unit),
+			1,
+		),
+		[`Max Weight per Cable (${unitLabel})`]: round(
 			convertWeight(row.maxWeightKg, unit),
 			1,
 		),
+		// Blank when the cable count is unknown: never assume 2 cables (KD-8).
+		[`Max Weight Total (${unitLabel})`]:
+			row.cableCount == null
+				? ""
+				: round(convertWeight(row.maxWeightKg * row.cableCount, unit), 1),
 	}));
 	return csv(fields, data);
 }
@@ -159,6 +218,8 @@ export function generateDailyExerciseSummaryCsv(
 		current.reps += row.reps;
 		current.volumeKg += row.volumeKg;
 		current.maxWeightKg = Math.max(current.maxWeightKg, row.maxWeightKg);
+		// A day mixing cable counts (or unknown ones) has no single total.
+		if (current.cableCount !== row.cableCount) current.cableCount = null;
 	}
 
 	return generateWorkoutExerciseSummaryCsv(
@@ -269,13 +330,14 @@ export function buildWorkoutExerciseSummaryRows(
 			reps: exerciseSets.reduce((sum, set) => sum + (set.actual_reps ?? 0), 0),
 			volumeKg: exerciseSets.reduce(
 				(sum, set) =>
-					sum + (set.actual_reps ?? 0) * toTotalWeightKg(set.weight_kg),
+					sum + (set.actual_reps ?? 0) * toPerCableWeightKg(set.weight_kg),
 				0,
 			),
 			maxWeightKg: Math.max(
 				0,
-				...exerciseSets.map((set) => toTotalWeightKg(set.weight_kg)),
+				...exerciseSets.map((set) => toPerCableWeightKg(set.weight_kg)),
 			),
+			cableCount: normalizeCableCount(exercise.cable_count),
 		};
 	});
 }
@@ -346,14 +408,23 @@ function buildRepRows(
 	});
 }
 
-async function fetchUserAnalyticsRows(userId: string) {
+/**
+ * Reads the analytics source rows. Every offset-paged read is ordered by a
+ * unique key (`id`, after any display order) so `.range()` pages never skip
+ * or repeat rows.
+ */
+export async function fetchUserAnalyticsRows(
+	userId: string,
+	client: Pick<typeof supabase, "from"> = supabase,
+) {
 	const workouts = await fetchAllSupabasePages<AnalyticsRawWorkoutRow>(
 		(from, to) =>
-			supabase
+			client
 				.from("workout_sessions")
 				.select("id, name, started_at, duration_seconds")
 				.eq("user_id", userId)
 				.order("started_at", { ascending: false })
+				.order("id")
 				.range(from, to),
 	);
 	const workoutIds = workouts.map((workout) => workout.id);
@@ -363,29 +434,34 @@ async function fetchUserAnalyticsRows(userId: string) {
 			? await fetchAllSupabasePagesForChunks<AnalyticsRawExerciseRow, string>(
 					workoutIds,
 					(ids, from, to) =>
-						supabase
+						client
 							.from("exercises")
-							.select("id, exercise_id, name, muscle_group, session_id")
+							.select(
+								"id, exercise_id, name, muscle_group, session_id, cable_count",
+							)
 							.in("session_id", ids)
+							.order("id")
 							.range(from, to),
 				)
 			: [];
 
 	const sets = await fetchAllSupabasePages<AnalyticsRawSetRow>((from, to) =>
-		supabase
+		client
 			.from("sets")
 			.select("id, exercise_id, set_number, actual_reps, weight_kg")
 			.eq("user_id", userId)
+			.order("id")
 			.range(from, to),
 	);
 
 	const repSummaries = await fetchAllSupabasePages<RepSummaryRow>((from, to) =>
-		supabase
+		client
 			.from("rep_summaries")
 			.select(
 				"id, set_id, rep_number, mean_velocity_mps, peak_velocity_mps, mean_force_n, peak_force_n, power_watts, rom_mm, tut_ms, asymmetry_pct, vbt_zone",
 			)
 			.eq("user_id", userId)
+			.order("id")
 			.range(from, to),
 	);
 

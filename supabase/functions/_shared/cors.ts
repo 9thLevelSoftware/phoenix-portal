@@ -47,6 +47,8 @@ export function getCorsHeaders(req: Request): Record<string, string> {
     'Access-Control-Allow-Headers':
       'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
+    // Lets browser clients read the wait on a 429/503 (PR 37 R-1).
+    'Access-Control-Expose-Headers': 'Retry-After',
     'Vary': 'Origin',
     // Security headers
     'X-Frame-Options': 'DENY',

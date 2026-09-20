@@ -150,7 +150,9 @@ test.describe("Authenticated pages", () => {
 		await expect(page.getByRole("button", { name: "All" })).toBeVisible();
 		await expect(page.getByRole("button", { name: "Concentric" })).toBeVisible();
 		await expect(page.getByRole("button", { name: "Eccentric" })).toBeVisible();
-		await expect(page.getByText("Phase Strength Progression (kg)")).toBeVisible();
+		await expect(
+			page.getByText("Phase Strength Progression (kg per cable)"),
+		).toBeVisible();
 		await expect(page.getByText("125 kg")).toBeVisible();
 	});
 

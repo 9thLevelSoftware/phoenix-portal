@@ -10,6 +10,7 @@ import {
 } from '../_shared/providerRateLimit.ts';
 import { computeIncrementalWindow } from '../_shared/incrementalWindow.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import { refreshStravaAccessToken, stravaTokenNeedsRefresh } from '../_shared/stravaToken.ts';
 import { nextWatermark } from '../_shared/syncWatermark.ts';
 
 /**
@@ -178,35 +179,79 @@ function normalizeStravaActivity(raw: StravaActivityRaw): NormalizedActivity {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Token refresh
-// ---------------------------------------------------------------------------
+/**
+ * Keys in a Strava activity payload that describe *where* the activity
+ * happened: `map` is the encoded polyline of the whole route, and
+ * `start_latlng` / `end_latlng` are its endpoints — which, for most people, is
+ * their home address.
+ *
+ * F-095 / FP-5: nothing in the portal reads any of them. `normalizeStravaActivity`
+ * above takes name, type, time, distance, calories, heart rate and elevation and
+ * never touches the route, and no query, export or view selects these keys out
+ * of `raw_data`. Keeping them means holding location data we have no use for,
+ * inside a JSONB blob that the GDPR export and every `external_activities` read
+ * carry along.
+ *
+ * Migration 20260920004800 strips the same three keys from rows already stored.
+ */
+export const STRAVA_LOCATION_KEYS = [
+  'map',
+  'start_latlng',
+  'end_latlng',
+] as const;
 
-async function refreshAccessToken(
-  refreshToken: string
-): Promise<{ access_token: string; refresh_token: string; expires_at: number }> {
-  const response = await fetch('https://www.strava.com/oauth/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: Deno.env.get('STRAVA_CLIENT_ID'),
-      client_secret: Deno.env.get('STRAVA_CLIENT_SECRET'),
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Token refresh failed: ${response.status} ${await response.text()}`);
+/**
+ * Drop the location keys from a raw Strava activity. Returns a copy; the input
+ * is untouched. Top-level only, which is the whole surface the
+ * `/athlete/activities` list endpoint returns these on — detailed
+ * `segment_efforts` are not requested by this function.
+ */
+export function stripStravaLocationData(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const stripped: Record<string, unknown> = { ...raw };
+  for (const key of STRAVA_LOCATION_KEYS) {
+    delete stripped[key];
   }
+  return stripped;
+}
 
-  return response.json();
+/**
+ * The exact row written to `external_activities`. Extracted so a test can
+ * assert what gets stored without standing up the whole handler.
+ */
+export function buildExternalActivityRow(
+  userId: string,
+  raw: StravaActivityRaw,
+  syncedAt: string,
+): Record<string, unknown> {
+  return {
+    user_id: userId,
+    ...normalizeStravaActivity(raw),
+    raw_data: stripStravaLocationData(raw as unknown as Record<string, unknown>),
+    synced_at: syncedAt,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Token refresh (shared with the disconnect path: _shared/stravaToken.ts)
+// ---------------------------------------------------------------------------
+
+function refreshAccessToken(refreshToken: string) {
+  return refreshStravaAccessToken(refreshToken, {
+    fetch: (input, init) => fetch(input, init),
+    clientId: Deno.env.get('STRAVA_CLIENT_ID'),
+    clientSecret: Deno.env.get('STRAVA_CLIENT_SECRET'),
+  });
 }
 
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
 
+// Guarded by `import.meta.main` at the bottom so the exported helpers above can
+// be imported by a test without this module binding a port.
+const stravaSyncHandler = async (req: Request): Promise<Response> => {
 export interface StravaSyncDependencies {
   env: (key: string) => string | undefined;
   // deno-lint-ignore no-explicit-any
@@ -353,14 +398,11 @@ async function stravaSyncHandler(
 
     let accessToken = (await decryptOAuthSecret(tokens.access_token as string)) ?? '';
     let refreshToken = (await decryptOAuthSecret(tokens.refresh_token as string)) ?? '';
-    const tokenExpiresAt = tokens.token_expires_at
-      ? new Date(tokens.token_expires_at).getTime()
-      : 0;
 
     // ---------------------------------------------------------------
     // Refresh token if expired (with 60s buffer)
     // ---------------------------------------------------------------
-    if (Date.now() >= tokenExpiresAt - 60_000) {
+    if (stravaTokenNeedsRefresh(tokens.token_expires_at as string | null)) {
       console.log('Strava access token expired, refreshing...');
       const refreshed = await refreshAccessToken(refreshToken);
 
@@ -639,17 +681,10 @@ async function stravaSyncHandler(
 
     for (const raw of rawActivities) {
       try {
-        const normalized = normalizeStravaActivity(raw);
-
         const { error: upsertError } = await supabase
           .from('external_activities')
           .upsert(
-            {
-              user_id: userId,
-              ...normalized,
-              raw_data: raw,
-              synced_at: new Date().toISOString(),
-            },
+            buildExternalActivityRow(userId, raw, new Date().toISOString()),
             { onConflict: 'user_id,provider,external_id' }
           );
 
@@ -840,14 +875,15 @@ async function stravaSyncHandler(
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
-}
+};
 
+if (import.meta.main) {
+  Deno.serve(stravaSyncHandler);
+}
 export function createStravaSyncHandler(
   deps: StravaSyncHandlerDependencies = defaultStravaSyncDependencies(),
 ): (req: Request) => Promise<Response> {
   return (req) => stravaSyncHandler(req, deps);
 }
-
-if (import.meta.main) {
   Deno.serve(createStravaSyncHandler());
 }

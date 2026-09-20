@@ -1,5 +1,11 @@
 # Weight Field Audit Matrix
 
+> **Superseded (KD-8).** The portal no longer applies a x2 multiplier and
+> `WEIGHT_MULTIPLIER` has been removed. Loads are shown per cable first, as on
+> the phone; a total (per cable x `exercises.cable_count`) is shown alongside
+> only when the cable count is known. See `src/lib/units/loadDisplay.ts`. The
+> matrix below is kept as a historical record.
+
 **Audit Date**: 2026-04-12  
 **Plan**: 04-01 Weight Transform Validation  
 **Status**: COMPLETE  

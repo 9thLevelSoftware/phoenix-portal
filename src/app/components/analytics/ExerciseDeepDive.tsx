@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Info } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
@@ -17,7 +17,8 @@ import {
 	Tooltip as UiTooltip,
 } from "@/app/components/ui/tooltip";
 import { getExerciseProfile } from "@/lib/exercise-muscles";
-import { convertWeight, formatWeight, type WeightUnit } from "@/lib/units";
+import { convertWeight, type WeightUnit } from "@/lib/units";
+import { formatLoad, perCableUnitLabel } from "@/lib/units/loadDisplay";
 import { formatWorkoutPhase, WORKOUT_PHASES } from "@/lib/workout-phases";
 import { exerciseProgressOptions } from "@/queries/progress";
 import { personalRecordsOptions } from "@/queries/records";
@@ -161,7 +162,9 @@ export function ExerciseDeepDive({
 		enabled: !!selectedExercise,
 	});
 
-	const { data: records } = useQuery(personalRecordsOptions(userId, profileId));
+	const { data: records } = useInfiniteQuery(
+		personalRecordsOptions(userId, profileId),
+	);
 
 	// ── Derived data ─────────────────────────────────────────────────────────
 	const filteredProgress = useMemo(
@@ -403,9 +406,7 @@ export function ExerciseDeepDive({
 												labelStyle={{ color: "#e0e0e8" }}
 												itemStyle={{ color: "#FF6B35" }}
 												formatter={(v: number) =>
-													unit === "lbs"
-														? `${v.toFixed(1)} lbs`
-														: `${Math.round(v)} kg`
+													`${unit === "lbs" ? v.toFixed(1) : Math.round(v)} ${perCableUnitLabel(unit)}`
 												}
 											/>
 											<Area
@@ -452,14 +453,16 @@ export function ExerciseDeepDive({
 						<StatCard
 							label="Rep-based 1RM"
 							value={
-								currentOneRM != null ? formatWeight(currentOneRM, unit) : "—"
+								currentOneRM != null
+									? formatLoad(currentOneRM, null, unit)
+									: "—"
 							}
 							info={REP_BASED_HELP}
 						/>
 						{currentVelocity1RM != null && (
 							<StatCard
 								label="Velocity 1RM (VBT)"
-								value={formatWeight(currentVelocity1RM, unit)}
+								value={formatLoad(currentVelocity1RM, null, unit)}
 								valueClass={VELOCITY_VALUE_CLASS}
 								info={VELOCITY_HELP}
 							/>

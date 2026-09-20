@@ -3,10 +3,21 @@
 -- Users A and B are both FLAME (owner write policies are FLAME-gated since
 -- 20260920000900); C has no subscription row (FREE). A owns one
 -- fixture row in every private user-owned relation listed in rls_cases.
+-- fixture row in every private user-owned relation listed in rls_cases. Tier
+-- denials live in trust_plane.test.sql (EMBER) and tier_matrix.test.sql (FLAME).
 -- Users A and B are both FLAME, so every owner write policy (including the
 -- FLAME-gated ones from 20260920000900) has a positive control; C has no
 -- subscription row (FREE). A owns one fixture row in every private
 -- user-owned relation listed in rls_cases. Tier denials live in
+-- trust_plane.test.sql (EMBER) and tier_matrix.test.sql (FLAME and INFERNO).
+--
+-- Exception to "the owner sees its own row": the force-curve and
+-- biomechanics relations in rls_inferno_gated are SELECT-gated at INFERNO
+-- (20260920003800_inferno_read_policies.sql), so FLAME user A reads zero rows
+-- there even though it owns them. A cannot be made INFERNO — the
+-- subscription-tier section below asserts that A cannot raise its own tier —
+-- so tier_matrix.test.sql section 6 owns the INFERNO positive control and
+-- this file asserts the FLAME denial plus the usual B / C isolation.
 -- trust_plane.test.sql (EMBER) and tier_matrix.test.sql (FLAME).
 -- Users A and B are both EMBER; C has no subscription row (FREE). A owns one
 -- fixture row in every private user-owned relation listed in rls_cases.
@@ -512,6 +523,8 @@ INSERT INTO rls_cases VALUES
     ('exercises',                 'id', 'a1a1a1a1-0002-4000-8000-00000000000a', 1, NULL, NULL, $s$name = 'rls-probe'$s$),
     ('sets',                      'id', 'a1a1a1a1-0003-4000-8000-00000000000a', 1, NULL, NULL, $s$set_number = 99$s$),
     ('rep_summaries',             'id', 'a1a1a1a1-0004-4000-8000-00000000000a', 1, NULL, NULL, $s$rep_number = 99$s$),
+    ('rep_telemetry',             'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 0, NULL, NULL, $s$timestamp_ms = 99$s$),
+    ('telemetry_points',          'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 0, NULL, NULL, $s$timestamp_ms = 99$s$),
     ('rep_telemetry',             'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 1, NULL, NULL, $s$timestamp_ms = 99$s$),
     ('telemetry_points',          'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 1, NULL, NULL, $s$timestamp_ms = 99$s$),
     ('routines',                  'id', 'a1a1a1a1-0006-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
@@ -528,6 +541,7 @@ INSERT INTO rls_cases VALUES
     ('challenge_participants',    'id', 'a1a1a1a1-0017-4000-8000-00000000000a', 1, NULL, 1,    $s$completed_at = '2000-01-01T00:00:00Z'$s$),
     ('earned_badges',             'id', 'a1a1a1a1-0018-4000-8000-00000000000a', 1, NULL, 1,    $s$badge_name = 'rls-probe'$s$),
     ('exercise_catalog',          'id', 'rls-custom-exercise-a',                1, 1,    1,    $s$display_name = 'rls-probe'$s$),
+    ('exercise_signatures',       'id', 'a1a1a1a1-0019-4000-8000-00000000000a', 0, NULL, NULL, $s$exercise_id = 'rls-probe'$s$),
     ('exercise_signatures',       'id', 'a1a1a1a1-0019-4000-8000-00000000000a', 1, NULL, NULL, $s$exercise_id = 'rls-probe'$s$),
     ('external_activities',       'id', 'a1a1a1a1-0020-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
     ('gamification_stats',        'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$pr_count = 99$s$),
@@ -545,6 +559,7 @@ INSERT INTO rls_cases VALUES
     ('rpg_attributes',            'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$level = 99$s$),
     ('rpg_attributes',            'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, NULL, NULL, $s$level = 99$s$),
     ('saved_community_items',     'id', 'a1a1a1a1-0026-4000-8000-00000000000a', 1, NULL, 1,    $s$item_type = 'cycle'$s$),
+    ('session_phase_statistics',  'id', 'a1a1a1a1-0028-4000-8000-00000000000a', 0, NULL, NULL, $s$concentric_kg_avg = 99$s$),
     ('session_phase_statistics',  'id', 'a1a1a1a1-0028-4000-8000-00000000000a', 1, NULL, NULL, $s$concentric_kg_avg = 99$s$),
     ('subscription_events',       'id', 'a1a1a1a1-0029-4000-8000-00000000000a', NULL, NULL, NULL, $s$operation = 'UPDATE'$s$),
     ('sync_queue',                'id', 'a1a1a1a1-0030-4000-8000-00000000000a', 1, NULL, NULL, $s$provider = 'rls-probe'$s$),
@@ -552,6 +567,23 @@ INSERT INTO rls_cases VALUES
     ('telemetry_analysis',        'id', 'a1a1a1a1-0031-4000-8000-00000000000a', 1, NULL, NULL, $s$result = '{}'::jsonb$s$),
     ('user_insights',             'id', 'a1a1a1a1-0032-4000-8000-00000000000a', 1, NULL, NULL, $s$title = 'rls-probe'$s$),
     ('user_onboarding',           'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$version_seen = 'rls-probe'$s$),
+    ('vbt_assessments',           'id', 'a1a1a1a1-0033-4000-8000-00000000000a', 0, NULL, NULL, $s$estimated_1rm_kg = 99$s$),
+    ('wearable_daily_summaries',  'id', 'a1a1a1a1-0034-4000-8000-00000000000a', 1, NULL, NULL, $s$provider = 'rls-probe'$s$);
+
+-- PR 38: force-curve and biomechanics relations whose SELECT policy requires
+-- INFERNO (20260920003800_inferno_read_policies.sql). Their owner_select is 0
+-- above because A is FLAME; the INFERNO positive control lives in
+-- tier_matrix.test.sql section 6. Everything else about them (B / C / anon
+-- isolation, write spoofing) is asserted here exactly as for any other case.
+CREATE TEMP TABLE rls_inferno_gated (table_name text PRIMARY KEY)
+ON COMMIT DROP;
+INSERT INTO rls_inferno_gated VALUES
+    ('rep_telemetry'),
+    ('telemetry_points'),
+    ('vbt_assessments'),
+    ('session_phase_statistics'),
+    ('exercise_signatures');
+
     ('vbt_assessments',           'id', 'a1a1a1a1-0033-4000-8000-00000000000a', 1, NULL, NULL, $s$estimated_1rm_kg = 99$s$),
     ('wearable_daily_summaries',  'id', 'a1a1a1a1-0034-4000-8000-00000000000a', 1, NULL, NULL, $s$provider = 'rls-probe'$s$);
 
@@ -602,6 +634,7 @@ END
 $cleanup$;
 
 GRANT SELECT ON rls_cases TO anon, authenticated;
+GRANT SELECT ON rls_inferno_gated TO anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 SELECT diag('database:rls-isolation-coverage');
@@ -751,6 +784,33 @@ SELECT is(
 )
 FROM rls_cases rc
 WHERE rc.owner_select IS NOT NULL
+  AND rc.table_name NOT IN (SELECT table_name FROM rls_inferno_gated)
+ORDER BY rc.table_name;
+
+-- Every gated relation must still be a listed case, or the denial below
+-- would silently assert nothing.
+SELECT is(
+    (
+        SELECT count(*)::integer
+        FROM rls_inferno_gated g
+        WHERE NOT EXISTS (
+            SELECT 1 FROM rls_cases rc WHERE rc.table_name = g.table_name
+        )
+    ),
+    0,
+    'every INFERNO-gated relation is still an rls_cases row'
+);
+
+SELECT is(
+    pg_temp.rls_probe(rc.table_name, 'select', rc.key_col, rc.row_key, NULL),
+    0,
+    format(
+        'owner A (FLAME) reads nothing from INFERNO-gated public.%s',
+        rc.table_name
+    )
+)
+FROM rls_cases rc
+JOIN rls_inferno_gated g ON g.table_name = rc.table_name
 ORDER BY rc.table_name;
 
 SELECT cmp_ok(
@@ -905,6 +965,9 @@ INSERT INTO spoof_cases VALUES
     ('cycle_days: INSERT under A''s cycle', NULL,
      $q$INSERT INTO public.cycle_days (cycle_id, day_number) VALUES ('a1a1a1a1-0008-4000-8000-00000000000a', 2)$q$),
     -- Re-parent B's own row to A.
+    -- Clients cannot INSERT sessions (server-written only) and may UPDATE
+    -- only `notes`, so the user_id rewrite is refused by the column grant
+    -- before any row is matched; no setup row is needed.
     ('workout_sessions: UPDATE own row to user_id = A',
      $q$INSERT INTO public.workout_sessions (id, user_id) VALUES ('b2b2b2b2-0001-4000-8000-00000000000b', 'b2b2b2b2-0000-4000-8000-00000000000b')$q$,
     -- Clients cannot INSERT sessions (server-written only) and may UPDATE

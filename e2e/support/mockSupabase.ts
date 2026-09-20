@@ -42,6 +42,7 @@ interface ExerciseRow {
 	name: string;
 	muscle_group: string;
 	order_index: number;
+	cable_count?: number | null;
 }
 
 interface SetRow {
@@ -106,6 +107,7 @@ interface MockSupabaseOptions {
 	repSummaries?: RepSummaryRow[];
 	personalRecords?: Record<string, unknown>[];
 	phaseStatistics?: Record<string, unknown>[];
+	exerciseProgress?: Record<string, unknown>[];
 }
 
 const MONTHLY_PRICE_IDS: Record<MockSubscriptionTier, string | null> = {
@@ -162,6 +164,7 @@ export async function installMockSupabase(
 		repSummaries: options.repSummaries ?? [],
 		personalRecords: options.personalRecords ?? [],
 		phaseStatistics: options.phaseStatistics ?? [],
+		exerciseProgress: options.exerciseProgress ?? [],
 		onboarding: {
 			id: "onboarding-1",
 			user_id: userId,
@@ -246,6 +249,172 @@ export async function installMockSupabase(
 			contentType: "application/json",
 			body: JSON.stringify(wantsObject ? (rows[0] ?? null) : rows),
 		});
+	};
+
+	const pad = (value: number) => String(value).padStart(2, "0");
+
+	const localWeekStart = (startedAt: string) => {
+		const date = new Date(startedAt);
+		const day = date.getDay();
+		const monday = new Date(date);
+		monday.setDate(date.getDate() - day + (day === 0 ? -6 : 1));
+		monday.setHours(0, 0, 0, 0);
+		return `${monday.getFullYear()}-${pad(monday.getMonth() + 1)}-${pad(monday.getDate())}`;
+	};
+
+	const PERIOD_DAYS: Record<string, number | null> = {
+		"1w": 7,
+		"4w": 28,
+		"12w": 84,
+		"52w": 365,
+		all: null,
+	};
+
+	const sessionsForProfile = (profileId?: string | null) =>
+		(state.workoutSessions as Array<Record<string, unknown>>).filter(
+			(session) =>
+				!profileId || String(session.local_profile_id ?? "") === profileId,
+		);
+
+	/**
+	 * The SQL aggregates the SPA reads instead of "every session id, then
+	 * .in(session_id, ids)". Mirrors the shapes of migration 20260920004000.
+	 */
+	const rpcResult = (fn: string, args: Record<string, unknown>): unknown => {
+		const profileId = (args.p_profile_id as string | undefined) ?? null;
+
+		if (fn === "exercise_frequency") {
+			const sessionIds = new Set(
+				sessionsForProfile(profileId).map((session) => String(session.id)),
+			);
+			const byName = new Map<
+				string,
+				{ sessions: Set<string>; muscleGroup: string }
+			>();
+			for (const exercise of state.exercises) {
+				if (!sessionIds.has(exercise.session_id)) continue;
+				const entry = byName.get(exercise.name) ?? {
+					sessions: new Set<string>(),
+					muscleGroup: exercise.muscle_group,
+				};
+				entry.sessions.add(exercise.session_id);
+				if (exercise.muscle_group && exercise.muscle_group !== "General") {
+					entry.muscleGroup = exercise.muscle_group;
+				}
+				byName.set(exercise.name, entry);
+			}
+			return [...byName.entries()]
+				.map(([exercise_name, entry]) => ({
+					exercise_name,
+					muscle_group: entry.muscleGroup,
+					sessions: entry.sessions.size,
+				}))
+				.sort(
+					(a, b) =>
+						b.sessions - a.sessions ||
+						a.exercise_name.localeCompare(b.exercise_name),
+				);
+		}
+
+		if (fn === "session_volume_buckets") {
+			const days = PERIOD_DAYS[(args.p_period as string) ?? "all"] ?? null;
+			const cutoff =
+				days === null ? null : Date.now() - days * 24 * 60 * 60 * 1000;
+			const buckets = new Map<
+				string,
+				{
+					sessions: number;
+					total_volume: number;
+					total_duration_seconds: number;
+					total_sets: number;
+				}
+			>();
+			for (const session of sessionsForProfile(profileId)) {
+				const startedAt = String(session.started_at);
+				if (cutoff !== null && new Date(startedAt).getTime() < cutoff) continue;
+				const key = localWeekStart(startedAt);
+				const bucket = buckets.get(key) ?? {
+					sessions: 0,
+					total_volume: 0,
+					total_duration_seconds: 0,
+					total_sets: 0,
+				};
+				bucket.sessions += 1;
+				bucket.total_volume += Number(session.total_volume ?? 0);
+				bucket.total_duration_seconds += Number(session.duration_seconds ?? 0);
+				bucket.total_sets += Number(session.set_count ?? 0);
+				buckets.set(key, bucket);
+			}
+			return [...buckets.entries()]
+				.map(([week_start, bucket]) => ({ week_start, ...bucket }))
+				.sort((a, b) => a.week_start.localeCompare(b.week_start));
+		}
+
+		if (fn === "personal_record_history") {
+			const limit = Math.min(Math.max(Number(args.p_limit ?? 200), 1), 1000);
+			const before = args.p_before as string | undefined;
+			const beforeId = args.p_before_id as string | undefined;
+			const rows = state.personalRecords
+				.filter(
+					(record) =>
+						!record.deleted_at &&
+						(!profileId ||
+							String(record.local_profile_id ?? "") === profileId),
+				)
+				.sort((a, b) => {
+					const byDate = String(b.achieved_at).localeCompare(
+						String(a.achieved_at),
+					);
+					return byDate !== 0
+						? byDate
+						: String(b.id).localeCompare(String(a.id));
+				})
+				.filter((record) => {
+					if (!before || !beforeId) return true;
+					const byDate = String(record.achieved_at).localeCompare(before);
+					return (
+						byDate < 0 ||
+						(byDate === 0 && String(record.id).localeCompare(beforeId) < 0)
+					);
+				});
+			return rows.slice(0, limit);
+		}
+
+		if (fn === "profile_workout_stats") {
+			const sessions = sessionsForProfile(profileId);
+			const utcDays = [
+				...new Set(
+					sessions.map((session) =>
+						String(session.started_at).slice(0, 10),
+					),
+				),
+			].sort();
+			let best = utcDays.length > 0 ? 1 : 0;
+			let run = best;
+			for (let i = 1; i < utcDays.length; i++) {
+				const diff =
+					(Date.parse(`${utcDays[i]}T00:00:00Z`) -
+						Date.parse(`${utcDays[i - 1]}T00:00:00Z`)) /
+					86_400_000;
+				run = diff === 1 ? run + 1 : 1;
+				best = Math.max(best, run);
+			}
+			return [
+				{
+					total_workouts: sessions.length,
+					total_volume: sessions.reduce(
+						(sum, session) => sum + Number(session.total_volume ?? 0),
+						0,
+					),
+					best_streak: best,
+					pr_count: state.personalRecords.filter(
+						(record) => !record.deleted_at,
+					).length,
+				},
+			];
+		}
+
+		return [];
 	};
 
 	const completeLatestSync = (provider: IntegrationProvider) => {
@@ -368,6 +537,18 @@ export async function installMockSupabase(
 			return;
 		}
 
+		if (pathname.startsWith("/rest/v1/rpc/")) {
+			const fn = pathname.split("/").pop() ?? "";
+			const rawBody = request.postData();
+			const args = rawBody ? JSON.parse(rawBody) : {};
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify(rpcResult(fn, args)),
+			});
+			return;
+		}
+
 		const table = pathname.split("/").pop();
 
 		switch (table) {
@@ -465,6 +646,25 @@ export async function installMockSupabase(
 				await respondRows(route, sets, request.headers().accept);
 				return;
 			}
+			// RPC (POST /rest/v1/rpc/<name>). The portal reads personal records
+			// newest-first through `personal_record_history` keyset pages.
+			case "personal_record_history": {
+				const history = [...state.personalRecords].sort((a, b) =>
+					String(b.achieved_at).localeCompare(String(a.achieved_at)),
+				);
+				await respondRows(route, history, request.headers().accept);
+				return;
+			}
+			case "exercise_names":
+			case "exercise_progress_series":
+			case "exercise_progress_series_many": {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify([]),
+				});
+				return;
+			}
 			case "personal_records": {
 				const records = filterRows(state.personalRecords, url);
 				if (method === "HEAD") {
@@ -473,6 +673,11 @@ export async function installMockSupabase(
 				}
 
 				await respondRows(route, records, request.headers().accept);
+				return;
+			}
+			case "exercise_progress": {
+				const rows = filterRows(state.exerciseProgress, url);
+				await respondRows(route, rows, request.headers().accept);
 				return;
 			}
 			case "session_phase_statistics": {

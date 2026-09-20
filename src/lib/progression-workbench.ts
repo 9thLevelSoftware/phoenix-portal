@@ -65,6 +65,9 @@ interface BuildProgressionWorkbenchModelInput {
 	now?: Date;
 }
 
+/** Suggested load step, per cable (KD-8). */
+export const PROGRESSION_STEP_PER_CABLE_KG = 1.25;
+
 function round(value: number, digits = 1): number {
 	const factor = 10 ** digits;
 	return Math.round(value * factor) / factor;
@@ -161,11 +164,17 @@ function buildRecommendation(
 		};
 	}
 
-	const nextLoad = convertWeight(latest.max_weight_kg + 2.5, unit);
+	// exercise_progress loads are per cable (KD-8). The step keeps the old
+	// effective increment: +2.5 kg on the doubled total was +1.25 kg per cable.
+	const nextLoad = convertWeight(
+		latest.max_weight_kg + PROGRESSION_STEP_PER_CABLE_KG,
+		unit,
+	);
+	const step = round(convertWeight(PROGRESSION_STEP_PER_CABLE_KG, unit), 2);
 	return {
 		kind: "load",
-		label: `Add ${unit === "lbs" ? "5 lb" : "2.5 kg"}`,
-		description: `Recent trend supports testing about ${round(nextLoad, unit === "lbs" ? 0 : 1)} ${unit} next time.`,
+		label: `Add ${step} ${unit} per cable`,
+		description: `Recent trend supports testing about ${round(nextLoad, unit === "lbs" ? 0 : 1)} ${unit} per cable next time.`,
 	};
 }
 

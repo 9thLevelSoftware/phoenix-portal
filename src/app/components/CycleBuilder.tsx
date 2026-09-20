@@ -40,11 +40,11 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import type { Json } from "@/lib/database.types";
 import {
-	formatWeight,
 	type WeightUnit,
 	weightInputToKg,
 	weightInputValue,
 } from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 import { useSaveCycle, useUpdateCycle } from "@/mutations/cycles";
 import { cycleDetailOptions } from "@/queries/cycles";
 import { routineListOptions } from "@/queries/routines";
@@ -58,6 +58,12 @@ import {
 } from "@/schemas/transforms";
 
 interface DayConfig {
+	/**
+	 * `cycle_days.id`, present only for a day loaded from an existing cycle.
+	 * The update mutation sends it back so the row keeps its identity; a day
+	 * added in this session has none and the server mints one.
+	 */
+	id?: string;
 	dayNumber: number;
 	type: "workout" | "rest";
 	routineId?: string;
@@ -165,6 +171,7 @@ export function CycleBuilder() {
 			if (existingCycle.cycle_days.length > 0) {
 				setDays(
 					existingCycle.cycle_days.map((d) => ({
+						id: d.id,
 						dayNumber: d.day_number,
 						type: d.day_type as "workout" | "rest",
 						routineId: d.routine_id ?? undefined,
@@ -266,6 +273,10 @@ export function CycleBuilder() {
 			duration_weeks: durationWeeks,
 			started_at: startDate || null,
 			days: days.map((d) => ({
+				// Present only for days loaded from an existing cycle. The update
+				// mutation sends it so the row survives the save; the create
+				// mutation drops it.
+				id: d.id,
 				day_number: d.dayNumber,
 				day_type: d.type,
 				routine_id: d.routineId ?? null,
@@ -1513,7 +1524,7 @@ function PreviewModal({
 									<span className="text-primary">
 										{cycle.progression.type === "percentage"
 											? `${cycle.progression.amount}%`
-											: formatWeight(cycle.progression.amount, unit)}
+											: formatLoad(cycle.progression.amount, null, unit)}
 									</span>
 								</div>
 							)}

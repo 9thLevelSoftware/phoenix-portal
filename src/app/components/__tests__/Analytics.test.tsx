@@ -4,6 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
+import { Analytics, toWeeklyVolumeSeries } from "../Analytics";
 import { Analytics, selectInsightsFeed } from "../Analytics";
 import { InsightsFeed, LOCAL_INSIGHTS_LABEL } from "../InsightsFeed";
 
@@ -138,6 +139,32 @@ describe("Analytics", () => {
 	});
 });
 
+describe("toWeeklyVolumeSeries", () => {
+	it("keys weeks by week_start so the same week in different years stays split", () => {
+		// The previous client-side bucketing keyed weeks by a "Mar 2"-style label,
+		// which silently merged the same calendar week across years on "ALL".
+		const series = toWeeklyVolumeSeries(
+			[
+				{ week_start: "2025-03-03", sessions: 2, total_volume: 1000 },
+				{ week_start: "2026-03-02", sessions: 3, total_volume: 1500 },
+			],
+			"all",
+		);
+
+		expect(series).toHaveLength(2);
+		expect(series.map((row) => row.key)).toEqual(["2025-03-03", "2026-03-02"]);
+		expect(new Set(series.map((row) => row.date)).size).toBe(2);
+		expect(series[0].volume).toBe(1000);
+		expect(series[0].workouts).toBe(2);
+	});
+
+	it("labels the week start as a local calendar day", () => {
+		const [row] = toWeeklyVolumeSeries(
+			[{ week_start: "2026-03-02", sessions: 1, total_volume: 10 }],
+			"4w",
+		);
+		// "2026-03-02" must not slip to Mar 1 in negative-offset zones.
+		expect(row.date).toBe("Mar 2");
 // KD-14: the feed is a fresh server batch OR the browser fallback, never a
 // mix. `selectInsightsFeed` is the whole rule; these tests render its output
 // so "shows only X" is asserted against the DOM, not just the array.

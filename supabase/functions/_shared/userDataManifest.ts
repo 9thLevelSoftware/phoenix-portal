@@ -20,6 +20,9 @@
  * Export contract for the client (PR 37):
  *   - POST {table, cursor?} -> {table, rows, nextCursor | null}. Keep
  *     requesting with `cursor = nextCursor` until it is null. The endpoint
+ *     ends paging only when a one-row probe after the page's last key finds
+ *     nothing, so a PostgREST `max_rows` below `USER_DATA_PAGE_SIZE` cannot
+ *     end paging early (and no per-page count rescans large tables).
  *     computes the end of paging from an exact row count, so a PostgREST
  *     `max_rows` below `USER_DATA_PAGE_SIZE` cannot end paging early.
  *   - `tableMissing: true` (HTTP 200, no rows) is returned only for
@@ -157,6 +160,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		],
 		optionalColumns: ["digest_frequency", "digest_last_sent_at", "feature_flags"],
 		purge: "cascade",
+		note: "profiles.id is the auth user id (FK, ON DELETE CASCADE); user_id is a generated copy. stripe_customer_id is exported deliberately (PR 37 R-13): it is the user's own billing identifier, not a credential.",
 		note: "profiles.id is the auth user id (FK, ON DELETE CASCADE); user_id is a generated copy.",
 	},
 	owned("subscriptions", "cascade", [
@@ -175,6 +179,9 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"paddle_subscription_id",
 		"price_id",
 		"last_event_occurred_at",
+	],
+	{ note: "Billing-provider ids (paddle_customer_id, paddle_subscription_id, price_id, last_event_id) are exported deliberately (PR 37 R-13): they are the user's own identifiers, not credentials, and are useless without the server-side provider API key." },
+	),
 	]),
 	owned(
 		"subscription_events",
@@ -202,6 +209,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		],
 		{
 			mayBeAbsent: true,
+			note: "Billing audit trail (R-31: exported and purged). No FK to auth.users (prod-evidence.md); DDL captured by PR 2. Billing-provider ids (paddle_customer_id, paddle_subscription_id, price_id, last_event_id) are exported deliberately (PR 37 R-13): they are the user's own identifiers, not credentials, and are useless without the server-side provider API key.",
 			note: "Billing audit trail (R-31: exported and purged). No FK to auth.users (prod-evidence.md); DDL captured by PR 2.",
 		},
 	),
@@ -297,6 +305,8 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"working_reps",
 		"local_profile_id",
 		"updated_at",
+		// PR 21 (KD-5): the device LWW key; `updated_at` stays server-owned.
+		"client_updated_at",
 	]),
 	owned("exercises", "cascade", [
 		"id",
@@ -306,6 +316,8 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"order_index",
 		"user_id",
 		"exercise_id",
+		// PR 28/29 (KD-8): 1, 2, or NULL when the build did not report it.
+		"cable_count",
 	]),
 	owned("sets", "cascade", [
 		"id",
@@ -476,6 +488,9 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"is_favorite",
 			"updated_at",
 			"local_profile_id",
+			"created_at",
+			// PR 21 (KD-5): the device LWW key.
+			"client_updated_at",
 		],
 		{ optionalColumns: ["created_at"] },
 	),
@@ -540,6 +555,11 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"updated_at",
 		"local_profile_id",
 		"template_id",
+		// PR 18 (KD-6): portal-edit bookkeeping for the cycle merge.
+		"portal_edited_at",
+		"portal_duration_set_at",
+		// PR 21 (KD-5): the device LWW key.
+		"client_updated_at",
 	]),
 	{
 		table: "cycle_days",
@@ -592,6 +612,10 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"updated_at",
 			"exercise_id",
 		],
+			"predicted_completion_date",
+			// PR 30 (KD-8): whether the target is a per-cable or total load.
+			"target_basis",
+		{ optionalColumns: ["last_snapshot_at"] },
 		{ optionalColumns: ["last_snapshot_at", "predicted_completion_date"] },
 	),
 	owned(
@@ -622,6 +646,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"confidence",
 			"created_at",
 			"expires_at",
+			"exercise_id",
 		],
 		{ mayBeAbsent: true, note: PROD_ONLY_NOTE },
 	),

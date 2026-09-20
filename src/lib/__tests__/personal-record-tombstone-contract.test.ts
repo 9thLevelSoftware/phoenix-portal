@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { getUserDataTable } from "../../../supabase/functions/_shared/userDataManifest.ts";
 
 const MIGRATION = "20260716211500_personal_record_tombstones.sql";
 
@@ -77,14 +78,51 @@ describe("personal record tombstone database types", () => {
 });
 
 describe("server-side active personal record reads", () => {
+	// compute-rankings reads leaderboard_snapshots; its PR counts are built in
+	// SQL by refresh_leaderboard_snapshots (asserted below and in pgTAP
+	// supabase/tests/database/leaderboard.test.sql).
+	it("leaderboard snapshot and PR ranking RPCs exclude tombstones", () => {
+		const migration = readWorkspaceFile(
+			"supabase",
+			"migrations",
+			"20260920005600_leaderboard_snapshots.sql",
+		);
+		for (const fn of [
+			"refresh_leaderboard_snapshots",
+			"get_pr_count_rankings",
+			"get_user_pr_rank",
+		]) {
+			const body = migration.match(
+				new RegExp(
+					`CREATE\\s+OR\\s+REPLACE\\s+FUNCTION\\s+public\\.${fn}[\\s\\S]*?\\$\\$;`,
+					"i",
+				),
+			)?.[0];
+			expect(body, fn).toMatch(/pr\.deleted_at\s+IS\s+NULL/i);
+		}
+	});
+
 	for (const path of [
-		["supabase", "functions", "compute-rankings", "index.ts"],
 		["supabase", "functions", "generate-insights", "index.ts"],
-		["src", "lib", "export", "data-export.ts"],
+		// The GDPR export (src/lib/export/data-export.ts) reads through the
+		// export-user-data endpoint and deliberately includes tombstoned rows
+		// with their deleted_at: it is a copy of all data held, not a PR view.
 	]) {
 		it(`${path.join("/")} excludes tombstones`, () => {
 			const query = personalRecordQuery(readWorkspaceFile(...path));
 			expect(query).toMatch(/\.is\(["']deleted_at["'],\s*null\)/);
 		});
 	}
+});
+
+describe("GDPR export of personal records", () => {
+	it("exports tombstoned rows with their deleted_at marker", () => {
+		// The export is a copy of all data held, so tombstones are included;
+		// deleted_at is what tells the user those records were deleted.
+		const entry = getUserDataTable("personal_records");
+		expect(entry?.columns).toContain("deleted_at");
+		expect(readWorkspaceFile("src", "lib", "export", "data-export.ts")).toMatch(
+			/non-null deleted_at are records you deleted/,
+		);
+	});
 });
