@@ -405,6 +405,15 @@ function streamingRawRequest(
   });
 }
 
+const DEFAULT_SUBSCRIPTION_RESULT = {
+  data: {
+    tier: "EMBER",
+    status: "active",
+    current_period_end: "2099-01-01T00:00:00.000Z",
+  },
+  error: null,
+};
+
 function permissiveQuery(
   table: string,
   onWrite: (method: string) => void,
@@ -413,6 +422,8 @@ function permissiveQuery(
     error: null,
     count: 0,
   },
+  subscriptionResult: { data: unknown; error: unknown } =
+    DEFAULT_SUBSCRIPTION_RESULT,
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
@@ -445,14 +456,7 @@ function permissiveQuery(
   query.maybeSingle = () =>
     Promise.resolve(
       table === "subscriptions"
-        ? {
-          data: {
-            tier: "EMBER",
-            status: "active",
-            current_period_end: "2099-01-01T00:00:00.000Z",
-          },
-          error: null,
-        }
+        ? subscriptionResult
         : { data: null, error: null },
     );
   query.single = () => Promise.resolve({ data: null, error: null });
@@ -486,6 +490,7 @@ function makeHarness(
     channelError?: unknown;
     rpcBehavior?: RpcBehavior;
     personalRecordsResult?: { data: unknown; error: unknown };
+    subscriptionResult?: { data: unknown; error: unknown };
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -507,7 +512,8 @@ function makeHarness(
       return permissiveQuery(table, (method) => {
         adminWriteCalls.push({ table, method });
         operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records" ? options.personalRecordsResult : undefined);
+      }, table === "personal_records" ? options.personalRecordsResult : undefined,
+        options.subscriptionResult);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -835,6 +841,104 @@ for (
     assertEquals(harness.loggerCalls, [[{ name: expectedName }]]);
   });
 }
+
+// Subscription gate (F-047): a denied or failed lookup must stop the push
+// after the rate limiter and the subscriptions read, before any write, RPC
+// or broadcast.
+function singleSessionPushBody(
+  sessionId = SESSION_ID,
+  userId = VALID_USER_ID,
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    sessions: [{
+      id: sessionId,
+      userId,
+      name: "Gate session",
+      startedAt: "2026-07-11T12:00:00.000Z",
+      exercises: [],
+    }],
+  };
+}
+
+function assertStoppedAtSubscriptionGate(harness: PushHarness): void {
+  assertEquals(harness.adminConstructionCount.value, 1);
+  assertEquals(harness.adminFromCalls, ["subscriptions"]);
+  assertEquals(harness.adminRpcCalls.map((call) => call.name), [
+    "check_rate_limit",
+  ]);
+  assertEquals(harness.adminWriteCalls, []);
+  assertEquals(harness.channelCalls, []);
+  assertEquals(harness.broadcastPayloads, []);
+}
+
+for (
+  const [label, subscriptionResult] of [
+    ["no subscriptions row", { data: null, error: null }],
+    ["an active FREE row", {
+      data: {
+        tier: "FREE",
+        status: "active",
+        current_period_end: "2099-01-01T00:00:00.000Z",
+      },
+      error: null,
+    }],
+  ] as const
+) {
+  Deno.test(`subscription gate: ${label} is denied with 402 before any write`, async () => {
+    const harness = makeHarness(undefined, { subscriptionResult });
+    const response = await harness.handler(
+      requestFromBody(singleSessionPushBody()),
+    );
+    const body = await json(response);
+    assertEquals(response.status, 402, JSON.stringify(body));
+    assertEquals(body.error, "subscription_required");
+    assertEquals(body.requiredTier, "EMBER");
+    assertEquals(body.currentTier, "FREE");
+    assertStoppedAtSubscriptionGate(harness);
+  });
+}
+
+Deno.test("subscription gate: a lookup error fails closed with 503 before any write", async () => {
+  const harness = makeHarness(undefined, {
+    subscriptionResult: {
+      data: null,
+      error: { message: "connection refused", code: "08006" },
+    },
+  });
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  let response: Response;
+  try {
+    response = await harness.handler(
+      requestFromBody(singleSessionPushBody()),
+    );
+  } finally {
+    console.error = originalConsoleError;
+  }
+  const body = await json(response);
+  assertEquals(response.status, 503, JSON.stringify(body));
+  assertEquals(body.error, "subscription_unavailable");
+  assertEquals(response.headers.get("Retry-After"), "30");
+  assertStoppedAtSubscriptionGate(harness);
+});
+
+Deno.test("subscription gate: the same body from an EMBER user is written with 200", async () => {
+  // Positive control: the deny tests above use a body that writes when the
+  // gate allows it.
+  const harness = makeHarness();
+  const response = await harness.handler(
+    requestFromBody(singleSessionPushBody()),
+  );
+  const body = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(harness.loggerCalls, []);
+  assertEquals(harness.operationEvents, [
+    "rpc:check_rate_limit",
+    "write:workout_sessions:upsert",
+    "rpc:replace_session_children",
+  ]);
+});
 
 Deno.test("malformed final ordinary item is rejected before admin construction", async () => {
   const harness = makeHarness();
@@ -2948,4 +3052,180 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
     ).length,
     3,
   );
+});
+
+// ---------------------------------------------------------------------------
+// Real-SQL subscription gate (replaces the deleted live FREE-user sync tests):
+// the real `subscriptions` table, service-role grants and RLS decide 402 vs
+// the write path.
+// ---------------------------------------------------------------------------
+
+interface GateFixture {
+  admin: SupabaseClient;
+  userId: string;
+}
+
+async function deleteGateFixture(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<void> {
+  for (
+    const table of [
+      "workout_sessions",
+      "local_profiles",
+      "subscriptions",
+      "rate_limit_tracking",
+    ]
+  ) {
+    const deleted = await admin.from(table).delete().eq("user_id", userId);
+    if (deleted.error) throw new Error(`${table} gate fixture cleanup failed`);
+  }
+  const deleted = await admin.auth.admin.deleteUser(userId);
+  if (deleted.error) throw new Error("auth gate fixture cleanup failed");
+}
+
+async function createGateFixture(
+  subscription: Record<string, unknown> | null,
+): Promise<GateFixture> {
+  assert(localIntegrationEnvironment);
+  const admin = createClient(
+    localIntegrationEnvironment.url,
+    localIntegrationEnvironment.serviceRoleKey,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const created = await admin.auth.admin.createUser({
+    email: `pr6-gate-${crypto.randomUUID()}@example.invalid`,
+    email_confirm: true,
+  });
+  if (created.error || !created.data.user) {
+    throw new Error("gate fixture user creation failed");
+  }
+  const userId = created.data.user.id;
+  try {
+    if (subscription !== null) {
+      const inserted = await admin.from("subscriptions").insert({
+        user_id: userId,
+        ...subscription,
+      });
+      if (inserted.error) throw new Error("gate fixture subscription failed");
+    }
+    return { admin, userId };
+  } catch (error) {
+    await deleteGateFixture(admin, userId);
+    throw error;
+  }
+}
+
+// Real SQL, but the realtime broadcast is recorded instead of opening a
+// websocket (which would leak past the test).
+function realGatePushHandler(
+  fixture: GateFixture,
+  broadcastTopics: string[] = [],
+): (request: Request) => Promise<Response> {
+  const admin = new Proxy(fixture.admin, {
+    get(target, property, receiver) {
+      if (property === "channel") {
+        return (topic: string) => ({
+          subscribe(callback: (status: string) => void) {
+            callback("SUBSCRIBED");
+            return {};
+          },
+          async send() {
+            broadcastTopics.push(topic);
+            return "ok";
+          },
+        });
+      }
+      if (property === "removeChannel") return async () => "ok";
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.userId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      return admin;
+    },
+    logOperationalFailure: () => {},
+    now: () => 1_784_167_200_000,
+  } as never);
+}
+
+async function countGateSessions(
+  fixture: GateFixture,
+  sessionId: string,
+): Promise<number> {
+  const audit = await fixture.admin.from("workout_sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("id", sessionId);
+  if (audit.error) throw new Error("gate session audit failed");
+  return audit.count ?? -1;
+}
+
+for (
+  const [label, subscription] of [
+    ["no subscriptions row", null],
+    ["an active FREE row", {
+      tier: "FREE",
+      status: "active",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+    }],
+  ] as const
+) {
+  Deno.test({
+    name:
+      `integration: push subscription gate denies ${label} with 402 and writes nothing`,
+    ignore: localIntegrationEnvironment === null,
+    fn: async () => {
+      const fixture = await createGateFixture(subscription);
+      try {
+        const sessionId = crypto.randomUUID();
+        const broadcastTopics: string[] = [];
+        const response = await realGatePushHandler(fixture, broadcastTopics)(
+          requestFromBody(singleSessionPushBody(sessionId, fixture.userId)),
+        );
+        const body = await json(response);
+        assertEquals(response.status, 402, JSON.stringify(body));
+        assertEquals(body.error, "subscription_required");
+        assertEquals(body.currentTier, "FREE");
+        assertEquals(await countGateSessions(fixture, sessionId), 0);
+        assertEquals(broadcastTopics, []);
+      } finally {
+        await deleteGateFixture(fixture.admin, fixture.userId);
+      }
+    },
+  });
+}
+
+Deno.test({
+  name: "integration: push subscription gate lets an active EMBER row write",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createGateFixture({
+      tier: "EMBER",
+      status: "active",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+    });
+    try {
+      const sessionId = crypto.randomUUID();
+      const broadcastTopics: string[] = [];
+      const response = await realGatePushHandler(fixture, broadcastTopics)(
+        requestFromBody(singleSessionPushBody(sessionId, fixture.userId)),
+      );
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+      assertEquals(await countGateSessions(fixture, sessionId), 1);
+      assertEquals(broadcastTopics, [`sync:${fixture.userId}`]);
+    } finally {
+      await deleteGateFixture(fixture.admin, fixture.userId);
+    }
+  },
 });
