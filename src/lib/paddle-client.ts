@@ -186,6 +186,21 @@ export interface OpenCheckoutOptions {
 	onClose?: () => void;
 }
 
+/**
+ * Checkout signing was refused. Carries the server's `code` so the caller can
+ * react — notably `existing_subscription` (409), which means the stored row
+ * has moved on and the CTA needs re-reading.
+ */
+export class CheckoutSigningError extends Error {
+	readonly code: string | undefined;
+
+	constructor(message: string, code?: string) {
+		super(message);
+		this.name = "CheckoutSigningError";
+		this.code = code;
+	}
+}
+
 export interface OpenUpdatePaymentMethodOptions {
 	/** Transaction id from paddle-update-subscription's `update_payment` action. */
 	transactionId: string;
@@ -255,14 +270,34 @@ export async function openCheckout({
 		return;
 	}
 
-	const { data: signedPayload, error: signError } =
-		await supabase.functions.invoke<{
-			custom_data: PaddleCheckoutCustomData;
-		}>("paddle-checkout-custom-data", { method: "POST" });
+	const {
+		data: signedPayload,
+		error: signError,
+		response: signResponse,
+	} = await supabase.functions.invoke<{
+		custom_data: PaddleCheckoutCustomData;
+	}>("paddle-checkout-custom-data", { method: "POST" });
 	if (signError || !signedPayload?.custom_data) {
-		throw new Error(
-			signError?.message ??
+		// supabase-js turns any non-2xx into the generic "Edge Function
+		// returned a non-2xx status code", which would hide the 409
+		// `existing_subscription` message the server took care to write. Read
+		// the body instead, and let the caller refresh the CTA.
+		let serverMessage: string | undefined;
+		let serverCode: string | undefined;
+		if (signResponse) {
+			try {
+				const body = await signResponse.clone().json();
+				if (typeof body?.message === "string") serverMessage = body.message;
+				if (typeof body?.code === "string") serverCode = body.code;
+			} catch {
+				// Fall through to the generic message below.
+			}
+		}
+		throw new CheckoutSigningError(
+			serverMessage ??
+				signError?.message ??
 				"Billing checkout signing is unavailable. Please try again.",
+			serverCode,
 		);
 	}
 	if (signedPayload.custom_data.user_id !== userId) {

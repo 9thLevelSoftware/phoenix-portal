@@ -18,9 +18,17 @@
 -- row that is still entitled" lives in app code
 -- (_shared/billingAction.ts#classifySubscriptionEventTarget, which
 -- paddle-webhooks applies before calling this function). It is deliberately
--- not duplicated here: this copy exists to close the read-then-decide race
--- between concurrent deliveries, and anything that slips past the app-code
--- check can only KEEP the user entitled, never revoke.
+-- not duplicated here: this copy NARROWS the read-then-decide race between
+-- concurrent deliveries, and anything that slips past the app-code check can
+-- only KEEP the user entitled, never revoke.
+--
+-- "Narrows", not closes: the guard reads without FOR UPDATE under READ
+-- COMMITTED, so two concurrent deliveries can both evaluate it against the
+-- pre-update snapshot; only the ordering predicate in the ON CONFLICT WHERE
+-- is re-evaluated under the row lock. The residue is benign — the only
+-- writes that can pass the guard are ones that keep the user entitled — so
+-- the worst case is a row pointing at the older of two live subscriptions,
+-- never a revocation.
 --
 -- On ignore the untracked subscription id and status are recorded in
 -- public.subscription_events as a note='untracked_subscription' row (the

@@ -40,6 +40,7 @@ import {
 } from "@/hooks/useSubscription";
 import { cancelSuccessMessage } from "@/lib/paddle";
 import {
+	CheckoutSigningError,
 	openCheckout,
 	openUpdatePaymentMethodCheckout,
 } from "@/lib/paddle-client";
@@ -426,6 +427,19 @@ export function PricingPlans() {
 				},
 			});
 		} catch (error) {
+			// A 409 `existing_subscription` means the stored row moved on since
+			// this CTA rendered (the server predicate is the authority). Re-read
+			// it so the button corrects itself instead of offering Subscribe
+			// again (review R-14).
+			if (
+				error instanceof CheckoutSigningError &&
+				error.code === "existing_subscription" &&
+				user
+			) {
+				void queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+			}
 			const message =
 				error instanceof Error
 					? error.message
