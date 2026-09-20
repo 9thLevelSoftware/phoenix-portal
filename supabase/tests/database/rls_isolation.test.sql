@@ -2,6 +2,7 @@
 --
 -- Users A and B are both FLAME (owner write policies are FLAME-gated since
 -- 20260920000900); C has no subscription row (FREE). A owns one
+-- fixture row in every private user-owned relation listed in rls_cases.
 -- fixture row in every private user-owned relation listed in rls_cases. Tier
 -- denials live in trust_plane.test.sql (EMBER) and tier_matrix.test.sql (FLAME).
 -- Users A and B are both FLAME, so every owner write policy (including the
@@ -48,6 +49,8 @@
 -- A refusal with 42501 (privilege or RLS) is reported as -1 / '42501', so a
 -- later privilege hardening keeps these assertions green.
 --
+-- Fixtures are inserted as postgres (bypassing the EMBER-gated INSERT
+-- policies, which trust_plane.test.sql covers).
 -- Fixtures are inserted as postgres (bypassing the tier-gated INSERT
 -- policies, which trust_plane.test.sql and tier_matrix.test.sql cover).
 -- Fixtures are inserted as postgres (bypassing the EMBER-gated INSERT
@@ -604,6 +607,7 @@ INSERT INTO rls_owner_chain VALUES ('routine_exercises'), ('cycle_days');
 
 -- Triggers create rows for every new auth user (e.g. a default local
 -- profile). Remove B's and C's so that, during the blind probes, B and anon
+-- own nothing in any case relation (B's subscription stays: it makes B EMBER).
 -- own nothing in any case relation (B's subscription stays: it makes B FLAME).
 -- own nothing in any case relation (B's subscription stays: it makes B EMBER).
 DO $cleanup$

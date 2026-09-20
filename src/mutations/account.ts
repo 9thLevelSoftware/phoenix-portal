@@ -225,11 +225,10 @@ export function useCancelDeletion(userId: string) {
 
 /**
  * Execute account deletion after the 30-day grace period has expired.
- * Invokes the delete-account Edge Function which (see `_shared/accountPurge.ts`):
- *   1. Cancels any live Paddle subscription immediately (aborts on failure)
- *   2. Deletes the user rows that do not cascade
+ * Invokes the delete-account Edge Function which:
+ *   1. Removes avatar storage objects
+ *   2. Marks the deletion request as executed
  *   3. Deletes the auth user (cascading to all private data)
- *   4. Removes avatar storage objects
  */
 export function useExecuteDeletion() {
 	return useMutation({

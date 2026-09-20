@@ -1,7 +1,6 @@
 /**
  * Account purge core (FP-6, PR 34). Shared by the user-initiated "Delete now"
- * path in `delete-account` and, later, the scheduled `process_due` executor
- * (PR 35).
+ * path in `delete-account` and the scheduled `process_due` executor (PR 35).
  *
  * Every step is idempotent, so a failed or interrupted purge can simply be run
  * again, and every irreversible step comes after the checks that can abort:
@@ -38,7 +37,9 @@
  *      trigger would record the cascaded routine/cycle deletes if its guard
  *      ever failed (R-6, R-30). The user is already deleted, so a failure
  *      here is logged as `[DELETION_ALERT]` and returned in `residualTables`,
- *      not as a failed purge. (No durable retry exists yet: PR 35 hand-off.)
+ *      not as a failed purge. The durable retry is the residue sweep that
+ *      `delete-account` `process_due` runs every hour
+ *      (public.sweep_deleted_account_residue, PR 35).
  *   4. Avatars, best effort, after the user is deleted.
  *
  * "Table/column does not exist" is tolerated only for targets marked
@@ -452,17 +453,71 @@ function isUserNotFound(error: unknown): boolean {
     /user not found/i.test(e?.message ?? '');
 }
 
-async function removeAvatars(admin: SupabaseClient, userId: string): Promise<boolean> {
+/** Objects listed per `list()` page. */
+const AVATAR_LIST_PAGE = 1000;
+/** Nested prefixes below `avatars/<uid>/` are unexpected; bound the walk. */
+const AVATAR_MAX_DEPTH = 5;
+
+interface StorageEntry {
+  name: string;
+  /** Supabase returns `id: null` for a prefix (folder) placeholder. */
+  id?: string | null;
+}
+
+type AvatarBucket = ReturnType<SupabaseClient['storage']['from']>;
+
+/**
+ * Every object key under `prefix`, descending into folder placeholders.
+ * The storage RLS policy for avatars allows any key under `<uid>/%` (LIKE
+ * matches further slashes), so `<uid>/thumbs/x.png` is reachable even though
+ * the portal only writes `<uid>/avatar.<ext>`; a non-recursive list would
+ * return `thumbs` as a folder, `remove('<uid>/thumbs')` would delete nothing,
+ * and the image would stay publicly fetchable in a public bucket.
+ */
+async function listAvatarObjects(
+  bucket: AvatarBucket,
+  prefix: string,
+  depth = 0,
+): Promise<string[]> {
+  const { data, error } = await bucket.list(prefix, { limit: AVATAR_LIST_PAGE });
+  if (error) throw error;
+  const keys: string[] = [];
+  for (const entry of (data ?? []) as StorageEntry[]) {
+    const key = `${prefix}/${entry.name}`;
+    if (entry.id === null) {
+      // A prefix, not an object. Anything deeper than the cap is reported as
+      // not-removed rather than silently counted as cleaned.
+      if (depth >= AVATAR_MAX_DEPTH) {
+        throw new Error(`avatar prefix nested deeper than ${AVATAR_MAX_DEPTH}: ${key}`);
+      }
+      keys.push(...await listAvatarObjects(bucket, key, depth + 1));
+      continue;
+    }
+    keys.push(key);
+  }
+  return keys;
+}
+
+/**
+ * Removes every object under `avatars/<userId>/`, including nested prefixes.
+ * Best effort: a failure is logged as `[DELETION_ALERT] avatar_cleanup_failed`
+ * and returns false. Returns false as well when objects are still there after
+ * the removal, so a folder that cannot be cleaned raises an alert instead of
+ * counting as removed. Also used by the `process_due` residue sweep for
+ * folders of deleted users.
+ */
+export async function removeAvatars(admin: SupabaseClient, userId: string): Promise<boolean> {
   try {
     const bucket = admin.storage.from('avatars');
-    const { data: files, error } = await bucket.list(userId, { limit: 1000 });
-    if (error) throw error;
-    if (files && files.length > 0) {
-      const { error: removeError } = await bucket.remove(
-        files.map((file) => `${userId}/${file.name}`),
-      );
+    const keys = await listAvatarObjects(bucket, userId);
+    if (keys.length > 0) {
+      const { error: removeError } = await bucket.remove(keys);
       if (removeError) throw removeError;
-      console.log(`[PURGE] Removed ${files.length} avatar file(s) for user ${userId}`);
+      console.log(`[PURGE] Removed ${keys.length} avatar file(s) for user ${userId}`);
+      const left = await listAvatarObjects(bucket, userId);
+      if (left.length > 0) {
+        throw new Error(`${left.length} avatar object(s) still present after removal`);
+      }
     }
     return true;
   } catch (err) {
