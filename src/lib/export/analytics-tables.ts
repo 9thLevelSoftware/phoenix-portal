@@ -1,11 +1,11 @@
 import { format } from "date-fns";
 import JSZip from "jszip";
 import Papa from "papaparse";
-import {
-	type BodyMuscleFocusModel,
-	type BodyMuscleFocusRow,
-	buildBodyMuscleFocusModel,
+import type {
+	BodyMuscleFocusModel,
+	BodyMuscleFocusRow,
 } from "@/lib/body-muscle-analytics";
+import { loadBodyMuscleAnalytics } from "@/lib/body-muscle-analytics-loader";
 import { supabase } from "@/lib/supabase";
 import {
 	fetchAllSupabasePages,
@@ -415,6 +415,7 @@ export async function exportAnalyticsTablesZip(
 			exercises,
 			sets,
 		);
+		const { buildBodyMuscleFocusModel } = await loadBodyMuscleAnalytics();
 		const bodyFocusModel = buildBodyMuscleFocusModel(
 			buildBodyFocusRows(workouts, exercises, sets),
 		);
