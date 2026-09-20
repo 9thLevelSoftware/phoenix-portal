@@ -1849,11 +1849,16 @@ async function mobileSyncPushHandler(
       }
 
       // --- 4b-pre. Atomic delete + re-insert of session children (issue #33, F343) ---
-      // Mobile generates new random exercise/set/rep UUIDs each sync push, so
-      // upsert-by-id never matches the old rows and duplicates pile up. We
-      // therefore delete the existing exercises for the affected sessions
-      // (CASCADE removes their sets, rep_summaries and rep_telemetry) and
-      // re-insert the new rows. That delete + re-insert is performed in ONE
+      // Current mobile keeps the exercise id stable (its session id, issue
+      // #33) but generates new set/rep/telemetry UUIDs each sync push (older
+      // clients regenerated exercise ids too), so upsert-by-id never matches
+      // the old child rows and duplicates pile up. We therefore delete the
+      // existing exercises for the affected sessions (CASCADE removes their
+      // sets, rep_summaries and rep_telemetry) and re-insert the new rows.
+      // Stored telemetry of a set the payload re-sends WITHOUT telemetry is
+      // re-linked to the new set id when the match is unambiguous (see
+      // 20260920002000_replace_session_children_preserve_telemetry.sql for
+      // the key rule). That delete + re-insert is performed in ONE
       // transaction by the replace_session_children RPC below: previously the
       // delete and each upsert were separate statements, so a failure after the
       // delete permanently destroyed the user's data. The child rows are built
