@@ -34,6 +34,9 @@ verify_jwt = true
 [functions.disconnect-integration]
 verify_jwt = true
 
+[functions.export-user-data]
+verify_jwt = true
+
 [functions.fitbit-oauth]
 # Auth: none of handler JWT, HMAC, or cron secret. This is the browser
 # redirect from Fitbit, which carries no JWT. The handler accepts only an
