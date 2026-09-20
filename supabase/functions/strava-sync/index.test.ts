@@ -205,22 +205,57 @@ function stravaActivitiesResponse(activities: StravaActivity[], url: URL): Respo
   return json(list.slice((page - 1) * perPage, page * perPage));
 }
 
+interface QueueHarnessOptions {
+  /** Drive the browser (JWT) path as this user instead of the service role. */
+  jwtUserId?: string;
+  /** 0-based index of an external_activities chunk whose upsert must fail. */
+  failChunk?: number;
+  /** Environment overrides (e.g. a missing STRAVA_CLIENT_SECRET). */
+  env?: Record<string, string>;
+}
+
 /**
- * Service-role handler whose client records upsert batch sizes and lease
- * heartbeats, and whose fetch is routed per request.
+ * Handler whose client records upsert batch sizes and lease heartbeats, and
+ * whose fetch is routed per request.
+ *
+ * The external_activities upsert double rejects a batch that repeats a
+ * conflict key, the way Postgres does ("ON CONFLICT DO UPDATE command cannot
+ * affect row a second time").
  */
-function queueHarness(tables: Record<string, Row[]>, route: (url: URL) => Response) {
+function queueHarness(
+  tables: Record<string, Row[]>,
+  route: (url: URL) => Response,
+  options: QueueHarnessOptions = {},
+) {
   const db = new FakeDb(tables);
   const upserts: Array<{ table: string; rows: number }> = [];
   const heartbeats: string[] = [];
   const fetchUrls: string[] = [];
+  let activityChunk = 0;
   const client = {
-    ...fakeClient(db),
+    ...fakeClient(db, options.jwtUserId ?? null),
     from: (table: string) => {
       const query = db.from(table);
       const upsert = query.upsert.bind(query);
       query.upsert = (row: Row | Row[], opts?: { onConflict?: string }) => {
-        upserts.push({ table, rows: Array.isArray(row) ? row.length : 1 });
+        const rows = Array.isArray(row) ? row : [row];
+        upserts.push({ table, rows: rows.length });
+        if (table === "external_activities") {
+          const failThisChunk = activityChunk++ === options.failChunk;
+          const keys = rows.map((r) => `${r.user_id}/${r.provider}/${r.external_id}`);
+          const repeated = keys.length !== new Set(keys).size;
+          if (failThisChunk || repeated) {
+            const message = repeated
+              ? "ON CONFLICT DO UPDATE command cannot affect row a second time"
+              : "upsert failed";
+            const rejection = {
+              then: (resolve: (v: unknown) => unknown) =>
+                Promise.resolve(resolve({ data: null, error: { message } })),
+            };
+            // deno-lint-ignore no-explicit-any
+            return rejection as any;
+          }
+        }
         return upsert(row, opts);
       };
       const update = query.update.bind(query);
@@ -241,6 +276,7 @@ function queueHarness(tables: Record<string, Row[]>, route: (url: URL) => Respon
         SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
         STRAVA_CLIENT_ID: "client-id",
         STRAVA_CLIENT_SECRET: "client-secret",
+        ...(options.env ?? {}),
       } as Record<string, string>)[key],
     // deno-lint-ignore no-explicit-any
     createClient: () => client as any,
@@ -257,7 +293,9 @@ function queueHarness(tables: Record<string, Row[]>, route: (url: URL) => Respon
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+          Authorization: options.jwtUserId
+            ? "Bearer user-jwt"
+            : `Bearer ${SERVICE_ROLE_KEY}`,
         },
         body: JSON.stringify({ user_id: USER_ID, ...body }),
       }),
@@ -270,6 +308,22 @@ function expiredTokenTables(): Record<string, Row[]> {
   tables.oauth_tokens[0].token_expires_at = at(1);
   return tables;
 }
+
+/** Strava's error body for a revoked/invalid refresh token. */
+const REVOKED_GRANT_BODY = {
+  message: "Bad Request",
+  errors: [{ resource: "RefreshToken", field: "refresh_token", code: "invalid" }],
+};
+/** Strava's error body for a wrong client_id / client_secret. */
+const BAD_CLIENT_BODY = {
+  message: "Bad Request",
+  errors: [{ resource: "Application", field: "client_secret", code: "invalid" }],
+};
+
+const tokenRoute = (response: () => Response) => (url: URL) =>
+  url.pathname === "/oauth/token" ? response() : json([]);
+
+const integrationOf = (h: { db: FakeDb }) => h.db.rows("user_integrations")[0];
 
 Deno.test("strava-sync: completing a queued task leaves the user's second pending task pending", async () => {
   const tables = baseTables(T0, HISTORY);
@@ -287,52 +341,110 @@ Deno.test("strava-sync: completing a queued task leaves the user's second pendin
   assertEquals(typeof first.completed_at, "string");
   assertEquals(second.status, "pending");
   assertEquals(second.completed_at, null);
+  assertEquals(second.started_at, null);
 });
 
-Deno.test("strava-sync: a refresh 401 marks the integration token_expired and fails without retry", async () => {
-  const tables = expiredTokenTables();
-  tables.sync_queue = [queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT)];
-  const h = queueHarness(tables, (url) =>
-    url.pathname === "/oauth/token"
-      ? json({ message: "Authorization Error" }, 401)
-      : json([])
-  );
+Deno.test("strava-sync: a refresh that names the refresh token marks the integration token_expired", async () => {
+  for (const status of [400, 401]) {
+    const tables = expiredTokenTables();
+    tables.sync_queue = [queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT)];
+    const h = queueHarness(tables, tokenRoute(() => json(REVOKED_GRANT_BODY, status)));
 
-  const res = await h.call({ sync_type: "incremental", queue_id: QUEUE_ID });
-  // 401 is outside process-sync-queue's retryable statuses (429/502/503/504).
-  assertEquals(res.status, 401);
-  assertEquals((await res.json()).code, "token_expired");
+    const res = await h.call({ sync_type: "incremental", queue_id: QUEUE_ID });
+    // 401 is outside process-sync-queue's retryable statuses (429/502/503/504).
+    assertEquals(res.status, 401, String(status));
+    assertEquals((await res.json()).code, "token_expired");
 
-  const integration = h.db.rows("user_integrations")[0];
-  assertEquals(integration.status, "token_expired");
-  assertEquals(typeof integration.error_message, "string");
-  assertEquals(integration.last_sync_at, T0);
-  // No activity request was made with the dead token, and the provider did
-  // not complete the task (the processor records the failure).
-  assertEquals(h.fetchUrls.filter((u) => u.includes("/athlete/activities")), []);
-  assertEquals(h.db.rows("sync_queue")[0].status, "processing");
+    assertEquals(integrationOf(h).status, "token_expired");
+    assertEquals(typeof integrationOf(h).error_message, "string");
+    assertEquals(integrationOf(h).last_sync_at, T0);
+    // No activity request was made with the dead token, and the provider did
+    // not complete the task (the processor records the failure).
+    assertEquals(h.fetchUrls.filter((u) => u.includes("/athlete/activities")), []);
+    assertEquals(h.db.rows("sync_queue")[0].status, "processing");
+  }
 });
 
-Deno.test("strava-sync: a refresh 400 (revoked refresh token) is also token_expired", async () => {
-  const h = queueHarness(expiredTokenTables(), (url) =>
-    url.pathname === "/oauth/token" ? json({ message: "Bad Request" }, 400) : json([])
-  );
-  const res = await h.call({ sync_type: "incremental" });
-  assertEquals(res.status, 401);
-  assertEquals(h.db.rows("user_integrations")[0].status, "token_expired");
+Deno.test("strava-sync: a 400/401 naming the Application (wrong client secret) keeps every user connected", async () => {
+  for (const status of [400, 401]) {
+    const h = queueHarness(expiredTokenTables(), tokenRoute(() => json(BAD_CLIENT_BODY, status)));
+    const res = await h.call({ sync_type: "incremental" });
+    // Retryable: correcting the secret then fixes everyone, with no reconnects.
+    assertEquals(res.status, 502, String(status));
+    assertEquals((await res.json()).code, "refresh_failed");
+    assertEquals(integrationOf(h).status, "connected");
+    assertEquals(integrationOf(h).error_message, "Strava token refresh failed; will retry");
+  }
 });
 
-Deno.test("strava-sync: a refresh 5xx returns retryable 502 and keeps the integration connected", async () => {
-  const h = queueHarness(expiredTokenTables(), (url) =>
-    url.pathname === "/oauth/token" ? new Response("upstream down", { status: 503 }) : json([])
+Deno.test("strava-sync: an unrecognised or unparseable refresh error body is retryable, not a disconnect", async () => {
+  const bodies: Array<[string, () => Response]> = [
+    ["no errors array", () => json({ message: "Bad Request" }, 400)],
+    ["unknown resource", () =>
+      json({ errors: [{ resource: "Athlete", field: "id", code: "invalid" }] }, 400)],
+    ["not JSON", () => new Response("<html>nope</html>", { status: 400 })],
+  ];
+  for (const [label, response] of bodies) {
+    const h = queueHarness(expiredTokenTables(), tokenRoute(response));
+    const res = await h.call({ sync_type: "incremental" });
+    assertEquals(res.status, 502, label);
+    assertEquals(integrationOf(h).status, "connected", label);
+  }
+});
+
+Deno.test("strava-sync: a refresh 429, 5xx or network error is retryable and keeps the integration connected", async () => {
+  const cases: Array<[string, () => Response]> = [
+    ["429", () => new Response("rate limited", { status: 429 })],
+    ["503", () => new Response("upstream down", { status: 503 })],
+  ];
+  for (const [label, response] of cases) {
+    const h = queueHarness(expiredTokenTables(), tokenRoute(response));
+    const res = await h.call({ sync_type: "incremental" });
+    assertEquals(res.status, 502, label);
+    const body = await res.json();
+    // Only a fixed message reaches the caller, never Strava's response body.
+    assertEquals(body.error, "Strava token refresh failed", label);
+    assertEquals(String(body.error).includes("upstream down"), false, label);
+    assertEquals(integrationOf(h).status, "connected", label);
+    assertEquals(integrationOf(h).error_message, "Strava token refresh failed; will retry", label);
+    assertEquals(integrationOf(h).last_sync_at, T0, label);
+  }
+
+  // A fetch that throws (DNS failure, aborted request) is the same class.
+  const thrown = queueHarness(expiredTokenTables(), () => {
+    throw new TypeError("error sending request to https://www.strava.com/oauth/token");
+  });
+  const res = await thrown.call({ sync_type: "incremental" });
+  assertEquals(res.status, 502);
+  assertEquals((await res.json()).error, "Strava token refresh failed");
+  assertEquals(integrationOf(thrown).status, "connected");
+});
+
+Deno.test("strava-sync: a missing client secret never disconnects the user and never calls Strava", async () => {
+  const h = queueHarness(
+    expiredTokenTables(),
+    tokenRoute(() => json(REVOKED_GRANT_BODY, 400)),
+    { env: { STRAVA_CLIENT_SECRET: "" } },
   );
   const res = await h.call({ sync_type: "incremental" });
   assertEquals(res.status, 502);
-  // Only the status reaches the caller, never Strava's response body.
-  assertEquals(String((await res.json()).error).includes("upstream down"), false);
-  const integration = h.db.rows("user_integrations")[0];
-  assertEquals(integration.status, "connected");
-  assertEquals(integration.last_sync_at, T0);
+  assertEquals(integrationOf(h).status, "connected");
+  assertEquals(h.fetchUrls, []);
+});
+
+Deno.test("strava-sync: losing a token rotation race does not disconnect the winner's grant", async () => {
+  const tables = expiredTokenTables();
+  const h = queueHarness(tables, (url) => {
+    if (url.pathname !== "/oauth/token") return json([]);
+    // A concurrent run rotated (and thereby revoked) the token this run read.
+    tables.oauth_tokens[0].refresh_token = "rotated-by-the-other-run";
+    return json(REVOKED_GRANT_BODY, 400);
+  });
+
+  const res = await h.call({ sync_type: "incremental" });
+  assertEquals(res.status, 502);
+  assertEquals((await res.json()).code, "refresh_failed");
+  assertEquals(integrationOf(h).status, "connected");
 });
 
 Deno.test("strava-sync: 250 activities are written in 3 upsert calls, heartbeating the queue lease", async () => {
@@ -341,7 +453,11 @@ Deno.test("strava-sync: 250 activities are written in 3 upsert calls, heartbeati
     start_date: new Date(Date.parse(T0) + (i + 1) * 60_000).toISOString(),
   }));
   const tables = baseTables(T0, HISTORY);
-  tables.sync_queue = [queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT)];
+  tables.sync_queue = [
+    queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT),
+    // Another provider's live row for the same user: it must not be renewed.
+    { ...queueRow(OTHER_QUEUE_ID, "incremental", "processing", CLAIMED_AT), provider: "hevy" },
+  ];
   const h = queueHarness(tables, (url) => stravaActivitiesResponse(many, url));
 
   const res = await h.call({ sync_type: "incremental", queue_id: QUEUE_ID });
@@ -351,18 +467,106 @@ Deno.test("strava-sync: 250 activities are written in 3 upsert calls, heartbeati
   const activityUpserts = h.upserts.filter((u) => u.table === "external_activities");
   assertEquals(activityUpserts.map((u) => u.rows), [100, 100, 50]);
   assertEquals(h.db.rows("external_activities").length, HISTORY.length + 250);
-  // One heartbeat per chunk, each renewing the lease to "now".
-  assertEquals(h.heartbeats, Array(3).fill(new Date(NOW).toISOString()));
-  assertEquals(h.db.rows("sync_queue")[0].status, "completed");
+  // One heartbeat on entry, one per fetched page (250 of 200 per page = 2),
+  // one per upsert chunk.
+  assertEquals(h.heartbeats, Array(1 + 2 + 3).fill(new Date(NOW).toISOString()));
+  const [stravaRow, hevyRow] = h.db.rows("sync_queue");
+  assertEquals(stravaRow.status, "completed");
+  // The lease was renewed on the target row only (completion leaves it alone).
+  assertEquals(stravaRow.started_at, new Date(NOW).toISOString());
+  assertEquals(hevyRow.started_at, CLAIMED_AT);
+  assertEquals(hevyRow.status, "processing");
+});
+
+Deno.test("strava-sync: an activity repeated across pages does not fail its chunk", async () => {
+  // Offset paging: an upload during the run shifts the boundary, so the last
+  // activity of page 1 appears again as the first of page 2.
+  const page1 = Array.from({ length: 200 }, (_, i) => ({
+    ...activity(2000 + i, 6),
+    start_date: new Date(Date.parse(T0) + (i + 1) * 60_000).toISOString(),
+  }));
+  const page2 = [page1[199], {
+    ...activity(2500, 6),
+    start_date: new Date(Date.parse(T0) + 400 * 60_000).toISOString(),
+  }];
+  const h = queueHarness(baseTables(T0, HISTORY), (url) => {
+    const page = Number(url.searchParams.get("page") ?? 1);
+    return json(page === 1 ? page1 : page === 2 ? page2 : []);
+  });
+
+  const res = await h.call({ sync_type: "incremental" });
+  assertEquals(res.status, 200, await res.clone().text());
+  // 202 fetched, 201 distinct: chunks of 100/100/1, none rejected.
+  assertEquals((await res.json()).synced_count, 201);
+  assertEquals(
+    h.upserts.filter((u) => u.table === "external_activities").map((u) => u.rows),
+    [100, 100, 1],
+  );
+  assertEquals(h.db.rows("external_activities").length, HISTORY.length + 201);
+});
+
+Deno.test("strava-sync: a failed chunk counts its rows, withholds the watermark and leaves the task open", async () => {
+  const many: StravaActivity[] = Array.from({ length: 250 }, (_, i) => ({
+    ...activity(3000 + i, 6),
+    start_date: new Date(Date.parse(T0) + (i + 1) * 60_000).toISOString(),
+  }));
+  const tables = baseTables(T0, HISTORY);
+  tables.sync_queue = [queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT)];
+  const h = queueHarness(tables, (url) => stravaActivitiesResponse(many, url), { failChunk: 1 });
+
+  const res = await h.call({ sync_type: "incremental", queue_id: QUEUE_ID });
+  assertEquals(res.status, 502);
+  const body = await res.json();
+  assertEquals(body.error, "Failed to persist 100 of 250 activities");
+  assertEquals(body.synced_count, 150);
+  assertEquals(integrationOf(h).last_sync_at, T0);
+  assertEquals(integrationOf(h).status, "connected");
+  assertEquals(h.db.rows("sync_queue")[0].status, "processing");
 });
 
 Deno.test("strava-sync: a run without queue_id neither heartbeats nor completes a queue row", async () => {
   const tables = baseTables(T0, HISTORY);
-  tables.sync_queue = [queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)];
+  // Same sync_type and status the fallback would otherwise have guessed at.
+  tables.sync_queue = [queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT)];
   const h = queueHarness(tables, (url) => stravaActivitiesResponse(SINCE_T0, url));
   const res = await h.call({ sync_type: "incremental" });
   assertEquals(res.status, 200);
   assertEquals(h.heartbeats, []);
   assertEquals(h.db.rows("sync_queue")[0].status, "processing");
   assertEquals(h.db.rows("sync_queue")[0].started_at, CLAIMED_AT);
+});
+
+Deno.test("strava-sync: a browser (JWT) run holds no lease and cannot complete a processing row", async () => {
+  const tables = baseTables(T0, HISTORY);
+  tables.sync_queue = [
+    queueRow(QUEUE_ID, "manual", "processing", CLAIMED_AT),
+    queueRow(OTHER_QUEUE_ID, "manual", "pending", null),
+  ];
+  const h = queueHarness(tables, (url) => stravaActivitiesResponse(SINCE_T0, url), {
+    jwtUserId: USER_ID,
+  });
+
+  // The JWT user sends a queue_id and someone else's user_id; both are ignored
+  // in favour of the JWT identity, and the browser path holds no lease.
+  const res = await h.call({
+    sync_type: "manual",
+    queue_id: QUEUE_ID,
+    user_id: "00000000-0000-4000-8000-000000000002",
+  });
+  assertEquals(res.status, 200, await res.clone().text());
+  assertEquals(h.heartbeats, []);
+  const [processing, pending] = h.db.rows("sync_queue");
+  // The named row is `processing`, which a browser run does not own, so
+  // nothing is completed — not even its own pending row.
+  assertEquals(processing.status, "processing");
+  assertEquals(processing.started_at, CLAIMED_AT);
+  assertEquals(pending.status, "pending");
+
+  // Without a queue_id the same run completes its own newest pending row of
+  // that sync_type, and still never touches the processing row.
+  const withoutQueueId = await h.call({ sync_type: "manual" });
+  assertEquals(withoutQueueId.status, 200);
+  assertEquals(h.db.rows("sync_queue")[0].status, "processing");
+  assertEquals(h.db.rows("sync_queue")[1].status, "completed");
+  assertEquals(h.heartbeats, []);
 });

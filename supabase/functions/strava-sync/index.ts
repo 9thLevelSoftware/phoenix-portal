@@ -22,6 +22,20 @@ type DbClient = SupabaseClient<any, any, any>;
 const UPSERT_CHUNK_SIZE = 100;
 
 /**
+ * Per-request ceiling for every Strava call (token refresh and each activity
+ * page).
+ *
+ * process-sync-queue reclaims a strava task whose `started_at` is older than
+ * HEARTBEAT_LEASE_MS (5 minutes). This run heartbeats on entry and after each
+ * fetched page and each upsert chunk, so the longest possible silence is one
+ * request plus the 350 ms inter-page delay plus the surrounding writes —
+ * comfortably under the lease. Without a timeout a single hung request could
+ * outlast it, and the row would be reclaimed and re-dispatched while this run
+ * was still alive.
+ */
+const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
  * Strava Activity Sync Edge Function
  *
  * Fetches activities from Strava API, normalizes them, and upserts to
@@ -117,6 +131,18 @@ interface StravaClientCredentials {
   fetch: typeof fetch;
   clientId: string | undefined;
   clientSecret: string | undefined;
+  /** Optional abort signal (e.g. a timeout). */
+  signal?: AbortSignal;
+}
+
+/**
+ * The parts of a Strava error entry that are safe to log: a small enumerated
+ * vocabulary (`resource`, `field`, `code`), never free text or a token.
+ */
+interface StravaErrorDetail {
+  resource: string | null;
+  field: string | null;
+  code: string | null;
 }
 
 interface StravaRefreshedTokens {
@@ -128,17 +154,45 @@ interface StravaRefreshedTokens {
 
 /**
  * Thrown when the refresh fails. `status` is Strava's HTTP status (null for a
- * network error or missing client config). The message carries only the
- * status, never the response body or any token.
+ * network error or missing client config). `reason` is one of a fixed set of
+ * strings and `details` holds only Strava's enumerated error vocabulary, so
+ * neither the response body nor any token can reach a log, a stored
+ * `error_message` or an HTTP response.
  *
  * Same shape as PR 54's `_shared/stravaToken.ts` (`refreshStravaAccessToken` /
- * `StravaRefreshError`): when both land, delete this copy and import those.
+ * `StravaRefreshError`), plus `details`: when both land, keep `details` (the
+ * refresh-token classification below needs it) and delete this copy.
  */
 class StravaRefreshError extends Error {
-  constructor(readonly status: number | null, reason: string) {
-    super(`Token refresh failed: ${reason}`);
+  constructor(
+    readonly status: number | null,
+    reason: string,
+    readonly details: StravaErrorDetail[] = [],
+  ) {
+    super(reason);
     this.name = 'StravaRefreshError';
   }
+}
+
+/** Keep only the enumerated fields, and only if they are short identifiers. */
+function safeIdentifier(value: unknown): string | null {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(value) ? value : null;
+}
+
+/**
+ * Parse Strava's error body, which looks like
+ * `{"message":"Bad Request","errors":[{"resource":"RefreshToken","field":"refresh_token","code":"invalid"}]}`.
+ * Only `resource`/`field`/`code` are kept; `message` and anything unexpected
+ * are dropped unread.
+ */
+function parseStravaErrorDetails(body: unknown): StravaErrorDetail[] {
+  const errors = (body as { errors?: unknown } | null)?.errors;
+  if (!Array.isArray(errors)) return [];
+  return errors.slice(0, 5).map((entry) => ({
+    resource: safeIdentifier((entry as { resource?: unknown })?.resource),
+    field: safeIdentifier((entry as { field?: unknown })?.field),
+    code: safeIdentifier((entry as { code?: unknown })?.code),
+  }));
 }
 
 async function refreshAccessToken(
@@ -159,17 +213,33 @@ async function refreshAccessToken(
         grant_type: 'refresh_token',
         refresh_token: refreshToken,
       }),
+      signal: credentials.signal,
     });
   } catch (err) {
-    throw new StravaRefreshError(null, `network error: ${(err as Error).message}`);
+    // The underlying message may name internals; log it, never propagate it.
+    console.error('[STRAVA_REFRESH] network error:', err);
+    throw new StravaRefreshError(null, 'network error');
   }
 
   if (!response.ok) {
-    await response.body?.cancel();
-    throw new StravaRefreshError(response.status, `HTTP ${response.status}`);
+    // The body is read only to classify the failure (see
+    // parseStravaErrorDetails); it is never logged, stored or returned.
+    let details: StravaErrorDetail[] = [];
+    try {
+      details = parseStravaErrorDetails(await response.json());
+    } catch {
+      details = [];
+    }
+    throw new StravaRefreshError(response.status, `HTTP ${response.status}`, details);
   }
 
-  const body = await response.json() as Partial<StravaRefreshedTokens> | null;
+  let body: Partial<StravaRefreshedTokens> | null = null;
+  try {
+    body = await response.json() as Partial<StravaRefreshedTokens> | null;
+  } catch {
+    // A non-JSON 200 body: V8's SyntaxError quotes the body, so it is dropped.
+    throw new StravaRefreshError(response.status, 'malformed response');
+  }
   if (!body || typeof body.access_token !== 'string' || typeof body.expires_at !== 'number') {
     throw new StravaRefreshError(response.status, 'malformed response');
   }
@@ -181,12 +251,67 @@ async function refreshAccessToken(
 }
 
 /**
- * Strava answers a refresh with 400 (invalid/revoked refresh token, "Bad
- * Request") or 401 when the grant is gone. Retrying cannot fix that: the user
- * has to reconnect.
+ * Whether the refresh failed because THIS USER's grant is gone.
+ *
+ * Strava answers with 400/401 for application-level problems too — a wrong
+ * `client_secret` or `client_id` gives `resource: "Application"` — so the
+ * status alone cannot be trusted: classifying an operator misconfiguration as
+ * a revoked grant would move every Strava user to `token_expired` (and they
+ * could not reconnect, since the OAuth exchange uses the same bad secret).
+ *
+ * Only an error that names the refresh token is treated as revoked. An
+ * unrecognised body, a missing body, a 429, a network error and a missing
+ * client config all fall through to the retryable branch, which keeps the
+ * user connected.
  */
 function isRevokedGrant(err: StravaRefreshError): boolean {
-  return err.status === 400 || err.status === 401;
+  if (err.status !== 400 && err.status !== 401) return false;
+  return err.details.some(
+    (detail) => detail.resource === 'RefreshToken' || detail.field === 'refresh_token',
+  );
+}
+
+/**
+ * Whether `oauth_tokens.refresh_token` is still the token this run used.
+ *
+ * Strava revokes the previous refresh token on every rotation, so a run that
+ * loses a concurrent refresh race is handed the same 400 as a genuinely
+ * revoked grant. Re-reading the row separates the two. On a read failure the
+ * answer is "no", which routes to the non-destructive retry branch.
+ */
+async function storedRefreshTokenMatches(
+  supabase: DbClient,
+  userId: string,
+  usedRefreshToken: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('oauth_tokens')
+    .select('refresh_token')
+    .eq('user_id', userId)
+    .eq('provider', 'strava')
+    .maybeSingle();
+
+  if (error || !data) {
+    console.error('[STRAVA_REFRESH] could not re-read stored refresh token:', error);
+    return false;
+  }
+  const stored = (await decryptOAuthSecret(data.refresh_token as string)) ?? '';
+  if (stored !== usedRefreshToken) {
+    console.warn(
+      '[STRAVA_REFRESH] stored refresh token changed during this run; ' +
+        'another sync refreshed it, so the grant is not revoked',
+    );
+    return false;
+  }
+  return true;
+}
+
+/** Enumerated classification inputs, safe to log. */
+function describeRefreshFailure(err: StravaRefreshError): string {
+  const details = err.details
+    .map((d) => `${d.resource ?? '?'}/${d.field ?? '?'}/${d.code ?? '?'}`)
+    .join(',');
+  return `status=${err.status ?? 'none'} reason=${err.message} errors=[${details}]`;
 }
 
 // ---------------------------------------------------------------------------
@@ -274,11 +399,18 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
     const sync_type = body.sync_type ?? 'incremental';
     const queueId = typeof body.queue_id === 'string' ? body.queue_id : null;
     const calledByQueueProcessor = !jwtUser;
+    // Only the queue path holds a lease on a sync_queue row.
+    const leaseQueueId = calledByQueueProcessor ? queueId : null;
 
     const supabase = deps.createClient(
       deps.env('SUPABASE_URL')!,
       deps.env('SUPABASE_SERVICE_ROLE_KEY')!
     );
+
+    // Renew the lease immediately: the processor claimed this row before it
+    // called us, and the work below (subscription check, token refresh, page
+    // fetches) must not be counted against that claim's clock.
+    await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
 
     // Subscription gate — FLAME or higher required for integrations
     const gate = await requireSubscription(supabase, userId, 'FLAME', cors);
@@ -325,14 +457,24 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
           fetch: deps.fetch,
           clientId: deps.env('STRAVA_CLIENT_ID'),
           clientSecret: deps.env('STRAVA_CLIENT_SECRET'),
+          signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
         });
       } catch (err) {
         const refreshError = err instanceof StravaRefreshError
           ? err
-          : new StravaRefreshError(null, (err as Error).message);
-        console.error('Strava token refresh failed:', refreshError.message);
+          : new StravaRefreshError(null, 'unexpected error');
+        // Classification inputs only: statuses and Strava's enumerated error
+        // vocabulary. Never the response body.
+        console.error(`[STRAVA_REFRESH] ${describeRefreshFailure(refreshError)}`);
 
-        if (isRevokedGrant(refreshError)) {
+        // A lost rotation race looks exactly like a revoked grant: the other
+        // run has already exchanged (and thereby revoked) the token this run
+        // read. Downgrade only while the rejected token is still the stored
+        // one; otherwise the grant is alive and this run simply lost.
+        const revoked = isRevokedGrant(refreshError)
+          && await storedRefreshTokenMatches(supabase, userId, refreshToken);
+
+        if (revoked) {
           // The grant is gone: surface it so the card asks the user to
           // reconnect, and fail the queue task terminally (401 is not in
           // process-sync-queue's retryable set).
@@ -351,16 +493,19 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
           );
         }
 
-        // Strava-side or transient failure (5xx, 429, network): keep the
-        // integration connected and return 502 so the queue retries.
+        // Everything else — a Strava 5xx, a 429, an application-level 400/401
+        // (wrong client id/secret), a network error, an unparseable body, or a
+        // lost rotation race — keeps the integration connected and returns 502
+        // so the queue retries. A misconfigured app must never disconnect
+        // users: correcting the secret then fixes everyone at once.
         await supabase
           .from('user_integrations')
-          .update({ error_message: `Strava token refresh failed (${refreshError.message}); will retry` })
+          .update({ error_message: 'Strava token refresh failed; will retry' })
           .eq('user_id', userId)
           .eq('provider', 'strava');
 
         return new Response(
-          JSON.stringify({ error: refreshError.message }),
+          JSON.stringify({ error: 'Strava token refresh failed', code: 'refresh_failed' }),
           { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
         );
       }
@@ -481,6 +626,7 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
         `https://www.strava.com/api/v3/athlete/activities?${params}`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
+          signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
         }
       );
 
@@ -488,6 +634,9 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
       // or failure — a 429 is exactly when this information matters most.
       lastSnapshot = parseStravaRateLimitHeaders(activitiesResponse.headers);
       await recordStravaUsage(supabase, lastSnapshot);
+      // Renew the lease per page: the fetch phase is otherwise silent, and a
+      // reclaimed row would be dispatched a second time while this run lives.
+      await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
 
       if (activitiesResponse.status === 429) {
         const retryAfter = parseRetryAfterSeconds(activitiesResponse.headers);
@@ -554,16 +703,23 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
     const errors: string[] = [];
     let syncedCount = 0;
     let failedCount = 0;
-    // Only the queue path holds a lease on a sync_queue row.
-    const leaseQueueId = calledByQueueProcessor ? queueId : null;
+
+    // Pages are offset-based, so an activity uploaded mid-run shifts the page
+    // boundaries and can repeat one activity on the next page. A multi-row
+    // upsert rejects two rows sharing a conflict key ("ON CONFLICT DO UPDATE
+    // command cannot affect row a second time"), which would fail the whole
+    // chunk, so collapse duplicates first, keeping the last copy seen.
+    const deduped = new Map<string, StravaActivityRaw>();
+    for (const raw of rawActivities) deduped.set(String(raw.id), raw);
+    const uniqueActivities = [...deduped.values()];
 
     // Upsert in chunks (the hevy-sync pattern) rather than one round trip per
     // activity: a 2,000-activity backfill page set would otherwise take 2,000
     // requests. After each chunk the queue row's lease is renewed so
     // process-sync-queue does not reclaim a run that is still making progress.
     const syncedAt = deps.now().toISOString();
-    for (let i = 0; i < rawActivities.length; i += UPSERT_CHUNK_SIZE) {
-      const chunkRaw = rawActivities.slice(i, i + UPSERT_CHUNK_SIZE);
+    for (let i = 0; i < uniqueActivities.length; i += UPSERT_CHUNK_SIZE) {
+      const chunkRaw = uniqueActivities.slice(i, i + UPSERT_CHUNK_SIZE);
       const rangeLabel = `Activities ${i}-${i + chunkRaw.length - 1}`;
       try {
         const rows = chunkRaw.map((raw) => ({
@@ -597,7 +753,7 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
     // processor retries (upserts are idempotent), and surface a 502.
     // ---------------------------------------------------------------
     if (errors.length > 0) {
-      const failMessage = `Failed to persist ${failedCount} of ${rawActivities.length} activities`;
+      const failMessage = `Failed to persist ${failedCount} of ${uniqueActivities.length} activities`;
       // Keep status 'connected' so the queued 502 retry can re-enter this
       // handler (it rejects any non-connected integration with a 404). We only
       // record the error and withhold the last_sync_at advance.

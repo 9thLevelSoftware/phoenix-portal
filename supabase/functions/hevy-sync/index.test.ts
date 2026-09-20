@@ -61,7 +61,7 @@ function fakeHevy(count: number) {
   };
 }
 
-function harness(db: FakeDb, workoutCount: number) {
+function harness(db: FakeDb, workoutCount: number, jwtUserId: string | null = null) {
   const handler = createHevySyncHandler({
     env: (key) =>
       ({
@@ -70,7 +70,7 @@ function harness(db: FakeDb, workoutCount: number) {
         SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
       } as Record<string, string>)[key],
     // deno-lint-ignore no-explicit-any
-    createClient: () => fakeClient(db) as any,
+    createClient: () => fakeClient(db, jwtUserId) as any,
     fetch: fakeHevy(workoutCount) as typeof fetch,
     now: () => new Date(NOW),
   });
@@ -80,7 +80,7 @@ function harness(db: FakeDb, workoutCount: number) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+          Authorization: jwtUserId ? "Bearer user-jwt" : `Bearer ${SERVICE_ROLE_KEY}`,
         },
         body: JSON.stringify({ user_id: USER_ID, ...body }),
       }),
@@ -128,6 +128,38 @@ Deno.test("hevy-sync: the queue lease is renewed while a backfill runs", async (
   assertEquals(heartbeats, 2 + 3);
   assertEquals(db.rows("external_activities").length, 250);
   assertEquals(db.rows("sync_queue")[0].status, "completed");
+  // The lease landed on this row, at the injected clock (completion keeps it).
+  assertEquals(db.rows("sync_queue")[0].started_at, new Date(NOW).toISOString());
+});
+
+Deno.test("hevy-sync: a JWT caller cannot touch another user's rows", async () => {
+  const OTHER_USER_ID = "00000000-0000-4000-8000-000000000002";
+  const foreignRow: Row = {
+    ...queueRow(QUEUE_ID, "manual", "pending", null),
+    user_id: OTHER_USER_ID,
+  };
+  const db = new FakeDb(tables([foreignRow]));
+  // A live row of the JWT user's own, which a browser run must not lease.
+  db.rows("sync_queue").push(queueRow(OTHER_QUEUE_ID, "manual", "processing", CLAIMED_AT));
+
+  // The JWT identity wins over body.user_id, and queue_id names a foreign row.
+  const res = await harness(db, 2, USER_ID)({
+    sync_type: "manual",
+    user_id: OTHER_USER_ID,
+    queue_id: QUEUE_ID,
+  });
+  assertEquals(res.status, 200, await res.clone().text());
+
+  const [foreign, own] = db.rows("sync_queue");
+  assertEquals(foreign.status, "pending");
+  assertEquals(foreign.completed_at, null);
+  assertEquals(own.status, "processing");
+  assertEquals(own.started_at, CLAIMED_AT);
+  // The workouts were written for the JWT user, not for body.user_id.
+  assertEquals(
+    new Set(db.rows("external_activities").map((r) => r.user_id)),
+    new Set([USER_ID]),
+  );
 });
 
 Deno.test("hevy-sync: a run that names another user's queue row completes nothing", async () => {

@@ -38,10 +38,17 @@ import {
  *
  * When dispatched by process-sync-queue the body also carries `queue_id`: the
  * run completes that row only, and renews its lease (heartbeat) while it runs.
+ * process-sync-queue reclaims a hevy task after HEARTBEAT_LEASE_MS (5 minutes)
+ * without a heartbeat, so the longest silent window here is
+ * HEARTBEAT_EVERY_PAGES requests, each capped by PROVIDER_REQUEST_TIMEOUT_MS
+ * (10 × 30 s worst case, under the lease), or one upsert chunk.
  */
 
 /** Renew the queue lease after this many fetched Hevy pages. */
 const HEARTBEAT_EVERY_PAGES = 10;
+
+/** Per-request ceiling for Hevy calls, so a hung request cannot outlast the lease. */
+const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
 
 export interface HevySyncDependencies {
   env: (key: string) => string | undefined;
@@ -223,7 +230,10 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
       // outlast process-sync-queue's heartbeat lease before any upsert runs.
       let pagesFetched = 0;
       const fetchWithHeartbeat: typeof fetch = async (input, init) => {
-        const response = await deps.fetch(input, init);
+        const response = await deps.fetch(input, {
+          ...init,
+          signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+        });
         pagesFetched++;
         if (pagesFetched % HEARTBEAT_EVERY_PAGES === 0) {
           await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());

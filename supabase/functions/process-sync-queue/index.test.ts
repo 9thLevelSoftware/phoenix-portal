@@ -302,44 +302,74 @@ Deno.test("process-sync-queue: a near-miss service-role bearer gives 401", async
   }
 });
 
-Deno.test("process-sync-queue: a heartbeating provider's row with a heartbeat older than 5 minutes is reclaimed", async () => {
-  const h = harness(BASE_ENV, {
+const minutesAgo = (minutes: number) =>
+  new Date(Date.now() - minutes * 60 * 1000).toISOString();
+
+function leaseHarness(provider: string, startedAt: string) {
+  return harness(BASE_ENV, {
     sync_queue: [
       pendingRow(TASK_ID, "initial", "2026-09-14T00:00:00.000Z", {
+        provider,
         status: "processing",
-        started_at: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
+        started_at: startedAt,
       }),
     ],
     subscriptions: [FLAME_SUBSCRIPTION],
     rate_limit_tracking: [],
   });
+}
 
-  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
-  assertEquals(await res.json(), { processed: 1, failed: 0, skipped: 0 });
-  // Reclaimed (one retry charged) and re-dispatched in the same pass.
-  assertEquals(h.fetchCalls.length, 1);
-  const [task] = h.db.tables.sync_queue;
-  assertEquals(task.retry_count, 1);
-  assertEquals(task.status, "completed");
-});
+// strava, hevy and liftosaur heartbeat while they run (heartbeatSyncQueueEntry
+// in _shared/syncQueue.ts), so a 5-minute silence means the worker is gone.
+for (const provider of ["strava", "hevy", "liftosaur"]) {
+  Deno.test(`process-sync-queue: a ${provider} row whose heartbeat is older than 5 minutes is reclaimed`, async () => {
+    const h = leaseHarness(provider, minutesAgo(6));
 
-Deno.test("process-sync-queue: a provider without heartbeats keeps the 30-minute lease", async () => {
-  const LIVE_FITBIT_ID = "00000000-0000-4000-8000-0000000000dd";
-  const h = harness(BASE_ENV, {
-    sync_queue: [
-      pendingRow(LIVE_FITBIT_ID, "incremental", "2026-09-14T00:00:00.000Z", {
-        provider: "fitbit",
-        status: "processing",
-        started_at: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
-      }),
-    ],
-    subscriptions: [FLAME_SUBSCRIPTION],
-    rate_limit_tracking: [],
+    const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+    assertEquals(await res.json(), { processed: 1, failed: 0, skipped: 0 });
+    // Reclaimed (one retry charged) and re-dispatched in the same pass.
+    assertEquals(h.fetchCalls.length, 1);
+    assertEquals(h.fetchCalls[0].url, `${SUPABASE_URL}/functions/v1/${provider}-sync`);
+    const [task] = h.db.tables.sync_queue;
+    assertEquals(task.retry_count, 1);
+    assertEquals(task.status, "completed");
   });
 
-  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
-  assertEquals(await res.json(), { processed: 0, failed: 0, skipped: 0 });
-  assertEquals(h.fetchCalls.length, 0);
-  assertEquals(h.db.tables.sync_queue[0].status, "processing");
-  assertEquals(h.db.tables.sync_queue[0].retry_count, 0);
-});
+  Deno.test(`process-sync-queue: a ${provider} row that heartbeated 4.5 minutes ago keeps its lease`, async () => {
+    const h = leaseHarness(provider, minutesAgo(4.5));
+
+    const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+    assertEquals(await res.json(), { processed: 0, failed: 0, skipped: 0 });
+    assertEquals(h.fetchCalls.length, 0);
+    assertEquals(h.db.tables.sync_queue[0].status, "processing");
+    assertEquals(h.db.tables.sync_queue[0].retry_count, 0);
+  });
+}
+
+// fitbit never heartbeats and garmin is never dispatched, so both keep the
+// long lease: a 5-minute one would reclaim live fitbit runs.
+for (const provider of ["fitbit", "garmin"]) {
+  Deno.test(`process-sync-queue: a ${provider} row keeps the 30-minute lease`, async () => {
+    const h = leaseHarness(provider, minutesAgo(6));
+
+    const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+    assertEquals(await res.json(), { processed: 0, failed: 0, skipped: 0 });
+    assertEquals(h.fetchCalls.length, 0);
+    assertEquals(h.db.tables.sync_queue[0].status, "processing");
+    assertEquals(h.db.tables.sync_queue[0].retry_count, 0);
+  });
+
+  Deno.test(`process-sync-queue: a ${provider} row idle for 31 minutes is still reclaimed`, async () => {
+    const h = leaseHarness(provider, minutesAgo(31));
+
+    const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+    // garmin is rejected by callSyncFunction (webhook-driven), so it fails
+    // after being reclaimed (a second retry charged); fitbit is dispatched.
+    assertEquals(h.db.tables.sync_queue[0].retry_count, provider === "garmin" ? 2 : 1);
+    assertEquals(
+      h.db.tables.sync_queue[0].status,
+      provider === "garmin" ? "failed" : "completed",
+    );
+    await res.body?.cancel();
+  });
+}

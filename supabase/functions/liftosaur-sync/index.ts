@@ -5,6 +5,7 @@ import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCry
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 import {
 	completeSyncQueueEntry,
+	type DbClient,
 	heartbeatSyncQueueEntry,
 } from "../_shared/syncQueue.ts";
 
@@ -19,6 +20,12 @@ import {
  * - Normalizes and upserts to external_activities
  *
  * API docs: https://www.liftosaur.com/doc/api
+ *
+ * When dispatched by process-sync-queue the body also carries `queue_id`: the
+ * run completes that row only, and renews its lease (heartbeat) while it runs.
+ * process-sync-queue reclaims a liftosaur task after HEARTBEAT_LEASE_MS
+ * (5 minutes) without a heartbeat. The longest silent window here is one
+ * request (capped by PROVIDER_REQUEST_TIMEOUT_MS) or 100 record upserts.
  */
 
 const LIFTOSAUR_API_BASE = "https://www.liftosaur.com/api/v1";
@@ -29,6 +36,37 @@ const LIFTOSAUR_API_BASE = "https://www.liftosaur.com/api/v1";
  * process-sync-queue's heartbeat lease without it.
  */
 const HEARTBEAT_EVERY_RECORDS = 100;
+
+/** Per-request ceiling for Liftosaur calls, so a hung request cannot outlast the lease. */
+const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
+
+export interface LiftosaurSyncDependencies {
+	env: (key: string) => string | undefined;
+	// deno-lint-ignore no-explicit-any
+	createClient: (url: string, key: string, options?: any) => DbClient;
+	/** Used for Liftosaur API calls. */
+	fetch: typeof fetch;
+	now: () => Date;
+}
+
+function defaultLiftosaurSyncDependencies(): LiftosaurSyncDependencies {
+	return {
+		env: (key) => Deno.env.get(key),
+		createClient: (url, key, options) => createClient(url, key, options),
+		fetch: (input, init) => fetch(input, init),
+		now: () => new Date(),
+	};
+}
+
+export function createLiftosaurSyncHandler(
+	dependencies: LiftosaurSyncDependencies = defaultLiftosaurSyncDependencies(),
+): (req: Request) => Promise<Response> {
+	return (req) => liftosaurSync(req, dependencies);
+}
+
+if (import.meta.main) {
+	Deno.serve(createLiftosaurSyncHandler());
+}
 
 interface LiftosaurRecord {
 	id: number;
@@ -76,7 +114,10 @@ function parseLiftoscriptMetadata(text: string): {
 	return { timestamp, program, dayName, durationSeconds };
 }
 
-Deno.serve(async (req) => {
+async function liftosaurSync(
+	req: Request,
+	deps: LiftosaurSyncDependencies,
+): Promise<Response> {
 	const cors = getCorsHeaders(req);
 
 	// CORS preflight
@@ -104,9 +145,9 @@ Deno.serve(async (req) => {
 		let userId: string;
 
 		// Try JWT auth first (browser-initiated calls)
-		const supabaseAuth = createClient(
-			Deno.env.get("SUPABASE_URL")!,
-			Deno.env.get("SUPABASE_ANON_KEY")!,
+		const supabaseAuth = deps.createClient(
+			deps.env("SUPABASE_URL")!,
+			deps.env("SUPABASE_ANON_KEY")!,
 			{ global: { headers: { Authorization: authHeader } } }
 		);
 		const {
@@ -119,7 +160,7 @@ Deno.serve(async (req) => {
 		} else {
 			// Not a valid user JWT -- must be service-role call from process-sync-queue
 			// Verify the caller is actually using the service role key
-			const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+			const serviceRoleKey = deps.env("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 			const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
 
 			if (!isServiceRole || !body.user_id) {
@@ -140,10 +181,14 @@ Deno.serve(async (req) => {
 		// Only the queue path holds a lease on a sync_queue row.
 		const leaseQueueId = calledByQueueProcessor ? queueId : null;
 
-		const supabase = createClient(
-			Deno.env.get("SUPABASE_URL")!,
-			Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+		const supabase = deps.createClient(
+			deps.env("SUPABASE_URL")!,
+			deps.env("SUPABASE_SERVICE_ROLE_KEY")!
 		);
+
+		// Renew the lease immediately: the processor claimed this row before it
+		// called us, so the work below must not run on that claim's clock.
+		await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
 
 		// Subscription gate — FLAME or higher required for integrations
 		const gate = await requireSubscription(supabase, userId, "FLAME", cors);
@@ -228,7 +273,7 @@ Deno.serve(async (req) => {
 		// Capture the watermark before fetching so records Liftosaur writes while
 		// this run is in flight fall inside the next window rather than being
 		// skipped. Upserts are idempotent, so the overlap costs nothing.
-		const syncStartedAt = new Date().toISOString();
+		const syncStartedAt = deps.now().toISOString();
 
 		// Fetch workout history from Liftosaur API with pagination
 		let allRecords: LiftosaurRecord[] = [];
@@ -249,13 +294,14 @@ Deno.serve(async (req) => {
 					params.set("cursor", cursor.toString());
 				}
 
-				const response = await fetch(
+				const response = await deps.fetch(
 					`${LIFTOSAUR_API_BASE}/history?${params.toString()}`,
 					{
 						headers: {
 							Authorization: `Bearer ${storedApiKey}`,
 							"Content-Type": "application/json",
 						},
+						signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
 					}
 				);
 
@@ -294,7 +340,7 @@ Deno.serve(async (req) => {
 				hasMore = result.data.hasMore;
 				cursor = result.data.nextCursor;
 				page++;
-				await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId);
+				await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
 			}
 		} catch (fetchError) {
 			console.error("Liftosaur API fetch error:", fetchError);
@@ -327,7 +373,7 @@ Deno.serve(async (req) => {
 		// of per-record wall-clock time. Using a single shared value makes it
 		// clear that these rows were imported at a known sync boundary, not that
 		// the wall clock happened to match the workout time.
-		const syncInvokedAt = new Date().toISOString();
+		const syncInvokedAt = deps.now().toISOString();
 
 		let importedCount = 0;
 		let failedCount = 0;
@@ -335,7 +381,7 @@ Deno.serve(async (req) => {
 		for (const record of allRecords) {
 			processedRecords++;
 			if (processedRecords % HEARTBEAT_EVERY_RECORDS === 0) {
-				await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId);
+				await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
 			}
 			const meta = parseLiftoscriptMetadata(record.text);
 
@@ -438,4 +484,4 @@ Deno.serve(async (req) => {
 			headers: { ...cors, "Content-Type": "application/json" },
 		});
 	}
-});
+}
