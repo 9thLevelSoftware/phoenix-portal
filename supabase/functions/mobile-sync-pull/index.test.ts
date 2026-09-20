@@ -2,6 +2,7 @@ import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { CHILD_PAGE_SIZE } from "../_shared/pagedByParent.ts";
 import { createMobileSyncPullHandler } from "./index.ts";
+import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 
 type AuthBehavior = (jwt: string) => Promise<unknown>;
 
@@ -1066,21 +1067,6 @@ for (
     assertEquals(harness.loggerCalls, [[{ name: expectedName }]]);
   });
 }
-
-interface LocalIntegrationEnvironment {
-  url: string;
-  anonKey: string;
-  serviceRoleKey: string;
-}
-
-const localIntegrationEnvironment: LocalIntegrationEnvironment | null = (() => {
-  const url = Deno.env.get("SUPABASE_URL");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  return url && anonKey && serviceRoleKey
-    ? { url, anonKey, serviceRoleKey }
-    : null;
-})();
 
 interface LocalPullFixture {
   admin: SupabaseClient;
