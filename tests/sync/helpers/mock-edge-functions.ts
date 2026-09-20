@@ -269,19 +269,20 @@ export function mockPushEndpoint(
 	// Store sessions
 	if (payload.sessions) {
 		for (const session of payload.sessions) {
+			const portalSessionId = session.routineSessionId ?? session.id;
 			const blockedParent = [...mockStore.workoutDeletions.values()].some(
 				(deletion) =>
 					deletion.scope === "WORKOUT" &&
-					deletion.portalSessionId === session.id,
+					deletion.portalSessionId === portalSessionId,
 			);
 			if (blockedParent) continue;
 			const activeExercises = session.exercises.filter(
 				(exercise) =>
 					![...mockStore.workoutDeletions.values()].some(
 						(deletion) =>
-							deletion.portalSessionId === session.id &&
-							deletion.scope === "COMPONENT" &&
-							deletion.componentSessionId === exercise.id,
+							deletion.portalSessionId === portalSessionId &&
+							(deletion.scope === "WORKOUT" ||
+								deletion.componentSessionId === exercise.id),
 					),
 			);
 			const existing = mockStore.sessions.get(session.id);

@@ -32,6 +32,13 @@ type PushAdditions = {
 };
 ```
 
+Legacy `deletedCycleIds` remain accepted so older mobile builds keep parsing.
+They never hard-delete and they never write a cycle tombstone. Existing
+server rows become structured cycle rejections so the sender keeps the
+server copy. Ids with no server row are silent no-ops: they are neither
+acknowledged nor rejected. Newer clients must send clocked `deletedCycles`
+to prevent a later stale upload from recreating a locally deleted cycle.
+
 `sourceProfileId: null` means a legacy unscoped server row. The target must be
 a registered `local_profiles` id (`"default"` or UUID). The target is created
 or refreshed only through the existing `profileId`/`profileName`/`allProfiles`
@@ -121,8 +128,11 @@ metadata.
 Both arrays use the existing opaque cursor and shared page size (75 default,
 300 maximum). Entity order is sessions, routines, cycles, workout deletions,
 ownership events, badges, stats, personal records, custom exercises. Deletions
-order by `(deleted_at, mutation_id)` and events by
-`(transferred_at, mutation_id)`.
+order and incremental-filter by `(recorded_at, mutation_id)` — the server
+commit time — and events by `(transferred_at, mutation_id)`. A late upload of
+an older offline deletion still reaches devices whose `lastSync` is after the
+client-supplied `deletedAt`. The wire `deletedAt` value remains that original
+deletion timestamp.
 
 ## Server operations
 

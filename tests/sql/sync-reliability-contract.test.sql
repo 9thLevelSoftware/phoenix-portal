@@ -375,6 +375,33 @@ DO $$ DECLARE v_rejected BOOLEAN := FALSE; BEGIN
   IF NOT v_rejected THEN RAISE EXCEPTION 'component deletion accepted wrong portal group'; END IF;
 END $$;
 
+-- Grouped uploads send the local session id separately from the portal parent.
+-- Tombstone matching must use portalSessionId, not the local id.
+SELECT mutation_id FROM public.apply_workout_deletions(
+  '00000000-0000-4000-8000-000000000001','default',
+  '[{"mutationId":"80000000-0000-4000-8000-000000000050","scope":"WORKOUT","portalSessionId":"10000000-0000-4000-8000-000000000050","deletedAt":"2026-01-01T00:00:00Z"}]'
+);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.get_blocked_workout_session_ids(
+      '00000000-0000-4000-8000-000000000001',
+      '[{"id":"10000000-0000-4000-8000-000000000051","portalSessionId":"10000000-0000-4000-8000-000000000050"}]'
+    ) WHERE session_id='10000000-0000-4000-8000-000000000051'
+  ) THEN RAISE EXCEPTION 'grouped portal tombstone missed local session id'; END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.get_blocked_workout_session_ids(
+      '00000000-0000-4000-8000-000000000001',
+      '[{"id":"10000000-0000-4000-8000-000000000051"}]'
+    )
+  ) THEN RAISE EXCEPTION 'id-only probe blocked an ungrouped local session'; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.workout_deletion_tombstones
+    WHERE mutation_id='80000000-0000-4000-8000-000000000050'
+      AND deleted_at='2026-01-01T00:00:00Z'
+      AND recorded_at > deleted_at
+  ) THEN RAISE EXCEPTION 'tombstone recorded_at did not capture server commit time'; END IF;
+END $$;
+
 -- Parent acceptance and dependent replacement roll back as one unit.
 DO $$ BEGIN
   BEGIN

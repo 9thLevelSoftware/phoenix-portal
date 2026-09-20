@@ -448,6 +448,10 @@ interface SessionDto {
   workingReps: number | null;
 }
 
+function portalSessionIdOf(session: SessionDto): string {
+  return session.routineSessionId ?? session.id;
+}
+
 interface ExerciseDto {
   id: string;
   sessionId: string;
@@ -1469,7 +1473,7 @@ async function mobileSyncPushHandler(
         p_user_id: userId,
         p_sessions: payload.sessions.map((session) => ({
           id: session.id,
-          portalSessionId: session.routineSessionId ?? session.id,
+          portalSessionId: portalSessionIdOf(session),
         })),
       });
       if (error) throw new Error(`workout tombstone lookup failed: ${error.message}`);
@@ -1482,7 +1486,7 @@ async function mobileSyncPushHandler(
       const components = payload.sessions.flatMap((session) =>
         session.exercises.map((exercise) => ({
           id: exercise.id,
-          portalSessionId: session.id,
+          portalSessionId: portalSessionIdOf(session),
         }))
       );
       if (components.length > 0) {

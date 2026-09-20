@@ -1025,6 +1025,40 @@ Deno.test("component tombstone filters only the named exercise under a grouped p
   ]);
 });
 
+Deno.test("grouped workout tombstone probes use portalSessionId not the local session id", async () => {
+  const localSessionId = "51000000-0000-4000-8000-000000000010";
+  const portalSessionId = "51000000-0000-4000-8000-000000000011";
+  const body = validNestedRelationshipBody();
+  body.routines = [];
+  body.cycles = [];
+  const session = (body.sessions as Array<{
+    id: string;
+    routineSessionId?: string | null;
+    exercises: Array<{ id: string; sessionId: string }>;
+  }>)[0];
+  session.id = localSessionId;
+  session.routineSessionId = portalSessionId;
+  for (const exercise of session.exercises) {
+    exercise.sessionId = portalSessionId;
+  }
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(body));
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+
+  const sessionProbe = harness.adminRpcCalls.find((call) =>
+    call.name === "get_blocked_workout_session_ids"
+  );
+  assertEquals(sessionProbe?.args.p_sessions, [
+    { id: localSessionId, portalSessionId },
+  ]);
+  const componentProbe = harness.adminRpcCalls.find((call) =>
+    call.name === "get_blocked_workout_component_ids"
+  );
+  assertEquals(componentProbe?.args.p_components, [
+    { id: EXERCISE_ID, portalSessionId },
+  ]);
+});
+
 Deno.test("clocked cycle deletions return exact accepted ids and legacy ids never hard-delete", async () => {
   const deletedId = "30000000-0000-4000-8000-000000000011";
   const legacyId = "30000000-0000-4000-8000-000000000012";
@@ -1048,6 +1082,7 @@ Deno.test("clocked cycle deletions return exact accepted ids and legacy ids neve
 
   assertEquals(response.status, 200, JSON.stringify(body));
   assertEquals(body.acknowledgedDeletedCycleIds, [deletedId]);
+  assertEquals(body.rejections?.cycles ?? [], []);
   assert(harness.adminRpcCalls.some((call) => call.name === "delete_training_cycles_lww"));
   assertEquals(
     harness.adminWriteCalls.filter((call) =>

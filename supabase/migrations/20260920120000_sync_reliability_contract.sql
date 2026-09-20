@@ -23,8 +23,9 @@ CREATE TABLE IF NOT EXISTS public.workout_deletion_tombstones (
   )
 );
 
+DROP INDEX IF EXISTS public.idx_workout_deletion_account_cursor;
 CREATE INDEX IF NOT EXISTS idx_workout_deletion_account_cursor
-  ON public.workout_deletion_tombstones(user_id, deleted_at, mutation_id);
+  ON public.workout_deletion_tombstones(user_id, recorded_at, mutation_id);
 CREATE INDEX IF NOT EXISTS idx_workout_deletion_target
   ON public.workout_deletion_tombstones(user_id, portal_session_id, component_session_id);
 
@@ -277,7 +278,10 @@ AS $$
   WITH incoming AS (
     SELECT
       (row->>'id')::UUID AS session_id,
-      (row->>'id')::UUID AS portal_session_id
+      COALESCE(
+        NULLIF(row->>'portalSessionId', '')::UUID,
+        (row->>'id')::UUID
+      ) AS portal_session_id
     FROM jsonb_array_elements(COALESCE(p_sessions, '[]'::JSONB)) row
   )
   SELECT DISTINCT i.session_id
@@ -730,15 +734,14 @@ BEGIN
       FROM public.exercises e
       JOIN public.workout_sessions s ON s.id = e.session_id AND s.user_id = e.user_id
       WHERE e.user_id = p_user_id AND e.id = v_component;
+      IF v_wrong_group_count > 0 THEN
+        RAISE EXCEPTION 'workout_deletion_group_mismatch' USING ERRCODE = 'P0001';
+      END IF;
     ELSE
-      SELECT count(*),
-        0
-        INTO v_target_count, v_wrong_group_count
+      SELECT count(*)
+        INTO v_target_count
       FROM public.workout_sessions s
       WHERE s.user_id = p_user_id AND s.id = v_portal;
-    END IF;
-    IF v_wrong_group_count > 0 THEN
-      RAISE EXCEPTION 'workout_deletion_group_mismatch' USING ERRCODE = 'P0001';
     END IF;
 
     INSERT INTO public.workout_deletion_tombstones(

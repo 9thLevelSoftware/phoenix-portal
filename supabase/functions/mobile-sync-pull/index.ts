@@ -1203,17 +1203,21 @@ async function mobileSyncPullHandler(
     // ─── PERMANENT WORKOUT DELETIONS ───────────────────────────────────────
     if (!hasMore && startTypeIndex <= ENTITY_ORDER.indexOf('workoutDeletions') && remainingPageSize > 0) {
       const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'workoutDeletions');
+      // Filter, order, and page by server commit time. Client-supplied
+      // deleted_at can predate another device's lastSync when an offline
+      // deletion is uploaded late; using it here would permanently hide the
+      // tombstone from that device. The wire DTO still exposes deleted_at.
       let query = supabase
         .from('workout_deletion_tombstones')
-        .select('mutation_id, profile_id, scope, portal_session_id, component_session_id, deleted_at')
+        .select('mutation_id, profile_id, scope, portal_session_id, component_session_id, deleted_at, recorded_at')
         .eq('user_id', userId)
-        .gt('deleted_at', lastSyncISO)
-        .order('deleted_at', { ascending: true })
+        .gt('recorded_at', lastSyncISO)
+        .order('recorded_at', { ascending: true })
         .order('mutation_id', { ascending: true })
         .limit(remainingPageSize + 1);
       if (cursorUpdatedAt && cursorId) {
         query = query.or(
-          `deleted_at.gt.${cursorUpdatedAt},and(deleted_at.eq.${cursorUpdatedAt},mutation_id.gt.${cursorId})`,
+          `recorded_at.gt.${cursorUpdatedAt},and(recorded_at.eq.${cursorUpdatedAt},mutation_id.gt.${cursorId})`,
         );
       }
       const { data, error } = await query;
@@ -1222,7 +1226,7 @@ async function mobileSyncPullHandler(
       if (rows.length > remainingPageSize) {
         hasMore = true;
         const last = rows[remainingPageSize - 1];
-        nextCursor = encodeCursor('workoutDeletions', String(last.deleted_at), String(last.mutation_id));
+        nextCursor = encodeCursor('workoutDeletions', String(last.recorded_at), String(last.mutation_id));
         rows.splice(remainingPageSize);
       }
       workoutDeletionDtos = rows.map((row) => ({

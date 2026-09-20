@@ -416,6 +416,7 @@ Deno.test("pull returns persistent account deletion and ownership events", async
           portal_session_id: "50000000-0000-4000-8000-000000000003",
           component_session_id: null,
           deleted_at: "2026-09-20T12:00:00.000Z",
+          recorded_at: "2026-09-20T18:00:00.000Z",
         }],
         error: null,
       }],
@@ -448,6 +449,24 @@ Deno.test("pull returns persistent account deletion and ownership events", async
     componentSessionId: null,
     deletedAt: "2026-09-20T12:00:00.000Z",
   }]);
+  const deletionCall = harness.adminCalls.find((call) =>
+    call.kind === "from" && call.name === "workout_deletion_tombstones"
+  );
+  assertEquals(
+    deletionCall?.operations?.find((op) => op.name === "select")?.args[0],
+    "mutation_id, profile_id, scope, portal_session_id, component_session_id, deleted_at, recorded_at",
+  );
+  assertEquals(
+    deletionCall?.operations?.filter((op) => op.name === "gt"),
+    [{ name: "gt", args: ["recorded_at", "1970-01-01T00:00:00.000Z"] }],
+  );
+  assertEquals(
+    deletionCall?.operations?.filter((op) => op.name === "order"),
+    [
+      { name: "order", args: ["recorded_at", { ascending: true }] },
+      { name: "order", args: ["mutation_id", { ascending: true }] },
+    ],
+  );
   assertEquals(body.ownershipEvents, [{
     mutationId: transferId,
     sourceProfileId: null,
