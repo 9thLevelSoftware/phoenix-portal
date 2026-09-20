@@ -162,9 +162,21 @@ SELECT ok(
 SELECT diag('database:due-deletion-sweep');
 
 -- A deleted user's residue (no auth.users row) and a live user's rows.
+-- sync_tombstones.user_id references auth.users, so create the users, write
+-- tombstones, then delete the "deleted" user's auth row. FK-less residue
+-- (webhook events, subscription_events, avatar folders) is inserted after the
+-- delete so it survives the cascade the way production residue does.
+INSERT INTO auth.users (id, email)
+VALUES
+    ('35353535-0000-4000-8000-0000000000dd'::uuid, 'due-deleted@example.test'),
+    ('35353535-0000-4000-8000-000000000002'::uuid, 'due-live@example.test')
+ON CONFLICT (id) DO NOTHING;
+
 INSERT INTO public.sync_tombstones (user_id, entity, entity_id) VALUES
     ('35353535-0000-4000-8000-0000000000dd', 'routine', gen_random_uuid()),
     ('35353535-0000-4000-8000-000000000002', 'routine', gen_random_uuid());
+
+DELETE FROM auth.users WHERE id = '35353535-0000-4000-8000-0000000000dd'::uuid;
 INSERT INTO public.rate_limit_tracking (provider, key, user_id) VALUES
     ('due-deletion-app-wide', 'due-deletion-app-wide', NULL);
 INSERT INTO public.paddle_webhook_events (event_type, user_id, payload) VALUES

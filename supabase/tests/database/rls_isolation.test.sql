@@ -190,13 +190,11 @@ VALUES
         'a1a1a1a1-5555-4000-8000-00000000000a'::uuid,
         'a1a1a1a1-0000-4000-8000-00000000000a'::uuid,
         'EMBER', 'active', now() + INTERVAL '30 days'
-        'FLAME', 'active', now() + INTERVAL '30 days'
     ),
     (
         'b2b2b2b2-5555-4000-8000-00000000000b'::uuid,
         'b2b2b2b2-0000-4000-8000-00000000000b'::uuid,
         'EMBER', 'active', now() + INTERVAL '30 days'
-        'FLAME', 'active', now() + INTERVAL '30 days'
     );
 
 INSERT INTO public.workout_sessions (id, user_id)
@@ -698,7 +696,6 @@ SELECT is(
         ) others
         WHERE others.n > 0
           -- B's subscription is needed for EMBER; no client UPDATE/DELETE
-          -- B's subscription is needed for FLAME; no client UPDATE/DELETE
           -- policy may ever match it, so the blind probe still expects 0.
           AND rc.table_name <> 'subscriptions'
     ),
@@ -1014,6 +1011,9 @@ SELECT is(
     public.user_has_min_tier('FLAME'),
     false,
     'A still does not hold FLAME after the attempts'
+);
+
+SELECT is(
     public.user_has_min_tier('INFERNO'),
     false,
     'A still does not hold INFERNO after the attempts'

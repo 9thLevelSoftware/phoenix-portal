@@ -298,10 +298,6 @@ export type Database = {
 				];
 			};
 			deletion_requests: {
-				// Hand-edited for PR 35 (claimed_at, needs_support_reason,
-				// last_attempt_at from migration 20260920003500). This branch
-				// does not contain PR 4, so `gen:types` cannot regenerate here;
-				// the verify phase regenerates the whole file.
 				Row: {
 					cancelled_at: string | null;
 					claimed_at: string | null;
@@ -1920,7 +1916,7 @@ export type Database = {
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
 					price_id?: string | null;
-					row_snapshot: Json;
+					row_snapshot?: Json;
 					status?: string | null;
 					subscription_created_at?: string | null;
 					subscription_row_id?: string | null;
@@ -2041,6 +2037,27 @@ export type Database = {
 					started_at?: string | null;
 					status?: string | null;
 					sync_type?: string | null;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
+			sync_tombstones: {
+				Row: {
+					deleted_at: string;
+					entity: string;
+					entity_id: string;
+					user_id: string;
+				};
+				Insert: {
+					deleted_at?: string;
+					entity: string;
+					entity_id: string;
+					user_id: string;
+				};
+				Update: {
+					deleted_at?: string;
+					entity?: string;
+					entity_id?: string;
 					user_id?: string;
 				};
 				Relationships: [];
@@ -2933,6 +2950,19 @@ export type Database = {
 					workout_mode: string;
 				}[];
 			};
+			get_sync_tombstones: {
+				Args: {
+					p_entity?: string;
+					p_ids?: string[];
+					p_since?: string;
+					p_user_id: string;
+				};
+				Returns: {
+					deleted_at: string;
+					entity: string;
+					entity_id: string;
+				}[];
+			};
 			get_user_pr_rank: {
 				Args: { target_user_id: string };
 				Returns: {
@@ -3043,6 +3073,10 @@ export type Database = {
 				Returns: number;
 			};
 			subscription_tier_for: { Args: { p_user_id: string }; Returns: string };
+			sweep_deleted_account_residue: {
+				Args: { p_avatar_limit?: number };
+				Returns: Json;
+			};
 			update_cycle_with_days: {
 				Args: {
 					p_cycle_id: string;
