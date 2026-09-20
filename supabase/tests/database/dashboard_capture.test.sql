@@ -119,6 +119,14 @@ SELECT has_trigger('public', 'workout_sessions', 'trg_update_profile_stats_on_wo
 SELECT has_trigger('public', 'personal_records', 'trg_update_pr_count_on_record',
     'personal_records has trg_update_pr_count_on_record');
 
+-- The two add-only counter triggers captured here are dropped again by
+-- 20260920002500 (server-derived gamification counters). Their functions stay
+-- (asserted above); only the triggers go.
+SELECT hasnt_trigger('public', 'workout_sessions', 'trg_update_profile_stats_on_workout',
+    'trg_update_profile_stats_on_workout is dropped by 20260920002500');
+SELECT hasnt_trigger('public', 'personal_records', 'trg_update_pr_count_on_record',
+    'trg_update_pr_count_on_record is dropped by 20260920002500');
+
 SELECT set_eq(
     $sql$
         SELECT pg_get_triggerdef(t.oid), t.tgenabled::text
@@ -134,6 +142,7 @@ SELECT set_eq(
             ('CREATE TRIGGER subscriptions_audit_trigger AFTER INSERT OR DELETE OR UPDATE ON public.subscriptions FOR EACH ROW EXECUTE FUNCTION log_subscription_event()'::text, 'O'::text),
             ('CREATE TRIGGER trg_update_profile_stats_on_workout AFTER INSERT ON public.workout_sessions FOR EACH ROW EXECUTE FUNCTION update_profile_stats_on_workout()', 'O'),
             ('CREATE TRIGGER trg_update_pr_count_on_record AFTER INSERT ON public.personal_records FOR EACH ROW EXECUTE FUNCTION update_pr_count_on_record()', 'O')
+            ('CREATE TRIGGER subscriptions_audit_trigger AFTER INSERT OR DELETE OR UPDATE ON public.subscriptions FOR EACH ROW EXECUTE FUNCTION log_subscription_event()'::text, 'O'::text)
     $sql$,
     'trigger definitions match the prod capture byte for byte and are enabled'
 );
@@ -205,6 +214,11 @@ SELECT set_has(
     $sql$,
     $sql$
         VALUES
+            -- 'IGNORED' was added by 20260920004400 (PR 44): apply_subscription_event
+            -- records an event from an untracked subscription that it refused to
+            -- apply. The other three are prod's original audit-trigger operations.
+            ('subscription_events'::text, 'subscription_events_operation_check'::text,
+             'CHECK ((operation = ANY (ARRAY[''INSERT''::text, ''UPDATE''::text, ''DELETE''::text, ''IGNORED''::text])))'::text),
             ('subscription_events'::text, 'subscription_events_operation_check'::text,
              'CHECK ((operation = ANY (ARRAY[''INSERT''::text, ''UPDATE''::text, ''DELETE''::text])))'::text),
             ('goal_snapshots', 'goal_snapshots_goal_id_fkey',
@@ -410,6 +424,51 @@ SELECT is(
      WHERE user_id = 'c3c3c3c3-0000-4000-8000-000000000003'::uuid),
     1,
     'inserting a personal_records row fires trg_update_pr_count_on_record'
+-- The counter triggers are gone (20260920002500): inserting sessions and
+-- records no longer touches gamification_stats by itself.
+INSERT INTO public.workout_sessions (user_id, name, total_volume, duration_seconds, started_at)
+VALUES
+    ('c3c3c3c3-0000-4000-8000-000000000003'::uuid, 'capture session 1', 100, 600, now()),
+    ('c3c3c3c3-0000-4000-8000-000000000003'::uuid, 'capture session 2', 50, 300, now());
+
+INSERT INTO public.personal_records (user_id, exercise_name, value)
+VALUES ('c3c3c3c3-0000-4000-8000-000000000003'::uuid, 'Capture Press', 80);
+
+SELECT is_empty(
+    $sql$
+        SELECT 1 FROM public.gamification_stats
+        WHERE user_id = 'c3c3c3c3-0000-4000-8000-000000000003'::uuid
+    $sql$,
+    'inserting sessions and records no longer creates a stats row by trigger'
+);
+
+-- The derivation that replaced them (see gamification_stats.test.sql for the
+-- full contract) produces the same totals the add-only triggers used to.
+-- recompute_gamification_stats is UPDATE-only by design (it must never
+-- create an all-zero row, or mobile-sync-pull would serve zeroes where it
+-- used to serve null), so the row is created the way production creates it:
+-- by the LWW RPC on the first push that carries gamificationStats.
+SELECT public.upsert_gamification_stats_lww(
+    jsonb_build_array(jsonb_build_object(
+        'user_id', 'c3c3c3c3-0000-4000-8000-000000000003',
+        'device_total_workouts', 2,
+        'last_workout_at', now()
+    ))
+);
+
+SELECT lives_ok(
+    $sql$ SELECT public.recompute_gamification_stats('c3c3c3c3-0000-4000-8000-000000000003'::uuid) $sql$,
+    'recompute_gamification_stats runs'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT total_workouts, total_volume_kg, total_time_seconds, pr_count
+        FROM public.gamification_stats
+        WHERE user_id = 'c3c3c3c3-0000-4000-8000-000000000003'::uuid
+    $sql$,
+    $values$ VALUES (2::bigint, 150::numeric, 900::bigint, 1) $values$,
+    'recompute_gamification_stats derives the counters the dropped triggers used to add'
 );
 
 -- subscriptions_audit_trigger
