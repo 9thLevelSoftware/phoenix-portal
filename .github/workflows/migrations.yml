@@ -80,9 +80,10 @@ jobs:
       # SECURITY DEFINER grant guard: fails if any definer function in public
       # is executable by anon/authenticated outside the browser allow-list,
       # or lacks a pinned search_path. The full pgTAP suite is enabled
-      # separately; this runs only the guard file.
-      - name: pgTAP definer function grant guard
-        run: supabase test db supabase/tests/database/definer_function_grants.test.sql
+      # separately; this runs the guard file plus the PR 2 dashboard-capture
+      # file (acceptance for 20260920000200).
+      - name: pgTAP definer function grant guard and dashboard capture
+        run: supabase test db supabase/tests/database/definer_function_grants.test.sql supabase/tests/database/dashboard_capture.test.sql
 
       - name: Stop stack
         if: always()
