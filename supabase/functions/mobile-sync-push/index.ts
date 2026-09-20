@@ -1,4 +1,5 @@
-import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
+// Exact pin: sync_complete relies on RealtimeChannel.httpSend (realtime-js 2.107).
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2.107.0';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { redactTokenShapedJson } from '../_shared/garminIdentity.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
@@ -1259,6 +1260,23 @@ async function mobileSyncPushHandler(
         personalRecords: payload.personalRecords ?? [],
       });
     const validLocalProfileIdsForPush = new Set<string>();
+    // Whether this push changes a local_profiles row the portal shows. Every
+    // push re-upserts the device's profiles, so a write alone is not a change;
+    // compare against the stored rows instead. If they cannot be read, assume
+    // a change so the portal is still told to refresh.
+    let localProfilesChanged = false;
+    const storedLocalProfiles = async (): Promise<StoredLocalProfile[] | null> => {
+      const { data, error } = await supabase
+        .from('local_profiles')
+        .select('id, name, color_index, device_id')
+        .eq('user_id', userId)
+        .returns<StoredLocalProfile[]>();
+      if (error) {
+        console.warn('Failed to read local profiles for change detection:', error.message);
+        return null;
+      }
+      return data ?? [];
+    };
 
     if (allProfiles && allProfiles.length > 0) {
       // Schema already validated each allProfiles[].id is "default" or a UUID
@@ -1272,6 +1290,10 @@ async function mobileSyncPushHandler(
         device_id: payload.deviceId,
         updated_at: new Date().toISOString(),
       }));
+
+      const storedProfiles = await storedLocalProfiles();
+      localProfilesChanged = storedProfiles === null ||
+        localProfilesPushChangesRows(storedProfiles, profileRows, payload.deviceId);
 
       const { error: upsertError } = await supabase
         .from('local_profiles')
@@ -1307,6 +1329,13 @@ async function mobileSyncPushHandler(
       // because the local_profiles row doesn't exist yet (issue #376).
       const profileName =
         payload.profileName ?? (localProfileId === 'default' ? 'Default' : 'Profile');
+      const activeProfileId = localProfileId;
+      const storedProfiles = await storedLocalProfiles();
+      const storedActive = storedProfiles?.find((row) => row.id === activeProfileId);
+      localProfilesChanged = storedProfiles === null ||
+        storedActive === undefined ||
+        storedActive.name !== profileName ||
+        storedActive.device_id !== payload.deviceId;
       const { error: profileError } = await supabase
         .from('local_profiles')
         .upsert(
@@ -1394,6 +1423,8 @@ async function mobileSyncPushHandler(
             for (const profile of repairedProfiles ?? []) {
               validLocalProfileIdsForPush.add(profile.id);
             }
+            // Repair only inserts ids that were missing, so any row is new.
+            if ((repairedProfiles ?? []).length > 0) localProfilesChanged = true;
           }
         }
       }
@@ -2980,47 +3011,28 @@ async function mobileSyncPushHandler(
     // 15. Return sync result
     // =========================================================================
     const syncTime = new Date(dependencies.now()).toISOString();
-    // Use HTTP broadcast so the edge function doesn't need an active WebSocket
-    // subscription. `channel.send()` on an unsubscribed channel silently no-ops.
-    const channel = supabase.channel(syncBroadcastTopic(userId), {
-      config: { private: true, broadcast: { self: false } },
-    });
-    try {
-      await new Promise<void>((resolve) => {
-        const subscription = channel.subscribe((status) => {
-          if (
-            status === 'SUBSCRIBED' ||
-            status === 'CHANNEL_ERROR' ||
-            status === 'TIMED_OUT' ||
-            status === 'CLOSED'
-          ) {
-            resolve();
-            // Avoid unused-binding warning on `subscription`.
-            void subscription;
-          }
-        });
-        // Safety timeout — don't block the response waiting for realtime.
-        setTimeout(resolve, 1500);
-      });
-
-      const broadcastStatus = await channel.send({
-        type: 'broadcast',
-        event: 'sync_complete',
-        payload: {
-          syncTime,
-        },
-      });
-      if (broadcastStatus !== 'ok') {
-        console.warn('mobile-sync-push broadcast warning:', broadcastStatus);
-      }
-    } catch (broadcastErr) {
-      console.warn('mobile-sync-push broadcast failed:', broadcastErr);
-    } finally {
-      try {
-        await supabase.removeChannel(channel);
-      } catch (cleanupErr) {
-        console.warn('mobile-sync-push channel cleanup warning:', cleanupErr);
-      }
+    // Tell the portal to refetch, but only when this push changed something it
+    // shows. local_profiles count only when a row was added, removed or edited
+    // (see localProfilesChanged). Ownership transfers, workout deletions and
+    // clocked cycle tombstones also count: the portal refetches workouts and
+    // cycles on sync_complete. Custom exercise catalog upserts never count.
+    const pushChangedPortalData =
+      sessionsInserted + exercisesInserted + setsInserted + repSummariesInserted +
+          telemetryInserted + routinesUpserted + cyclesUpserted + badgesUpserted +
+          exerciseProgressInserted + personalRecordsInserted +
+          phaseStatisticsInserted + exerciseSignaturesUpserted +
+          assessmentsInserted + externalActivitiesUpserted > 0 ||
+      (payload.deletedRoutineIds?.length ?? 0) > 0 ||
+      (payload.deletedCycleIds?.length ?? 0) > 0 ||
+      payload.deletedCycles.length > 0 ||
+      payload.ownershipTransfers.length > 0 ||
+      payload.workoutDeletions.length > 0 ||
+      Boolean(payload.rpgAttributes) ||
+      Boolean(payload.gamificationStats) ||
+      localProfilesChanged ||
+      canonicalProfilePreferenceSections.length > 0;
+    if (pushChangedPortalData) {
+      await broadcastSyncComplete(supabase, userId, syncTime);
     }
 
     return new Response(
@@ -3076,6 +3088,88 @@ async function mobileSyncPushHandler(
       JSON.stringify(errorBody),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
+  }
+}
+
+/** Stored local_profiles columns the push can change. */
+interface StoredLocalProfile {
+  id: string;
+  name: string | null;
+  color_index: number | null;
+  device_id: string | null;
+}
+
+/**
+ * True when upserting `incoming` (the device's full profile list) and deleting
+ * this device's profiles absent from it would add, edit or remove a row.
+ */
+export function localProfilesPushChangesRows(
+  stored: StoredLocalProfile[],
+  incoming: StoredLocalProfile[],
+  deviceId: string,
+): boolean {
+  const storedById = new Map(stored.map((row) => [row.id, row]));
+  const incomingIds = new Set(incoming.map((row) => row.id));
+  const upsertChanges = incoming.some((row) => {
+    const existing = storedById.get(row.id);
+    return existing === undefined ||
+      existing.name !== row.name ||
+      (existing.color_index ?? null) !== (row.color_index ?? null) ||
+      existing.device_id !== row.device_id;
+  });
+  const deleteChanges = stored.some(
+    (row) => row.device_id === deviceId && !incomingIds.has(row.id),
+  );
+  return upsertChanges || deleteChanges;
+}
+
+/** Upper bound on the broadcast POST so a Realtime outage cannot stall pushes. */
+const SYNC_BROADCAST_TIMEOUT_MS = 1500;
+
+/**
+ * Broadcasts `sync_complete` on the private `sync:{userId}` topic through the
+ * Realtime REST endpoint (`httpSend`): one POST, no WebSocket join. Delivery
+ * is best-effort — a failure is logged and never fails the push, because the
+ * rows are already committed and the portal also refetches on reconnect.
+ */
+export async function broadcastSyncComplete(
+  supabase: SupabaseClient,
+  userId: string,
+  syncTime: string,
+): Promise<void> {
+  let channel: ReturnType<SupabaseClient['channel']> | null = null;
+  try {
+    // Load the client's access token into Realtime so httpSend carries an
+    // explicit `Authorization: Bearer` for the private topic. Without a
+    // session this resolves to the service-role key.
+    await supabase.realtime.setAuth();
+    channel = supabase.channel(syncBroadcastTopic(userId), {
+      config: { private: true },
+    });
+    const result = await channel.httpSend(
+      'sync_complete',
+      { syncTime },
+      { timeout: SYNC_BROADCAST_TIMEOUT_MS },
+    );
+    if (!result.success) {
+      console.warn('mobile-sync-push broadcast rejected:', result.status);
+    }
+  } catch (broadcastErr) {
+    console.warn(
+      'mobile-sync-push broadcast failed:',
+      safeErrorName(broadcastErr, 'BroadcastFailure'),
+    );
+  } finally {
+    if (channel) {
+      try {
+        await supabase.removeChannel(channel);
+      } catch (cleanupErr) {
+        console.warn(
+          'mobile-sync-push channel cleanup warning:',
+          safeErrorName(cleanupErr, 'ChannelCleanupFailure'),
+        );
+      }
+    }
   }
 }
 
