@@ -56,6 +56,30 @@ SELECT set_eq(
     'only allow-listed SECURITY DEFINER functions are executable by anon/authenticated'
 );
 
+-- The 8 SECURITY DEFINER functions captured from the prod dashboard by
+-- 20260920000200 must exist on a clean apply, so the catalog check above
+-- really covers them (a missing one would pass it vacuously).
+SELECT is_empty(
+    $sql$
+        SELECT sig
+        FROM unnest(ARRAY[
+            'public.get_percentile_rank(uuid, text, text)',
+            'public.get_profile_stats(uuid)',
+            'public.log_subscription_event()',
+            'public.refresh_community_benchmarks()',
+            'public.refresh_hot_scores()',
+            'public.rls_auto_enable()',
+            'public.update_pr_count_on_record()',
+            'public.update_profile_stats_on_workout()'
+        ]) AS sig
+        LEFT JOIN pg_proc p ON p.oid = to_regprocedure(sig)
+        WHERE p.oid IS NULL
+           OR NOT p.prosecdef
+           OR NOT has_function_privilege('service_role', p.oid, 'EXECUTE')
+    $sql$,
+    'dashboard-captured SECURITY DEFINER functions exist and keep service_role EXECUTE'
+);
+
 SELECT is_empty(
     $sql$
         SELECT p.oid::regprocedure
@@ -412,12 +436,14 @@ SELECT lives_ok(
 -- A tier helper evaluated inside an RLS policy as authenticated.
 SELECT lives_ok(
     $sql$
+        INSERT INTO public.routines (user_id, name)
         INSERT INTO public.workout_sessions (user_id, name)
         VALUES (
             'a1a1a1a1-0000-4000-8000-000000000001'::uuid,
             'ember write through user_has_min_tier policy'
         )
     $sql$,
+    'EMBER JWT can INSERT routines (policy calls user_has_min_tier)'
     'EMBER JWT can INSERT workout_sessions (policy calls user_has_min_tier)'
 );
 
