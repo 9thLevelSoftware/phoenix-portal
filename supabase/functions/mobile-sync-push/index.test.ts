@@ -12,9 +12,18 @@ import {
   scanTopLevelJsonObject,
 } from "../_shared/profilePreferenceContract.ts";
 import { createMobileSyncPushHandler } from "./index.ts";
+import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
+import { SYNC_LWW_ENABLED } from "../_shared/flags.ts";
 import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 import { SYNC_LWW_ENABLED } from "../_shared/flags.ts";
+import { SYNC_LWW_ENABLED as SYNC_LWW_ENABLED_IN_TEST } from "../_shared/flags.ts";
+import {
+  broadcastSyncComplete,
+  createMobileSyncPushHandler,
+  localProfilesPushChangesRows,
+} from "./index.ts";
+import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 
 interface ByteGoldens {
   version: number;
@@ -44,7 +53,10 @@ const VALID_AUTH_RESULT = {
 };
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+  );
   return Array.from(
     new Uint8Array(digest),
     (byte) => byte.toString(16).padStart(2, "0"),
@@ -352,7 +364,7 @@ function rawRequest(
   return new Request("http://localhost/functions/v1/mobile-sync-push", {
     method: "POST",
     headers,
-    body,
+    body: body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer,
   });
 }
 
@@ -407,6 +419,19 @@ function streamingRawRequest(
   });
 }
 
+type TableResultValue = { data: unknown; error: unknown; count?: number };
+/** A fixed result, or one chosen from the query's `.eq()` filters. */
+type TableResult =
+  | TableResultValue
+  | ((eqFilters: Record<string, unknown>) => TableResultValue);
+const DEFAULT_SUBSCRIPTION_RESULT = {
+  data: {
+    tier: "EMBER",
+    status: "active",
+    current_period_end: "2099-01-01T00:00:00.000Z",
+  },
+  error: null,
+};
 interface QueryOperation {
   name: string;
   args: unknown[];
@@ -421,16 +446,26 @@ type TerminalResult =
 function permissiveQuery(
   table: string,
   onWrite: (method: string, args: unknown[]) => void,
+  terminalResult: TableResult = {
   terminalResult: TerminalResult = {
+  onCall: (method: string, args: unknown[]) => void,
+  terminalResult: { data: unknown; error: unknown; count?: number } = {
     data: [],
     error: null,
     count: 0,
   },
   writeError?: (method: string) => unknown,
+  onProbe: () => void = () => {},
+  probeResult: unknown[] = [],
+  onChain: (method: string, args: unknown[]) => void = () => {},
+  resolveTerminal?: () => { data: unknown; error: unknown; count?: number },
+  subscriptionResult: { data: unknown; error: unknown } =
+    DEFAULT_SUBSCRIPTION_RESULT,
   onCall?: (method: string, args: unknown[]) => void,
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
+  const eqFilters: Record<string, unknown> = {};
   let injectedWriteError: unknown = null;
   const chainMethods = [
     "select",
@@ -454,8 +489,22 @@ function permissiveQuery(
   const operations = [] as unknown as QueryContext;
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
+      if (method === "neq") ownershipProbe = true;
+      if (method === "eq") eqFilters[String(args[0])] = args[1];
+      if (["insert", "upsert", "update", "delete"].includes(method)) {
+        onWrite(method, args);
+      if (["insert", "upsert", "update", "delete"].includes(method)) {
+        onWrite(method, args);
+      onChain(method, args);
+      if (method === "neq") {
+        ownershipProbe = true;
+        onProbe();
+      }
+      if (["insert", "upsert", "update", "delete"].includes(method)) {
+        onWrite(method);
       onCall?.(method, args);
       operations.push({ name: method, args });
+      onCall(method, args);
       if (method === "neq") ownershipProbe = true;
       if (method === "eq") operations[String(args[0])] = args[1];
       if (["insert", "upsert", "update", "delete"].includes(method)) {
@@ -468,14 +517,7 @@ function permissiveQuery(
   query.maybeSingle = () =>
     Promise.resolve(
       table === "subscriptions"
-        ? {
-          data: {
-            tier: "EMBER",
-            status: "active",
-            current_period_end: "2099-01-01T00:00:00.000Z",
-          },
-          error: null,
-        }
+        ? subscriptionResult
         : { data: null, error: null },
     );
   query.single = () => Promise.resolve({ data: null, error: null });
@@ -484,15 +526,49 @@ function permissiveQuery(
     reject?: (reason: unknown) => unknown,
   ) =>
     Promise.resolve(
+      ownershipProbe
+        ? { data: [], error: null, count: 0 }
+        : typeof terminalResult === "function"
+        ? terminalResult(eqFilters)
       injectedWriteError
         ? { data: null, error: injectedWriteError }
         : ownershipProbe
+        ? { data: probeResult, error: null, count: probeResult.length }
+        : resolveTerminal
+        ? resolveTerminal()
         ? { data: [], error: null, count: 0 }
         : typeof terminalResult === "function"
         ? terminalResult(operations)
         : terminalResult,
     ).then(resolve, reject);
   return query;
+}
+
+/** Every chained call made on one `from("exercise_catalog")` query. */
+interface CatalogQuery {
+  calls: Array<{ method: string; args: unknown[] }>;
+}
+
+function catalogEqFilters(query: CatalogQuery): Array<[unknown, unknown]> {
+  return query.calls.filter((call) => call.method === "eq").map((call) =>
+    [call.args[0], call.args[1]] as [unknown, unknown]
+  );
+}
+
+function catalogRangeStart(query: CatalogQuery): unknown {
+  return query.calls.find((call) => call.method === "range")?.args[0];
+}
+
+function isPublicCatalogLookup(query: CatalogQuery): boolean {
+  return catalogEqFilters(query).some(([column, value]) =>
+    column === "is_custom" && value === false
+  );
+}
+
+function isCustomCatalogLookup(query: CatalogQuery): boolean {
+  return catalogEqFilters(query).some(([column, value]) =>
+    column === "is_custom" && value === true
+  );
 }
 
 interface PushHarness {
@@ -505,6 +581,11 @@ interface PushHarness {
   adminWriteCalls: Array<{ table: string; method: string }>;
   adminWritePayloads: Array<{ table: string; method: string; payload: unknown }>;
   adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
+  ownershipProbeTables: string[];
+  catalogQueries: CatalogQuery[];
+  adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
+  adminWritePayloads: Array<{ table: string; method: string; args: unknown[] }>;
+  adminQueryCalls: Array<{ table: string; method: string; args: unknown[] }>;
   loggerCalls: unknown[][];
   operationEvents: string[];
   channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
@@ -516,15 +597,33 @@ interface PushHarness {
 interface AdminQueryRecord {
   table: string;
   calls: Array<{ method: string; args: unknown[] }>;
+  httpSendCalls: Array<{ event: string; payload: unknown; timeout?: number }>;
+  setAuthCalls: { value: number };
+  subscribeCalls: { value: number };
+  removeChannelCalls: { value: number };
 }
 
 function makeHarness(
   authBehavior: AuthBehavior = async () => VALID_AUTH_RESULT,
   options: {
     channelError?: unknown;
+    fromError?: unknown;
+    httpSendBehavior?: () => Promise<unknown>;
     rpcBehavior?: RpcBehavior;
     /** Result of the get_personal_record_identity_candidates probe RPC. */
+    sessionHierarchyResult?: { data: unknown; error: unknown };
     personalRecordsResult?: { data: unknown; error: unknown };
+    tableResults?: Record<string, TableResult>;
+    /** Terminal result for non-write queries on a table (e.g. catalog rows). */
+    tableResults?: Record<string, { data: unknown; error: unknown }>;
+    /** Error injected into a write, keyed `table:method` (e.g. `routines:delete`). */
+    writeErrors?: Record<string, unknown>;
+    foreignOwnedTables?: string[];
+    now?: () => number;
+    catalogBehavior?: (
+      query: CatalogQuery,
+    ) => { data: unknown; error: unknown } | undefined;
+    subscriptionResult?: { data: unknown; error: unknown };
     /** Error injected into a write, keyed `table:method` (e.g. `routines:delete`). */
     writeErrors?: Record<string, unknown>;
     /** Real clients for chosen tables (real-SQL tests); others stay mocked. */
@@ -534,6 +633,9 @@ function makeHarness(
      * function receives the chained operations (select/in/... with args).
      */
     tableResults?: Record<string, TerminalResult>;
+    localProfilesResult?: { data: unknown; error: unknown };
+    preferenceProfilesResult?: { data: unknown; error: unknown };
+    syncLwwEnabled?: boolean;
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -546,17 +648,38 @@ function makeHarness(
   const adminWritePayloads: Array<
     { table: string; method: string; payload: unknown }
   > = [];
+  const adminWriteArgs: Array<
+    { table: string; method: string; args: unknown[] }
+  > = [];
+  const ownershipProbeTables: string[] = [];
+  const catalogQueries: CatalogQuery[] = [];
   const adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }> =
     [];
+  const adminWritePayloads: Array<
+    { table: string; method: string; args: unknown[] }
+  > = [];
+  const adminQueryCalls: Array<{ table: string; method: string; args: unknown[] }> = [];
   const loggerCalls: unknown[][] = [];
   const operationEvents: string[] = [];
   const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
     [];
   const broadcastPayloads: unknown[] = [];
   const adminQueries: AdminQueryRecord[] = [];
+  const httpSendCalls: Array<{ event: string; payload: unknown; timeout?: number }> =
+    [];
+  const subscribeCalls = { value: 0 };
+  const setAuthCalls = { value: 0 };
+  const removeChannelCalls = { value: 0 };
 
   const admin = {
+    realtime: {
+      async setAuth() {
+        setAuthCalls.value += 1;
+        operationEvents.push("realtime:setAuth");
+      },
+    },
     from(table: string) {
+      if (options.fromError !== undefined) throw options.fromError;
       adminFromCalls.push(table);
       return permissiveQuery(table, (method, args) => {
         adminWriteCalls.push({ table, method });
@@ -566,6 +689,16 @@ function makeHarness(
       }, table === "personal_records"
         ? options.personalRecordsResult
         : options.tableResults?.[table]);
+      const record: AdminQueryRecord = { table, calls: [] };
+      adminQueries.push(record);
+      const catalogQuery: CatalogQuery | null = table === "exercise_catalog"
+        ? { calls: [] }
+        : null;
+      if (catalogQuery) catalogQueries.push(catalogQuery);
+      return permissiveQuery(
+        table,
+        (method) => {
+          adminWriteCalls.push({ table, method });
       const realClient = options.tableClients?.[table];
       if (realClient) return realClient.from(table);
       const record: AdminQueryRecord = { table, calls: [] };
@@ -580,9 +713,37 @@ function makeHarness(
         table === "personal_records"
           ? options.personalRecordsResult
           : options.tableResults?.[table],
+      );
         (method) => options.writeErrors?.[`${table}:${method}`],
+        () => ownershipProbeTables.push(table),
+        (options.foreignOwnedTables ?? []).includes(table)
+          ? [{ id: "foreign-row" }]
+          : [],
+        (method, args) => {
+          record.calls.push({ method, args });
+          catalogQuery?.calls.push({ method, args });
+        },
+        catalogQuery && options.catalogBehavior
+          ? () =>
+            options.catalogBehavior!(catalogQuery) ??
+              { data: [], error: null, count: 0 }
+          : undefined,
+        options.subscriptionResult);
         (method, args) => record.calls.push({ method, args }),
       );
+      return permissiveQuery(table, (method, args) => {
+        adminWriteCalls.push({ table, method });
+        adminWritePayloads.push({ table, method, args });
+        operationEvents.push(`write:${table}:${method}`);
+      }, (method, args) => {
+        adminQueryCalls.push({ table, method, args });
+      }, table === "personal_records"
+        ? options.personalRecordsResult
+        : table === "local_profiles"
+        ? options.localProfilesResult
+        : table === "local_profile_preferences"
+        ? options.preferenceProfilesResult
+        : undefined);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -590,6 +751,17 @@ function makeHarness(
       if (name === "check_rate_limit") {
         return {
           data: { allowed: true, remaining: 9, retry_after_seconds: null },
+          error: null,
+        };
+      }
+      if (name === "upsert_workout_sessions_with_components") {
+        if (options.sessionHierarchyResult) return options.sessionHierarchyResult;
+        return {
+          data: ((args.p_rows as Array<{ id: string; updated_at?: string }>) ?? []).map((row) => ({
+            id: row.id,
+            accepted: true,
+            server_updated_at: row.updated_at ?? null,
+          })),
           error: null,
         };
       }
@@ -604,6 +776,15 @@ function makeHarness(
         // Real function returns rows inserted or changed; with an empty store
         // every distinct row is a fresh insert.
         return { data: (args.p_rows as unknown[]).length, error: null };
+      if (name === "upsert_training_cycles_with_days_lww") {
+        return {
+          data: ((args.p_rows as Array<{ id: string; updated_at?: string }>) ?? []).map((row) => ({
+            id: row.id,
+            accepted: true,
+            server_updated_at: row.updated_at ?? null,
+          })),
+          error: null,
+        };
       }
       if (name === "mutate_local_profile_preference_section") {
         const section = String(args.p_section);
@@ -631,6 +812,7 @@ function makeHarness(
       channelCalls.push({ topic, config: channelOptions?.config });
       return {
         subscribe(callback: (status: string) => void) {
+          subscribeCalls.value += 1;
           callback("SUBSCRIBED");
           return {};
         },
@@ -638,9 +820,21 @@ function makeHarness(
           broadcastPayloads.push(message.payload);
           return "ok";
         },
+        async httpSend(
+          event: string,
+          payload: unknown,
+          opts?: { timeout?: number },
+        ) {
+          httpSendCalls.push({ event, payload, timeout: opts?.timeout });
+          operationEvents.push("realtime:httpSend");
+          broadcastPayloads.push(payload);
+          if (options.httpSendBehavior) return await options.httpSendBehavior();
+          return { success: true };
+        },
       };
     },
     async removeChannel() {
+      removeChannelCalls.value += 1;
       return "ok";
     },
   };
@@ -662,7 +856,9 @@ function makeHarness(
       return admin;
     },
     logOperationalFailure: ((...args: unknown[]) => loggerCalls.push(args)),
+    now: options.now ?? (() => 1_784_167_200_000),
     now: () => 1_784_167_200_000,
+    syncLwwEnabled: options.syncLwwEnabled ?? false,
   } as never);
 
   return {
@@ -675,11 +871,20 @@ function makeHarness(
     adminWriteCalls,
     adminWritePayloads,
     adminWriteArgs,
+    ownershipProbeTables,
+    catalogQueries,
+    adminWriteArgs,
+    adminWritePayloads,
+    adminQueryCalls,
     loggerCalls,
     operationEvents,
     channelCalls,
     broadcastPayloads,
     adminQueries,
+    httpSendCalls,
+    setAuthCalls,
+    subscribeCalls,
+    removeChannelCalls,
   };
 }
 
@@ -764,6 +969,400 @@ Deno.test("shared profile preference contract module is a required production se
   const moduleName = "../_shared/" + "profilePreferenceContract.ts";
   const contract = await import(new URL(moduleName, import.meta.url).href);
   assert(Object.keys(contract).length > 0);
+});
+
+Deno.test("reliability operations commit ownership then deletion and acknowledge exact mutation ids", async () => {
+  const transferId = "40000000-0000-4000-8000-000000000001";
+  const deletionId = "40000000-0000-4000-8000-000000000002";
+  const sessionId = "40000000-0000-4000-8000-000000000003";
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => {
+      if (name === "transfer_profile_ownership") {
+        return { data: [{ mutation_id: transferId }], error: null };
+      }
+      if (name === "apply_workout_deletions") {
+        return { data: [{ mutation_id: deletionId }], error: null };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profileId: "default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    ownershipTransfers: [{
+      mutationId: transferId,
+      sourceProfileId: null,
+      targetProfileId: "default",
+      workoutSessionIds: [sessionId],
+      routineIds: [],
+      cycleIds: [],
+      personalRecordIds: [],
+    }],
+    workoutDeletions: [{
+      mutationId: deletionId,
+      scope: "WORKOUT",
+      portalSessionId: sessionId,
+      componentSessionId: null,
+      deletedAt: "2026-09-20T12:00:00.000Z",
+    }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.acknowledgedOwnershipTransferIds, [transferId]);
+  assertEquals(body.acknowledgedWorkoutDeletionIds, [deletionId]);
+  const transferIndex = harness.operationEvents.indexOf("rpc:transfer_profile_ownership");
+  const deletionIndex = harness.operationEvents.indexOf("rpc:apply_workout_deletions");
+  assert(transferIndex >= 0);
+  assert(deletionIndex > transferIndex);
+  const deletionCall = harness.adminRpcCalls.find((call) =>
+    call.name === "apply_workout_deletions"
+  );
+  assertEquals(deletionCall?.args.p_request_profile_id, "default");
+});
+
+Deno.test("deleted profile route remains immutable when allProfiles cleanup clears active writes", async () => {
+  const deletedProfileId = "40000000-0000-4000-8000-0000000000a1";
+  const deletionId = "40000000-0000-4000-8000-0000000000a2";
+  const portalSessionId = "40000000-0000-4000-8000-0000000000a3";
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => {
+      if (name === "apply_workout_deletions") {
+        return { data: [{ mutation_id: deletionId }], error: null };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profileId: deletedProfileId,
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    workoutDeletions: [{
+      mutationId: deletionId,
+      scope: "WORKOUT",
+      portalSessionId,
+      componentSessionId: null,
+      deletedAt: "2026-09-20T12:00:00.000Z",
+    }],
+  }));
+
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  const deletionCall = harness.adminRpcCalls.find((call) =>
+    call.name === "apply_workout_deletions"
+  );
+  assertEquals(deletionCall?.args.p_request_profile_id, deletedProfileId);
+});
+
+Deno.test("omitted recovery source preferences survive recovery and the next ordinary sync", async () => {
+  const sourceProfileId = "40000000-0000-4000-8000-0000000000b1";
+  const harness = makeHarness(undefined, {
+    preferenceProfilesResult: {
+      data: [{ local_profile_id: sourceProfileId }],
+      error: null,
+    },
+  });
+  const base = {
+    ...validPushBody(),
+    profileId: "default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+  };
+  const recovery = await harness.handler(requestFromBody({
+    ...base,
+    ownershipTransfers: [{
+      mutationId: "40000000-0000-4000-8000-0000000000b2",
+      sourceProfileId,
+      targetProfileId: "default",
+      workoutSessionIds: ["40000000-0000-4000-8000-0000000000b3"],
+      routineIds: [],
+      cycleIds: [],
+      personalRecordIds: [],
+    }],
+  }));
+  assertEquals(recovery.status, 200, JSON.stringify(await json(recovery)));
+
+  const ordinary = await harness.handler(requestFromBody(base));
+  assertEquals(ordinary.status, 200, JSON.stringify(await json(ordinary)));
+
+  const cleanupFilters = harness.adminQueryCalls.filter((call) =>
+    call.table === "local_profiles" && call.method === "not"
+  );
+  assertEquals(cleanupFilters.length, 2);
+  for (const filter of cleanupFilters) {
+    assertEquals(filter.args.slice(0, 2), ["id", "in"]);
+    assert(String(filter.args[2]).includes('"default"'));
+    assert(String(filter.args[2]).includes(`"${sourceProfileId}"`));
+  }
+});
+
+Deno.test("cycles always use the LWW parent gate before writing children", async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => {
+      if (name === "upsert_training_cycles_with_days_lww") {
+        return {
+          data: [{
+            id: CYCLE_ID,
+            accepted: false,
+            server_updated_at: "2026-09-20T13:00:00.000Z",
+          }],
+          error: null,
+        };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const body = validNestedRelationshipBody();
+  body.sessions = [];
+  body.routines = [];
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  assertEquals((await response.clone().json()).acknowledgedCycleIds, []);
+  assert(harness.adminRpcCalls.some((call) =>
+    call.name === "upsert_training_cycles_with_days_lww"
+  ));
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table === "cycle_days"),
+    [],
+  );
+});
+
+Deno.test("session parent gate and component replacement use one atomic RPC", async () => {
+  const body = validNestedRelationshipBody();
+  body.routines = [];
+  body.cycles = [];
+  const harness = makeHarness(undefined, {
+    sessionHierarchyResult: {
+      data: [{
+        id: SESSION_ID,
+        accepted: false,
+        server_updated_at: "2026-09-20T13:00:00.000Z",
+      }],
+      error: null,
+    },
+  });
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals(responseBody.sessionsInserted, 0);
+  assertEquals(responseBody.exercisesInserted, 0);
+  assertEquals(responseBody.acknowledgedWorkoutSessionIds, []);
+  const sessionRejections = (responseBody.rejections as {
+    sessions: unknown[];
+  }).sessions;
+  assertEquals(sessionRejections, [{
+    id: SESSION_ID,
+    serverUpdatedAt: "2026-09-20T13:00:00.000Z",
+  }]);
+  const hierarchyCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "upsert_workout_sessions_with_components"
+  );
+  assertEquals(hierarchyCalls.length, 1);
+  assertEquals(
+    harness.adminRpcCalls.filter((call) => call.name === "replace_session_components"),
+    [],
+  );
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table === "exercise_progress"),
+    [],
+  );
+});
+
+Deno.test("accepted workout and cycle parents return exact committed receipts", async () => {
+  const body = validNestedRelationshipBody();
+  body.routines = [];
+  const cycle = (body.cycles as Array<Record<string, unknown>>)[0];
+  cycle.progressionSettingsPresent = true;
+  delete cycle.progressionSettings;
+  cycle.progressStatePresent = true;
+  cycle.progressState = {
+    currentDayNumber: 2,
+    lastCompletedDate: 1_789_948_800_000,
+    cycleStartDate: 1_789_862_400_000,
+    lastAdvancedAt: 1_789_952_400_000,
+    completedDays: [1],
+    missedDays: [],
+    rotationCount: 3,
+  };
+  const day = (cycle.days as Array<Record<string, unknown>>)[0];
+  day.echoLevelPresent = true;
+  day.echoLevel = "HIGH";
+  day.eccentricLoadPercentPresent = true;
+  day.eccentricLoadPercent = 125;
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals(responseBody.acknowledgedWorkoutSessionIds, [SESSION_ID]);
+  assertEquals(responseBody.acknowledgedCycleIds, [CYCLE_ID]);
+  const cycleCall = harness.adminRpcCalls.find((call) =>
+    call.name === "upsert_training_cycles_with_days_lww"
+  );
+  const parentRows = cycleCall?.args.p_rows as Array<Record<string, unknown>>;
+  const dayRows = cycleCall?.args.p_days as Array<Record<string, unknown>>;
+  assertEquals(parentRows[0].progression_settings_present, true);
+  assertEquals(parentRows[0].progression_settings, null);
+  assertEquals(parentRows[0].progress_state_present, true);
+  assertEquals(parentRows[0].progress_state, cycle.progressState);
+  assertEquals(dayRows[0].echo_level_present, true);
+  assertEquals(dayRows[0].echo_level, "HIGH");
+  assertEquals(dayRows[0].eccentric_load_percent_present, true);
+  assertEquals(dayRows[0].eccentric_load_percent, 125);
+});
+
+Deno.test("legacy non-null progression settings remain authoritative without a presence bit", async () => {
+  const body = validNestedRelationshipBody();
+  body.sessions = [];
+  body.routines = [];
+  const cycle = (body.cycles as Array<Record<string, unknown>>)[0];
+  cycle.progressionSettings = JSON.stringify({ type: "wave", amount: 3 });
+  delete cycle.progressionSettingsPresent;
+
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  const cycleCall = harness.adminRpcCalls.find((call) =>
+    call.name === "upsert_training_cycles_with_days_lww"
+  );
+  const parentRows = cycleCall?.args.p_rows as Array<Record<string, unknown>>;
+  assertEquals(parentRows[0].progression_settings, { type: "wave", amount: 3 });
+  assertEquals("progression_settings_present" in parentRows[0], false);
+
+  delete cycle.progressionSettings;
+  const missingHarness = makeHarness();
+  const missingResponse = await missingHarness.handler(requestFromBody(body));
+  const missingResponseBody = await json(missingResponse);
+  assertEquals(missingResponse.status, 200, JSON.stringify(missingResponseBody));
+  const missingCall = missingHarness.adminRpcCalls.find((call) =>
+    call.name === "upsert_training_cycles_with_days_lww"
+  );
+  const missingRows = missingCall?.args.p_rows as Array<Record<string, unknown>>;
+  assertEquals(missingRows[0].progression_settings, null);
+  assertEquals("progression_settings_present" in missingRows[0], false);
+});
+
+Deno.test("component tombstone filters only the named exercise under a grouped parent", async () => {
+  const body = validNestedRelationshipBody();
+  body.routines = [];
+  body.cycles = [];
+  const session = (body.sessions as Array<{
+    id: string;
+    exercises: Array<{
+      id: string;
+      sessionId: string;
+      name: string;
+      sets: unknown[];
+      [key: string]: unknown;
+    }>;
+  }>)[0];
+  const blocked = session.exercises[0];
+  const siblingId = "51000000-0000-4000-8000-000000000002";
+  session.exercises.push({
+    ...blocked,
+    id: siblingId,
+    sessionId: session.id,
+    name: "Sibling component",
+    sets: [],
+  });
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => {
+      if (name === "get_blocked_workout_component_ids") {
+        return { data: [{ component_id: blocked.id }], error: null };
+      }
+      return { data: [], error: null };
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+
+  const hierarchyCall = harness.adminRpcCalls.find((call) =>
+    call.name === "upsert_workout_sessions_with_components"
+  );
+  assertEquals(hierarchyCall?.args.p_component_ids, [siblingId]);
+  assertEquals(
+    (hierarchyCall?.args.p_exercises as Array<{ id: string }>).map((row) => row.id),
+    [siblingId],
+  );
+  const componentProbe = harness.adminRpcCalls.find((call) =>
+    call.name === "get_blocked_workout_component_ids"
+  );
+  assertEquals(componentProbe?.args.p_components, [
+    { id: blocked.id, portalSessionId: session.id },
+    { id: siblingId, portalSessionId: session.id },
+  ]);
+});
+
+Deno.test("grouped workout tombstone probes use portalSessionId not the local session id", async () => {
+  const localSessionId = "51000000-0000-4000-8000-000000000010";
+  const portalSessionId = "51000000-0000-4000-8000-000000000011";
+  const body = validNestedRelationshipBody();
+  body.routines = [];
+  body.cycles = [];
+  const session = (body.sessions as Array<{
+    id: string;
+    routineSessionId?: string | null;
+    exercises: Array<{ id: string; sessionId: string }>;
+  }>)[0];
+  session.id = localSessionId;
+  session.routineSessionId = portalSessionId;
+  for (const exercise of session.exercises) {
+    exercise.sessionId = localSessionId;
+  }
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(body));
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+
+  const sessionProbe = harness.adminRpcCalls.find((call) =>
+    call.name === "get_blocked_workout_session_ids"
+  );
+  assertEquals(sessionProbe?.args.p_sessions, [
+    { id: localSessionId, portalSessionId },
+  ]);
+  const componentProbe = harness.adminRpcCalls.find((call) =>
+    call.name === "get_blocked_workout_component_ids"
+  );
+  assertEquals(componentProbe?.args.p_components, [
+    { id: EXERCISE_ID, portalSessionId },
+  ]);
+});
+
+Deno.test("clocked cycle deletions return exact accepted ids and legacy ids never hard-delete", async () => {
+  const deletedId = "30000000-0000-4000-8000-000000000011";
+  const legacyId = "30000000-0000-4000-8000-000000000012";
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => {
+      if (name === "delete_training_cycles_lww") {
+        return {
+          data: [{ id: deletedId, accepted: true, server_updated_at: "2026-09-20T12:00:00Z" }],
+          error: null,
+        };
+      }
+      return { data: [], error: null };
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedCycleIds: [legacyId],
+    deletedCycles: [{ id: deletedId, updatedAt: "2026-09-20T12:00:00Z" }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.acknowledgedDeletedCycleIds, [deletedId]);
+  assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
+  assert(harness.adminRpcCalls.some((call) => call.name === "delete_training_cycles_lww"));
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "training_cycles" && call.method === "delete"
+    ),
+    [],
+  );
 });
 
 Deno.test("byte golden metadata and raw lexemes remain exact", () => {
@@ -939,6 +1538,104 @@ for (
     assertEquals(harness.loggerCalls, [[{ name: expectedName }]]);
   });
 }
+
+// Subscription gate (F-047): a denied or failed lookup must stop the push
+// after the rate limiter and the subscriptions read, before any write, RPC
+// or broadcast.
+function singleSessionPushBody(
+  sessionId = SESSION_ID,
+  userId = VALID_USER_ID,
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    sessions: [{
+      id: sessionId,
+      userId,
+      name: "Gate session",
+      startedAt: "2026-07-11T12:00:00.000Z",
+      exercises: [],
+    }],
+  };
+}
+
+function assertStoppedAtSubscriptionGate(harness: PushHarness): void {
+  assertEquals(harness.adminConstructionCount.value, 1);
+  assertEquals(harness.adminFromCalls, ["subscriptions"]);
+  assertEquals(harness.adminRpcCalls.map((call) => call.name), [
+    "check_rate_limit",
+  ]);
+  assertEquals(harness.adminWriteCalls, []);
+  assertEquals(harness.channelCalls, []);
+  assertEquals(harness.broadcastPayloads, []);
+}
+
+for (
+  const [label, subscriptionResult] of [
+    ["no subscriptions row", { data: null, error: null }],
+    ["an active FREE row", {
+      data: {
+        tier: "FREE",
+        status: "active",
+        current_period_end: "2099-01-01T00:00:00.000Z",
+      },
+      error: null,
+    }],
+  ] as const
+) {
+  Deno.test(`subscription gate: ${label} is denied with 402 before any write`, async () => {
+    const harness = makeHarness(undefined, { subscriptionResult });
+    const response = await harness.handler(
+      requestFromBody(singleSessionPushBody()),
+    );
+    const body = await json(response);
+    assertEquals(response.status, 402, JSON.stringify(body));
+    assertEquals(body.error, "subscription_required");
+    assertEquals(body.requiredTier, "EMBER");
+    assertEquals(body.currentTier, "FREE");
+    assertStoppedAtSubscriptionGate(harness);
+  });
+}
+
+Deno.test("subscription gate: a lookup error fails closed with 503 before any write", async () => {
+  const harness = makeHarness(undefined, {
+    subscriptionResult: {
+      data: null,
+      error: { message: "connection refused", code: "08006" },
+    },
+  });
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  let response: Response;
+  try {
+    response = await harness.handler(
+      requestFromBody(singleSessionPushBody()),
+    );
+  } finally {
+    console.error = originalConsoleError;
+  }
+  const body = await json(response);
+  assertEquals(response.status, 503, JSON.stringify(body));
+  assertEquals(body.error, "subscription_unavailable");
+  assertEquals(response.headers.get("Retry-After"), "30");
+  assertStoppedAtSubscriptionGate(harness);
+});
+
+Deno.test("subscription gate: the same body from an EMBER user is written with 200", async () => {
+  // Positive control: the deny tests above use a body that writes when the
+  // gate allows it.
+  const harness = makeHarness();
+  const response = await harness.handler(
+    requestFromBody(singleSessionPushBody()),
+  );
+  const body = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(harness.loggerCalls, []);
+  assertEquals(harness.operationEvents, [
+    "rpc:check_rate_limit",
+    "write:workout_sessions:upsert",
+    "rpc:replace_session_children",
+  ]);
+});
 
 Deno.test("malformed final ordinary item is rejected before admin construction", async () => {
   const harness = makeHarness();
@@ -1838,17 +2535,487 @@ Deno.test("syncTime uses the injected current time", async () => {
   assertEquals((await json(response)).syncTime, "2026-07-16T02:00:00.000Z");
 });
 
-Deno.test("broadcasts private sync_complete with { syncTime } only", async () => {
+/** Records console.warn calls until restore() is called. */
+function captureWarnings(): { calls: unknown[][]; restore: () => void } {
+  const original = console.warn;
+  const calls: unknown[][] = [];
+  console.warn = (...args: unknown[]) => {
+    calls.push(args);
+  };
+  return { calls, restore: () => { console.warn = original; } };
+}
+
+const STORED_DEFAULT_PROFILE = {
+  id: "default",
+  name: "Default",
+  color_index: 0,
+  device_id: "test-device",
+};
+
+function profilesOnlyBody(
+  profiles: Array<{ id: string; name: string; colorIndex: number }>,
+): Record<string, unknown> {
+  return { ...validPushBody(), profileId: "default", allProfiles: profiles };
+}
+
+Deno.test("unchanged allProfiles push does not broadcast", async () => {
+  const harness = makeHarness(undefined, {
+    localProfilesResult: { data: [STORED_DEFAULT_PROFILE], error: null },
+  });
+  const response = await harness.handler(requestFromBody(
+    profilesOnlyBody([{ id: "default", name: "Default", colorIndex: 0 }]),
+  ));
+
+  assertEquals(response.status, 200);
+  assertEquals(harness.httpSendCalls, []);
+});
+
+for (
+  const [label, profiles] of [
+    ["renamed", [{ id: "default", name: "Renamed", colorIndex: 0 }]],
+    ["recoloured", [{ id: "default", name: "Default", colorIndex: 3 }]],
+    ["added", [
+      { id: "default", name: "Default", colorIndex: 0 },
+      { id: "00000000-0000-4000-8000-000000000040", name: "Partner", colorIndex: 1 },
+    ]],
+  ] as const
+) {
+  Deno.test(`allProfiles push with a ${label} profile broadcasts once`, async () => {
+    const harness = makeHarness(undefined, {
+      localProfilesResult: { data: [STORED_DEFAULT_PROFILE], error: null },
+    });
+    const response = await harness.handler(requestFromBody(
+      profilesOnlyBody([...profiles]),
+    ));
+
+    assertEquals(response.status, 200);
+    assertEquals(harness.httpSendCalls.length, 1);
+  });
+}
+
+Deno.test("allProfiles push broadcasts when stored profiles cannot be read", async () => {
+  const harness = makeHarness(undefined, {
+    localProfilesResult: { data: null, error: { message: "timeout" } },
+  });
+  const warnings = captureWarnings();
+  let response: Response;
+  try {
+    response = await harness.handler(requestFromBody(
+      profilesOnlyBody([{ id: "default", name: "Default", colorIndex: 0 }]),
+    ));
+  } finally {
+    warnings.restore();
+  }
+
+  assertEquals(response.status, 200);
+  assertEquals(harness.httpSendCalls.length, 1);
+});
+
+Deno.test("profile change detection covers edits, additions and device removals", () => {
+  const stored = [
+    STORED_DEFAULT_PROFILE,
+    { id: "other-device", name: "Other", color_index: 2, device_id: "phone-b" },
+  ];
+  const same = [{ ...STORED_DEFAULT_PROFILE }];
+  assertEquals(localProfilesPushChangesRows(stored, same, "test-device"), false);
+  assertEquals(
+    localProfilesPushChangesRows(stored, [{ ...STORED_DEFAULT_PROFILE, name: "X" }], "test-device"),
+    true,
+  );
+  assertEquals(
+    localProfilesPushChangesRows(
+      [...stored, { id: "gone", name: "Gone", color_index: 1, device_id: "test-device" }],
+      same,
+      "test-device",
+    ),
+    true,
+  );
+  assertEquals(
+    localProfilesPushChangesRows(stored, [{ ...STORED_DEFAULT_PROFILE, device_id: "phone-c" }], "phone-c"),
+    true,
+  );
+});
+
+Deno.test("rejected-only preference push does not broadcast", async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name, args) => {
+      if (name !== "mutate_local_profile_preference_section") {
+        return { data: [], error: null };
+      }
+      return {
+        data: [{
+          accepted: false,
+          rejection_reason: "REVISION_CONFLICT",
+          server_revision: 1,
+          canonical_section: {
+            localProfileId: args.p_local_profile_id,
+            section: String(args.p_section),
+            documentVersion: 1,
+            serverRevision: 1,
+            serverUpdatedAt: "2026-07-11T12:00:01.000Z",
+            payload: args.p_payload,
+          },
+        }],
+        error: null,
+      };
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profilePreferenceSections: [validCoreMutation()],
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(((await json(response)).profilePreferenceRejections as unknown[]).length, 1);
+  assertEquals(harness.httpSendCalls, []);
+});
+
+for (
+  const [label, payloadKey, payload, rpcName, rejectionKey] of [
+    [
+      "RPG attributes",
+      "rpgAttributes",
+      {
+        userId: VALID_USER_ID,
+        strength: 1,
+        power: 1,
+        stamina: 1,
+        consistency: 1,
+        mastery: 1,
+        characterClass: "WARRIOR",
+        level: 1,
+        experiencePoints: 10,
+      },
+      "upsert_rpg_attributes_lww",
+      "rpgAttributes",
+    ],
+    [
+      "gamification stats",
+      "gamificationStats",
+      {
+        userId: VALID_USER_ID,
+        totalWorkouts: 1,
+        totalReps: 10,
+        totalVolumeKg: 100,
+        longestStreak: 1,
+        currentStreak: 1,
+        totalTimeSeconds: 60,
+      },
+      "upsert_gamification_stats_lww",
+      "gamificationStats",
+    ],
+  ] as const
+) {
+  Deno.test(`rejected-only ${label} LWW push does not broadcast`, async () => {
+    const harness = makeHarness(undefined, {
+      syncLwwEnabled: true,
+      rpcBehavior: async (name) => {
+        if (name !== rpcName) return { data: [], error: null };
+        return {
+          data: [{
+            id: VALID_USER_ID,
+            accepted: false,
+            server_updated_at: "2026-07-16T01:59:59.000Z",
+          }],
+          error: null,
+        };
+      },
+    });
+    const response = await harness.handler(requestFromBody({
+      ...validPushBody(),
+      [payloadKey]: payload,
+    }));
+
+    assertEquals(response.status, 200);
+    const body = await json(response);
+    assertEquals(
+      body.rejections &&
+        (body.rejections as Record<string, unknown>)[rejectionKey],
+      [{
+        id: VALID_USER_ID,
+        serverUpdatedAt: "2026-07-16T01:59:59.000Z",
+      }],
+    );
+    assertEquals(harness.httpSendCalls, []);
+  });
+
+  Deno.test(`accepted-only ${label} LWW push broadcasts once`, async () => {
+    const harness = makeHarness(undefined, {
+      syncLwwEnabled: true,
+      rpcBehavior: async (name) => {
+        if (name !== rpcName) return { data: [], error: null };
+        return {
+          data: [{
+            id: VALID_USER_ID,
+            accepted: true,
+            server_updated_at: "2026-07-16T02:00:00.000Z",
+          }],
+          error: null,
+        };
+      },
+    });
+    const response = await harness.handler(requestFromBody({
+      ...validPushBody(),
+      [payloadKey]: payload,
+    }));
+
+    assertEquals(response.status, 200);
+    assertEquals(harness.httpSendCalls.length, 1);
+  });
+}
+
+/** Smallest push with a counted write (one badge upsert). */
+function badgePushBody(): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    badges: [{
+      userId: VALID_USER_ID,
+      badgeId: "first-workout",
+      badgeName: "First Workout",
+      earnedAt: "2026-07-11T12:00:00.000Z",
+    }],
+  };
+}
+
+Deno.test("broadcasts private sync_complete with { syncTime } once over HTTP", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(
+    requestFromBody(badgePushBody()),
+  );
+
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  assertEquals(body.badgesUpserted, 1);
+  assertEquals(harness.channelCalls.length, 1);
+  assertEquals(harness.channelCalls[0]?.topic, `sync:${VALID_USER_ID}`);
+  assertEquals(harness.channelCalls[0]?.config?.private, true);
+  assertEquals(harness.httpSendCalls, [{
+    event: "sync_complete",
+    payload: { syncTime: "2026-07-16T02:00:00.000Z" },
+    timeout: 1500,
+  }]);
+  assertEquals(harness.broadcastPayloads, [{ syncTime: body.syncTime }]);
+  assertEquals(harness.subscribeCalls.value, 0);
+  assertEquals(harness.removeChannelCalls.value, 1);
+  assertEquals(
+    harness.operationEvents.filter((event) => event.startsWith("realtime:")),
+    ["realtime:setAuth", "realtime:httpSend"],
+  );
+});
+
+Deno.test("workout session push broadcasts once", async () => {
+  const harness = makeHarness();
+  // A plain workout: no PR flags and no profile, so only the session-graph
+  // counters (sessions/exercises/sets) can trigger the broadcast.
+  const session = makePrSession();
+  const set = session.exercises[0].sets[0] as Record<string, unknown>;
+  set.isPr = false;
+  delete set.prType;
+  delete set.prPhase;
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    sessions: [session],
+  }));
+
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  assertEquals(body.sessionsInserted, 1);
+  assertEquals(body.personalRecordsInserted, 0);
+  assertEquals(body.badgesUpserted, 0);
+  assertEquals(harness.httpSendCalls.length, 1);
+  assertEquals(harness.subscribeCalls.value, 0);
+});
+
+Deno.test({
+  name: "real client httpSend carries a Bearer token on the private topic",
+  // removeChannel/disconnect leave realtime-js-owned timers (deferred
+  // disconnect, 10 s disconnect timeout) pending; they are harmless here.
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+  const requests: Array<{ url: string; headers: Headers; body: string }> = [];
+  const client = createClient("http://supabase.test", "service-role-key", {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const request = new Request(input, init);
+        requests.push({
+          url: request.url,
+          headers: request.headers,
+          body: await request.text(),
+        });
+        return new Response(null, { status: 202 });
+      },
+    },
+  });
+  const warnings = captureWarnings();
+  try {
+    await broadcastSyncComplete(client, VALID_USER_ID, "2026-07-16T02:00:00.000Z");
+  } finally {
+    warnings.restore();
+  }
+
+  assertEquals(warnings.calls, []);
+  assertEquals(requests.length, 1);
+  const [request] = requests;
+  const url = new URL(request.url);
+  assertEquals(
+    url.pathname,
+    `/realtime/v1/api/broadcast/${encodeURIComponent(`sync:${VALID_USER_ID}`)}/events/sync_complete`,
+  );
+  assertEquals(url.searchParams.get("private"), "true");
+  assertEquals(request.headers.get("Authorization"), "Bearer service-role-key");
+  assertEquals(request.headers.get("apikey"), "service-role-key");
+  assertEquals(JSON.parse(request.body), { syncTime: "2026-07-16T02:00:00.000Z" });
+  },
+});
+
+Deno.test("empty push writes nothing and does not broadcast", async () => {
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody(validPushBody()));
 
   assertEquals(response.status, 200);
-  assertEquals(harness.channelCalls.length, 1);
-  assertEquals(harness.channelCalls[0]?.topic, `sync:${VALID_USER_ID}`);
-  assertEquals(harness.channelCalls[0]?.config?.private, true);
-  assertEquals(harness.broadcastPayloads, [{
-    syncTime: "2026-07-16T02:00:00.000Z",
-  }]);
+  assertEquals((await json(response)).syncTime, "2026-07-16T02:00:00.000Z");
+  assertEquals(harness.channelCalls, []);
+  assertEquals(harness.httpSendCalls, []);
+  assertEquals(harness.subscribeCalls.value, 0);
+});
+
+for (
+  const [label, body] of [
+    ["routine tombstone", { deletedRoutineIds: [ROUTINE_ID] }],
+    ["cycle tombstone", { deletedCycleIds: [CYCLE_ID] }],
+    ["rpg attributes", {
+      rpgAttributes: {
+        userId: VALID_USER_ID,
+        strength: 1,
+        power: 1,
+        stamina: 1,
+        consistency: 1,
+        mastery: 1,
+        characterClass: "WARRIOR",
+        level: 1,
+        experiencePoints: 10,
+      },
+    }],
+    ["gamification stats", {
+      gamificationStats: {
+        userId: VALID_USER_ID,
+        totalWorkouts: 1,
+        totalReps: 10,
+        totalVolumeKg: 100,
+        longestStreak: 1,
+        currentStreak: 1,
+        totalTimeSeconds: 60,
+      },
+    }],
+    ["clocked cycle tombstone", {
+      deletedCycles: [{ id: CYCLE_ID, updatedAt: "2026-09-20T12:00:00.000Z" }],
+    }],
+    ["ownership transfer", {
+      ownershipTransfers: [{
+        mutationId: "40000000-0000-4000-8000-0000000000c1",
+        sourceProfileId: null,
+        targetProfileId: "default",
+        workoutSessionIds: [SESSION_ID],
+        routineIds: [],
+        cycleIds: [],
+        personalRecordIds: [],
+      }],
+    }],
+    ["workout deletion", {
+      workoutDeletions: [{
+        mutationId: "40000000-0000-4000-8000-0000000000c2",
+        scope: "WORKOUT",
+        portalSessionId: SESSION_ID,
+        componentSessionId: null,
+        deletedAt: "2026-09-20T12:00:00.000Z",
+      }],
+    }],
+  ] as const
+) {
+  Deno.test(`uncounted ${label} write still broadcasts once`, async () => {
+    const harness = makeHarness();
+    const response = await harness.handler(
+      requestFromBody({ ...validPushBody(), ...body }),
+    );
+
+    assertEquals(response.status, 200);
+    assertEquals(harness.httpSendCalls.length, 1);
+    assertEquals(harness.subscribeCalls.value, 0);
+  });
+}
+
+Deno.test("accepted preference-only push broadcasts once", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profilePreferenceSections: [validCoreMutation()],
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(harness.httpSendCalls.length, 1);
+});
+
+for (
+  const [label, behavior] of [
+    ["rejected", async () => ({ success: false, status: 500, error: "down" })],
+    ["thrown", async () => {
+      throw new Error("realtime unavailable");
+    }],
+  ] as const
+) {
+  Deno.test(`${label} HTTP broadcast is logged and the push still succeeds`, async () => {
+    const harness = makeHarness(undefined, { httpSendBehavior: behavior });
+    const warnings = captureWarnings();
+    let response: Response;
+    try {
+      response = await harness.handler(requestFromBody(badgePushBody()));
+    } finally {
+      warnings.restore();
+    }
+
+    const broadcastWarnings = warnings.calls.filter((args) =>
+      String(args[0]).startsWith("mobile-sync-push broadcast")
+    );
+    assertEquals(broadcastWarnings.length, 1);
+    const logged = broadcastWarnings[0].map(String).join(" ");
+    if (label === "rejected") {
+      assertEquals(broadcastWarnings[0], ["mobile-sync-push broadcast rejected:", 500]);
+    } else {
+      assertEquals(broadcastWarnings[0], ["mobile-sync-push broadcast failed:", "Error"]);
+    }
+    assert(!logged.includes("realtime unavailable"));
+    assert(!logged.includes("down"));
+    assertEquals(response.status, 200);
+    assertEquals((await json(response)).badgesUpserted, 1);
+    assertEquals(harness.httpSendCalls.length, 1);
+    assertEquals(harness.removeChannelCalls.value, 1);
+    assertEquals(harness.loggerCalls, []);
+  });
+}
+
+Deno.test("channel construction failure is logged and the push still succeeds", async () => {
+  const harness = makeHarness(undefined, {
+    channelError: new Error("realtime client unavailable"),
+  });
+  const warnings = captureWarnings();
+  let response: Response;
+  try {
+    response = await harness.handler(requestFromBody(badgePushBody()));
+  } finally {
+    warnings.restore();
+  }
+
+  assertEquals(
+    warnings.calls.filter((args) =>
+      String(args[0]).startsWith("mobile-sync-push broadcast")
+    ),
+    [["mobile-sync-push broadcast failed:", "Error"]],
+  );
+  assertEquals(response.status, 200);
+  assertEquals(harness.httpSendCalls, []);
+  assertEquals(harness.loggerCalls, []);
 });
 
 Deno.test("complete validation precedes every privileged construction and call", async () => {
@@ -1876,7 +3043,7 @@ Deno.test("unexpected privileged failure returns generic 500 and logs only a saf
   const harness = makeHarness(
     undefined,
     {
-      channelError: Object.assign(new Error("database secret"), {
+      fromError: Object.assign(new Error("database secret"), {
         name: "NetworkError",
       }),
     },
@@ -2112,6 +3279,10 @@ Deno.test("cycle delete failure returns retryable 503 and no sync_complete", asy
 
 Deno.test("routine exercise orphan cleanup failure returns retryable 503", async () => {
   const harness = makeHarness(undefined, {
+    rpcBehavior: (name) =>
+      name === "cleanup_routine_exercise_orphans"
+        ? Promise.resolve({ data: null, error: INJECTED_DB_ERROR })
+        : Promise.resolve({ data: [], error: null }),
     writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
   });
   const response = await harness.handler(
@@ -2174,6 +3345,10 @@ const CATALOG_RESULT = {
   error: null,
 };
 
+Deno.test("VBT insert failure keeps 200 and reports failed.assessments", async () => {
+  const harness = makeHarness(undefined, {
+    tableResults: { exercise_catalog: CATALOG_RESULT },
+    writeErrors: { "vbt_assessments:insert": INJECTED_DB_ERROR },
 Deno.test("VBT upsert failure keeps 200 and reports failed.assessments", async () => {
   const harness = makeHarness(undefined, {
     tableResults: { exercise_catalog: CATALOG_RESULT },
@@ -2195,6 +3370,7 @@ Deno.test("VBT upsert failure keeps 200 and reports failed.assessments", async (
 
 Deno.test("successful push reports an empty failed map", async () => {
   const harness = makeHarness(undefined, {
+    tableResults: { exercise_catalog: CATALOG_RESULT },
     tableResults: {
       exercise_catalog: CATALOG_RESULT,
       // What `.upsert(...).select('id')` returns: the rows actually inserted.
@@ -2213,6 +3389,9 @@ Deno.test("successful push reports an empty failed map", async () => {
     externalActivities: [],
   });
   // The client id used for failure reporting must never reach PostgREST.
+  const inserts = writeQueries(harness, "vbt_assessments", "insert");
+  assertEquals(inserts.length, 1);
+  const rows = callArgs(inserts[0]!, "insert")[0] as Array<
   const upserts = writeQueries(harness, "vbt_assessments", "upsert");
   assertEquals(upserts.length, 1);
   const rows = callArgs(upserts[0]!, "upsert")[0] as Array<
@@ -2426,6 +3605,48 @@ Deno.test("orphan cleanup failure for a routine with no exercises returns retrya
   const routines = body.routines as Array<Record<string, unknown>>;
   routines[0] = { ...routines[0], exerciseCount: 0, exercises: [] };
   const harness = makeHarness(undefined, {
+    rpcBehavior: (name) =>
+      name === "cleanup_routine_exercise_orphans"
+        ? Promise.resolve({ data: null, error: INJECTED_DB_ERROR })
+        : Promise.resolve({ data: [], error: null }),
+  });
+  const response = await harness.handler(requestFromBody(body));
+  await assertPartialWriteRetry(harness, response);
+  const cleanup = harness.adminRpcCalls.find((call) =>
+    call.name === "cleanup_routine_exercise_orphans"
+  );
+  assert(cleanup);
+  assertEquals(cleanup.args, {
+    p_user_id: VALID_USER_ID,
+    p_routine_id: ROUTINE_ID,
+    p_keep_ids: [],
+  });
+});
+
+Deno.test("orphan cleanup keeps hundreds of exercise ids in the RPC body", async () => {
+  const body = validNestedRelationshipBody();
+  const routines = body.routines as Array<Record<string, unknown>>;
+  const routine = routines[0]!;
+  const template = (routine.exercises as Array<Record<string, unknown>>)[0]!;
+  const exerciseIds = manyIds("8b00", 500);
+  routine.exerciseCount = exerciseIds.length;
+  routine.exercises = exerciseIds.map((id) => ({ ...template, id }));
+
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+
+  const cleanup = harness.adminRpcCalls.find((call) =>
+    call.name === "cleanup_routine_exercise_orphans"
+  );
+  assert(cleanup);
+  assertEquals(cleanup.args.p_routine_id, ROUTINE_ID);
+  assertEquals(cleanup.args.p_keep_ids, exerciseIds);
+  assertEquals(
+    writeQueries(harness, "routine_exercises", "delete").length,
+    0,
+  );
     writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
   });
   const response = await harness.handler(requestFromBody(body));
@@ -2476,6 +3697,8 @@ Deno.test("retrying the identical payload after a 503 succeeds and replays the s
   const secondWrites = harness.adminWriteCalls.slice(firstWrites.length);
   assertEquals(secondWrites.slice(0, firstWrites.length), firstWrites);
   assert(
+    secondWrites.slice(firstWrites.length).some((call) =>
+      call.table === "training_cycles" && call.method === "upsert"
     harness.adminRpcCalls.slice(firstRpcCallCount).some((call) =>
       call.name === "merge_training_cycles_from_push"
     ),
@@ -2559,6 +3782,19 @@ Deno.test("external activity upsert failure reports failed.externalActivities wi
       provider: "test-provider",
       name: "Upsert fails",
       startedAt: "2026-07-11T12:00:00.000Z",
+Deno.test("external activity synced_at is server time, never the client's syncedAt", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    externalActivities: [{
+      id: "00000000-0000-4000-8000-0000000000e1",
+      externalId: "hevy-1",
+      provider: "hevy",
+      name: "Imported workout",
+      activityType: "strength",
+      startedAt: "2020-01-01T00:00:00.000Z",
+      durationSeconds: 600,
+      syncedAt: "2020-01-01T00:05:00.000Z",
     }],
   }));
   const body = await json(response);
@@ -2572,6 +3808,16 @@ Deno.test("external activity upsert failure reports failed.externalActivities wi
     assessments: [],
     externalActivities: [EXTERNAL_ACTIVITY_ID],
   });
+  assertEquals(response.status, 200);
+  assertEquals(body.syncTime, "2026-07-16T02:00:00.000Z");
+  const upserts = harness.adminWritePayloads.filter((call) =>
+    call.table === "external_activities" && call.method === "upsert"
+  );
+  assertEquals(upserts.length, 1);
+  const rows = upserts[0].args[0] as Array<Record<string, unknown>>;
+  assertEquals(rows.length, 1);
+  assertEquals(rows[0].synced_at, "2026-07-16T02:00:00.000Z");
+  assertEquals(rows[0].started_at, "2020-01-01T00:00:00.000Z");
 });
 
 Deno.test("a newer active personal record cannot resurrect a stored tombstone", async () => {
@@ -3092,6 +4338,9 @@ function tombstoneRpcBehavior(
         error: null,
       };
     }
+    if (
+      name === "upsert_routine_lww" || name === "upsert_training_cycle_lww"
+    ) {
     if (name === "upsert_routine_lww") {
       // LWW on: accept every row so children are written.
       return {
@@ -3130,6 +4379,14 @@ function parentWriteIds(
   harness: PushHarness,
   table: "routines" | "training_cycles",
 ): string[] {
+  const rpcName = table === "routines"
+    ? "upsert_routine_lww"
+    : "upsert_training_cycle_lww";
+  const viaUpsert = harness.adminWriteArgs
+    .filter((call) => call.table === table && call.method === "upsert")
+    .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id));
+  const viaRpc = harness.adminRpcCalls
+    .filter((call) => call.name === rpcName)
   const viaUpsert = harness.adminWriteArgs
     .filter((call) => call.table === table && call.method === "upsert")
     .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id));
@@ -3422,6 +4679,12 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a deleted cycle beside a live o
     upsertedRows(harness, "cycle_days").map((row) => row.cycle_id),
     [LIVE_CYCLE_ID],
   );
+  // Orphan-day cleanup only touches the live cycle.
+  assertEquals(
+    harness.adminWriteArgs.filter((call) =>
+      call.table === "cycle_days" && call.method === "delete"
+    ).length,
+    1,
   // Orphan-day cleanup runs inside the merge, which only received the live
   // cycle; nothing touches cycle_days directly.
   assertEquals(
@@ -3769,6 +5032,11 @@ Deno.test("present empty preference field is evaluated without an RPC", async ()
     externalActivitiesUpserted: 0,
     externalActivityIds: [],
     externalActivityKeys: [],
+    acknowledgedWorkoutSessionIds: [],
+    acknowledgedCycleIds: [],
+    acknowledgedWorkoutDeletionIds: [],
+    acknowledgedOwnershipTransferIds: [],
+    acknowledgedDeletedCycleIds: [],
     rejections: {
       sessions: [],
       routines: [],
@@ -4137,6 +5405,258 @@ for (const testCase of malformedRpcCases) {
     assertEquals(harness.loggerCalls, [[{ name: testCase.expectedName }]]);
   });
 }
+
+const DEVICE_STATS = {
+  userId: VALID_USER_ID,
+  // A crafted device claim for every server-derived counter.
+  totalWorkouts: 10_000,
+  totalReps: 999_999,
+  totalVolumeKg: 8_888_888,
+  totalTimeSeconds: 777_777,
+  longestStreak: 7,
+  currentStreak: 3,
+};
+
+const DEVICE_RPG = {
+  userId: VALID_USER_ID,
+  strength: 11,
+  power: 12,
+  stamina: 13,
+  consistency: 14,
+  mastery: 15,
+  characterClass: "FORGE",
+  level: 4,
+  experiencePoints: 1234,
+};
+
+Deno.test("stats push sends only device-owned columns through the LWW RPCs", async () => {
+  const harness = makeHarness();
+  const body = validPushBody();
+  body.profileId = "default";
+  body.allProfiles = [{ id: "default", name: "Default", colorIndex: 0 }];
+  // Two workouts: the newest one is the last-workout date the write carries.
+  body.sessions = [
+    {
+      id: SESSION_ID,
+      userId: VALID_USER_ID,
+      name: "Older workout",
+      startedAt: "2026-07-09T08:00:00.000Z",
+    },
+    {
+      id: MISMATCH_ID,
+      userId: VALID_USER_ID,
+      name: "Newest workout",
+      startedAt: "2026-07-11T12:00:00.000Z",
+    },
+  ];
+  body.gamificationStats = DEVICE_STATS;
+  body.rpgAttributes = DEVICE_RPG;
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  const lastWorkoutAt = "2026-07-11T12:00:00.000Z";
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "upsert_gamification_stats_lww"
+    ).map((call) => call.args.p_rows),
+    [[{
+      user_id: VALID_USER_ID,
+      // The device's own numbers go to the SHADOW columns, which
+      // mobile-sync-pull serves straight back to it. No derived counter and
+      // no streak is on the wire to the RPC (R-10).
+      device_total_workouts: 10_000,
+      device_total_reps: 999_999,
+      device_total_volume_kg: 8_888_888,
+      device_total_time_seconds: 777_777,
+      device_longest_streak: 7,
+      device_current_streak: 3,
+      last_workout_at: lastWorkoutAt,
+    }]],
+  );
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "upsert_rpg_attributes_lww"
+    ).map((call) => call.args.p_rows),
+    [[{
+      user_id: VALID_USER_ID,
+      strength: 11,
+      power: 12,
+      stamina: 13,
+      consistency: 14,
+      mastery: 15,
+      character_class: "FORGE",
+      level: 4,
+      experience_points: 1234,
+      last_workout_at: lastWorkoutAt,
+    }]],
+  );
+  // Both flag paths use the RPC; nothing writes these tables directly any
+  // more, so no server `new Date()` stamp reaches them either (F-070).
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "gamification_stats" || call.table === "rpg_attributes"
+    ),
+    [],
+  );
+});
+
+Deno.test("every push recomputes the server-derived counters, even without stats", async () => {
+  const harness = makeHarness();
+
+  const response = await harness.handler(requestFromBody(validPushBody()));
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    harness.adminRpcCalls.filter((call) =>
+      call.name === "recompute_gamification_stats"
+    ),
+    [{
+      name: "recompute_gamification_stats",
+      args: { p_user_id: VALID_USER_ID },
+    }],
+  );
+});
+
+Deno.test("a stats-only push carries no last-workout date", async () => {
+  const harness = makeHarness();
+  const body = validPushBody();
+  body.gamificationStats = DEVICE_STATS;
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    harness.adminRpcCalls.find((call) =>
+      call.name === "upsert_gamification_stats_lww"
+    )?.args.p_rows,
+    [{
+      user_id: VALID_USER_ID,
+      device_total_workouts: 10_000,
+      device_total_reps: 999_999,
+      device_total_volume_kg: 8_888_888,
+      device_total_time_seconds: 777_777,
+      device_longest_streak: 7,
+      device_current_streak: 3,
+      last_workout_at: null,
+    }],
+  );
+});
+
+Deno.test("a future-dated startedAt is clamped to the server clock", async () => {
+  // R-2 / R-11 / R-24: startedAt is only checked for parseability, so a
+  // skewed phone clock or a crafted payload could otherwise park the
+  // conflict key in 2099 and freeze every device-reported column against
+  // every later honest push, with no path back down.
+  const harness = makeHarness();
+  const body = validPushBody();
+  body.profileId = "default";
+  body.allProfiles = [{ id: "default", name: "Default", colorIndex: 0 }];
+  body.sessions = [{
+    id: SESSION_ID,
+    userId: VALID_USER_ID,
+    name: "Clock-skewed workout",
+    startedAt: "2099-01-01T00:00:00.000Z",
+  }];
+  body.gamificationStats = DEVICE_STATS;
+  body.rpgAttributes = DEVICE_RPG;
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  const keys = harness.adminRpcCalls
+    .filter((call) =>
+      call.name === "upsert_gamification_stats_lww" ||
+      call.name === "upsert_rpg_attributes_lww"
+    )
+    .map((call) =>
+      ((call.args.p_rows as Array<Record<string, unknown>>)[0]).last_workout_at
+    );
+  // The harness clock is 2026-07-16T02:00:00.000Z.
+  assertEquals(keys, [
+    "2026-07-16T02:00:00.000Z",
+    "2026-07-16T02:00:00.000Z",
+  ]);
+});
+
+Deno.test("a failed recompute FAILS OPEN: the push still succeeds and broadcasts", async () => {
+  // Review round 1 (R-1) deliberately reverses the previous expectation
+  // ("a failed recompute fails the push"). The recompute runs in its own
+  // transaction AFTER every write has committed, so throwing returned 500
+  // for a push whose data all landed, suppressed the sync_complete
+  // broadcast, and made the device retry the whole payload — re-running the
+  // same full-history recompute on every batch of a multi-batch import. On a
+  // large history that meets a statement_timeout that is a permanent
+  // sync-failure loop. The counters are self-healing, so a stale counter
+  // beats a wedged sync.
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) =>
+      name === "recompute_gamification_stats"
+        ? { data: null, error: { message: "recompute boom" } }
+        : { data: [], error: null },
+  });
+
+  const response = await harness.handler(requestFromBody(validPushBody()));
+
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  assertEquals(harness.loggerCalls, [[{ name: "GamificationRecomputeFailure" }]]);
+  // Step 15 still runs, so the portal is told to refresh.
+  assertEquals(harness.broadcastPayloads.length, 1);
+});
+
+Deno.test("flag-off keeps the rejection response contract for stats and rpg", async () => {
+  // R-18: both flag paths now call the RPCs, so the `if (SYNC_LWW_ENABLED)`
+  // guard is the only thing keeping `rejections` empty when the flag is off.
+  // Nothing exercised it before, because the default rpcBehavior never
+  // returns accepted: false.
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) =>
+      name === "upsert_gamification_stats_lww" ||
+        name === "upsert_rpg_attributes_lww"
+        ? {
+          data: [{
+            id: VALID_USER_ID,
+            accepted: false,
+            server_updated_at: "2026-07-10T00:00:00.000Z",
+          }],
+          error: null,
+        }
+        : { data: [], error: null },
+  });
+  const body = validPushBody();
+  body.gamificationStats = DEVICE_STATS;
+  body.rpgAttributes = DEVICE_RPG;
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  const payload = await json(response) as {
+    rejections?: {
+      gamificationStats?: unknown[];
+      rpgAttributes?: unknown[];
+    };
+  };
+  const expected = SYNC_LWW_ENABLED_IN_TEST
+    ? [{ id: VALID_USER_ID, serverUpdatedAt: "2026-07-10T00:00:00.000Z" }]
+    : [];
+  assertEquals(payload.rejections?.gamificationStats ?? [], expected);
+  assertEquals(payload.rejections?.rpgAttributes ?? [], expected);
+});
+
+interface LocalIntegrationEnvironment {
+  url: string;
+  anonKey: string;
+  serviceRoleKey: string;
+}
+
+const localIntegrationEnvironment: LocalIntegrationEnvironment | null = (() => {
+  const url = Deno.env.get("SUPABASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  return url && anonKey && serviceRoleKey
+    ? { url, anonKey, serviceRoleKey }
+    : null;
+})();
 
 interface LocalIntegrationFixture {
   admin: SupabaseClient;
@@ -5276,6 +6796,138 @@ Deno.test({
       }
     } finally {
       await cleanupLocalIntegrationFixture(fixture);
+Deno.test({
+  name:
+    "integration: pushed external activity stores server synced_at so a later pull cursor still sees it",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    const activityId = crypto.randomUUID();
+    try {
+      const subscription = await fixture.admin.from("subscriptions").insert({
+        user_id: fixture.ownerId,
+        tier: "EMBER",
+        status: "active",
+        current_period_end: "2099-01-01T00:00:00.000Z",
+      });
+      if (subscription.error) {
+        throw new Error(
+          `subscription fixture failed: ${subscription.error.code} ${subscription.error.message}`,
+        );
+      }
+      // A device's last pull cursor, taken from the server clock just
+      // before another device pushes an activity with an older client
+      // syncedAt. The pull filters `synced_at > lastSync`.
+      const otherDeviceLastSync = Date.now() - 1_000;
+      const handler = createMobileSyncPushHandler({
+        createAuthClient() {
+          return {
+            auth: {
+              async getUser() {
+                return { data: { user: { id: fixture.ownerId } }, error: null };
+              },
+            },
+          };
+        },
+        createAdminClient() {
+          // Real SQL for every read/write; only the Realtime broadcast is
+          // stubbed so the test leaks no websocket or timer.
+          const broadcastStub = {
+            channel() {
+              return {
+                subscribe(callback: (status: string) => void) {
+                  callback("SUBSCRIBED");
+                  return {};
+                },
+                async send() {
+                  return "ok";
+                },
+              };
+            },
+            async removeChannel() {
+              return "ok";
+            },
+          };
+          return new Proxy(fixture.admin, {
+            get(target, property, receiver) {
+              if (property === "channel" || property === "removeChannel") {
+                return broadcastStub[property];
+              }
+              const value = Reflect.get(target, property, receiver);
+              return typeof value === "function" ? value.bind(target) : value;
+            },
+          });
+        },
+        logOperationalFailure() {},
+        now: () => Date.now(),
+      } as never);
+      const response = await handler(requestFromBody({
+        ...validPushBody(),
+        externalActivities: [{
+          id: activityId,
+          externalId: `pr72-${activityId}`,
+          provider: "hevy",
+          name: "Imported workout",
+          activityType: "strength",
+          startedAt: "2020-01-01T00:00:00.000Z",
+          durationSeconds: 600,
+          syncedAt: "2020-01-01T00:05:00.000Z",
+        }],
+      }));
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+
+      const stored = await fixture.admin.from("external_activities")
+        .select("synced_at")
+        .eq("user_id", fixture.ownerId)
+        .eq("external_id", `pr72-${activityId}`)
+        .single();
+      if (stored.error) {
+        throw new Error(
+          `external activity read failed: ${stored.error.code} ${stored.error.message}`,
+        );
+      }
+      const storedSyncedAt = Date.parse(stored.data.synced_at as string);
+      assert(
+        storedSyncedAt > otherDeviceLastSync,
+        `synced_at ${stored.data.synced_at} must be server time, not the client value`,
+      );
+      assert(storedSyncedAt <= Date.parse(body.syncTime as string));
+
+      const visible = await fixture.admin.from("external_activities")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", fixture.ownerId)
+        .gt("synced_at", new Date(otherDeviceLastSync).toISOString());
+      if (visible.error) {
+        throw new Error(
+          `pull-cursor query failed: ${visible.error.code} ${visible.error.message}`,
+        );
+      }
+      assertEquals(visible.count, 1);
+    } finally {
+      const activities = await fixture.admin.from("external_activities")
+        .delete()
+        .eq("user_id", fixture.ownerId);
+      const subscriptions = await fixture.admin.from("subscriptions")
+        .delete()
+        .eq("user_id", fixture.ownerId);
+      const rateLimits = await fixture.admin.from("rate_limit_tracking")
+        .delete()
+        .eq("user_id", fixture.ownerId);
+      await cleanupLocalIntegrationFixture(fixture);
+      for (
+        const [label, result] of [
+          ["external_activities", activities],
+          ["subscriptions", subscriptions],
+          ["rate_limit_tracking", rateLimits],
+        ] as const
+      ) {
+        if (result.error) {
+          throw new Error(
+            `${label} cleanup failed: ${result.error.code} ${result.error.message}`,
+          );
+        }
+      }
     }
   },
 });
@@ -5417,12 +7069,12 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
 
   assertEquals(offset, 729);
   const replaceCalls = harness.adminRpcCalls.filter((call) =>
-    call.name === "replace_session_children"
+    call.name === "upsert_workout_sessions_with_components"
   );
   assertEquals(replaceCalls.length, 3);
   assertEquals(
-    replaceCalls[0].args.p_session_ids,
-    allSessions.slice(0, 243).map((session) => session.id),
+    replaceCalls[0].args.p_component_ids,
+    allSessions.slice(0, 243).flatMap((session) => session.exercises.map((exercise) => exercise.id)),
   );
   const secondBatchExercises = replaceCalls[1].args.p_exercises as Array<Record<string, unknown>>;
   assertEquals(secondBatchExercises.length, 243);
@@ -5435,6 +7087,257 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
   );
 });
 
+// PR 58 (F-073, F-039): each client-supplied primary key is probed for
+// ownership exactly once, in the up-front directOwnerChecks pass.
+const DIRECT_OWNERSHIP_TABLES = [
+  "workout_sessions",
+  "exercises",
+  "sets",
+  "rep_summaries",
+  "routines",
+  "training_cycles",
+];
+
+Deno.test("push probes each ownership table exactly once for a nested payload", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(
+    requestFromBody(validNestedRelationshipBody()),
+  );
+
+  assertEquals(response.status, 200);
+  for (const table of DIRECT_OWNERSHIP_TABLES) {
+    assertEquals(
+      harness.ownershipProbeTables.filter((probed) => probed === table).length,
+      1,
+      `${table} ownership probes`,
+    );
+  }
+  assertEquals(
+    harness.adminFromCalls.filter((table) => table === "cycle_days").length,
+    2,
+    "cycle_days is only upserted by (cycle_id, day_number) and orphan-pruned, never id-probed",
+  );
+});
+
+for (const table of DIRECT_OWNERSHIP_TABLES) {
+  Deno.test(`push refuses a ${table} id owned by another user before any write`, async () => {
+    const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+      foreignOwnedTables: [table],
+    });
+    const response = await harness.handler(
+      requestFromBody(validNestedRelationshipBody()),
+    );
+
+    assertEquals(response.status, 400);
+    assertEquals(await json(response), {
+      error: `Refused: existing ${table} row belongs to another user`,
+    });
+    assertEquals(
+      harness.adminWriteCalls.filter((call) =>
+        DIRECT_OWNERSHIP_TABLES.includes(call.table)
+      ),
+      [],
+    );
+    assertEquals(
+      harness.adminRpcCalls.filter((call) =>
+        call.name === "replace_session_children"
+      ),
+      [],
+    );
+  });
+}
+
+Deno.test("public exercise catalog is fetched once per isolate within the TTL", async () => {
+  let nowMs = 1_784_167_200_000;
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    now: () => nowMs,
+  });
+  const push = async () => {
+    const body = validPushBody();
+    body.profileId = "default";
+    body.sessions = [makePrSession()];
+    const response = await harness.handler(requestFromBody(body));
+    assertEquals(response.status, 200);
+  };
+  const lookups = () =>
+    harness.catalogQueries.map((query) =>
+      isPublicCatalogLookup(query)
+        ? "public"
+        : isCustomCatalogLookup(query)
+        ? "custom"
+        : "other"
+    );
+
+  await push();
+  // First push: one public-catalog fetch plus the caller's custom rows.
+  assertEquals(lookups(), ["public", "custom"]);
+
+  nowMs += 9 * 60 * 1000;
+  await push();
+  // Second push in the same isolate: only the caller's custom rows.
+  assertEquals(lookups(), ["public", "custom", "custom"]);
+
+  nowMs += 2 * 60 * 1000;
+  await push();
+  // After the 10-minute TTL the public catalog is fetched again.
+  assertEquals(lookups(), ["public", "custom", "custom", "public", "custom"]);
+});
+
+Deno.test("catalog lookups filter public rows and the caller's own custom rows", async () => {
+  const harness = makeHarness();
+  const body = validPushBody();
+  body.profileId = "default";
+  body.sessions = [makePrSession()];
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  const [publicLookup, customLookup] = harness.catalogQueries;
+  assertEquals(catalogEqFilters(publicLookup), [["is_custom", false]]);
+  assertEquals(catalogEqFilters(customLookup), [
+    ["is_custom", true],
+    ["user_id", VALID_USER_ID],
+  ]);
+  for (const lookup of [publicLookup, customLookup]) {
+    assert(!lookup.calls.some((call) => call.method === "or"));
+    assertEquals(catalogRangeStart(lookup), 0);
+  }
+});
+
+Deno.test("a library row wins a name tie with the caller's custom row", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    catalogBehavior: (query) => {
+      if (isPublicCatalogLookup(query)) {
+        return {
+          data: [{ id: "zz-library-bench", name: "Bench Press", is_custom: false }],
+          error: null,
+        };
+      }
+      if (isCustomCatalogLookup(query)) {
+        // Sorts before the library id, so id order alone would pick it.
+        return {
+          data: [{
+            id: "aa-custom-bench",
+            name: "Bench Press",
+            is_custom: true,
+            user_id: VALID_USER_ID,
+          }],
+          error: null,
+        };
+      }
+      return undefined;
+    },
+  });
+  const body = validPushBody();
+  body.profileId = "default";
+  const session = makePrSession();
+  session.exercises[0].exerciseId = "unknown-stale-id";
+  body.sessions = [session];
+
+  const response = await harness.handler(requestFromBody(body));
+
+  assertEquals(response.status, 200);
+  const replace = harness.adminRpcCalls.find((call) =>
+    call.name === "replace_session_children"
+  );
+  assert(replace);
+  assertEquals(
+    (replace.args.p_exercises as Array<Record<string, unknown>>)[0].exercise_id,
+    "zz-library-bench",
+  );
+});
+
+Deno.test("a failed public catalog fetch is not cached", async () => {
+  let failPublic = true;
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    catalogBehavior: (query) =>
+      isPublicCatalogLookup(query) && failPublic
+        ? { data: null, error: { message: "injected catalog failure" } }
+        : undefined,
+  });
+  const push = async () => {
+    const body = validPushBody();
+    body.profileId = "default";
+    body.sessions = [makePrSession()];
+    return await harness.handler(requestFromBody(body));
+  };
+
+  assertEquals((await push()).status, 500);
+  failPublic = false;
+  assertEquals((await push()).status, 200);
+  assertEquals(
+    harness.catalogQueries.filter(isPublicCatalogLookup).length,
+    2,
+  );
+});
+
+Deno.test("a page-2 public catalog failure does not cache page 1", async () => {
+  let failPageTwo = true;
+  const pageOne = Array.from({ length: 1000 }, (_, index) => ({
+    id: `library-${index.toString().padStart(4, "0")}`,
+    name: `Library exercise ${index}`,
+    is_custom: false,
+  }));
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    catalogBehavior: (query) => {
+      if (!isPublicCatalogLookup(query)) return undefined;
+      if (catalogRangeStart(query) === 0) return { data: pageOne, error: null };
+      return failPageTwo
+        ? { data: null, error: { message: "injected page-2 failure" } }
+        : { data: [], error: null };
+    },
+  });
+  const push = async () => {
+    const body = validPushBody();
+    body.profileId = "default";
+    body.sessions = [makePrSession()];
+    return await harness.handler(requestFromBody(body));
+  };
+
+  assertEquals((await push()).status, 500);
+  failPageTwo = false;
+  assertEquals((await push()).status, 200);
+  assertEquals(
+    harness.catalogQueries.filter(isPublicCatalogLookup).map(catalogRangeStart),
+    [0, 1000, 0, 1000],
+  );
+});
+
+Deno.test("a clock that moves backwards treats the public catalog as stale", async () => {
+  let nowMs = 1_784_167_200_000;
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    now: () => nowMs,
+  });
+  const push = async () => {
+    const body = validPushBody();
+    body.profileId = "default";
+    body.sessions = [makePrSession()];
+    assertEquals((await harness.handler(requestFromBody(body))).status, 200);
+  };
+
+  await push();
+  nowMs -= 1;
+  await push();
+  assertEquals(
+    harness.catalogQueries.filter(isPublicCatalogLookup).length,
+    2,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// PR 58 real-SQL coverage: split catalog filters, isolate cache, and the
+// removed cycle_days id probe, against a real PostgREST and Postgres.
+// ---------------------------------------------------------------------------
+
+interface CatalogIntegrationFixture {
+  admin: SupabaseClient;
+  ownerId: string;
+  otherUserId: string;
+  suffix: string;
+}
+
+async function createCatalogIntegrationFixture(): Promise<
+  CatalogIntegrationFixture
+> {
 // ---------------------------------------------------------------------------
 // KD-4 real-SQL: routine/cycle tombstones through the real push handler.
 // Every table write goes to the local stack (no query doubles); only the
@@ -5487,6 +7390,20 @@ async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
   const suffix = crypto.randomUUID();
+  const createdUserIds: string[] = [];
+  try {
+    for (const role of ["owner", "other"]) {
+      const created = await admin.auth.admin.createUser({
+        email: `pr58-${role}-${suffix}@example.invalid`,
+        email_confirm: true,
+      });
+      if (created.error || !created.data.user) {
+        throw new Error(`${role} fixture creation failed`);
+      }
+      createdUserIds.push(created.data.user.id);
+    }
+    const subscription = await admin.from("subscriptions").insert({
+      user_id: createdUserIds[0],
   const email = `pr16-owner-${suffix}@example.invalid`;
   const password = `pw-${suffix}`;
   const owner = await admin.auth.admin.createUser({
@@ -5505,6 +7422,19 @@ async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
       status: "active",
       current_period_end: "2099-01-01T00:00:00.000Z",
     });
+    if (subscription.error) {
+      throw new Error(`subscription fixture failed: ${subscription.error.message}`);
+    }
+    return {
+      admin,
+      ownerId: createdUserIds[0],
+      otherUserId: createdUserIds[1],
+      suffix,
+    };
+  } catch (error) {
+    for (const userId of createdUserIds) {
+      await admin.auth.admin.deleteUser(userId);
+    }
     if (subscription.error) throw new Error("subscription fixture failed");
     return { admin, ownerId, email, password };
   } catch (error) {
@@ -5513,6 +7443,82 @@ async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Real-SQL subscription gate (replaces the deleted live FREE-user sync tests):
+// the real `subscriptions` table, service-role grants and RLS decide 402 vs
+// the write path.
+// ---------------------------------------------------------------------------
+
+interface GateFixture {
+  admin: SupabaseClient;
+  userId: string;
+}
+
+async function deleteGateFixture(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<void> {
+  for (
+    const table of [
+      "workout_sessions",
+      "local_profiles",
+      "subscriptions",
+      "rate_limit_tracking",
+    ]
+  ) {
+    const deleted = await admin.from(table).delete().eq("user_id", userId);
+    if (deleted.error) throw new Error(`${table} gate fixture cleanup failed`);
+  }
+  const deleted = await admin.auth.admin.deleteUser(userId);
+  if (deleted.error) throw new Error("auth gate fixture cleanup failed");
+}
+
+async function createGateFixture(
+  subscription: Record<string, unknown> | null,
+): Promise<GateFixture> {
+  assert(localIntegrationEnvironment);
+  const admin = createClient(
+    localIntegrationEnvironment.url,
+    localIntegrationEnvironment.serviceRoleKey,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const created = await admin.auth.admin.createUser({
+    email: `pr6-gate-${crypto.randomUUID()}@example.invalid`,
+    email_confirm: true,
+  });
+  if (created.error || !created.data.user) {
+    throw new Error("gate fixture user creation failed");
+  }
+  const userId = created.data.user.id;
+  try {
+    if (subscription !== null) {
+      const inserted = await admin.from("subscriptions").insert({
+        user_id: userId,
+        ...subscription,
+      });
+      if (inserted.error) throw new Error("gate fixture subscription failed");
+    }
+    return { admin, userId };
+  } catch (error) {
+    await deleteGateFixture(admin, userId);
+    throw error;
+  }
+}
+
+async function cleanupCatalogIntegrationFixture(
+  fixture: CatalogIntegrationFixture,
+): Promise<void> {
+  // Every pushed row and custom catalog row cascades from auth.users.
+  for (const userId of [fixture.ownerId, fixture.otherUserId]) {
+    const deleted = await fixture.admin.auth.admin.deleteUser(userId);
+    if (deleted.error) throw new Error("auth fixture cleanup failed");
+  }
+}
+
+function realPushHandler(
+  fixture: CatalogIntegrationFixture,
+  now: () => number = () => Date.now(),
+): (request: Request) => Promise<Response> {
 /** Real admin client for every query; only the broadcast is stubbed. */
 function realTombstonePushHandler(
   fixture: TombstonePushFixture,
@@ -5532,6 +7538,29 @@ function realTombstonePushHandler(
         },
       };
     },
+// Real-SQL gamification derivation (PR 25). These run the handler against the
+// local Supabase stack, so the counters come out of the migrations and not a
+// double. The flag is read at module load, so both SYNC_LWW_ENABLED values are
+// covered by running the suite once per value.
+// ---------------------------------------------------------------------------
+
+/** The handler with the real service-role client; only realtime is stubbed. */
+function makeRealSqlHandler(
+  fixture: LocalIntegrationFixture,
+): (request: Request) => Promise<Response> {
+  const admin = {
+    from: (table: string) => fixture.admin.from(table),
+    rpc: (name: string, args?: Record<string, unknown>) =>
+      fixture.admin.rpc(name, args),
+    channel: () => ({
+      subscribe(callback: (status: string) => void) {
+        callback("SUBSCRIBED");
+        return {};
+      },
+      async send() {
+        return "ok";
+      },
+    }),
     async removeChannel() {
       return "ok";
     },
@@ -5550,6 +7579,64 @@ function realTombstonePushHandler(
       return client;
     },
     logOperationalFailure: () => {},
+      const admin = Object.create(fixture.admin) as SupabaseClient;
+      Object.assign(admin, {
+        channel() {
+          return {
+            subscribe(callback: (status: string) => void) {
+              callback("SUBSCRIBED");
+              return {};
+            },
+            async send() {
+              return "ok";
+            },
+          };
+        },
+        async removeChannel() {
+          return "ok";
+        },
+      });
+      return admin;
+    },
+    logOperationalFailure() {},
+    now,
+  });
+}
+
+// Real SQL, but the realtime broadcast is recorded instead of opening a
+// websocket (which would leak past the test).
+function realGatePushHandler(
+  fixture: GateFixture,
+  broadcastTopics: string[] = [],
+): (request: Request) => Promise<Response> {
+  const admin = new Proxy(fixture.admin, {
+    get(target, property, receiver) {
+      if (property === "channel") {
+        return (topic: string) => ({
+          subscribe(callback: (status: string) => void) {
+            callback("SUBSCRIBED");
+            return {};
+          },
+          async send() {
+            broadcastTopics.push(topic);
+            return "ok";
+          },
+        });
+      }
+      if (property === "removeChannel") return async () => "ok";
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return createMobileSyncPushHandler({
+      return client;
+    },
+    logOperationalFailure: () => {},
+      return admin;
+    },
+    logOperationalFailure(value: { name: string }) {
+      console.error(value);
+    },
     now: () => Date.now(),
   } as never);
 }
@@ -6502,11 +8589,80 @@ function lwwClockPush(
       exercises: [],
     }],
   };
+async function entitleLocalIntegrationFixture(
+  fixture: LocalIntegrationFixture,
+): Promise<void> {
+  const subscription = await fixture.admin.from("subscriptions").upsert({
+    user_id: fixture.ownerId,
+    tier: "EMBER",
+    status: "active",
+    current_period_end: "2099-01-01T00:00:00.000Z",
+  }, { onConflict: "user_id" });
+  if (subscription.error) throw new Error("subscription fixture creation failed");
+}
+
+function derivedSessionBody(
+  fixture: LocalIntegrationFixture,
+  sessions: Array<{ id: string; startedAt: string }>,
+  stats: Record<string, unknown> | null,
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    profileId: fixture.profileId,
+    allProfiles: [{
+      id: fixture.profileId,
+      name: "Task 7 integration profile",
+      colorIndex: 0,
+    }],
+    sessions: sessions.map((session, index) => {
+      const exerciseId = crypto.randomUUID();
+      return {
+        id: session.id,
+        userId: fixture.ownerId,
+        name: `Derived session ${index}`,
+        startedAt: session.startedAt,
+        durationSeconds: 60,
+        // Stored per cable and never doubled (KD-8).
+        totalVolume: 25,
+        setCount: 1,
+        exerciseCount: 1,
+        exercises: [{
+          id: exerciseId,
+          sessionId: session.id,
+          name: "Bench Press",
+          muscleGroup: "Chest",
+          sets: [{
+            id: crypto.randomUUID(),
+            exerciseId,
+            setNumber: 1,
+            targetReps: 10,
+            actualReps: 10,
+            weightKg: 25,
+          }],
+        }],
+      };
+    }),
+    gamificationStats: stats,
+  };
+}
+
+async function storedStats(
+  fixture: LocalIntegrationFixture,
+): Promise<Record<string, unknown>> {
+  const stored = await fixture.admin.from("gamification_stats")
+    .select(
+      "total_workouts,total_volume_kg,total_reps,total_time_seconds,pr_count,current_streak,longest_streak,best_streak,device_total_workouts,device_total_volume_kg,device_current_streak,device_longest_streak",
+    )
+    .eq("user_id", fixture.ownerId)
+    .single();
+  if (stored.error) throw new Error("stats verification query failed");
+  return stored.data as Record<string, unknown>;
 }
 
 Deno.test({
   name:
     "integration: VBT push is idempotent on the timestamptz value and the unique index exists",
+    "integration: derived counters follow the stored sessions while the device keeps its own",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
     const fixture = await createLocalIntegrationFixture();
@@ -6612,6 +8768,105 @@ Deno.test({
       });
       assertEquals(duplicate.error?.code, "23505");
       assertEquals(await vbtCount(), 3);
+      await entitleLocalIntegrationFixture(fixture);
+      const handler = makeRealSqlHandler(fixture);
+      const sessionIds = [
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+      ];
+      const deviceASessions = [
+        { id: sessionIds[0], startedAt: "2026-07-01T10:00:00.000Z" },
+        { id: sessionIds[1], startedAt: "2026-07-05T10:00:00.000Z" },
+        { id: sessionIds[2], startedAt: "2026-07-09T10:00:00.000Z" },
+      ];
+      // Three non-consecutive UTC days, none of them today, so every derived
+      // streak is 1 and the current streak is 0.
+      const deviceAStats = {
+        total_workouts: 3,
+        total_volume_kg: 75,
+        total_reps: 30,
+        total_time_seconds: 180,
+        pr_count: 0,
+        current_streak: 0,
+        longest_streak: 1,
+        best_streak: 1,
+        device_total_workouts: 3,
+        device_total_volume_kg: 75,
+        device_current_streak: 5,
+        device_longest_streak: 20,
+      };
+
+      const deviceA = await handler(requestFromBody(derivedSessionBody(
+        fixture,
+        deviceASessions,
+        {
+          userId: fixture.ownerId,
+          totalWorkouts: 3,
+          totalReps: 30,
+          totalVolumeKg: 75,
+          totalTimeSeconds: 180,
+          currentStreak: 5,
+          longestStreak: 20,
+        },
+      )));
+
+      assertEquals(deviceA.status, 200);
+      assertEquals(await storedStats(fixture), deviceAStats);
+
+      // Stale device B: fewer workouts, an older last workout, worse streaks.
+      // Its key loses the compare, so nothing of its own lands either.
+      const deviceB = await handler(requestFromBody(derivedSessionBody(
+        fixture,
+        deviceASessions.slice(0, 2),
+        {
+          userId: fixture.ownerId,
+          totalWorkouts: 2,
+          totalReps: 20,
+          totalVolumeKg: 50,
+          totalTimeSeconds: 120,
+          currentStreak: 1,
+          longestStreak: 2,
+        },
+      )));
+
+      assertEquals(deviceB.status, 200);
+      assertEquals(await storedStats(fixture), deviceAStats);
+
+      // A crafted push with no sessions. R-3/R-11: the null key must NOT be
+      // read as consent, so even the device-reported shadow columns are left
+      // alone — and nothing it claims reaches a derived counter.
+      const crafted = await handler(requestFromBody(derivedSessionBody(
+        fixture,
+        [],
+        {
+          userId: fixture.ownerId,
+          totalWorkouts: 10_000,
+          totalReps: 100_000,
+          totalVolumeKg: 9_999_999,
+          totalTimeSeconds: 999_999,
+          currentStreak: 3,
+          longestStreak: 4,
+        },
+      )));
+
+      assertEquals(crafted.status, 200);
+      assertEquals(await storedStats(fixture), deviceAStats);
+
+      // Deleting a session lowers the derived totals, with no push involved,
+      // and still does not touch what the device reported.
+      const deleted = await fixture.admin.from("workout_sessions")
+        .delete()
+        .eq("id", sessionIds[0]);
+      if (deleted.error) throw new Error("session delete failed");
+      const afterDelete = await storedStats(fixture);
+      assertEquals(afterDelete.total_workouts, 2);
+      assertEquals(afterDelete.total_volume_kg, 50);
+      assertEquals(afterDelete.total_reps, 20);
+      assertEquals(afterDelete.total_time_seconds, 120);
+      assertEquals(afterDelete.device_total_workouts, 3);
+      assertEquals(afterDelete.device_current_streak, 5);
+      assertEquals(afterDelete.device_longest_streak, 20);
     } finally {
       await cleanupLocalIntegrationFixture(fixture);
     }
@@ -6850,12 +9105,94 @@ function realPullHandlerFor(
       return {
         auth: {
           async getUser() {
+            return { data: { user: { id: fixture.userId } }, error: null };
             return { data: { user: { id: fixture.ownerId } }, error: null };
           },
         },
       };
     },
     createAdminClient() {
+      return admin;
+    },
+    logOperationalFailure: () => {},
+    now: () => 1_784_167_200_000,
+  } as never);
+}
+
+function catalogProbeSession(
+  sessionId: string,
+  userId: string,
+  refs: Array<{ exerciseId: string; name: string }>,
+): Record<string, unknown> {
+  return {
+    id: sessionId,
+    userId,
+    startedAt: "2026-01-20T10:00:00.000Z",
+    updatedAt: "2026-01-20T10:30:00.000Z",
+    workoutMode: "OLD_SCHOOL",
+    exercises: refs.map((ref, index) => {
+      const exerciseRowId = crypto.randomUUID();
+      return {
+        id: exerciseRowId,
+        sessionId,
+        name: ref.name,
+        exerciseId: ref.exerciseId,
+        muscleGroup: "Chest",
+        orderIndex: index,
+        sets: [{
+          id: crypto.randomUUID(),
+          exerciseId: exerciseRowId,
+          setNumber: 1,
+          targetReps: 10,
+          actualReps: 10,
+          weightKg: 20,
+          isPr: false,
+        }],
+      };
+    }),
+  };
+}
+
+async function pushSession(
+  handler: (request: Request) => Promise<Response>,
+  fixture: CatalogIntegrationFixture,
+  refs: Array<{ exerciseId: string; name: string }>,
+  extra: Record<string, unknown> = {},
+): Promise<Array<string | null>> {
+  const sessionId = crypto.randomUUID();
+  const body = validPushBody();
+  body.profileId = "default";
+  body.sessions = [catalogProbeSession(sessionId, fixture.ownerId, refs)];
+  Object.assign(body, extra);
+  const response = await handler(requestFromBody(body));
+  const responseBody = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  const stored = await fixture.admin.from("exercises")
+    .select("order_index, exercise_id")
+    .eq("session_id", sessionId)
+    .order("order_index", { ascending: true });
+  if (stored.error) throw new Error("exercise verification query failed");
+  assertEquals(stored.data.length, refs.length);
+  return stored.data.map((row) => row.exercise_id as string | null);
+}
+
+async function insertCustomCatalogRow(
+  fixture: CatalogIntegrationFixture,
+  id: string,
+  name: string,
+  userId: string,
+): Promise<void> {
+  const inserted = await fixture.admin.from("exercise_catalog").insert({
+    id,
+    name,
+    display_name: name,
+    muscle_group: "Chest",
+    is_custom: true,
+    user_id: userId,
+  });
+  if (inserted.error) {
+    throw new Error(`custom catalog fixture failed: ${inserted.error.message}`);
+  }
       return fixture.admin;
     },
     logOperationalFailure: () => {},
@@ -6976,6 +9313,63 @@ async function storedClocks(
 
 Deno.test({
   name:
+    "integration: push resolves paged public rows and the caller's own custom rows, never another user's",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createCatalogIntegrationFixture();
+    try {
+      const publicIds = await fixture.admin.from("exercise_catalog")
+        .select("id")
+        .eq("is_custom", false)
+        .order("id", { ascending: true })
+        .range(1000, 1999);
+      if (publicIds.error) throw new Error("public catalog query failed");
+      // The seeded library spans more than one 1000-row page.
+      assert(publicIds.data.length > 0, "public catalog must exceed one page");
+      const pageTwoId = publicIds.data[publicIds.data.length - 1].id as string;
+
+      const ownId = `pr58-own-${fixture.suffix}`;
+      const ownName = `Pr58 Own Press ${fixture.suffix}`;
+      const otherId = `pr58-other-${fixture.suffix}`;
+      const otherName = `Pr58 Other Press ${fixture.suffix}`;
+      const pushedId = `pr58-pushed-${fixture.suffix}`;
+      const pushedName = `Pr58 Pushed Press ${fixture.suffix}`;
+      await insertCustomCatalogRow(fixture, ownId, ownName, fixture.ownerId);
+      await insertCustomCatalogRow(
+        fixture,
+        otherId,
+        otherName,
+        fixture.otherUserId,
+      );
+
+      const resolved = await pushSession(realPushHandler(fixture), fixture, [
+        { exerciseId: pageTwoId, name: "Page two library row" },
+        { exerciseId: ownId, name: "Renamed on device" },
+        { exerciseId: "pr58-stale-own", name: ownName },
+        { exerciseId: otherId, name: "Other user id" },
+        { exerciseId: "pr58-stale-other", name: otherName },
+        { exerciseId: pushedId, name: pushedName },
+        { exerciseId: "pr58-stale-pushed", name: pushedName },
+      ], {
+        customExercises: [{
+          clientId: pushedId,
+          name: pushedName,
+          muscleGroup: "Chest",
+          defaultCableConfig: "DOUBLE",
+        }],
+      });
+
+      assertEquals(resolved, [
+        pageTwoId,
+        ownId,
+        ownId,
+        null,
+        null,
+        pushedId,
+        pushedId,
+      ]);
+    } finally {
+      await cleanupCatalogIntegrationFixture(fixture);
     `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) a push that omits updatedAt is dated at receipt and never stores a null clock (NF-15 / R-1)`,
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
@@ -7148,6 +9542,171 @@ Deno.test({
 
 Deno.test({
   name:
+    "integration: public catalog rows are cached for 10 minutes per handler",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createCatalogIntegrationFixture();
+    const lateId = `pr58-late-public-${fixture.suffix}`;
+    try {
+      let nowMs = Date.now();
+      const handler = realPushHandler(fixture, () => nowMs);
+      const ref = { exerciseId: lateId, name: `Pr58 Late ${fixture.suffix}` };
+
+      assertEquals(await pushSession(handler, fixture, [ref]), [null]);
+      const inserted = await fixture.admin.from("exercise_catalog").insert({
+        id: lateId,
+        name: ref.name,
+        display_name: ref.name,
+        muscle_group: "Chest",
+        is_custom: false,
+      });
+      if (inserted.error) throw new Error("late public row insert failed");
+
+      nowMs += 9 * 60 * 1000;
+      assertEquals(await pushSession(handler, fixture, [ref]), [null]);
+
+      nowMs += 2 * 60 * 1000;
+      assertEquals(await pushSession(handler, fixture, [ref]), [lateId]);
+    } finally {
+      await cleanupCatalogIntegrationFixture(fixture);
+      await fixture.admin.from("exercise_catalog").delete().eq("id", lateId);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: a foreign cycle_days id in a push leaves the victim row untouched",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createCatalogIntegrationFixture();
+    try {
+      const victimCycleId = crypto.randomUUID();
+      const victimDayId = crypto.randomUUID();
+      const victimCycle = await fixture.admin.from("training_cycles").insert({
+        id: victimCycleId,
+        user_id: fixture.otherUserId,
+        name: "Victim cycle",
+      });
+      if (victimCycle.error) throw new Error("victim cycle insert failed");
+      const victimDay = await fixture.admin.from("cycle_days").insert({
+        id: victimDayId,
+        cycle_id: victimCycleId,
+        day_number: 1,
+        notes: "victim",
+      });
+      if (victimDay.error) throw new Error("victim day insert failed");
+
+      const ownCycleId = crypto.randomUUID();
+      const body = validPushBody();
+      body.profileId = "default";
+      body.cycles = [{
+        id: ownCycleId,
+        userId: fixture.ownerId,
+        name: "Owner cycle",
+        days: [{
+          id: victimDayId,
+          cycleId: ownCycleId,
+          dayNumber: 1,
+          notes: "attacker",
+        }],
+      }];
+      const response = await realPushHandler(fixture)(requestFromBody(body));
+      assertEquals(response.status, 200, JSON.stringify(await json(response)));
+
+      const victim = await fixture.admin.from("cycle_days")
+        .select("cycle_id, day_number, notes")
+        .eq("id", victimDayId)
+        .single();
+      if (victim.error) throw new Error("victim day verification failed");
+      assertEquals(victim.data, {
+        cycle_id: victimCycleId,
+        day_number: 1,
+        notes: "victim",
+      });
+      const own = await fixture.admin.from("cycle_days")
+        .select("id, notes")
+        .eq("cycle_id", ownCycleId);
+      if (own.error) throw new Error("owner day verification failed");
+      assertEquals(own.data.length, 1);
+      assert(own.data[0].id !== victimDayId);
+      assertEquals(own.data[0].notes, "attacker");
+    } finally {
+      await cleanupCatalogIntegrationFixture(fixture);
+    }
+  },
+});
+
+async function countGateSessions(
+  fixture: GateFixture,
+  sessionId: string,
+): Promise<number> {
+  const audit = await fixture.admin.from("workout_sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("id", sessionId);
+  if (audit.error) throw new Error("gate session audit failed");
+  return audit.count ?? -1;
+}
+
+for (
+  const [label, subscription] of [
+    ["no subscriptions row", null],
+    ["an active FREE row", {
+      tier: "FREE",
+      status: "active",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+    }],
+  ] as const
+) {
+  Deno.test({
+    name:
+      `integration: push subscription gate denies ${label} with 402 and writes nothing`,
+    ignore: localIntegrationEnvironment === null,
+    fn: async () => {
+      const fixture = await createGateFixture(subscription);
+      try {
+        const sessionId = crypto.randomUUID();
+        const broadcastTopics: string[] = [];
+        const response = await realGatePushHandler(fixture, broadcastTopics)(
+          requestFromBody(singleSessionPushBody(sessionId, fixture.userId)),
+        );
+        const body = await json(response);
+        assertEquals(response.status, 402, JSON.stringify(body));
+        assertEquals(body.error, "subscription_required");
+        assertEquals(body.currentTier, "FREE");
+        assertEquals(await countGateSessions(fixture, sessionId), 0);
+        assertEquals(broadcastTopics, []);
+      } finally {
+        await deleteGateFixture(fixture.admin, fixture.userId);
+      }
+    },
+  });
+}
+
+Deno.test({
+  name: "integration: push subscription gate lets an active EMBER row write",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createGateFixture({
+      tier: "EMBER",
+      status: "active",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+    });
+    try {
+      const sessionId = crypto.randomUUID();
+      const broadcastTopics: string[] = [];
+      const response = await realGatePushHandler(fixture, broadcastTopics)(
+        requestFromBody(singleSessionPushBody(sessionId, fixture.userId)),
+      );
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+      assertEquals(await countGateSessions(fixture, sessionId), 1);
+      assertEquals(broadcastTopics, [`sync:${fixture.userId}`]);
+    } finally {
+      await deleteGateFixture(fixture.admin, fixture.userId);
+    }
+  },
+});
     `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) the flag-off PostgREST upsert cannot move a row to another owner (R-13)`,
   ignore: localIntegrationEnvironment === null,
   fn: async () => {

@@ -16,6 +16,7 @@ const nullableSetting = <T>(normalize: (value: unknown) => T | null) =>
 		.string()
 		.nullish()
 		.transform((value) => normalize(value));
+import { toWireMode } from "../../supabase/functions/_shared/workoutModes.ts";
 
 // Per-cable to total weight conversion
 // The trainer has dual cables; DB stores per-cable, portal shows total

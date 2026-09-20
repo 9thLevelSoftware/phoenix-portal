@@ -1,0 +1,324 @@
+{
+  "_readme": [
+    "Pre-existing TypeScript errors, recorded so `npm run typecheck` can fail on NEW errors",
+    "without requiring the whole backlog to be fixed at once.",
+    "Shape: projects[projectId][filePath][errorCode] = count.",
+    "Line and column numbers and message text are deliberately NOT recorded: they churn on every",
+    "unrelated edit. The trade-off is that swapping one TS2322 in a file for a different TS2322 in",
+    "the same file is not detected. Reduce the counts by fixing errors; regenerate with",
+    "`npm run typecheck:baseline` and review the diff.",
+    "Note: tsconfig.test.json includes both `src` and `tests`, so the `test` project re-reports the",
+    "`app` project errors as well as test-only ones."
+  ],
+  "projects": {
+    "app": {
+      "src/app/components/Analytics.tsx": {
+        "TS2322": 2,
+        "TS2345": 1
+      },
+      "src/app/components/CycleBuilder.tsx": {
+        "TS2345": 9
+      },
+      "src/app/components/ErrorFallback.tsx": {
+        "TS18046": 1,
+        "TS2345": 2
+      },
+      "src/app/components/RoutineBuilder.tsx": {
+        "TS2345": 1
+      },
+      "src/app/components/SummaryReport.tsx": {
+        "TS2339": 1,
+        "TS2769": 1
+      },
+      "src/app/components/TrainingCycles.tsx": {
+        "TS2345": 1
+      },
+      "src/app/components/WhatsNewBanner.tsx": {
+        "TS2554": 1
+      },
+      "src/app/components/analytics/ExerciseDeepDive.tsx": {
+        "TS2322": 1
+      },
+      "src/app/components/analytics/MobileOverviewTab.tsx": {
+        "TS2322": 1
+      },
+      "src/app/components/analytics/OverviewTab.tsx": {
+        "TS2322": 1
+      },
+      "src/app/components/charts/RomTrend.tsx": {
+        "TS2322": 1
+      },
+      "src/app/components/charts/shared/RechartsTooltip.tsx": {
+        "TS2339": 2,
+        "TS7006": 1
+      },
+      "src/app/components/community/CommunityDetailDrawer.tsx": {
+        "TS2322": 1
+      },
+      "src/app/components/integrations/SyncStatus.tsx": {
+        "TS2538": 1
+      },
+      "src/app/components/session-replay/ReplayPhaseAnalyticsPanel.tsx": {
+        "TS2322": 1
+      },
+      "src/app/hooks/useButtonSuccess.ts": {
+        "TS2554": 1
+      },
+      "src/hooks/useNotificationSync.ts": {
+        "TS2345": 4
+      },
+      "src/hooks/useSubscription.ts": {
+        "TS2345": 1
+      },
+      "src/lib/community-atlas.ts": {
+        "TS2538": 1
+      },
+      "src/lib/export/data-export.ts": {
+        "TS2769": 1
+      },
+      "src/main.tsx": {
+        "TS2322": 1
+      },
+      "src/mutations/cycles.ts": {
+        "TS2322": 2
+      },
+      "src/queries/community.ts": {
+        "TS2590": 2
+      },
+      "src/queries/exercises.ts": {
+        "TS2339": 1,
+        "TS2345": 1
+      },
+      "src/schemas/onboarding.ts": {
+        "TS2554": 1
+      }
+    },
+    "node": {},
+    "test": {
+      "src/app/components/Analytics.tsx": {
+        "TS2322": 2,
+        "TS2345": 1
+      },
+      "src/app/components/CycleBuilder.tsx": {
+        "TS2345": 9
+      },
+      "src/app/components/ErrorFallback.tsx": {
+        "TS18046": 1,
+        "TS2345": 2
+      },
+      "src/app/components/RoutineBuilder.tsx": {
+        "TS2345": 1
+      },
+      "src/app/components/SummaryReport.tsx": {
+        "TS2339": 1,
+        "TS2769": 1
+      },
+      "src/app/components/TrainingCycles.tsx": {
+        "TS2345": 1
+      },
+      "src/app/components/WhatsNewBanner.tsx": {
+        "TS2554": 1
+      },
+      "src/app/components/__tests__/ErrorBoundary.test.tsx": {
+        "TS2786": 1
+      },
+      "src/app/components/__tests__/RoutineBuilder.test.tsx": {
+        "TS2550": 1
+      },
+      "src/app/components/analytics/ExerciseDeepDive.tsx": {
+        "TS2322": 1
+      },
+      "src/app/components/analytics/MobileOverviewTab.tsx": {
+        "TS2322": 1
+      },
+      "src/app/components/analytics/OverviewTab.tsx": {
+        "TS2322": 1
+      },
+      "src/app/components/charts/RomTrend.tsx": {
+        "TS2322": 1
+      },
+      "src/app/components/charts/shared/RechartsTooltip.tsx": {
+        "TS2339": 2,
+        "TS7006": 1
+      },
+      "src/app/components/community/CommunityDetailDrawer.tsx": {
+        "TS2322": 1
+      },
+      "src/app/components/community/__tests__/CommunityContentPreview.test.tsx": {
+        "TS2739": 6
+      },
+      "src/app/components/integrations/SyncStatus.tsx": {
+        "TS2538": 1
+      },
+      "src/app/components/session-replay/ReplayPhaseAnalyticsPanel.tsx": {
+        "TS2322": 1
+      },
+      "src/app/hooks/useButtonSuccess.ts": {
+        "TS2554": 1
+      },
+      "src/hooks/__tests__/useRealtimeSync.test.tsx": {
+        "TS2493": 1
+      },
+      "src/hooks/useNotificationSync.ts": {
+        "TS2345": 4
+      },
+      "src/hooks/useSubscription.ts": {
+        "TS2345": 1
+      },
+      "src/lib/__tests__/analytics-tables.test.ts": {
+        "TS2550": 1
+      },
+      "src/lib/__tests__/node-localstorage-options.test.ts": {
+        "TS7016": 1
+      },
+      "src/lib/__tests__/pricing-tier-matrix.test.ts": {
+        "TS2550": 1
+      },
+      "src/lib/__tests__/replay-phase-analytics.test.ts": {
+        "TS2353": 1
+      },
+      "src/lib/__tests__/sync-personal-records.test.ts": {
+        "TS2322": 2,
+        "TS2353": 8
+      },
+      "src/lib/__tests__/sync-push-schema.test.ts": {
+        "TS7006": 4
+      },
+      "src/lib/__tests__/sync-social-auth.test.ts": {
+        "TS7016": 2
+      },
+      "src/lib/community-atlas.ts": {
+        "TS2538": 1
+      },
+      "src/lib/export/csv.test.ts": {
+        "TS2741": 1
+      },
+      "src/lib/export/data-export.ts": {
+        "TS2769": 1
+      },
+      "src/main.tsx": {
+        "TS2322": 1
+      },
+      "src/mutations/__tests__/cycles.test.tsx": {
+        "TS2339": 2
+      },
+      "src/mutations/__tests__/goals.test.tsx": {
+        "TS2339": 6
+      },
+      "src/mutations/__tests__/routines.test.tsx": {
+        "TS2345": 1
+      },
+      "src/mutations/cycles.ts": {
+        "TS2322": 2
+      },
+      "src/queries/__tests__/analytics.test.ts": {
+        "TS18048": 8,
+        "TS2556": 1
+      },
+      "src/queries/__tests__/benchmarks.test.ts": {
+        "TS2556": 1
+      },
+      "src/queries/__tests__/body-intelligence.test.ts": {
+        "TS2556": 1
+      },
+      "src/queries/__tests__/challenges.test.ts": {
+        "TS2556": 1
+      },
+      "src/queries/__tests__/community.test.ts": {
+        "TS18048": 1
+      },
+      "src/queries/__tests__/cycles.test.ts": {
+        "TS18048": 11,
+        "TS2556": 1
+      },
+      "src/queries/__tests__/exercises.test.ts": {
+        "TS2550": 1,
+        "TS2556": 1
+      },
+      "src/queries/__tests__/freshness.test.ts": {
+        "TS2556": 1
+      },
+      "src/queries/__tests__/insights.test.ts": {
+        "TS18048": 2,
+        "TS2556": 1
+      },
+      "src/queries/__tests__/integrations.test.ts": {
+        "TS18048": 6,
+        "TS2556": 1
+      },
+      "src/queries/__tests__/profile.test.ts": {
+        "TS18048": 15,
+        "TS2556": 1
+      },
+      "src/queries/__tests__/progress.test.ts": {
+        "TS18048": 2,
+        "TS2454": 2,
+        "TS2556": 1
+      },
+      "src/queries/__tests__/records.test.ts": {
+        "TS18048": 7,
+        "TS2345": 1,
+        "TS2556": 1,
+        "TS7006": 1
+      },
+      "src/queries/__tests__/routines.test.ts": {
+        "TS18048": 9,
+        "TS2556": 1
+      },
+      "src/queries/__tests__/workouts.test.ts": {
+        "TS18048": 16,
+        "TS2554": 2,
+        "TS2556": 1
+      },
+      "src/queries/community.ts": {
+        "TS2590": 2
+      },
+      "src/queries/exercises.ts": {
+        "TS2339": 1,
+        "TS2345": 1
+      },
+      "src/schemas/onboarding.ts": {
+        "TS2554": 1
+      },
+      "supabase/functions/_shared/pushPayloadSchema.ts": {
+        "TS2307": 1,
+        "TS7006": 48
+      },
+      "supabase/functions/_shared/rateLimit.ts": {
+        "TS2307": 1
+      },
+      "supabase/functions/_shared/requireSubscription.ts": {
+        "TS2307": 1
+      },
+      "tests/sync/cleanup-sync-preview-users.test.ts": {
+        "TS2578": 1,
+        "TS7016": 1
+      },
+      "tests/sync/fixtures/cycle-fixtures.ts": {
+        "TS1360": 1,
+        "TS2322": 1
+      },
+      "tests/sync/fixtures/external-fixtures.ts": {
+        "TS1360": 1,
+        "TS2719": 1
+      },
+      "tests/sync/fixtures/gamification-fixtures.ts": {
+        "TS1360": 2,
+        "TS2322": 2
+      },
+      "tests/sync/fixtures/routine-fixtures.ts": {
+        "TS1360": 1,
+        "TS2719": 1
+      },
+      "tests/sync/fixtures/workout-fixtures.ts": {
+        "TS1360": 1,
+        "TS2322": 1
+      },
+      "tests/sync/resolve-sync-preview.test.ts": {
+        "TS2578": 1,
+        "TS2790": 1,
+        "TS7016": 1
+      }
+    }
+  }
+}

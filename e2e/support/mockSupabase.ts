@@ -56,6 +56,11 @@ interface SetRow {
 	notes: string | null;
 }
 
+interface RepSummaryRow {
+	set_id: string;
+	mean_velocity_mps: number | null;
+}
+
 interface ExternalActivityRow {
 	id: string;
 	user_id: string;
@@ -98,6 +103,7 @@ interface MockSupabaseOptions {
 	workoutSessions?: Record<string, unknown>[];
 	exercises?: ExerciseRow[];
 	sets?: SetRow[];
+	repSummaries?: RepSummaryRow[];
 	personalRecords?: Record<string, unknown>[];
 	phaseStatistics?: Record<string, unknown>[];
 }
@@ -153,6 +159,7 @@ export async function installMockSupabase(
 		workoutSessions: options.workoutSessions ?? [],
 		exercises: options.exercises ?? [],
 		sets: options.sets ?? [],
+		repSummaries: options.repSummaries ?? [],
 		personalRecords: options.personalRecords ?? [],
 		phaseStatistics: options.phaseStatistics ?? [],
 		onboarding: {
@@ -214,6 +221,19 @@ export async function installMockSupabase(
 
 			return true;
 		});
+
+	// Sort rows by a PostgREST order param such as `set_number.asc`.
+	const sortByOrderParam = <TRow extends Record<string, unknown>>(
+		rows: TRow[],
+		orderParam: string | null,
+	) => {
+		if (!orderParam) return rows;
+		const [column, direction] = orderParam.split(",")[0].split(".");
+		const sign = direction === "desc" ? -1 : 1;
+		return [...rows].sort(
+			(a, b) => sign * (Number(a[column]) - Number(b[column])),
+		);
+	};
 
 	const respondRows = async <TRow extends Record<string, unknown>>(
 		route: Route,
@@ -371,6 +391,64 @@ export async function installMockSupabase(
 				const sessions = filterRows(state.workoutSessions, url);
 				if (method === "HEAD") {
 					await respondCount(route, sessions.length);
+					return;
+				}
+
+				// Emulate PostgREST resource embedding for the session detail /
+				// comparison select: `*, exercises(*, sets(*[, rep_summaries(...)]))`.
+				// Embedded rows are ordered ONLY by the `exercises.order` /
+				// `exercises.sets.order` params (as PostgREST does); a request that
+				// embeds without them is rejected so a dropped or misnamed
+				// `referencedTable` order fails the e2e instead of passing silently.
+				const select = url.searchParams.get("select") ?? "";
+				if (select.includes("exercises(")) {
+					const embedSets = select.includes("sets(");
+					const embedReps = select.includes("rep_summaries(");
+					const exerciseOrder = url.searchParams.get("exercises.order");
+					const setOrder = url.searchParams.get("exercises.sets.order");
+					if (!exerciseOrder || (embedSets && !setOrder)) {
+						await route.fulfill({
+							status: 400,
+							contentType: "application/json",
+							body: JSON.stringify({
+								code: "E2E_MOCK",
+								message:
+									"embedded exercises/sets requested without exercises.order / exercises.sets.order",
+							}),
+						});
+						return;
+					}
+					const embedded = sessions.map((session) => ({
+						...session,
+						exercises: sortByOrderParam(
+							state.exercises.filter(
+								(exercise) => exercise.session_id === session.id,
+							),
+							exerciseOrder,
+						).map((exercise) =>
+							embedSets
+								? {
+										...exercise,
+										sets: sortByOrderParam(
+											state.sets.filter(
+												(set) => set.exercise_id === exercise.id,
+											),
+											setOrder,
+										).map((set) =>
+											embedReps
+												? {
+														...set,
+														rep_summaries: state.repSummaries.filter(
+															(rep) => rep.set_id === set.id,
+														),
+													}
+												: set,
+										),
+									}
+								: exercise,
+						),
+					}));
+					await respondRows(route, embedded, request.headers().accept);
 					return;
 				}
 

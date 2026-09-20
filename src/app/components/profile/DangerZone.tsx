@@ -64,8 +64,31 @@ export function DangerZone() {
 		);
 	}
 
+	// The purge has started: process_due claimed the row (status 'executing')
+	// and the account is being deleted right now. Nothing can be offered here —
+	// the cancel UPDATE only matches 'pending', and the request RPC answers
+	// 'already_executing'. Without this branch the row (whose scheduled_for is
+	// already past) would render State C, i.e. "Delete Now" / "Cancel Deletion"
+	// buttons that cannot do anything.
+	if (deletionRequest?.status === "executing") {
+		return (
+			<Card className="border-red-900/50 bg-surface-2">
+				<CardHeader>
+					<CardTitle className="flex items-center gap-2 text-red-400">
+						<Loader2 className="h-5 w-5 animate-spin" />
+						Deletion In Progress
+					</CardTitle>
+					<CardDescription className="text-red-300/80">
+						Your account is being deleted now. This can no longer be cancelled.
+						You will be signed out when it completes.
+					</CardDescription>
+				</CardHeader>
+			</Card>
+		);
+	}
+
 	// Determine current state
-	const hasPendingRequest = !!deletionRequest;
+	const hasPendingRequest = deletionRequest?.status === "pending";
 	const scheduledFor = deletionRequest
 		? new Date(deletionRequest.scheduled_for)
 		: null;

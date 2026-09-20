@@ -74,6 +74,11 @@ INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
 VALUES (
     'a1a1a1a1-0000-4000-8000-000000000011'::uuid,
     'FLAME',
+-- A real SPA-shaped write: authenticated EMBER user through RLS.
+INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
+VALUES (
+    'a1a1a1a1-0000-4000-8000-000000000011'::uuid,
+    'EMBER',
     'active',
     now() + INTERVAL '30 days'
 )
