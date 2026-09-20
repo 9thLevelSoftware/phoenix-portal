@@ -407,8 +407,6 @@ function streamingRawRequest(
 
 function permissiveQuery(
   table: string,
-  onWrite: (method: string, payload: unknown) => void,
-  terminalResult: { data: unknown; error: unknown; count?: number } = {
   onWrite: (method: string, args: unknown[]) => void,
   terminalResult: TerminalResult = {
     data: [],
@@ -438,9 +436,6 @@ function permissiveQuery(
   const operations: QueryOperation[] = [];
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
-      if (method === "neq") ownershipProbe = true;
-      if (["insert", "upsert", "update", "delete"].includes(method)) {
-        onWrite(method, args[0]);
       operations.push({ name: method, args });
       if (method === "neq") ownershipProbe = true;
       if (["insert", "upsert", "update", "delete"].includes(method)) {
@@ -537,14 +532,10 @@ function makeHarness(
   const admin = {
     from(table: string) {
       adminFromCalls.push(table);
-      return permissiveQuery(table, (method, payload) => {
-        adminWriteCalls.push({ table, method });
-        adminWritePayloads.push({ table, method, payload });
-        operationEvents.push(`write:${table}:${method}`);
-      });
       return permissiveQuery(table, (method, args) => {
         adminWriteCalls.push({ table, method });
         adminWriteArgs.push({ table, method, args });
+        adminWritePayloads.push({ table, method, payload: args[0] });
         operationEvents.push(`write:${table}:${method}`);
       }, table === "personal_records"
         ? options.personalRecordsResult
@@ -3530,6 +3521,10 @@ Deno.test({
       await fixture.admin.from("personal_records")
         .delete()
         .in("user_id", [fixture.ownerId, fixture.otherUserId]);
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
 // ---------------------------------------------------------------------------
 // PR 20 (F-009): replace_session_children keeps stored telemetry when a
 // session is re-pushed without it. Real SQL against the local stack.
