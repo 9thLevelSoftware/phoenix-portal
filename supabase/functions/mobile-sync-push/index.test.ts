@@ -506,6 +506,7 @@ function makeHarness(
     personalRecordsResult?: { data: unknown; error: unknown };
     localProfilesResult?: { data: unknown; error: unknown };
     preferenceProfilesResult?: { data: unknown; error: unknown };
+    syncLwwEnabled?: boolean;
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -656,6 +657,7 @@ function makeHarness(
     },
     logOperationalFailure: ((...args: unknown[]) => loggerCalls.push(args)),
     now: () => 1_784_167_200_000,
+    syncLwwEnabled: options.syncLwwEnabled ?? false,
   } as never);
 
   return {
@@ -2347,6 +2349,100 @@ Deno.test("rejected-only preference push does not broadcast", async () => {
   assertEquals(((await json(response)).profilePreferenceRejections as unknown[]).length, 1);
   assertEquals(harness.httpSendCalls, []);
 });
+
+for (
+  const [label, payloadKey, payload, rpcName, rejectionKey] of [
+    [
+      "RPG attributes",
+      "rpgAttributes",
+      {
+        userId: VALID_USER_ID,
+        strength: 1,
+        power: 1,
+        stamina: 1,
+        consistency: 1,
+        mastery: 1,
+        characterClass: "WARRIOR",
+        level: 1,
+        experiencePoints: 10,
+      },
+      "upsert_rpg_attributes_lww",
+      "rpgAttributes",
+    ],
+    [
+      "gamification stats",
+      "gamificationStats",
+      {
+        userId: VALID_USER_ID,
+        totalWorkouts: 1,
+        totalReps: 10,
+        totalVolumeKg: 100,
+        longestStreak: 1,
+        currentStreak: 1,
+        totalTimeSeconds: 60,
+      },
+      "upsert_gamification_stats_lww",
+      "gamificationStats",
+    ],
+  ] as const
+) {
+  Deno.test(`rejected-only ${label} LWW push does not broadcast`, async () => {
+    const harness = makeHarness(undefined, {
+      syncLwwEnabled: true,
+      rpcBehavior: async (name) => {
+        if (name !== rpcName) return { data: [], error: null };
+        return {
+          data: [{
+            id: VALID_USER_ID,
+            accepted: false,
+            server_updated_at: "2026-07-16T01:59:59.000Z",
+          }],
+          error: null,
+        };
+      },
+    });
+    const response = await harness.handler(requestFromBody({
+      ...validPushBody(),
+      [payloadKey]: payload,
+    }));
+
+    assertEquals(response.status, 200);
+    const body = await json(response);
+    assertEquals(
+      body.rejections &&
+        (body.rejections as Record<string, unknown>)[rejectionKey],
+      [{
+        id: VALID_USER_ID,
+        serverUpdatedAt: "2026-07-16T01:59:59.000Z",
+      }],
+    );
+    assertEquals(harness.httpSendCalls, []);
+  });
+
+  Deno.test(`accepted-only ${label} LWW push broadcasts once`, async () => {
+    const harness = makeHarness(undefined, {
+      syncLwwEnabled: true,
+      rpcBehavior: async (name) => {
+        if (name !== rpcName) return { data: [], error: null };
+        return {
+          data: [{
+            id: VALID_USER_ID,
+            accepted: true,
+            server_updated_at: "2026-07-16T02:00:00.000Z",
+          }],
+          error: null,
+        };
+      },
+    });
+    const response = await harness.handler(requestFromBody({
+      ...validPushBody(),
+      [payloadKey]: payload,
+    }));
+
+    assertEquals(response.status, 200);
+    assertEquals(harness.httpSendCalls.length, 1);
+  });
+}
 
 /** Smallest push with a counted write (one badge upsert). */
 function badgePushBody(): Record<string, unknown> {

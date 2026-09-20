@@ -144,6 +144,10 @@ interface AdminOptions {
     args: Record<string, unknown>,
   ) => { data: unknown; error: unknown } | undefined;
   fromPages?: Record<string, Array<{ data: unknown; error: unknown }>>;
+  fromImpl?: (
+    name: string,
+    operations: Array<{ name: string; args: unknown[] }>,
+  ) => { data: unknown; error: unknown } | undefined;
 }
 
 function createAdminDouble(
@@ -211,6 +215,8 @@ function createAdminDouble(
         }
         return options.preferenceResult ?? { data: null, error: null };
       }
+      const implResult = options.fromImpl?.(name, operations);
+      if (implResult) return implResult;
       const pages = options.fromPages?.[name];
       if (pages) {
         const index = fromPageIndex[name] ?? 0;
@@ -1586,7 +1592,7 @@ Deno.test("child paging: PAGE+1 then a non-Range error is generic 503", async ()
   assertEquals(body.code, "57014");
 });
 
-Deno.test("external_activities hasMore is true when the 500-row cap is hit", async () => {
+Deno.test("external_activities hasMore is false when exactly 500 rows exist", async () => {
   const activities = Array.from({ length: 500 }, (_, i) => ({
     id: `act-${i}`,
     external_id: `ext-${i}`,
@@ -1610,8 +1616,98 @@ Deno.test("external_activities hasMore is true when the 500-row cap is hit", asy
   const response = await harness.handler(requestFromBody(validPullBody()));
   assertEquals(response.status, 200);
   const body = await json(response);
-  assertEquals(body.externalActivitiesHasMore, true);
+  assertEquals(body.externalActivitiesHasMore, false);
   assertEquals((body.externalActivities as unknown[]).length, 500);
+});
+
+Deno.test("external activities paginate a tied synced_at cluster without skips or duplicates", async () => {
+  const syncedAt = "2026-08-02T00:00:00.123456+00:00";
+  const activities = Array.from({ length: 750 }, (_, index) => ({
+    id: `60000000-0000-4000-8000-${index.toString().padStart(12, "0")}`,
+    external_id: `ext-${index}`,
+    provider: "strava",
+    name: `Run ${index}`,
+    activity_type: "Run",
+    started_at: "2026-08-01T00:00:00.000Z",
+    duration_seconds: 60,
+    distance_meters: 1000,
+    calories: 10,
+    avg_heart_rate: null,
+    max_heart_rate: null,
+    elevation_gain_meters: null,
+    raw_data: null,
+    synced_at: syncedAt,
+  }));
+  const activityQueries: Array<Array<{ name: string; args: unknown[] }>> = [];
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    fromImpl: (name, operations) => {
+      if (name !== "external_activities") return undefined;
+      activityQueries.push(structuredClone(operations));
+      const cursorFilter = operations.find((operation) => operation.name === "or");
+      const cursorId = cursorFilter
+        ? String(cursorFilter.args[0]).match(/id\.gt\.([0-9a-f-]+)\)/i)?.[1]
+        : undefined;
+      const startIndex = cursorId
+        ? activities.findIndex((activity) => activity.id === cursorId) + 1
+        : 0;
+      return {
+        data: activities.slice(startIndex, startIndex + 501),
+        error: null,
+      };
+    },
+  });
+
+  const firstResponse = await harness.handler(requestFromBody(validPullBody()));
+  const firstBody = await json(firstResponse);
+  assertEquals(firstResponse.status, 200);
+  assertEquals(firstBody.hasMore, true);
+  assertEquals(firstBody.externalActivitiesHasMore, true);
+  assertEquals((firstBody.externalActivities as unknown[]).length, 500);
+  assert(typeof firstBody.nextCursor === "string");
+
+  const secondResponse = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    cursor: firstBody.nextCursor,
+  }));
+  const secondBody = await json(secondResponse);
+  assertEquals(secondResponse.status, 200);
+  assertEquals(secondBody.hasMore, false);
+  assertEquals(secondBody.externalActivitiesHasMore, false);
+  assertEquals((secondBody.externalActivities as unknown[]).length, 250);
+
+  const receivedIds = [
+    ...(firstBody.externalActivities as Array<{ id: string }>),
+    ...(secondBody.externalActivities as Array<{ id: string }>),
+  ].map((activity) => activity.id);
+  assertEquals(receivedIds, activities.map((activity) => activity.id));
+  assertEquals(new Set(receivedIds).size, activities.length);
+  assertEquals(
+    activityQueries.map((operations) =>
+      operations.filter((operation) => operation.name === "order")
+    ),
+    [
+      [
+        { name: "order", args: ["synced_at", { ascending: true }] },
+        { name: "order", args: ["id", { ascending: true }] },
+      ],
+      [
+        { name: "order", args: ["synced_at", { ascending: true }] },
+        { name: "order", args: ["id", { ascending: true }] },
+      ],
+    ],
+  );
+  assertEquals(
+    activityQueries.map((operations) =>
+      operations.find((operation) => operation.name === "limit")?.args
+    ),
+    [[501], [501]],
+  );
+  assertEquals(
+    activityQueries[1]?.find((operation) => operation.name === "or")?.args,
+    [
+      `synced_at.gt.${syncedAt},and(synced_at.eq.${syncedAt},id.gt.${activities[499].id})`,
+    ],
+  );
 });
 
 // Mirror of the Kotlin ExternalActivitySyncDto in Project-Phoenix-MP
@@ -1956,4 +2052,3 @@ Deno.test({
     await assertLocalPullFixtureClean(fixture);
   },
 });
-
