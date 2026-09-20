@@ -2608,6 +2608,17 @@ export type Database = {
 				};
 				Returns: boolean;
 			};
+			bind_integration_tokens: {
+				Args: {
+					p_access_token: string;
+					p_provider: string;
+					p_provider_user_id: string;
+					p_refresh_token: string;
+					p_token_expires_at: string;
+					p_user_id: string;
+				};
+				Returns: undefined;
+			};
 			check_rate_limit: {
 				Args: {
 					p_key: string;

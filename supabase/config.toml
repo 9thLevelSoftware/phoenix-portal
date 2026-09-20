@@ -26,6 +26,11 @@ refresh_token_reuse_interval = 60
 [functions.compute-rankings]
 verify_jwt = false
 
+# The session-bound OAuth completion endpoint (KD-13). It must only ever run
+# with the completing user's JWT — that binding is the whole point (F-046).
+[functions.complete-oauth]
+verify_jwt = true
+
 [functions.delete-account]
 verify_jwt = true
 

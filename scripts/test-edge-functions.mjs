@@ -6,6 +6,7 @@ const functionsDir = "supabase/functions";
 // Handler tests use in-process doubles (no live secrets). Push/PR CI must run
 // these so a green job means the axiom ran, not only `deno check`.
 const testFiles = [
+	`${functionsDir}/complete-oauth/index.test.ts`,
 	`${functionsDir}/mobile-sync-push/index.test.ts`,
 	`${functionsDir}/mobile-sync-pull/index.test.ts`,
 ];
