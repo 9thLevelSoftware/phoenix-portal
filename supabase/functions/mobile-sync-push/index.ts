@@ -2889,6 +2889,7 @@ async function mobileSyncPushHandler(
     //     cycle after the device's baseUpdatedAt), and skips no-op writes.
     // =========================================================================
     if (liveCycles.length > 0) {
+      const cycleRows = liveCycles.map((c) => ({
     if (payload.cycles && payload.cycles.length > 0) {
       const cycleRows = payload.cycles.map((c) => ({
         id: c.id,
@@ -3005,6 +3006,41 @@ async function mobileSyncPushHandler(
         );
       }
 
+      // KD-4 / R-24: decided here, after this push's own routine writes (7)
+      // and deletes (7a). A day keeps its routine only when that routine
+      // exists now: it was in this push and not tombstoned (a routine
+      // created earlier in the same push counts; an LWW-rejected one still
+      // exists on the server), or it already existed for this user at the 3b
+      // probe. A tombstoned, missing or just-deleted routine becomes NULL,
+      // matching the FK's ON DELETE SET NULL, so the write cannot fail.
+      const deletedInThisPush = new Set(payload.deletedRoutineIds ?? []);
+      const keepableDayRoutineIds = new Set<string>([
+        ...liveRoutines.map((r) => r.id),
+        ...dayRoutineProbe.validIds,
+      ]);
+      const skippedRoutineIds = new Set(skippedDeleted.routines);
+      // Cleared references are logged, never dropped silently (R-3).
+      const clearedDeletedRefs = new Set<string>();
+      const clearedMissingRefs = new Set<string>();
+      const dayRoutineId = (routineId: string | null | undefined): string | null => {
+        if (!routineId) return null;
+        if (keepableDayRoutineIds.has(routineId) && !deletedInThisPush.has(routineId)) {
+          return routineId;
+        }
+        if (skippedRoutineIds.has(routineId) || deletedInThisPush.has(routineId)) {
+          clearedDeletedRefs.add(routineId);
+        } else {
+          // Not in this push and not on the server for this user (deleted
+          // before tombstones existed, or never pushed from the device).
+          clearedMissingRefs.add(routineId);
+        }
+        return null;
+      };
+
+      // Upsert days using the UNIQUE(cycle_id, day_number) constraint.
+      // When LWW is enabled, skip days whose parent cycle was rejected.
+      const dayRows = liveCycles
+        .filter((c) => childAllowed(acceptedCycleIds, c.id))
       // An RPC error throws into the generic 500 path: retryable, and the
       // merge's writes roll back with it.
       const { data: mergeData, error: mergeErr } = await supabase.rpc(
@@ -3021,15 +3057,12 @@ async function mobileSyncPushHandler(
           if (row.structure_applied && row.server_updated_at) {
             cycleVersions[row.id] = row.server_updated_at;
           }
-        } else {
           // R-3/R-6: report the stored LWW key, like sessions and routines.
           // `server_updated_at` (the pull cursor) is reserved for
           // cycleVersions above, which mobile compares with portal_edited_at.
           rejections.cycles.push({ id: row.id, serverUpdatedAt: row.client_updated_at ?? null });
-        }
       }
       cyclesUpserted = acceptedIds.size;
-
       // R-4 race guard: undo a re-create of a cycle deleted meanwhile.
       const racedCycleIds = await reDeleteRacedTombstones(
         'cycle',
@@ -3050,7 +3083,7 @@ async function mobileSyncPushHandler(
             cycle_id: d.cycleId,
             day_number: d.dayNumber,
             day_type: d.dayType ?? 'workout',
-            routine_id: d.routineId,
+            routine_id: dayRoutineId(d.routineId),
             weight_adjustment: d.weightAdjustment ?? 0,
             rep_modifier: d.repModifier ?? 0,
             rest_override: d.restOverride,
@@ -3066,6 +3099,47 @@ async function mobileSyncPushHandler(
               }
               : {}),
           })),
+        );
+      if (clearedDeletedRefs.size > 0 || clearedMissingRefs.size > 0) {
+        console.warn(
+          `cycle_days routine references set to NULL: ${clearedDeletedRefs.size} deleted ` +
+            `routine(s), ${clearedMissingRefs.size} missing routine(s)` +
+            (clearedMissingRefs.size > 0
+              ? ` (missing: ${[...clearedMissingRefs].slice(0, 5).join(', ')})`
+              : ''),
+        );
+      }
+
+      if (dayRows.length > 0) {
+        const { error: dayErr } = await supabase
+          .from('cycle_days')
+          .upsert(dayRows, { onConflict: 'cycle_id,day_number' });
+        if (dayErr) throw new Error(`cycle_days upsert failed: ${dayErr.message}`);
+      }
+
+      // Remove orphan days: day_numbers beyond the cycle's current day count
+      for (const cycle of liveCycles.filter(c => childAllowed(acceptedCycleIds, c.id))) {
+        const maxDayNumber = cycle.days.length > 0
+          ? Math.max(...cycle.days.map((d) => d.dayNumber))
+          : -1;
+        const { error: orphanErr } = await supabase
+          .from('cycle_days')
+          .delete()
+          .eq('cycle_id', cycle.id)
+          .gt('day_number', maxDayNumber);
+        if (orphanErr) console.warn(`cycle_days orphan cleanup warning for ${cycle.id}:`, orphanErr.message);
+      }
+
+      // R-4 race guard: undo a re-create of a cycle deleted meanwhile.
+      const racedCycleIds = await reDeleteRacedTombstones(
+        'cycle',
+        'training_cycles',
+        liveCycles.map((c) => c.id),
+      );
+      if (racedCycleIds.length > 0) {
+        skippedDeleted.cycles.push(...racedCycleIds);
+        cyclesUpserted = Math.max(0, cyclesUpserted - racedCycleIds.length);
+      }
       // The parent clock decision and full day replacement hold the same
       // per-cycle transaction lock, preventing an older concurrent request
       // from resuming after a newer parent and overwriting its children.
@@ -3077,7 +3151,6 @@ async function mobileSyncPushHandler(
       for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
         if (rr.accepted) acceptedCycleIds.add(rr.id);
         else rejections.cycles.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
-      }
       cyclesUpserted = acceptedCycleIds.size;
     }
 

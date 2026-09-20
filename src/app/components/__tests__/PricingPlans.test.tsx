@@ -244,6 +244,30 @@ describe("PricingPlans billing actions", () => {
 		});
 	});
 
+	it("shows the update-payment message when a past_due plan change is refused", async () => {
+		const user = userEvent.setup();
+		setSubscription({
+			tier: "FLAME",
+			rawTier: "FLAME",
+			status: "past_due",
+			priceId: "pri_flame_monthly",
+			currentPeriodEnd: "2026-05-07T00:00:00Z",
+			isEntitled: true,
+			isPremium: true,
+			isFlame: true,
+		});
+		mockInvoke.mockResolvedValue({
+			data: null,
+			error: new Error("Edge Function returned a non-2xx status code"),
+			response: new Response(
+				JSON.stringify({
+					error: "payment_past_due",
+					code: "payment_past_due",
+					message:
+						"Your last payment failed. Update your payment method before changing your plan.",
+				}),
+				{ status: 409 },
+			),
 	const pastDueSubscription = {
 		tier: "FLAME" as SubscriptionTier,
 		rawTier: "FLAME" as SubscriptionTier,
@@ -308,6 +332,10 @@ describe("PricingPlans billing actions", () => {
 		await user.click(screen.getByRole("button", { name: /^downgrade$/i }));
 
 		await waitFor(() => {
+			expect(toast.error).toHaveBeenCalledWith(
+				"Your last payment failed. Update your payment method before changing your plan.",
+			);
+		});
 			expect(mockOpenUpdatePaymentMethodCheckout).toHaveBeenCalledWith(
 				expect.objectContaining({ transactionId: "txn_from_plan_change" }),
 			);

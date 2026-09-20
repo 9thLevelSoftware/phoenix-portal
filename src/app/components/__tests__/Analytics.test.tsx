@@ -1,9 +1,11 @@
+import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
-import { Analytics } from "../Analytics";
+import { Analytics, selectInsightsFeed } from "../Analytics";
+import { InsightsFeed, LOCAL_INSIGHTS_LABEL } from "../InsightsFeed";
 
 const bodyMapLoader = vi.hoisted(() => ({
 	loadBodyMuscleAnalytics: vi.fn(),
@@ -133,5 +135,135 @@ describe("Analytics", () => {
 		expect(
 			screen.queryByText(/couldn't load analytics/i),
 		).not.toBeInTheDocument();
+	});
+});
+
+// KD-14: the feed is a fresh server batch OR the browser fallback, never a
+// mix. `selectInsightsFeed` is the whole rule; these tests render its output
+// so "shows only X" is asserted against the DOM, not just the array.
+describe("Analytics insights precedence", () => {
+	const NOW = Date.parse("2026-09-20T12:00:00.000Z");
+	const FRESH = "2026-09-21T12:00:00.000Z";
+	const EXPIRED = "2026-09-19T12:00:00.000Z";
+
+	const serverRow = (title: string, expires_at: string | null) => ({
+		id: `server-${title}`,
+		title,
+		description: `${title} description`,
+		insight_type: "success",
+		expires_at,
+	});
+
+	const localInsights = [
+		{
+			type: "warning" as const,
+			title: "Local Volume Drop",
+			description: "local description",
+		},
+		{
+			type: "positive" as const,
+			title: "Local Balanced Training",
+			description: "local description 2",
+		},
+	];
+
+	function renderFeed(serverRows: unknown) {
+		const { items, source } = selectInsightsFeed(
+			serverRows,
+			localInsights,
+			"kg",
+			NOW,
+		);
+		render(<InsightsFeed insights={items} source={source} />);
+		return { items, source };
+	}
+
+	it("renders only the server items when a non-expired batch exists", () => {
+		const { items, source } = renderFeed([
+			serverRow("Server Volume Up", FRESH),
+			serverRow("Server Plateau", FRESH),
+		]);
+
+		expect(source).toBe("server");
+		expect(items).toHaveLength(2);
+		expect(screen.getByText("Server Volume Up")).toBeInTheDocument();
+		expect(screen.getByText("Server Plateau")).toBeInTheDocument();
+		expect(screen.queryByText("Local Volume Drop")).not.toBeInTheDocument();
+		expect(
+			screen.queryByText("Local Balanced Training"),
+		).not.toBeInTheDocument();
+		expect(screen.queryByText(LOCAL_INSIGHTS_LABEL)).not.toBeInTheDocument();
+		// Server items keep the server row's id, so nothing is duplicated.
+		expect(items.map((i) => i.id)).toEqual([
+			"server-Server Volume Up",
+			"server-Server Plateau",
+		]);
+	});
+
+	it("renders only the labelled local items when every server row has expired", () => {
+		const { source } = renderFeed([
+			serverRow("Server Volume Up", EXPIRED),
+			serverRow("Server Plateau", null),
+		]);
+
+		expect(source).toBe("local");
+		expect(screen.getByText("Local Volume Drop")).toBeInTheDocument();
+		expect(screen.getByText("Local Balanced Training")).toBeInTheDocument();
+		expect(screen.queryByText("Server Volume Up")).not.toBeInTheDocument();
+		expect(screen.queryByText("Server Plateau")).not.toBeInTheDocument();
+		expect(screen.getByText(LOCAL_INSIGHTS_LABEL)).toBeInTheDocument();
+	});
+
+	it("renders local items for an empty or missing result", () => {
+		const empty = renderFeed([]);
+		expect(empty.source).toBe("local");
+		expect(screen.getByText("Local Volume Drop")).toBeInTheDocument();
+		expect(screen.getByText(LOCAL_INSIGHTS_LABEL)).toBeInTheDocument();
+
+		expect(selectInsightsFeed(undefined, localInsights, "kg", NOW).source).toBe(
+			"local",
+		);
+		expect(selectInsightsFeed(null, localInsights, "kg", NOW).source).toBe(
+			"local",
+		);
+	});
+
+	it("never interleaves the two sources, so no title is listed twice", () => {
+		// Same title on both sides: the mixed rendering would show it twice.
+		const shared = [
+			{
+				type: "warning" as const,
+				title: "Volume Trending Down",
+				description: "local",
+			},
+		];
+		const rows = [
+			{
+				id: "server-1",
+				title: "Volume Trending Down",
+				description: "server",
+				insight_type: "warning",
+				expires_at: FRESH,
+			},
+		];
+		const { items } = selectInsightsFeed(rows, shared, "kg", NOW);
+		render(<InsightsFeed insights={items} source="server" />);
+
+		expect(items).toHaveLength(1);
+		expect(screen.getAllByText("Volume Trending Down")).toHaveLength(1);
+		expect(screen.getByText("server")).toBeInTheDocument();
+		expect(screen.queryByText("local")).not.toBeInTheDocument();
+	});
+
+	it("drops only the expired rows when a batch is partially fresh", () => {
+		const { items, source } = renderFeed([
+			serverRow("Server Fresh", FRESH),
+			serverRow("Server Stale", EXPIRED),
+		]);
+		expect(source).toBe("server");
+		expect(items).toHaveLength(1);
+		expect(screen.getByText("Server Fresh")).toBeInTheDocument();
+		expect(screen.queryByText("Server Stale")).not.toBeInTheDocument();
+		expect(screen.queryByText("Local Volume Drop")).not.toBeInTheDocument();
 	});
 });

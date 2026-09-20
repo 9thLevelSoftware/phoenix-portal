@@ -7,6 +7,7 @@ import {
 	buildCommunityPercentileRankings,
 	buildEstimatedCommunityPercentileRankings,
 } from "@/lib/community-atlas";
+import { FEATURE_MIN_TIER } from "@/lib/tierMatrix";
 import type { WeightUnit } from "@/lib/units";
 import { communityBenchmarksOptions } from "@/queries/benchmarks";
 import { userRankingOptions } from "@/queries/leaderboard";
@@ -82,7 +83,7 @@ export default function MobilePerformanceTab({
 			/>
 
 			<SubscriptionGate
-				requiredTier="INFERNO"
+				requiredTier={FEATURE_MIN_TIER.biomechanics}
 				featureName="Performance Analytics"
 			>
 				<BiomechanicsContent view="performance" />

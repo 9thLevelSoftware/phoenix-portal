@@ -16,7 +16,7 @@ Phoenix Portal is a React web companion dashboard for Project Phoenix, a communi
 npm run dev        # Start Vite dev server at http://localhost:5173
 npm run build      # Production build to /dist
 npm test           # Run Vitest unit tests
-npm run typecheck  # TypeScript type checking
+npm run typecheck  # tsc -p over every tsconfig project; fails on errors not in typecheck-baseline.json
 npm run test:e2e   # Run Playwright E2E tests
 npm run supabase -- <args>  # Pinned Supabase CLI (version in .supabase-cli-version)
 npm run test:db          # Full pgTAP suite against the local stack (CI: migrations.yml)

@@ -12,6 +12,8 @@ import {
   scanTopLevelJsonObject,
 } from "../_shared/profilePreferenceContract.ts";
 import { createMobileSyncPushHandler } from "./index.ts";
+import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
+import { SYNC_LWW_ENABLED } from "../_shared/flags.ts";
 import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 import { SYNC_LWW_ENABLED } from "../_shared/flags.ts";
@@ -417,6 +419,11 @@ function streamingRawRequest(
   });
 }
 
+type TableResultValue = { data: unknown; error: unknown; count?: number };
+/** A fixed result, or one chosen from the query's `.eq()` filters. */
+type TableResult =
+  | TableResultValue
+  | ((eqFilters: Record<string, unknown>) => TableResultValue);
 const DEFAULT_SUBSCRIPTION_RESULT = {
   data: {
     tier: "EMBER",
@@ -439,6 +446,7 @@ type TerminalResult =
 function permissiveQuery(
   table: string,
   onWrite: (method: string, args: unknown[]) => void,
+  terminalResult: TableResult = {
   terminalResult: TerminalResult = {
   onCall: (method: string, args: unknown[]) => void,
   terminalResult: { data: unknown; error: unknown; count?: number } = {
@@ -457,6 +465,7 @@ function permissiveQuery(
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
+  const eqFilters: Record<string, unknown> = {};
   let injectedWriteError: unknown = null;
   const chainMethods = [
     "select",
@@ -480,6 +489,10 @@ function permissiveQuery(
   const operations = [] as unknown as QueryContext;
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
+      if (method === "neq") ownershipProbe = true;
+      if (method === "eq") eqFilters[String(args[0])] = args[1];
+      if (["insert", "upsert", "update", "delete"].includes(method)) {
+        onWrite(method, args);
       onChain(method, args);
       if (method === "neq") {
         ownershipProbe = true;
@@ -511,6 +524,10 @@ function permissiveQuery(
     reject?: (reason: unknown) => unknown,
   ) =>
     Promise.resolve(
+      ownershipProbe
+        ? { data: [], error: null, count: 0 }
+        : typeof terminalResult === "function"
+        ? terminalResult(eqFilters)
       injectedWriteError
         ? { data: null, error: injectedWriteError }
         : ownershipProbe
@@ -560,6 +577,7 @@ interface PushHarness {
   adminRpcCalls: Array<{ name: string; args: Record<string, unknown> }>;
   adminFromCalls: string[];
   adminWriteCalls: Array<{ table: string; method: string }>;
+  adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
   ownershipProbeTables: string[];
   catalogQueries: CatalogQuery[];
   adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
@@ -591,6 +609,7 @@ function makeHarness(
     rpcBehavior?: RpcBehavior;
     sessionHierarchyResult?: { data: unknown; error: unknown };
     personalRecordsResult?: { data: unknown; error: unknown };
+    tableResults?: Record<string, TableResult>;
     /** Terminal result for non-write queries on a table (e.g. catalog rows). */
     tableResults?: Record<string, { data: unknown; error: unknown }>;
     /** Error injected into a write, keyed `table:method` (e.g. `routines:delete`). */
@@ -622,6 +641,9 @@ function makeHarness(
     [];
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
+  const adminWriteArgs: Array<
+    { table: string; method: string; args: unknown[] }
+  > = [];
   const ownershipProbeTables: string[] = [];
   const catalogQueries: CatalogQuery[] = [];
   const adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }> =
@@ -676,6 +698,7 @@ function makeHarness(
         table === "personal_records"
           ? options.personalRecordsResult
           : options.tableResults?.[table],
+      );
         (method) => options.writeErrors?.[`${table}:${method}`],
         () => ownershipProbeTables.push(table),
         (options.foreignOwnedTables ?? []).includes(table)
@@ -821,6 +844,7 @@ function makeHarness(
     adminRpcCalls,
     adminFromCalls,
     adminWriteCalls,
+    adminWriteArgs,
     ownershipProbeTables,
     catalogQueries,
     adminWriteArgs,
@@ -3932,6 +3956,9 @@ function tombstoneRpcBehavior(
         error: null,
       };
     }
+    if (
+      name === "upsert_routine_lww" || name === "upsert_training_cycle_lww"
+    ) {
     if (name === "upsert_routine_lww") {
       // LWW on: accept every row so children are written.
       return {
@@ -3970,6 +3997,14 @@ function parentWriteIds(
   harness: PushHarness,
   table: "routines" | "training_cycles",
 ): string[] {
+  const rpcName = table === "routines"
+    ? "upsert_routine_lww"
+    : "upsert_training_cycle_lww";
+  const viaUpsert = harness.adminWriteArgs
+    .filter((call) => call.table === table && call.method === "upsert")
+    .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id));
+  const viaRpc = harness.adminRpcCalls
+    .filter((call) => call.name === rpcName)
   const viaUpsert = harness.adminWriteArgs
     .filter((call) => call.table === table && call.method === "upsert")
     .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id));
@@ -4262,6 +4297,12 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a deleted cycle beside a live o
     upsertedRows(harness, "cycle_days").map((row) => row.cycle_id),
     [LIVE_CYCLE_ID],
   );
+  // Orphan-day cleanup only touches the live cycle.
+  assertEquals(
+    harness.adminWriteArgs.filter((call) =>
+      call.table === "cycle_days" && call.method === "delete"
+    ).length,
+    1,
   // Orphan-day cleanup runs inside the merge, which only received the live
   // cycle; nothing touches cycle_days directly.
   assertEquals(
@@ -6824,6 +6865,9 @@ function makeRealSqlHandler(
       };
     },
     createAdminClient() {
+      return client;
+    },
+    logOperationalFailure: () => {},
       const admin = Object.create(fixture.admin) as SupabaseClient;
       Object.assign(admin, {
         channel() {
