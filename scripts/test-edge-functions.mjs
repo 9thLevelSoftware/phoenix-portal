@@ -7,8 +7,11 @@ const functionsDir = "supabase/functions";
 // these so a green job means the axiom ran, not only `deno check`.
 const testFiles = [
 	`${functionsDir}/complete-oauth/index.test.ts`,
+	`${functionsDir}/initiate-oauth/index.test.ts`,
 	`${functionsDir}/mobile-sync-push/index.test.ts`,
 	`${functionsDir}/mobile-sync-pull/index.test.ts`,
+	`${functionsDir}/strava-oauth/index.test.ts`,
+	`${functionsDir}/strava-sync/index.test.ts`,
 ];
 
 const denoArgs = [
