@@ -66,10 +66,27 @@ jobs:
       # Single source for the CLI version: .supabase-cli-version (also read
       # by scripts/supabase-cli.mjs and scripts/gen-types.mjs, which refuses
       # to generate types with any other version).
+      # Validated here for the same reason the two prod-facing workflows do
+      # it: an empty/malformed value makes setup-cli silently fall back to its
+      # own default, and a different CLI generates different types, which is
+      # exactly what the gen:types:check step below compares against. The
+      # regex is inlined (no Node yet at this point in the job).
       - name: Read pinned Supabase CLI version
         id: cli
         shell: bash
-        run: echo "version=$(tr -d '[:space:]' < .supabase-cli-version)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          if [ ! -r .supabase-cli-version ]; then
+            echo "::error::.supabase-cli-version is missing or unreadable; refusing to run with an unpinned Supabase CLI."
+            exit 1
+          fi
+          version="$(tr -d '[:space:]' < .supabase-cli-version)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::.supabase-cli-version must hold a plain x.y.z version (got '${version}'); refusing to run with an unpinned Supabase CLI."
+            exit 1
+          fi
+          echo "Pinned Supabase CLI: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Install Supabase CLI
         uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0

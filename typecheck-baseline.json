@@ -287,6 +287,9 @@
       "supabase/functions/_shared/rateLimit.ts": {
         "TS2307": 1
       },
+      "supabase/functions/_shared/requireSubscription.ts": {
+        "TS2307": 1
+      },
       "tests/sync/cleanup-sync-preview-users.test.ts": {
         "TS2578": 1,
         "TS7016": 1
