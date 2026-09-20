@@ -341,6 +341,31 @@ describe("RoutineBuilder", () => {
 		).not.toBeInTheDocument();
 	});
 
+	it("labels builder weights per cable, with the total hint and no numeric total", async () => {
+		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
+		const user = userEvent.setup();
+		renderWithProviders(<RoutineBuilder />);
+
+		await user.click(screen.getByRole("button", { name: /add exercise/i }));
+		await user.click(
+			await screen.findByRole("button", { name: /triceps pushdown/i }),
+		);
+		await user.click(screen.getByRole("button", { name: /edit exercise/i }));
+
+		expect(screen.getAllByText("Weight per cable (kg)").length).toBeGreaterThan(
+			0,
+		);
+		expect(screen.getByTestId("per-cable-weight-hint")).toHaveTextContent(
+			"Weights are per cable, as on the phone. Total load = per-cable weight × cables in use.",
+		);
+		await user.click(
+			screen.getByRole("switch", { name: /offer drop set after failure/i }),
+		);
+		expect(
+			screen.getByText("Minimum weight per cable (kg)"),
+		).toBeInTheDocument();
+	});
+
 	it("blocks save when drop set is enabled without a minimum weight", async () => {
 		mockCatalog.state.exercises = [tricepPushdownCatalogRow()];
 		const user = userEvent.setup();

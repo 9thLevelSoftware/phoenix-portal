@@ -35,6 +35,7 @@ interface ExerciseRow {
 	name: string;
 	muscle_group: string;
 	order_index: number;
+	cable_count?: number | null;
 }
 
 interface SetRow {
@@ -93,6 +94,7 @@ interface MockSupabaseOptions {
 	sets?: SetRow[];
 	personalRecords?: Record<string, unknown>[];
 	phaseStatistics?: Record<string, unknown>[];
+	exerciseProgress?: Record<string, unknown>[];
 }
 
 const MONTHLY_PRICE_IDS: Record<MockSubscriptionTier, string | null> = {
@@ -147,6 +149,7 @@ export async function installMockSupabase(
 		sets: options.sets ?? [],
 		personalRecords: options.personalRecords ?? [],
 		phaseStatistics: options.phaseStatistics ?? [],
+		exerciseProgress: options.exerciseProgress ?? [],
 		onboarding: {
 			id: "onboarding-1",
 			user_id: userId,
@@ -387,6 +390,11 @@ export async function installMockSupabase(
 				}
 
 				await respondRows(route, records, request.headers().accept);
+				return;
+			}
+			case "exercise_progress": {
+				const rows = filterRows(state.exerciseProgress, url);
+				await respondRows(route, rows, request.headers().accept);
 				return;
 			}
 			case "session_phase_statistics": {
