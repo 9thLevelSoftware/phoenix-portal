@@ -10,19 +10,15 @@ import {
 	CYCLE_STATUS,
 	countPayloadEntities,
 	createAggregateGamificationFixture,
-	createBadgeFixture,
-	createCycleDayFixture,
 	// Cycle fixtures
 	createCycleFixture,
 	// Edge case fixtures
 	createEmptySessionFixture,
-	createExerciseFixture,
 	// External fixtures
 	createExternalActivityFixture,
 	createFitbitActivityFixture,
 	// Aggregate fixtures
 	createFullSyncPayload,
-	createGamificationStatsFixture,
 	createGarminActivityFixture,
 	createMaxValueSessionFixture,
 	createMinimalSessionFixture,
@@ -32,15 +28,11 @@ import {
 	createNestedSessionFixture,
 	// Gamification fixtures
 	createPersonalRecordFixture,
-	createRepSummaryFixture,
-	createRepTelemetryFixture,
-	createRoutineExerciseFixture,
 	// Routine fixtures
 	createRoutineFixture,
 	createRpgAttributesFixture,
 	// Workout fixtures
 	createSessionFixture,
-	createSetFixture,
 	createStravaActivityFixture,
 	createUnicodeSessionFixture,
 	MAX_RPG_ATTRIBUTE,

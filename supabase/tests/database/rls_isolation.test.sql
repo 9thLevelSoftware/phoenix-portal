@@ -8,6 +8,8 @@
 -- subscription row (FREE). A owns one fixture row in every private
 -- user-owned relation listed in rls_cases. Tier denials live in
 -- trust_plane.test.sql (EMBER) and tier_matrix.test.sql (FLAME).
+-- Users A and B are both EMBER; C has no subscription row (FREE). A owns one
+-- fixture row in every private user-owned relation listed in rls_cases.
 --
 -- Coverage guard: every public table must have RLS enabled, and every public
 -- relation with a user_id column must be either in rls_cases or on the
@@ -40,6 +42,8 @@
 -- policies, which trust_plane.test.sql covers).
 -- Fixtures are inserted as postgres (bypassing the tier-gated INSERT
 -- policies, which trust_plane.test.sql and tier_matrix.test.sql cover).
+-- Fixtures are inserted as postgres (bypassing the EMBER-gated INSERT
+-- policies, which trust_plane.test.sql covers).
 
 BEGIN;
 
@@ -191,11 +195,13 @@ VALUES
         'a1a1a1a1-5555-4000-8000-00000000000a'::uuid,
         'a1a1a1a1-0000-4000-8000-00000000000a'::uuid,
         'FLAME', 'active', now() + INTERVAL '30 days'
+        'EMBER', 'active', now() + INTERVAL '30 days'
     ),
     (
         'b2b2b2b2-5555-4000-8000-00000000000b'::uuid,
         'b2b2b2b2-0000-4000-8000-00000000000b'::uuid,
         'FLAME', 'active', now() + INTERVAL '30 days'
+        'EMBER', 'active', now() + INTERVAL '30 days'
     );
 
 INSERT INTO public.workout_sessions (id, user_id)
@@ -525,6 +531,7 @@ INSERT INTO rls_cases VALUES
     ('exercise_signatures',       'id', 'a1a1a1a1-0019-4000-8000-00000000000a', 1, NULL, NULL, $s$exercise_id = 'rls-probe'$s$),
     ('external_activities',       'id', 'a1a1a1a1-0020-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
     ('gamification_stats',        'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$pr_count = 99$s$),
+    ('gamification_stats',        'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, NULL, NULL, $s$pr_count = 99$s$),
     ('goal_snapshots',            'id', 'a1a1a1a1-0021-4000-8000-00000000000a', 1, NULL, NULL, $s$progress_pct = 99$s$),
     -- Client DML is revoked; access goes through definer RPCs
     -- (profile_preferences.test.sql), so even the owner reads nothing here.
@@ -536,6 +543,7 @@ INSERT INTO rls_cases VALUES
     ('profiles',                  'id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1,    NULL, $s$display_name = 'rls-probe'$s$),
     ('rate_limit_tracking',       'id', 'a1a1a1a1-0025-4000-8000-00000000000a', NULL, NULL, NULL, $s$provider = 'rls-probe'$s$),
     ('rpg_attributes',            'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$level = 99$s$),
+    ('rpg_attributes',            'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, NULL, NULL, $s$level = 99$s$),
     ('saved_community_items',     'id', 'a1a1a1a1-0026-4000-8000-00000000000a', 1, NULL, 1,    $s$item_type = 'cycle'$s$),
     ('session_phase_statistics',  'id', 'a1a1a1a1-0028-4000-8000-00000000000a', 1, NULL, NULL, $s$concentric_kg_avg = 99$s$),
     ('subscription_events',       'id', 'a1a1a1a1-0029-4000-8000-00000000000a', NULL, NULL, NULL, $s$operation = 'UPDATE'$s$),
@@ -569,6 +577,7 @@ INSERT INTO rls_owner_chain VALUES ('routine_exercises'), ('cycle_days');
 -- profile). Remove B's and C's so that, during the blind probes, B and anon
 -- own nothing in any case relation (B's subscription stays: it makes B EMBER).
 -- own nothing in any case relation (B's subscription stays: it makes B FLAME).
+-- own nothing in any case relation (B's subscription stays: it makes B EMBER).
 DO $cleanup$
 DECLARE
     rel text;
@@ -697,6 +706,8 @@ SELECT is(
         ) others
         WHERE others.n > 0
           -- B's subscription is needed for owner-tier positive controls; no client UPDATE/DELETE
+          -- B's subscription is needed for FLAME; no client UPDATE/DELETE
+          -- B's subscription is needed for EMBER; no client UPDATE/DELETE
           -- policy may ever match it, so the blind probe still expects 0.
           AND rc.table_name <> 'subscriptions'
     ),
@@ -896,6 +907,11 @@ INSERT INTO spoof_cases VALUES
     -- Re-parent B's own row to A.
     ('workout_sessions: UPDATE own row to user_id = A',
      $q$INSERT INTO public.workout_sessions (id, user_id) VALUES ('b2b2b2b2-0001-4000-8000-00000000000b', 'b2b2b2b2-0000-4000-8000-00000000000b')$q$,
+    -- Clients cannot INSERT sessions (server-written only) and may UPDATE
+    -- only `notes`, so the user_id rewrite is refused by the column grant
+    -- before any row is matched; no setup row is needed.
+    ('workout_sessions: UPDATE own row to user_id = A',
+     NULL,
      $q$UPDATE public.workout_sessions SET user_id = 'a1a1a1a1-0000-4000-8000-00000000000a'$q$),
     ('routines: UPDATE own row to user_id = A',
      $q$INSERT INTO public.routines (id, user_id, name) VALUES ('b2b2b2b2-0006-4000-8000-00000000000b', 'b2b2b2b2-0000-4000-8000-00000000000b', 'b')$q$,
@@ -1010,6 +1026,9 @@ SELECT throws_ok(
 
 SELECT is(
     public.user_has_min_tier('INFERNO'),
+    false,
+    'A still does not hold INFERNO after the attempts'
+    public.user_has_min_tier('FLAME'),
     false,
     'A still does not hold INFERNO after the attempts'
 );

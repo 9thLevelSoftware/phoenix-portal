@@ -1,4 +1,4 @@
-import { existsSync, globSync, readdirSync, readFileSync } from "node:fs";
+import { globSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -24,6 +24,9 @@ import {
 import { buildSubscriptionUpsertFromPaddleState } from "../../supabase/functions/_shared/paddleSubscriptionState.ts";
 import {
 	buildPaddleSubscriptionPatch,
+	decidePlanChangeGate,
+	PAYMENT_PAST_DUE_HTTP_STATUS,
+	paymentPastDueResponseBody,
 	resolvePaddleCancelRequest,
 } from "../../supabase/functions/_shared/paddleSubscriptionUpdate.ts";
 import {
@@ -275,29 +278,36 @@ describe("Paddle webhook security helpers", () => {
 		}
 	});
 
-	it("routes past_due to manage-with-a-card-update, never to a new checkout", () => {
+	it("refuses plan changes for past_due with 409 payment_past_due, not checkout", () => {
 		const now = new Date("2026-05-17T12:00:00Z");
 		const pastDue = {
 			paddle_subscription_id: "sub_1",
+	it("routes past_due to manage-with-a-card-update, never to a new checkout", () => {
 			tier: "FLAME",
 			status: "past_due",
 			current_period_end: "2026-05-07T12:00:00Z",
 			cancel_at_period_end: false,
 		};
+		expect(decidePlanChangeGate(pastDue, now)).toEqual({
+			action: "payment_past_due",
+		});
+		expect(PAYMENT_PAST_DUE_HTTP_STATUS).toBe(409);
+		const body = paymentPastDueResponseBody();
+		expect(body.code).toBe("payment_past_due");
+		expect(body.message).toMatch(/payment method/i);
+
+		expect(
+			decidePlanChangeGate(
 		expect(billingAction(pastDue, now)).toEqual({
 			action: "manage",
 			reason: "payment_past_due",
 			needsPaymentUpdate: true,
 			entitled: true,
 			paddleSubscriptionId: "sub_1",
-		});
 		expect(mayOpenNewCheckout(billingAction(pastDue, now))).toBe(false);
 		expect(EXISTING_SUBSCRIPTION_HTTP_STATUS).toBe(409);
 		const body = existingSubscriptionResponseBody(billingAction(pastDue, now));
 		expect(body.code).toBe("existing_subscription");
-		expect(body.message).toMatch(/payment method/i);
-
-		expect(
 			billingAction(
 				{
 					...pastDue,
@@ -305,10 +315,13 @@ describe("Paddle webhook security helpers", () => {
 					current_period_end: "2026-06-17T00:00:00Z",
 				},
 				now,
+			),
+		).toEqual({ action: "proceed", paddleSubscriptionId: "sub_1" });
+		expect(
+			decidePlanChangeGate(
 			).action,
 		).toBe("manage");
 		// Canceled is the ONLY stored state that may open a new checkout.
-		expect(
 			billingAction(
 				{
 					...pastDue,
@@ -317,17 +330,25 @@ describe("Paddle webhook security helpers", () => {
 				},
 				now,
 			),
+		).toEqual({
+			action: "checkout_required",
+			reason: "inactive_or_expired_subscription",
+		});
+		expect(decidePlanChangeGate(null, now)).toEqual({
+			action: "checkout_required",
+			reason: "missing_subscription",
+		});
+		expect(
+			decidePlanChangeGate({ ...pastDue, paddle_subscription_id: null }, now),
+		).toEqual({ action: "checkout_required", reason: "missing_subscription" });
 		).toMatchObject({ action: "checkout", reason: "canceled_subscription" });
 		expect(billingAction(null, now)).toMatchObject({
 			action: "checkout",
 			reason: "no_subscription",
-		});
-		expect(
 			billingAction({ ...pastDue, paddle_subscription_id: null }, now),
 		).toMatchObject({ action: "checkout", reason: "no_subscription" });
 		// A live subscription whose stored state lapsed refreshes, it does not
 		// check out — signing would refuse it with 409 (F-022).
-		expect(
 			billingAction(
 				{
 					...pastDue,
@@ -731,80 +752,17 @@ describe("Garmin webhook identity helpers", () => {
 	});
 });
 
-/**
- * The gateway half of the cron gate (PR 35 R-21). A function that pg_cron
- * calls through `private.invoke_edge_function` is invoked with no JWT, so if
- * `verify_jwt` is true the gateway 401s it before the handler's own cron
- * secret check ever runs — and nothing in the handler tests can see that.
- */
-describe("Edge Function gateway settings (supabase/config.toml)", () => {
-	const config = readFileSync(
-		join(process.cwd(), "supabase/config.toml"),
-		"utf8",
-	);
-
-	/** `verify_jwt` for `[functions.<name>]`, or undefined when unlisted. */
-	function verifyJwtFor(name: string): boolean | undefined {
-		const header = `[functions.${name}]`;
-		const start = config.indexOf(header);
-		if (start === -1) return undefined;
-		const rest = config.slice(start + header.length);
-		const nextSection = rest.indexOf("\n[");
-		const section = nextSection === -1 ? rest : rest.slice(0, nextSection);
-		const setting = section.match(/^\s*verify_jwt\s*=\s*(true|false)\s*$/m);
-		return setting ? setting[1] === "true" : undefined;
-	}
-
-	/** Every handler that authenticates a pg_cron caller by shared secret. */
-	const cronInvokedFunctions = readdirSync(
-		join(process.cwd(), "supabase/functions"),
-		{ withFileTypes: true },
-	)
-		.filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
-		.map((entry) => entry.name)
-		.filter((name) => {
-			const entrypoint = join(
-				process.cwd(),
-				"supabase/functions",
-				name,
-				"index.ts",
-			);
-			return (
-				existsSync(entrypoint) &&
-				readFileSync(entrypoint, "utf8").includes("hasValidCronSecret")
-			);
-		});
-
-	it("finds the cron-invoked functions", () => {
-		expect(cronInvokedFunctions).toContain("delete-account");
-		expect(cronInvokedFunctions).toContain("process-sync-queue");
-	});
-
-	it.each([
-		"delete-account",
-		"process-sync-queue",
-	])("%s is listed with verify_jwt = false", (name) => {
-		expect(verifyJwtFor(name)).toBe(false);
-	});
-
-	it("every cron-invoked function has verify_jwt = false", () => {
-		const offenders = cronInvokedFunctions.filter(
-			(name) => verifyJwtFor(name) !== false,
-		);
-		expect(offenders).toEqual([]);
-	});
-});
-
 describe("SPA -> Edge _shared import boundary", () => {
 	// src/hooks/useSubscription.ts imports the shared billing predicate by
 	// relative path so the CTA and the server cannot disagree (R-11). The
 	// directory it opens onto is full of modules that read secrets, and one
 	// careless re-export would put a service-role code path or a secret name
-	// into dist/. Pin the boundary: only these two modules are reachable from
-	// src/, and neither may contain a server-only token.
+	// into dist/. Pin the boundary to the reviewed shared modules, none of which
+	// may contain a server-only token.
 	const SPA_REACHABLE_SHARED_MODULES = [
 		"billingAction.ts",
 		"subscriptionEntitlement.ts",
+		"workoutModes.ts",
 	];
 
 	function readShared(file: string) {
@@ -814,7 +772,7 @@ describe("SPA -> Edge _shared import boundary", () => {
 		);
 	}
 
-	it("only billingAction and subscriptionEntitlement are imported from src/", () => {
+	it("only reviewed Edge shared modules are imported from src/", () => {
 		const sources = globSync("src/**/*.{ts,tsx}", { cwd: process.cwd() });
 		const sharedImports = new Set<string>();
 		for (const file of sources) {

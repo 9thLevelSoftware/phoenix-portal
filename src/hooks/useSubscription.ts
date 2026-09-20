@@ -71,6 +71,7 @@ async function fetchSubscription(userId: string) {
 	const { data, error } = await supabase
 		.from("subscriptions")
 		.select(
+			"tier, status, price_id, current_period_end, cancel_at_period_end, updated_at",
 			"tier, status, price_id, current_period_end, cancel_at_period_end, updated_at, paddle_subscription_id",
 		)
 		.eq("user_id", userId)

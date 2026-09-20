@@ -2,13 +2,6 @@ import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
 import { resolvePaddleCancelRequest } from "../_shared/paddleSubscriptionUpdate.ts";
-import {
-  applySubscriptionEvent,
-  buildSubscriptionUpsertFromPaddleState,
-  paddleEventOccurredAt,
-  type PaddleSubscriptionState,
-  syntheticSubscriptionEventId,
-} from "../_shared/paddleSubscriptionState.ts";
 
 /** Anything with `get(key)`, e.g. `Deno.env`. */
 export interface EnvReader {
@@ -98,9 +91,7 @@ async function paddleCancelSubscriptionHandler(
     // Look up user's current subscription
     const { data: sub, error: subError } = await supabaseAdmin
       .from("subscriptions")
-      // `tier`/`price_id` are carried forward: cancelling never changes the
-      // plan, and the ordered writer rewrites the whole row.
-      .select("paddle_subscription_id, status, tier, price_id")
+      .select("paddle_subscription_id, status")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -173,80 +164,21 @@ async function paddleCancelSubscriptionHandler(
     // so the UI reflects it before the webhook arrives (and even if the
     // webhook is delayed/failing). The webhook still reconciles the
     // authoritative state later.
-    //
-    // The state written is Paddle's own response to the cancel, not the stored
-    // row with a patch applied: between the read above and this write a
-    // renewal webhook may have landed, and re-writing the fields we read would
-    // regress them under a newer clock. Every field here comes from the
-    // mutation response, and the write goes through the one ordered writer
-    // (`apply_subscription_event`) so a newer event still wins.
-    let paddleBody: Record<string, unknown> | null = null;
-    try {
-      paddleBody = await paddleResponse.json();
-    } catch {
-      paddleBody = null;
-    }
-    const canceled = paddleBody?.data as PaddleSubscriptionState | undefined;
+    const { error: updateError } = await supabaseAdmin
+      .from("subscriptions")
+      .update({
+        ...cancelRequest.localPatch,
+        updated_at: deps.now().toISOString(),
+      })
+      .eq("user_id", user.id);
 
-    if (!canceled || canceled.id !== sub.paddle_subscription_id) {
-      // No trustworthy post-cancel state to store. Paddle has accepted the
-      // cancellation either way, so report success and let the webhook
-      // reconcile rather than writing a state we had to guess.
+    if (updateError) {
+      // Paddle already scheduled the cancellation; treat the local write as
+      // best-effort and let the webhook reconcile rather than failing the call.
       console.error(
-        "[BILLING_ALERT] cancel_response_mismatch:",
-        `user_id=${user.id}`,
-        `tracked_subscription_id=${sub.paddle_subscription_id}`,
-        `response_subscription_id=${canceled?.id ?? "none"}`,
+        "Error persisting cancel_at_period_end after Paddle cancel:",
+        updateError,
       );
-    } else {
-      const occurredAt = paddleEventOccurredAt(canceled, deps.now());
-      const write = await applySubscriptionEvent(
-        supabaseAdmin,
-        buildSubscriptionUpsertFromPaddleState({
-          userId: user.id,
-          subscription: canceled,
-          tier: (sub.tier as string | null) ?? "FREE",
-          priceId: (sub.price_id as string | null) ?? undefined,
-          eventId: syntheticSubscriptionEventId(
-            "cancel",
-            canceled.id,
-            occurredAt,
-          ),
-          occurredAt,
-        }),
-        { storedSubscriptionId: sub.paddle_subscription_id },
-      );
-
-      // Paddle has already cancelled; the local write stays best-effort and
-      // never fails the call. Only the outcomes that need an operator are
-      // alerted.
-      if (write.outcome === "stale") {
-        console.warn(
-          "[Paddle] Cancel state not stored: a newer event already wrote the row",
-          sub.paddle_subscription_id,
-        );
-      } else if (write.outcome === "untracked_subscription") {
-        console.error(
-          "[BILLING_ALERT] subscription_guard_rejected_write:",
-          `source=cancel`,
-          `user_id=${user.id}`,
-          `attempted_subscription_id=${canceled.id}`,
-          `tracked_subscription_id=${sub.paddle_subscription_id}`,
-        );
-      } else if (write.outcome === "already_bound") {
-        console.error(
-          "[BILLING_ALERT] subscription_already_bound_to_another_user:",
-          `source=cancel`,
-          `user_id=${user.id}`,
-          `paddle_subscription_id=${canceled.id}`,
-          write.error,
-        );
-      } else if (write.outcome === "error") {
-        console.error(
-          "Error persisting the cancellation after Paddle cancel:",
-          write.error,
-        );
-      }
     }
 
     return new Response(

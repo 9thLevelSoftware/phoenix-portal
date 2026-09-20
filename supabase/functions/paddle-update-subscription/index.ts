@@ -11,16 +11,16 @@ import {
   parsePaddlePaidTier,
 } from "../_shared/paddlePriceIds.ts";
 import {
-  applySubscriptionEvent,
   buildSubscriptionUpsertFromPaddleState,
   type PaddleSubscriptionState,
-  paddleEventOccurredAt,
   resolveBasePlanPriceId,
-  syntheticSubscriptionEventId,
 } from "../_shared/paddleSubscriptionState.ts";
 import {
   buildPaddleSubscriptionPatch,
   checkoutRequiredResponseBody,
+  decidePlanChangeGate,
+  PAYMENT_PAST_DUE_HTTP_STATUS,
+  paymentPastDueResponseBody,
 } from "../_shared/paddleSubscriptionUpdate.ts";
 import { billingAction } from "../_shared/billingAction.ts";
 
@@ -299,6 +299,61 @@ async function paddleUpdateSubscriptionHandler(
       );
     }
 
+    // Look up user's current subscription
+    const { data: sub, error: subError } = await supabaseAdmin
+      .from("subscriptions")
+      .select("paddle_subscription_id, price_id, tier, status, current_period_end, cancel_at_period_end")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (subError) {
+      console.error("Error fetching subscription:", subError);
+      return new Response(
+        JSON.stringify({ error: "Failed to fetch subscription" }),
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Validate subscription state. past_due keeps access but cannot change
+    // plan until the payment method is updated (see decidePlanChangeGate).
+    const gate = decidePlanChangeGate(sub, deps.now());
+    if (gate.action === "checkout_required") {
+      return new Response(
+        JSON.stringify(checkoutRequiredResponseBody(gate.reason)),
+        { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+    if (gate.action === "payment_past_due") {
+      return new Response(
+        JSON.stringify(paymentPastDueResponseBody()),
+        {
+          status: PAYMENT_PAST_DUE_HTTP_STATUS,
+          headers: { ...cors, "Content-Type": "application/json" },
+        },
+      );
+    }
+    if (!sub) {
+      // Unreachable: the gate only proceeds for an existing row.
+      throw new Error("plan change gate proceeded without a subscription row");
+    }
+
+    // Call Paddle API to update the subscription
+    const paddleEnv = deps.env.get("PADDLE_ENVIRONMENT") ?? "production";
+    const baseUrl = paddleEnv === "sandbox"
+      ? "https://sandbox-api.paddle.com"
+      : "https://api.paddle.com";
+    const apiKey = deps.env.get("PADDLE_API_KEY");
+
+    if (!apiKey) {
+      console.error("PADDLE_API_KEY is not set");
+      return new Response(
+        JSON.stringify({ error: "Billing service not configured" }),
+        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+
+    const currentPaddleSubscriptionId = gate.paddleSubscriptionId;
+
     // Fetch the authoritative current subscription so we can (a) carry forward
     // add-ons/metered items on a plan switch and (b) reconcile against Paddle's
     // current item state rather than a possibly-stale local price_id.
@@ -358,6 +413,7 @@ async function paddleUpdateSubscriptionHandler(
     }
 
     const paddleResponse = await deps.fetch(
+      `${baseUrl}/subscriptions/${gate.paddleSubscriptionId}`,
       `${baseUrl}/subscriptions/${currentPaddleSubscriptionId}`,
       {
         method: "PATCH",
@@ -435,100 +491,21 @@ async function paddleUpdateSubscriptionHandler(
       }
     }
 
-    // Ordered write: Paddle's own `updated_at` on the mutation response is the
-    // clock, so a webhook that landed while this call was in flight is not
-    // overwritten by the state we fetched a moment earlier (F-055).
-    const occurredAt = paddleEventOccurredAt(updatedSubscription, deps.now());
     const upsertData = buildSubscriptionUpsertFromPaddleState({
       userId: user.id,
       subscription: updatedSubscription,
       tier: updatedTier,
       priceId: updatedPriceId,
-      eventId: syntheticSubscriptionEventId(
-        "update",
-        updatedSubscription.id,
-        occurredAt,
-      ),
-      occurredAt,
     });
-    const write = await applySubscriptionEvent(supabaseAdmin, upsertData, {
-      storedSubscriptionId: currentPaddleSubscriptionId,
-    });
+    const { error: updateError } = await supabaseAdmin
+      .from("subscriptions")
+      .upsert(upsertData, { onConflict: "user_id" });
 
-    if (write.outcome === "already_bound") {
-      console.error(
-        "[BILLING_ALERT] subscription_already_bound_to_another_user:",
-        `source=update`,
-        `user_id=${user.id}`,
-        `paddle_subscription_id=${updatedSubscription.id}`,
-        write.error,
-      );
-      return new Response(
-        JSON.stringify({
-          error: "Subscription already linked to another account",
-          code: "subscription_already_bound",
-          message:
-            "This subscription is linked to a different account. Contact support.",
-        }),
-        { status: 409, headers: { ...cors, "Content-Type": "application/json" } },
-      );
-    }
-
-    if (write.outcome === "error") {
-      console.error(
-        "Error applying subscription event after Paddle update:",
-        write.error,
-      );
+    if (updateError) {
+      console.error("Error upserting subscription after Paddle update:", updateError);
       return new Response(
         JSON.stringify({ error: "Database upsert failed" }),
         { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
-      );
-    }
-
-    if (write.outcome !== "applied") {
-      // The row was deliberately left alone (a newer event already wrote it,
-      // or the guard refused). Paddle has applied the plan change regardless,
-      // so report the row as it actually stands — the client writes this
-      // straight into its cache.
-      if (write.outcome === "untracked_subscription") {
-        console.error(
-          "[BILLING_ALERT] subscription_guard_rejected_write:",
-          `source=update`,
-          `user_id=${user.id}`,
-          `attempted_subscription_id=${updatedSubscription.id}`,
-          `tracked_subscription_id=${currentPaddleSubscriptionId}`,
-        );
-      } else {
-        console.warn(
-          "[Paddle] Plan change not stored: a newer event already wrote the row",
-          updatedSubscription.id,
-        );
-      }
-
-      const { data: storedRow } = await supabaseAdmin
-        .from("subscriptions")
-        .select("tier, status, price_id, current_period_end, cancel_at_period_end")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          applied: false,
-          reason: write.outcome,
-          action: patchDecision.action,
-          subscription: {
-            tier: storedRow?.tier ?? upsertData.tier,
-            status: storedRow?.status ?? upsertData.status,
-            priceId: storedRow?.price_id ?? upsertData.price_id,
-            currentPeriodEnd: storedRow?.current_period_end ??
-              upsertData.current_period_end,
-            cancelAtPeriodEnd: storedRow
-              ? Boolean(storedRow.cancel_at_period_end)
-              : upsertData.cancel_at_period_end,
-          },
-        }),
-        { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
       );
     }
 
