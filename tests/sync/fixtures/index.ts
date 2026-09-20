@@ -374,7 +374,6 @@ export function createFullSyncPayload(
 		// Add more if needed
 		while (externalActivities.length < externalActivityCount) {
 			const providerIndex = externalActivities.length % 3;
-			const providers = ["strava", "fitbit", "garmin"] as const;
 			externalActivities.push(
 				...createExternalActivityFixturesForAllProviders(userId).filter(
 					(_, i) => i === providerIndex,
@@ -429,7 +428,7 @@ export function createMinimalSyncPayload(
  * Create a sync payload specifically for transform testing.
  *
  * Includes values that exercise all transform logic:
- * - Various weight values (for WEIGHT_MULTIPLIER)
+ * - Various per-cable weight values
  * - All workout modes (for workoutModeMap)
  * - All workout phases (for workoutPhaseMap)
  * - Velocity zone boundaries

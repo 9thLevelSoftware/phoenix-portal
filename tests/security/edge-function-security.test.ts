@@ -1,6 +1,12 @@
-import { readFileSync } from "node:fs";
+import { globSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+	billingAction,
+	EXISTING_SUBSCRIPTION_HTTP_STATUS,
+	existingSubscriptionResponseBody,
+	mayOpenNewCheckout,
+} from "../../supabase/functions/_shared/billingAction.ts";
 import {
 	buildGarminWebhookPersistRow,
 	extractGarminProviderUserId,
@@ -276,6 +282,8 @@ describe("Paddle webhook security helpers", () => {
 		const now = new Date("2026-05-17T12:00:00Z");
 		const pastDue = {
 			paddle_subscription_id: "sub_1",
+	it("routes past_due to manage-with-a-card-update, never to a new checkout", () => {
+			tier: "FLAME",
 			status: "past_due",
 			current_period_end: "2026-05-07T12:00:00Z",
 			cancel_at_period_end: false,
@@ -290,6 +298,17 @@ describe("Paddle webhook security helpers", () => {
 
 		expect(
 			decidePlanChangeGate(
+		expect(billingAction(pastDue, now)).toEqual({
+			action: "manage",
+			reason: "payment_past_due",
+			needsPaymentUpdate: true,
+			entitled: true,
+			paddleSubscriptionId: "sub_1",
+		expect(mayOpenNewCheckout(billingAction(pastDue, now))).toBe(false);
+		expect(EXISTING_SUBSCRIPTION_HTTP_STATUS).toBe(409);
+		const body = existingSubscriptionResponseBody(billingAction(pastDue, now));
+		expect(body.code).toBe("existing_subscription");
+			billingAction(
 				{
 					...pastDue,
 					status: "active",
@@ -300,6 +319,10 @@ describe("Paddle webhook security helpers", () => {
 		).toEqual({ action: "proceed", paddleSubscriptionId: "sub_1" });
 		expect(
 			decidePlanChangeGate(
+			).action,
+		).toBe("manage");
+		// Canceled is the ONLY stored state that may open a new checkout.
+			billingAction(
 				{
 					...pastDue,
 					status: "canceled",
@@ -318,6 +341,23 @@ describe("Paddle webhook security helpers", () => {
 		expect(
 			decidePlanChangeGate({ ...pastDue, paddle_subscription_id: null }, now),
 		).toEqual({ action: "checkout_required", reason: "missing_subscription" });
+		).toMatchObject({ action: "checkout", reason: "canceled_subscription" });
+		expect(billingAction(null, now)).toMatchObject({
+			action: "checkout",
+			reason: "no_subscription",
+			billingAction({ ...pastDue, paddle_subscription_id: null }, now),
+		).toMatchObject({ action: "checkout", reason: "no_subscription" });
+		// A live subscription whose stored state lapsed refreshes, it does not
+		// check out — signing would refuse it with 409 (F-022).
+			billingAction(
+				{
+					...pastDue,
+					status: "active",
+					current_period_end: "2026-05-01T00:00:00Z",
+				},
+				now,
+			),
+		).toMatchObject({ action: "refresh", reason: "entitlement_lapsed" });
 	});
 
 	it("lets past_due users cancel immediately and others at period end", () => {
@@ -445,11 +485,10 @@ describe("Paddle webhook security helpers", () => {
 		expect(findCrossTierDuplicatePriceIds(env)).toEqual(["pri_shared"]);
 	});
 
-	it("locks webhook and refresh to reject duplicate price IDs before apply", () => {
-		const webhook = readFileSync(
-			join(process.cwd(), "supabase/functions/paddle-webhooks/index.ts"),
-			"utf8",
-		);
+	// paddle-webhooks is covered behaviourally by
+	// supabase/functions/paddle-webhooks/index.test.ts; refresh keeps this
+	// source tripwire until it has a handler test.
+	it("locks refresh to reject duplicate price IDs before mapping", () => {
 		const refresh = readFileSync(
 			join(
 				process.cwd(),
@@ -457,12 +496,6 @@ describe("Paddle webhook security helpers", () => {
 			),
 			"utf8",
 		);
-
-		const webhookDup = webhook.indexOf("findCrossTierDuplicatePriceIds(");
-		const webhookApply = webhook.indexOf("apply_subscription_event");
-		expect(webhookDup).toBeGreaterThan(-1);
-		expect(webhookApply).toBeGreaterThan(webhookDup);
-		expect(webhook).toMatch(/Billing configuration invalid/);
 
 		const refreshDup = refresh.indexOf("findCrossTierDuplicatePriceIds(");
 		const refreshMap = refresh.indexOf("mapPriceIdToTier(");
@@ -716,5 +749,71 @@ describe("Garmin webhook identity helpers", () => {
 			laps: [{ distance: 400 }],
 		});
 		expect(JSON.stringify(row.raw_data)).not.toMatch(/token/i);
+	});
+});
+
+describe("SPA -> Edge _shared import boundary", () => {
+	// src/hooks/useSubscription.ts imports the shared billing predicate by
+	// relative path so the CTA and the server cannot disagree (R-11). The
+	// directory it opens onto is full of modules that read secrets, and one
+	// careless re-export would put a service-role code path or a secret name
+	// into dist/. Pin the boundary to the reviewed shared modules, none of which
+	// may contain a server-only token.
+	const SPA_REACHABLE_SHARED_MODULES = [
+		"billingAction.ts",
+		"subscriptionEntitlement.ts",
+		"workoutModes.ts",
+	];
+
+	function readShared(file: string) {
+		return readFileSync(
+			join(process.cwd(), "supabase/functions/_shared", file),
+			"utf8",
+		);
+	}
+
+	it("only reviewed Edge shared modules are imported from src/", () => {
+		const sources = globSync("src/**/*.{ts,tsx}", { cwd: process.cwd() });
+		const sharedImports = new Set<string>();
+		for (const file of sources) {
+			// The tests may import anything; only shipped code matters.
+			if (/__tests__|\.test\.tsx?$/.test(file)) continue;
+			const source = readFileSync(join(process.cwd(), file), "utf8");
+			// Quote-agnostic, and covers `import … from`, `export … from` and
+			// dynamic `import(...)`. `supabase/functions/**` is outside
+			// biome.json's files.includes, so quote style there is unenforced
+			// and already mixed — a single-quote-only matcher would miss a
+			// real violation.
+			for (const [, path] of source.matchAll(
+				/(?:from|import)\s*\(?\s*["'][^"']*supabase\/functions\/_shared\/([\w.-]+)["']/g,
+			)) {
+				sharedImports.add(path);
+			}
+		}
+		// Not vacuous: useSubscription really does import the predicate, so a
+		// broken matcher fails here instead of passing with an empty set.
+		expect([...sharedImports]).toContain("billingAction.ts");
+		for (const imported of sharedImports) {
+			expect(SPA_REACHABLE_SHARED_MODULES).toContain(imported);
+		}
+	});
+
+	it("the SPA-reachable shared modules contain no server-only code", () => {
+		for (const file of SPA_REACHABLE_SHARED_MODULES) {
+			const source = readShared(file);
+			expect(source, `${file} must not touch Deno`).not.toMatch(/\bDeno\./);
+			expect(source, `${file} must not name a secret`).not.toMatch(
+				/SERVICE_ROLE|_SECRET|API_KEY|createClient/,
+			);
+			// ...and it must not re-open the door by importing or re-exporting
+			// anything else from _shared. Quote-agnostic, and covers
+			// `export … from` and dynamic `import(...)` as well as a plain
+			// import — a single-quote-only matcher missed all three.
+			for (const [, imported] of source.matchAll(
+				/(?:from|import)\s*\(?\s*["']\.\/([\w.-]+)["']/g,
+			)) {
+				expect(SPA_REACHABLE_SHARED_MODULES).toContain(imported);
+			}
+		}
 	});
 });

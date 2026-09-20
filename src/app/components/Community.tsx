@@ -24,7 +24,6 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useBlockedUsers } from "@/hooks/useBlockedUsers";
-import { useCommunityRealtime } from "@/hooks/useCommunityRealtime";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useVote } from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
@@ -50,9 +49,6 @@ export function Community() {
 	const setSelectedItemId = useCommunityStore((s) => s.setSelectedItemId);
 
 	const debouncedSearch = useDebounce(search, 300);
-
-	// Wire realtime — called ONCE at top level (not in separate mobile/desktop branches)
-	useCommunityRealtime();
 
 	// Feed query
 	const {

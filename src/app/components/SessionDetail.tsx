@@ -31,7 +31,8 @@ import { Skeleton } from "@/app/components/ui/skeleton";
 import phoenixLogo from "@/assets/phoenix-logo-fallback.png";
 import { useSubscription } from "@/hooks/useSubscription";
 import { displayExerciseName } from "@/lib/exercise-display";
-import { formatVolume, formatWeight } from "@/lib/units";
+import { formatVolume } from "@/lib/units";
+import { LoadValue } from "@/lib/units/loadDisplay";
 import { useAuth } from "@/providers/AuthProvider";
 import { profileOptions } from "@/queries/profile";
 import { sessionDetailOptions } from "@/queries/workouts";
@@ -371,7 +372,11 @@ export function SessionDetail() {
 										</div>
 									</div>
 									<div className="text-2xl font-semibold text-white font-data">
-										{formatWeight(session.heaviest_lift_kg, unit)}
+										{/* Session-level: no cable count, so per cable only */}
+										<LoadValue
+											perCableKg={session.heaviest_lift_kg}
+											unit={unit}
+										/>
 									</div>
 								</div>
 							)}
@@ -695,7 +700,11 @@ export function SessionDetail() {
 																	{set.actual_reps}
 																</td>
 																<td className="py-3 text-secondary-foreground font-data">
-																	{formatWeight(set.weight_kg, unit)}
+																	<LoadValue
+																		perCableKg={set.weight_kg}
+																		cableCount={exercise.cable_count}
+																		unit={unit}
+																	/>
 																</td>
 																<td className="py-3 text-secondary-foreground font-data">
 																	{set.rpe ?? "-"}

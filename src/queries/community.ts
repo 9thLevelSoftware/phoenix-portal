@@ -96,6 +96,8 @@ export function communityFeedOptions(params: FeedParams) {
 			search: params.search,
 			userId: params.userId,
 		}),
+		// Votes have no realtime channel; refresh stale counts on tab focus.
+		refetchOnWindowFocus: true,
 		queryFn: async ({ pageParam = 0 }) => {
 			// shared_routines/shared_cycles.user_id -> auth.users(id), not profiles(id)
 			// PostgREST cannot resolve the profiles join directly, so we do a
@@ -266,6 +268,7 @@ export function blockedUsersOptions(userId: string) {
 export function userVotesOptions(userId: string) {
 	return queryOptions({
 		queryKey: queryKeys.community.votes(userId),
+		refetchOnWindowFocus: true,
 		queryFn: async () => {
 			const { data, error } = await supabase
 				.from("community_votes")

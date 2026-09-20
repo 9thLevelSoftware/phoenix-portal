@@ -308,6 +308,8 @@ describe("personalRecordsOptions", () => {
 	});
 
 	it("flattens loaded pages for consumers", async () => {
+	it("returns Zod-transformed records with per-cable weights", async () => {
+		chain = buildChain({ data: [recordRow], error: null });
 		const { personalRecordsOptions } = await import("../records");
 		const opts = personalRecordsOptions("user-1");
 		const flattened = opts.select?.({
@@ -364,6 +366,13 @@ describe("personalRecordsOptions", () => {
 		expect(page?.records[0].previous_value).toBe(150);
 		expect(page?.records[0].achieved_at).toBeInstanceOf(Date);
 		expect(page?.records[0].exercise_name).toBe("Bench Press");
+		expect(result).toHaveLength(1);
+		// Records stay per cable (KD-8); no doubling.
+		expect(result[0].value).toBe(80);
+		expect(result[0].previous_value).toBe(75);
+		// achieved_at should be a Date
+		expect(result[0].achieved_at).toBeInstanceOf(Date);
+		expect(result[0].exercise_name).toBe("Bench Press");
 	});
 
 	it("normalizes leaked catalog IDs to catalog display names", async () => {

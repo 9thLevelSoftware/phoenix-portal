@@ -1,8 +1,26 @@
 import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import { Analytics, selectInsightsFeed } from "../Analytics";
 import { InsightsFeed, LOCAL_INSIGHTS_LABEL } from "../InsightsFeed";
+
+const bodyMapLoader = vi.hoisted(() => ({
+	loadBodyMuscleAnalytics: vi.fn(),
+}));
+vi.mock("@/lib/body-muscle-analytics-loader", () => bodyMapLoader);
+
+function renderAnalyticsAt(path: string) {
+	return render(
+		<MemoryRouter initialEntries={[path]}>
+			<QueryClientProvider client={new QueryClient()}>
+				<Analytics />
+			</QueryClientProvider>
+		</MemoryRouter>,
+	);
+}
 
 const mockAuth = vi.hoisted(() => ({
 	useAuth: () => ({
@@ -62,6 +80,33 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 describe("Analytics", () => {
 	beforeEach(() => {
 		mockQuery.mode = "pending";
+		bodyMapLoader.loadBodyMuscleAnalytics.mockReset();
+		bodyMapLoader.loadBodyMuscleAnalytics.mockResolvedValue({
+			buildBodyMuscleFocusModel: vi.fn(() => ({
+				muscles: [],
+				muscleById: {},
+				totalSets: 0,
+				totalReps: 0,
+				totalVolumeKg: 0,
+				totalLoad: 0,
+				estimatedExerciseCount: 0,
+				unmatchedExerciseCount: 0,
+			})),
+		});
+	});
+
+	it("does not download the body-muscle map outside the Body tab", async () => {
+		renderAnalyticsAt("/analytics?tab=overview");
+		// Give any effect a chance to run.
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(bodyMapLoader.loadBodyMuscleAnalytics).not.toHaveBeenCalled();
+	});
+
+	it("downloads the body-muscle map when the Body tab is open", async () => {
+		renderAnalyticsAt("/analytics?tab=body");
+		await waitFor(() =>
+			expect(bodyMapLoader.loadBodyMuscleAnalytics).toHaveBeenCalledTimes(1),
+		);
 	});
 
 	it("renders without crashing", () => {

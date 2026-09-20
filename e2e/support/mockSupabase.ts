@@ -16,6 +16,13 @@ interface SubscriptionRow {
 	price_id: string | null;
 	current_period_end: string | null;
 	cancel_at_period_end: boolean;
+	/**
+	 * A paid mock user has a real Paddle subscription, so `billingAction`
+	 * (src/hooks/useSubscription.ts) routes them to `manage` — the path a live
+	 * subscriber is actually on. Without it every paid e2e user would be routed
+	 * to `checkout`.
+	 */
+	paddle_subscription_id: string | null;
 }
 
 interface IntegrationRow {
@@ -35,6 +42,7 @@ interface ExerciseRow {
 	name: string;
 	muscle_group: string;
 	order_index: number;
+	cable_count?: number | null;
 }
 
 interface SetRow {
@@ -47,6 +55,11 @@ interface SetRow {
 	rpe: number | null;
 	is_pr: boolean;
 	notes: string | null;
+}
+
+interface RepSummaryRow {
+	set_id: string;
+	mean_velocity_mps: number | null;
 }
 
 interface ExternalActivityRow {
@@ -91,8 +104,10 @@ interface MockSupabaseOptions {
 	workoutSessions?: Record<string, unknown>[];
 	exercises?: ExerciseRow[];
 	sets?: SetRow[];
+	repSummaries?: RepSummaryRow[];
 	personalRecords?: Record<string, unknown>[];
 	phaseStatistics?: Record<string, unknown>[];
+	exerciseProgress?: Record<string, unknown>[];
 }
 
 const MONTHLY_PRICE_IDS: Record<MockSubscriptionTier, string | null> = {
@@ -137,6 +152,7 @@ export async function installMockSupabase(
 						price_id: MONTHLY_PRICE_IDS[options.tier],
 						current_period_end: futureBillingPeriodEnd,
 						cancel_at_period_end: false,
+						paddle_subscription_id: "sub_e2e_01",
 					} satisfies SubscriptionRow)
 				: null,
 		integrations: options.integrations ?? [],
@@ -145,8 +161,10 @@ export async function installMockSupabase(
 		workoutSessions: options.workoutSessions ?? [],
 		exercises: options.exercises ?? [],
 		sets: options.sets ?? [],
+		repSummaries: options.repSummaries ?? [],
 		personalRecords: options.personalRecords ?? [],
 		phaseStatistics: options.phaseStatistics ?? [],
+		exerciseProgress: options.exerciseProgress ?? [],
 		onboarding: {
 			id: "onboarding-1",
 			user_id: userId,
@@ -206,6 +224,19 @@ export async function installMockSupabase(
 
 			return true;
 		});
+
+	// Sort rows by a PostgREST order param such as `set_number.asc`.
+	const sortByOrderParam = <TRow extends Record<string, unknown>>(
+		rows: TRow[],
+		orderParam: string | null,
+	) => {
+		if (!orderParam) return rows;
+		const [column, direction] = orderParam.split(",")[0].split(".");
+		const sign = direction === "desc" ? -1 : 1;
+		return [...rows].sort(
+			(a, b) => sign * (Number(a[column]) - Number(b[column])),
+		);
+	};
 
 	const respondRows = async <TRow extends Record<string, unknown>>(
 		route: Route,
@@ -366,6 +397,64 @@ export async function installMockSupabase(
 					return;
 				}
 
+				// Emulate PostgREST resource embedding for the session detail /
+				// comparison select: `*, exercises(*, sets(*[, rep_summaries(...)]))`.
+				// Embedded rows are ordered ONLY by the `exercises.order` /
+				// `exercises.sets.order` params (as PostgREST does); a request that
+				// embeds without them is rejected so a dropped or misnamed
+				// `referencedTable` order fails the e2e instead of passing silently.
+				const select = url.searchParams.get("select") ?? "";
+				if (select.includes("exercises(")) {
+					const embedSets = select.includes("sets(");
+					const embedReps = select.includes("rep_summaries(");
+					const exerciseOrder = url.searchParams.get("exercises.order");
+					const setOrder = url.searchParams.get("exercises.sets.order");
+					if (!exerciseOrder || (embedSets && !setOrder)) {
+						await route.fulfill({
+							status: 400,
+							contentType: "application/json",
+							body: JSON.stringify({
+								code: "E2E_MOCK",
+								message:
+									"embedded exercises/sets requested without exercises.order / exercises.sets.order",
+							}),
+						});
+						return;
+					}
+					const embedded = sessions.map((session) => ({
+						...session,
+						exercises: sortByOrderParam(
+							state.exercises.filter(
+								(exercise) => exercise.session_id === session.id,
+							),
+							exerciseOrder,
+						).map((exercise) =>
+							embedSets
+								? {
+										...exercise,
+										sets: sortByOrderParam(
+											state.sets.filter(
+												(set) => set.exercise_id === exercise.id,
+											),
+											setOrder,
+										).map((set) =>
+											embedReps
+												? {
+														...set,
+														rep_summaries: state.repSummaries.filter(
+															(rep) => rep.set_id === set.id,
+														),
+													}
+												: set,
+										),
+									}
+								: exercise,
+						),
+					}));
+					await respondRows(route, embedded, request.headers().accept);
+					return;
+				}
+
 				await respondRows(route, sessions, request.headers().accept);
 				return;
 			}
@@ -406,6 +495,11 @@ export async function installMockSupabase(
 				}
 
 				await respondRows(route, records, request.headers().accept);
+				return;
+			}
+			case "exercise_progress": {
+				const rows = filterRows(state.exerciseProgress, url);
+				await respondRows(route, rows, request.headers().accept);
 				return;
 			}
 			case "session_phase_statistics": {
