@@ -113,6 +113,14 @@ export type PaddleCancelRequest =
   | {
     allowed: true;
     effectiveFrom: 'next_billing_period' | 'immediately';
+    /**
+     * The shape the cancellation takes locally. Documentation and test
+     * material only: paddle-cancel-subscription stores Paddle's own cancel
+     * response through `apply_subscription_event` rather than patching the
+     * row it read, because a renewal that landed in between must not be
+     * re-written under a newer clock (PR 45). Do not reintroduce a direct
+     * patch from this.
+     */
     localPatch:
       | { cancel_at_period_end: true }
       | { status: 'canceled'; cancel_at_period_end: false };
