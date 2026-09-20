@@ -43,6 +43,13 @@ SELECT ok(
 );
 SELECT has_trigger('public', 'sync_queue', 'sync_queue_guard_client_insert',
     'sync_queue has the client-insert guard trigger');
+SELECT has_table('private', 'scheduler_release_gates',
+    'the scheduler release-gate marker table exists');
+SELECT results_eq(
+    $$ SELECT jobname FROM private.scheduler_release_gates $$,
+    $$ VALUES ('process-sync-queue-owned-row-v1'::text) $$,
+    'the owned-row handler deployment gate was recorded exactly once'
+);
 
 -- R-14: the migration's own statements run the triage, drop it, and only
 -- then schedule the jobs.
@@ -96,6 +103,12 @@ SELECT ok(
     AND NOT has_schema_privilege('authenticated', 'private', 'USAGE')
     AND NOT has_schema_privilege('service_role', 'private', 'USAGE'),
     'schema private stays closed to anon, authenticated and service_role'
+);
+SELECT ok(
+    NOT has_table_privilege('anon', 'private.scheduler_release_gates', 'SELECT')
+    AND NOT has_table_privilege('authenticated', 'private.scheduler_release_gates', 'SELECT')
+    AND NOT has_table_privilege('service_role', 'private.scheduler_release_gates', 'SELECT'),
+    'scheduler release gates are owner-only'
 );
 
 SET LOCAL ROLE authenticated;
@@ -261,9 +274,6 @@ SELECT diag('database:scheduler-cron-jobs');
 -- this transaction; this fails loudly if the image cannot, so the job
 -- assertions below always execute.
 CREATE EXTENSION IF NOT EXISTS pg_cron;
-SELECT lives_ok(
-    $$ SELECT private.schedule_sync_queue_jobs() $$,
-    'schedule_sync_queue_jobs runs with pg_cron installed'
 SELECT cron.schedule(
     'sync-tombstones-retention',
     '23 3 * * *',
@@ -288,16 +298,6 @@ SELECT set_eq(
     $$ VALUES
         ('process-sync-queue', '*/5 * * * *',
          'SELECT private.invoke_edge_function(''process-sync-queue'', ''{}''::jsonb)'),
-        ('sync-tombstones-retention', '23 3 * * *',
-         'DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval ''180 days'''),
-        ('cron-job-run-details-retention', '41 3 * * *',
-         'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days''')
-    $$,
-    'the three scheduler jobs exist with the expected schedule and command'
-);
-SELECT is(
-    (SELECT count(*)::int FROM pg_temp.scheduler_jobs()),
-    3,
         ('cron-job-run-details-retention', '41 3 * * *',
          'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days''')
     $$,
@@ -318,11 +318,16 @@ SELECT is(
     3,
     'each scheduler job exists exactly once'
 );
+SELECT is(
+    (SELECT active FROM cron.job WHERE jobname = 'process-sync-queue'),
+    false,
+    'process-sync-queue is created inactive until compatible handlers deploy'
+);
 
 CREATE TEMP TABLE scheduler_jobids AS SELECT jobname, jobid FROM pg_temp.scheduler_jobs();
 SELECT cron.alter_job(
     (SELECT jobid FROM cron.job WHERE jobname = 'process-sync-queue'),
-    schedule := '0 * * * *', active := false
+    schedule := '0 * * * *', active := true
 );
 SELECT private.schedule_sync_queue_jobs();
 SELECT set_eq(
@@ -337,8 +342,8 @@ SELECT is(
 );
 SELECT is(
     (SELECT active FROM cron.job WHERE jobname = 'process-sync-queue'),
-    false,
-    're-running the scheduler keeps a paused job paused'
+    true,
+    're-running the scheduler keeps an operator-activated job active'
 );
 
 SELECT diag('database:sync-queue-client-insert-guard');
@@ -406,6 +411,22 @@ SELECT throws_ok(
     NULL,
     'an unknown sync_type is rejected'
 );
+-- PR 52: the guard now also restricts the provider. Garmin is webhook-driven
+-- and process-sync-queue refuses it, so a client may not queue one.
+SELECT throws_ok(
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type)
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'garmin', 'manual') $$,
+    '22023',
+    NULL,
+    'a client cannot queue a garmin sync'
+);
+SELECT throws_ok(
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type)
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'not-a-provider', 'manual') $$,
+    '22023',
+    NULL,
+    'an unknown provider is rejected'
+);
 RESET ROLE;
 SELECT set_config('request.jwt.claims', '', true);
 
@@ -418,9 +439,9 @@ SELECT is(
 );
 SELECT lives_ok(
     $$ INSERT INTO public.sync_queue (user_id, provider, sync_type, status, created_at)
-       VALUES ('31313131-0000-4000-8000-0000000000f0', 'strava', 'incremental', 'pending',
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'liftosaur', 'incremental', 'pending',
                '2020-01-01') $$,
-    'service-side (postgres) inserts are not clamped or deduplicated'
+    'service-side (postgres) inserts are not clamped'
 );
 SELECT is(
     (SELECT count(*)::int FROM public.sync_queue
@@ -428,6 +449,22 @@ SELECT is(
        AND created_at = '2020-01-01'::timestamptz),
     1,
     'a postgres insert keeps its created_at'
+);
+-- PR 52 (20260920005200): the guard trigger skips postgres and the service
+-- role, but `sync_queue_one_active` does not — the dedupe invariant holds for
+-- every role now, which is what lets the provider Edge Functions insert their
+-- own row and return 409 on the loser.
+SELECT throws_ok(
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type, status)
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'liftosaur', 'manual', 'processing') $$,
+    '23505',
+    NULL,
+    'a postgres insert duplicating an active row is rejected by the unique index'
+);
+SELECT lives_ok(
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type, status)
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'liftosaur', 'initial', 'processing') $$,
+    'an initial alongside an active incremental is still allowed (other class)'
 );
 
 SELECT * FROM finish();

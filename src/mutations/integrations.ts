@@ -159,14 +159,16 @@ export function useConnectIntegration() {
 
 			if (error) throw error;
 
-			// Queue initial sync after connecting
+			// Queue initial sync after connecting. A duplicate (23505,
+			// `sync_already_queued`) means an initial import is already queued
+			// or running for this provider — the outcome we wanted.
 			const { error: queueError } = await supabase.from("sync_queue").insert({
 				user_id: userId,
 				provider,
 				sync_type: "initial",
 				status: "pending",
 			});
-			if (queueError) throw queueError;
+			if (queueError && queueError.code !== "23505") throw queueError;
 		},
 		onSuccess: (_, { userId }) => {
 			queryClient.invalidateQueries({

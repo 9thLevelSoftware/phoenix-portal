@@ -1,5 +1,4 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { completeClaimedSyncQueueEntry } from '../_shared/completeSyncQueueEntry.ts';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { errorMessage } from '../_shared/errorMessage.ts';
 import {
@@ -14,6 +13,17 @@ import {
 } from '../_shared/hevySync.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import {
+  completeSyncQueueEntry,
+  createSyncQueueEntry,
+  type DbClient,
+  heartbeatSyncQueueEntry,
+  noOwnedQueueRow,
+  type OwnedQueueRow,
+  releaseOwnedQueueRow,
+  syncAlreadyQueuedResponse,
+  syncQueueUnavailableResponse,
+} from '../_shared/syncQueue.ts';
 
 /**
  * Hevy Sync Edge Function
@@ -31,10 +41,67 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
  *   both updates and deletions so removed Hevy workouts stop lingering here.
  *
  * The CSV import path in the portal UI remains available for non-PRO users.
+ *
+ * When dispatched by process-sync-queue the body also carries `queue_id`: the
+ * run completes that row only, and renews its lease (heartbeat) while it runs.
+ * process-sync-queue reclaims a hevy task after HEARTBEAT_LEASE_MS (5 minutes)
+ * without a heartbeat. The lease is renewed on entry, after every fetched page
+ * and after every upsert chunk, so the longest silent window is one request
+ * (capped by PROVIDER_REQUEST_TIMEOUT_MS) or one upsert chunk.
+ *
+ * A browser-initiated run (user JWT, no `queue_id`) creates its OWN queue row
+ * instead, directly in `processing`, and owns it exactly the same way. A
+ * second concurrent sync loses the `sync_queue_one_active` race and is
+ * answered with 409 `sync_already_queued`.
  */
 
+/** Per-request ceiling for Hevy calls, so a hung request cannot outlast the lease. */
+const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
 
-Deno.serve(async (req) => {
+export interface HevySyncDependencies {
+  env: (key: string) => string | undefined;
+  // deno-lint-ignore no-explicit-any
+  createClient: (url: string, key: string, options?: any) => DbClient;
+  /** Used for Hevy API calls. */
+  fetch: typeof fetch;
+  now: () => Date;
+}
+
+function defaultHevySyncDependencies(): HevySyncDependencies {
+  return {
+    env: (key) => Deno.env.get(key),
+    createClient: (url, key, options) => createClient(url, key, options),
+    fetch: (input, init) => fetch(input, init),
+    now: () => new Date(),
+  };
+}
+
+export function createHevySyncHandler(
+  dependencies: HevySyncDependencies = defaultHevySyncDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => hevySync(req, dependencies);
+}
+
+if (import.meta.main) {
+  Deno.serve(createHevySyncHandler());
+}
+
+async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Response> {
+  // A browser-initiated run owns the row it created: hand it back when the run
+  // ends badly, so the user's next manual sync is not refused with a 409 until
+  // the lease expires. Queue-dispatched rows deliberately stay `processing`
+  // for process-sync-queue to re-run (PR 51).
+  const owned: OwnedQueueRow = noOwnedQueueRow();
+  const response = await runHevySync(req, deps, owned);
+  if (!response.ok) await releaseOwnedQueueRow(owned);
+  return response;
+}
+
+async function runHevySync(
+  req: Request,
+  deps: HevySyncDependencies,
+  owned: OwnedQueueRow,
+): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -59,9 +126,9 @@ Deno.serve(async (req) => {
     let userId: string;
 
     // Try JWT auth first (browser-initiated calls)
-    const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
+    const supabaseAuth = deps.createClient(
+      deps.env('SUPABASE_URL')!,
+      deps.env('SUPABASE_ANON_KEY')!,
       { global: { headers: { Authorization: authHeader } } },
     );
     const { data: { user: jwtUser } } = await supabaseAuth.auth.getUser();
@@ -72,7 +139,7 @@ Deno.serve(async (req) => {
     } else {
       // Not a valid user JWT -- must be service-role call from process-sync-queue
       // Verify the caller is actually using the service role key
-      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      const serviceRoleKey = deps.env('SUPABASE_SERVICE_ROLE_KEY') ?? '';
       const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
 
       if (!isServiceRole || !body.user_id) {
@@ -85,16 +152,43 @@ Deno.serve(async (req) => {
     }
 
     const { api_key, sync_type } = body;
-    const queueId = !jwtUser && typeof body.queue_id === 'string' ? body.queue_id : null;
+    const calledByQueueProcessor = !jwtUser;
+    // The dispatched row (queue path only): a browser caller's `queue_id` is
+    // ignored — it may name any row at all — and replaced by its own below.
+    const dispatchedQueueId =
+      calledByQueueProcessor && typeof body.queue_id === 'string' ? body.queue_id : null;
+    // The row this run owns and leases.
+    let ownedQueueId = dispatchedQueueId;
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = deps.createClient(
+      deps.env('SUPABASE_URL')!,
+      deps.env('SUPABASE_SERVICE_ROLE_KEY')!
     );
+
+    // Renew the lease immediately: the processor claimed this row before it
+    // called us, so the work below must not run on that claim's clock.
+    await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 
     // Subscription gate — FLAME or higher required for integrations
     const gate = await requireSubscription(supabase, userId, 'FLAME', cors);
     if (!gate.allowed) return gate.response;
+
+    // Browser-initiated: take a queue row of our own so this run is visible to
+    // the portal, holds a lease, and blocks a concurrent duplicate sync.
+    if (!calledByQueueProcessor) {
+      const created = await createSyncQueueEntry(supabase, {
+        userId,
+        provider: 'hevy',
+        syncType: typeof sync_type === 'string' ? sync_type : 'manual',
+        now: deps.now(),
+      });
+      if (created.conflict) return syncAlreadyQueuedResponse(cors);
+      if (!created.queueId) return syncQueueUnavailableResponse(cors);
+      ownedQueueId = created.queueId;
+      owned.supabase = supabase;
+      owned.queueId = ownedQueueId;
+      owned.userId = userId;
+    }
 
     // If api_key provided, store it in oauth_tokens (server-only table)
     if (api_key) {
@@ -172,14 +266,24 @@ Deno.serve(async (req) => {
     // Capture the watermark *before* fetching. Anything Hevy records while this
     // run is in flight then falls inside the next run's `since` window instead
     // of being skipped. Upserts are idempotent, so the small overlap is free.
-    const syncStartedAt = new Date().toISOString();
+    const syncStartedAt = deps.now().toISOString();
 
     let workouts: HevyWorkout[] = [];
     let deletedIds: string[] = [];
     let truncated = false;
     let latestEventAt: string | null = null;
     try {
-      const fetchPage = createHevyPageFetcher(storedApiKey);
+      // Renew the queue lease after every page: a 100-page backfill can
+      // outlast process-sync-queue's heartbeat lease before any upsert runs.
+      const fetchWithHeartbeat: typeof fetch = async (input, init) => {
+        const response = await deps.fetch(input, {
+          ...init,
+          signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+        });
+        await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
+        return response;
+      };
+      const fetchPage = createHevyPageFetcher(storedApiKey, fetchWithHeartbeat);
       const result = useEvents
         ? await fetchHevyEvents(fetchPage, lastSyncAt!)
         : await fetchHevyBackfill(fetchPage);
@@ -287,6 +391,7 @@ Deno.serve(async (req) => {
       } else {
         importedCount += chunk.length;
       }
+      await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
     }
 
     // If any activity failed to persist, do NOT advance last_sync_at: the next
@@ -378,10 +483,12 @@ Deno.serve(async (req) => {
       .eq('user_id', userId)
       .eq('provider', 'hevy');
 
-    await completeClaimedSyncQueueEntry(supabase, {
-      queueId,
+    // Complete only the row this run owns. Never sweep every pending row:
+    // a second queued task (a kept `initial`) must still run.
+    await completeSyncQueueEntry(supabase, {
       userId,
       provider: 'hevy',
+      queueId: ownedQueueId,
     });
 
     return new Response(
@@ -406,4 +513,4 @@ Deno.serve(async (req) => {
       }
     );
   }
-});
+}

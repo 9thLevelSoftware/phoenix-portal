@@ -432,6 +432,8 @@ Non-negotiable rules to prevent schema drift (as discovered 2026-04-20 when 5 mi
 5. Write a reconciliation migration that reapplies only the **missing** artifacts using idempotent DDL; leave already-present artifacts alone (especially views/tables of different `relkind` than the migration assumed — see the `creator_stats` materialized-view incident).
 
 ### CI coverage
+- `.github/workflows/migrations.yml` — clean-applies every migration into a fresh Supabase stack on any PR that touches `supabase/migrations/` (or the tests, types or tooling it depends on). Fails on file-vs-applied count mismatch, on any pgTAP failure (`supabase test db`, all files), and when `src/lib/database.types.ts` differs from the migrated schema.
+- `.github/workflows/prod-migration-drift.yml` — daily `supabase migration list --linked` drift detector against the prod Supabase project. Fails its own run (and emits a remediation recipe) when any local migration is not applied to prod. Required `production` environment secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROD_PROJECT_REF`, `SUPABASE_PROD_DB_PASSWORD`; protect that environment with main-only branch restrictions/reviewers. The workflow also has an in-repo `refs/heads/main` guard before any production secret-consuming step. **Detector only — does not gate `.github/workflows/deploy-edge-functions.yml` or any other deploy path.** The drift class this would surface is the one demonstrated by `9thLevelSoftware/Project-Phoenix-MP#602`, but pushing the missing migration and verifying the reporter path are separate operational steps owned by the human operator with prod DB credentials.
 
 Six workflows in `.github/workflows/`. Read the file rather than a step's
 `name:` when it matters — names go stale faster than `run:` lines.

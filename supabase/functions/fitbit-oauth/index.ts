@@ -147,13 +147,19 @@ Deno.serve(async (req) => {
       return Response.redirect(`${APP_URL}/integrations?error=storage_failed`);
     }
 
-    // Queue initial sync
-    await supabase.from('sync_queue').insert({
+    // Queue initial sync. A reconnect while the first initial import is still
+    // queued or running hits `sync_queue_one_active` (23505) — the intended
+    // outcome, since that import is already on its way.
+    const { error: queueError } = await supabase.from('sync_queue').insert({
       user_id: userId,
       provider: 'fitbit',
       sync_type: 'initial',
       status: 'pending',
     });
+    if (queueError && (queueError as { code?: string }).code !== '23505') {
+      // Non-fatal: tokens are saved, sync can be triggered manually later.
+      console.error('Failed to queue initial sync:', queueError);
+    }
 
     return Response.redirect(`${APP_URL}/integrations?connected=fitbit`);
   } catch (err) {
