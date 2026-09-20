@@ -7,8 +7,16 @@
 --   * E is denied INSERT (42501) and cannot UPDATE its own rows;
 --   * F may INSERT and UPDATE its own rows.
 -- Downgrade safety: E can still DELETE its own comment, shared routine,
--- shared cycle, vote, follow, saved item and challenge participation, and
--- can still INSERT user_blocks and content_reports. The DEFINER import RPCs raise FLAME_REQUIRED for E.
+-- shared cycle, vote, follow, saved item and challenge participation, its own
+-- routine / training cycle / routine_exercise / cycle_day, and can still
+-- INSERT user_blocks and content_reports. The DEFINER import RPCs raise
+-- FLAME_REQUIRED for E.
+-- Section 3b exercises the comment-removal path the SPA really uses (a hard
+-- DELETE with a row check) and proves comment_count follows it exactly once.
+-- Section 5 pins that past_due entitlement is decided by
+-- user_subscription_tier(), not by these policies (PR 8 owns the predicate).
+-- The 5-minute comment edit window and the column-level write grants that
+-- make it authoritative are asserted in section 1 and section 4.
 --
 -- Mobile push is not exercised here: it writes through the service_role
 -- client (bypasses RLS) and is covered by the Edge handler tests.
@@ -92,6 +100,49 @@ SELECT is(
     'every FLAME table has an INSERT policy'
 );
 
+-- R-10: the same guard for UPDATE. The shape assertions below are row-driven,
+-- so dropping an UPDATE policy would silently produce one assertion fewer
+-- rather than a failure (no_plan() cannot notice a vanished assertion). These
+-- two checks make both the existence and the count load-bearing.
+CREATE TEMP TABLE flame_update_tables (table_name text PRIMARY KEY)
+ON COMMIT DROP;
+INSERT INTO flame_update_tables VALUES
+    ('shared_routines'),
+    ('shared_cycles'),
+    ('community_comments'),
+    ('user_integrations'),
+    ('routines'),
+    ('training_cycles'),
+    ('routine_exercises'),
+    ('cycle_days');
+
+SELECT is(
+    (
+        SELECT count(*)::integer
+        FROM flame_update_tables ft
+        WHERE NOT EXISTS (
+            SELECT 1 FROM pg_policies p
+            WHERE p.schemaname = 'public'
+              AND p.tablename = ft.table_name
+              AND p.cmd = 'UPDATE'
+        )
+    ),
+    0,
+    'every FLAME table that owns an UPDATE policy still has one'
+);
+
+SELECT is(
+    (
+        SELECT count(*)::integer
+        FROM pg_policies p
+        JOIN flame_tables ft ON ft.table_name = p.tablename
+        WHERE p.schemaname = 'public'
+          AND p.cmd = 'UPDATE'
+    ),
+    (SELECT count(*)::integer FROM flame_update_tables),
+    'the FLAME tables carry exactly one UPDATE policy each'
+);
+
 SELECT ok(
     p.with_check LIKE '%( SELECT user_has_min_tier(''FLAME''::text) AS user_has_min_tier)%'
         AND p.with_check LIKE '%( SELECT auth.uid() AS uid)%',
@@ -151,6 +202,65 @@ SELECT is(
     'user_blocks and content_reports (safety features) carry no tier check'
 );
 
+-- R-12: the 5-minute comment edit window must be judged on the stored row
+-- (USING), not only on the row being written (WITH CHECK). With the window in
+-- WITH CHECK alone, `UPDATE ... SET body = ?, created_at = now()` passes for a
+-- comment of any age.
+SELECT ok(
+    p.qual LIKE '%created_at%' AND p.with_check LIKE '%created_at%',
+    'community_comments UPDATE policy checks the edit window in USING and WITH CHECK'
+)
+FROM pg_policies p
+WHERE p.schemaname = 'public'
+  AND p.tablename = 'community_comments'
+  AND p.cmd = 'UPDATE';
+
+-- R-12 / R-13: column-level write grants. RLS decides which rows a client may
+-- touch; these grants decide which columns, and they are what stops a FLAME
+-- owner backdating created_at (or writing deleted_at from a browser at all),
+-- and a joining user setting completed_at.
+SELECT ok(
+    has_column_privilege('authenticated', 'public.community_comments', 'body', 'UPDATE')
+    AND has_column_privilege('authenticated', 'public.community_comments', 'updated_at', 'UPDATE')
+    AND NOT has_column_privilege('authenticated', 'public.community_comments', 'created_at', 'UPDATE')
+    AND NOT has_column_privilege('authenticated', 'public.community_comments', 'deleted_at', 'UPDATE')
+    AND NOT has_column_privilege('authenticated', 'public.community_comments', 'user_id', 'UPDATE')
+    AND NOT has_column_privilege('authenticated', 'public.community_comments', 'item_id', 'UPDATE'),
+    'authenticated may UPDATE only body / updated_at on community_comments'
+);
+
+SELECT ok(
+    has_column_privilege('authenticated', 'public.community_comments', 'body', 'INSERT')
+    AND has_column_privilege('authenticated', 'public.community_comments', 'user_id', 'INSERT')
+    AND has_column_privilege('authenticated', 'public.community_comments', 'item_id', 'INSERT')
+    AND has_column_privilege('authenticated', 'public.community_comments', 'item_type', 'INSERT')
+    AND NOT has_column_privilege('authenticated', 'public.community_comments', 'created_at', 'INSERT')
+    AND NOT has_column_privilege('authenticated', 'public.community_comments', 'deleted_at', 'INSERT'),
+    'authenticated cannot choose created_at / deleted_at when posting a comment'
+);
+
+SELECT ok(
+    has_column_privilege('authenticated', 'public.challenge_participants', 'challenge_id', 'INSERT')
+    AND has_column_privilege('authenticated', 'public.challenge_participants', 'user_id', 'INSERT')
+    AND NOT has_column_privilege('authenticated', 'public.challenge_participants', 'completed_at', 'INSERT'),
+    'joining a challenge cannot also mark it completed'
+);
+
+-- R-1 / R-3: the denormalised comment_count must follow a hard DELETE, which
+-- is what the portal now issues. The trigger has to fire on DELETE at all.
+SELECT ok(
+    EXISTS (
+        SELECT 1 FROM pg_trigger t
+        WHERE t.tgrelid = 'public.community_comments'::regclass
+          AND t.tgname = 'update_comment_count_on_change'
+          AND NOT t.tgisinternal
+          AND (t.tgtype & 8) = 8   -- DELETE
+          AND (t.tgtype & 4) = 4   -- INSERT
+          AND (t.tgtype & 16) = 16 -- UPDATE
+    ),
+    'update_comment_count_on_change fires on INSERT, UPDATE and DELETE'
+);
+
 SELECT ok(
     pg_get_functiondef('public.import_shared_routine(uuid, text)'::regprocedure)
         LIKE '%user_has_min_tier(''FLAME'')%FLAME_REQUIRED%',
@@ -171,6 +281,7 @@ INSERT INTO auth.users (id, email)
 VALUES
     ('e1e1e1e1-0000-4000-8000-00000000000e'::uuid, 'tier-ember@example.test'),
     ('f1f1f1f1-0000-4000-8000-00000000000f'::uuid, 'tier-flame@example.test'),
+    ('d1d1d1d1-0000-4000-8000-00000000000d'::uuid, 'tier-pastdue@example.test'),
     ('c1c1c1c1-0000-4000-8000-00000000000c'::uuid, 'tier-creator@example.test')
 ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
 
@@ -178,13 +289,16 @@ INSERT INTO public.profiles (id)
 VALUES
     ('e1e1e1e1-0000-4000-8000-00000000000e'),
     ('f1f1f1f1-0000-4000-8000-00000000000f'),
+    ('d1d1d1d1-0000-4000-8000-00000000000d'),
     ('c1c1c1c1-0000-4000-8000-00000000000c')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
 VALUES
     ('e1e1e1e1-0000-4000-8000-00000000000e'::uuid, 'EMBER', 'active', now() + INTERVAL '30 days'),
-    ('f1f1f1f1-0000-4000-8000-00000000000f'::uuid, 'FLAME', 'active', now() + INTERVAL '30 days')
+    ('f1f1f1f1-0000-4000-8000-00000000000f'::uuid, 'FLAME', 'active', now() + INTERVAL '30 days'),
+    -- D is the past_due FLAME subscriber of R-4 (section 5).
+    ('d1d1d1d1-0000-4000-8000-00000000000d'::uuid, 'FLAME', 'past_due', now() + INTERVAL '30 days')
 ON CONFLICT (user_id) DO UPDATE
 SET tier = EXCLUDED.tier,
     status = EXCLUDED.status,
@@ -234,7 +348,48 @@ INSERT INTO public.community_comments (id, user_id, item_id, item_type, body) VA
     ('e1e1e1e1-0008-4000-8000-00000000000e', 'e1e1e1e1-0000-4000-8000-00000000000e',
      'f1f1f1f1-0005-4000-8000-00000000000f', 'routine', 'E comment'),
     ('f1f1f1f1-0008-4000-8000-00000000000f', 'f1f1f1f1-0000-4000-8000-00000000000f',
-     'f1f1f1f1-0005-4000-8000-00000000000f', 'routine', 'F comment');
+     'f1f1f1f1-0005-4000-8000-00000000000f', 'routine', 'F comment'),
+    -- R-1 / R-3: E's comment removed through the path the SPA really uses,
+    -- and a row that will be left over from the old soft-delete era.
+    ('e1e1e1e1-0013-4000-8000-00000000000e', 'e1e1e1e1-0000-4000-8000-00000000000e',
+     'f1f1f1f1-0005-4000-8000-00000000000f', 'routine', 'E comment to hard delete'),
+    ('e1e1e1e1-0014-4000-8000-00000000000e', 'e1e1e1e1-0000-4000-8000-00000000000e',
+     'f1f1f1f1-0005-4000-8000-00000000000f', 'routine', 'E legacy tombstone');
+
+-- Tombstone the legacy row through the UPDATE branch, exactly as rows written
+-- before 20260920000901 were: comment_count is decremented here, so a later
+-- hard DELETE must not decrement it a second time.
+UPDATE public.community_comments
+SET deleted_at = now()
+WHERE id = 'e1e1e1e1-0014-4000-8000-00000000000e';
+
+-- R-8 / R-12: a FLAME comment that is well outside the 5-minute edit window.
+-- created_at is also outside the rate-limit window, so it does not consume F's
+-- 5-comments-per-hour quota.
+INSERT INTO public.community_comments (id, user_id, item_id, item_type, body, created_at) VALUES
+    ('f1f1f1f1-0009-4000-8000-00000000000f', 'f1f1f1f1-0000-4000-8000-00000000000f',
+     'f1f1f1f1-0005-4000-8000-00000000000f', 'routine', 'F old comment',
+     now() - INTERVAL '1 day');
+
+-- Baseline for the comment_count assertions in section 3b. Captured as
+-- postgres: `authenticated` cannot read a temp table owned by this session.
+CREATE TEMP TABLE comment_count_probe (label text PRIMARY KEY, value integer)
+ON COMMIT DROP;
+INSERT INTO comment_count_probe
+SELECT 'baseline', comment_count
+FROM public.shared_routines
+WHERE id = 'f1f1f1f1-0005-4000-8000-00000000000f';
+
+SELECT is(
+    (SELECT value FROM comment_count_probe WHERE label = 'baseline'),
+    (
+        SELECT count(*)::integer FROM public.community_comments
+        WHERE item_id = 'f1f1f1f1-0005-4000-8000-00000000000f'
+          AND item_type = 'routine'
+          AND deleted_at IS NULL
+    ),
+    'comment_count counts the live comments and excludes the tombstone'
+);
 
 INSERT INTO public.saved_community_items (id, user_id, shared_item_id, item_type) VALUES
     ('e1e1e1e1-0009-4000-8000-00000000000e', 'e1e1e1e1-0000-4000-8000-00000000000e',
@@ -314,6 +469,13 @@ FROM (VALUES
     ('DELETE own follow', $q$DELETE FROM public.creator_follows WHERE id = 'e1e1e1e1-0010-4000-8000-00000000000e'$q$),
     ('DELETE own saved item', $q$DELETE FROM public.saved_community_items WHERE id = 'e1e1e1e1-0009-4000-8000-00000000000e'$q$),
     ('DELETE own challenge participation', $q$DELETE FROM public.challenge_participants WHERE id = 'e1e1e1e1-0011-4000-8000-00000000000e'$q$),
+    -- R-9: routine / cycle DELETE deliberately stays at EMBER so a downgraded
+    -- author is not trapped. rls_isolation's A user is FLAME since this PR, so
+    -- these four are the only remaining EMBER positive controls for them.
+    ('DELETE own routine', $q$DELETE FROM public.routines WHERE id = 'e1e1e1e1-0001-4000-8000-00000000000e'$q$),
+    ('DELETE own training cycle', $q$DELETE FROM public.training_cycles WHERE id = 'e1e1e1e1-0003-4000-8000-00000000000e'$q$),
+    ('DELETE own routine_exercise', $q$DELETE FROM public.routine_exercises WHERE id = 'e1e1e1e1-0002-4000-8000-00000000000e'$q$),
+    ('DELETE own cycle_day', $q$DELETE FROM public.cycle_days WHERE id = 'e1e1e1e1-0004-4000-8000-00000000000e'$q$),
     ('INSERT user_blocks', $q$INSERT INTO public.user_blocks (blocker_id, blocked_id) VALUES ('e1e1e1e1-0000-4000-8000-00000000000e', 'c1c1c1c1-0000-4000-8000-00000000000c')$q$),
     ('INSERT content_reports', $q$INSERT INTO public.content_reports (reporter_id, content_id, content_type, category) VALUES ('e1e1e1e1-0000-4000-8000-00000000000e', 'f1f1f1f1-0005-4000-8000-00000000000f', 'routine', 'spam')$q$)
 ) AS c(label, stmt);
@@ -329,6 +491,94 @@ SELECT matches(
     '^P0001 FLAME_REQUIRED',
     'EMBER cannot import_shared_cycle (FLAME_REQUIRED)'
 );
+
+-- ---------------------------------------------------------------------------
+-- 3b. The comment-removal path the portal actually uses (R-1 / R-3, NF-14).
+--
+--     src/mutations/comments.ts issues
+--     `.delete().eq('id', …).eq('user_id', …).select('id')`. The old
+--     soft-delete UPDATE could never work (the SELECT policy is
+--     `deleted_at IS NULL`, so the new row is invisible) and 20260920000900
+--     put it behind FLAME as well; the owner DELETE policy has no tier check,
+--     which is what keeps a downgraded author able to withdraw a comment.
+--
+--     These statements are deliberately NOT wrapped in pg_temp.attempt():
+--     attempt() rolls back, and the point is that comment_count really
+--     follows the delete. (The whole file still rolls back at the end.)
+-- ---------------------------------------------------------------------------
+WITH deleted AS (
+    DELETE FROM public.community_comments
+    WHERE id = 'e1e1e1e1-0013-4000-8000-00000000000e'
+      AND user_id = 'e1e1e1e1-0000-4000-8000-00000000000e'
+    RETURNING id
+)
+SELECT is(
+    (SELECT count(*)::integer FROM deleted),
+    1,
+    'EMBER can hard-DELETE its own comment and the client gets the row back'
+);
+
+-- A row left over from the soft-delete era cannot be reached by its author at
+-- all: PostgreSQL applies SELECT policies to the rows an UPDATE or DELETE
+-- reads, and the SELECT policy here is `deleted_at IS NULL`. That is why
+-- 20260920000901 purges these rows server-side instead of leaving them for
+-- the client to clean up.
+SELECT is(
+    pg_temp.attempt($q$DELETE FROM public.community_comments WHERE id = 'e1e1e1e1-0014-4000-8000-00000000000e' AND user_id = 'e1e1e1e1-0000-4000-8000-00000000000e'$q$),
+    'rows:0',
+    'a legacy tombstone is invisible even to its author, so only the server can remove it'
+);
+
+RESET ROLE;
+
+SELECT is(
+    (
+        SELECT count(*)::integer FROM public.community_comments
+        WHERE id = 'e1e1e1e1-0013-4000-8000-00000000000e'
+    ),
+    0,
+    'the hard-deleted comment is really gone'
+);
+
+SELECT is(
+    (
+        SELECT comment_count FROM public.shared_routines
+        WHERE id = 'f1f1f1f1-0005-4000-8000-00000000000f'
+    ),
+    (SELECT value FROM comment_count_probe WHERE label = 'baseline') - 1,
+    'the hard delete decrements comment_count exactly once'
+);
+
+-- The server-side purge (migration 20260920000901) over a row that was
+-- already soft-deleted must NOT take comment_count down again: the UPDATE
+-- branch decremented it when deleted_at was set.
+DELETE FROM public.community_comments
+WHERE id = 'e1e1e1e1-0014-4000-8000-00000000000e';
+
+SELECT is(
+    (
+        SELECT comment_count FROM public.shared_routines
+        WHERE id = 'f1f1f1f1-0005-4000-8000-00000000000f'
+    ),
+    (SELECT value FROM comment_count_probe WHERE label = 'baseline') - 1,
+    'purging an already soft-deleted comment does not decrement comment_count again'
+);
+
+SELECT is(
+    (
+        SELECT comment_count FROM public.shared_routines
+        WHERE id = 'f1f1f1f1-0005-4000-8000-00000000000f'
+    ),
+    (
+        SELECT count(*)::integer FROM public.community_comments
+        WHERE item_id = 'f1f1f1f1-0005-4000-8000-00000000000f'
+          AND item_type = 'routine'
+          AND deleted_at IS NULL
+    ),
+    'comment_count still matches the live comments after both deletes'
+);
+
+SET LOCAL ROLE authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 4. FLAME user F.
@@ -389,6 +639,74 @@ SELECT matches(
     pg_temp.attempt($q$SELECT public.import_shared_cycle('f1f1f1f1-0006-4000-8000-00000000000f'::uuid)$q$),
     '^rows:',
     'FLAME can import_shared_cycle'
+);
+
+-- R-8 / R-12: the 5-minute edit window, and the two ways round it.
+SELECT is(
+    pg_temp.attempt($q$UPDATE public.community_comments SET body = 'late edit' WHERE id = 'f1f1f1f1-0009-4000-8000-00000000000f'$q$),
+    'rows:0',
+    'FLAME cannot edit its own comment once the 5-minute window has closed'
+);
+
+SELECT matches(
+    pg_temp.attempt($q$UPDATE public.community_comments SET body = 'late edit', created_at = now() WHERE id = 'f1f1f1f1-0009-4000-8000-00000000000f'$q$),
+    '^42501',
+    'FLAME cannot reopen the edit window by rewriting created_at'
+);
+
+-- The old soft-delete path, pinned as permanently dead: the SELECT policy
+-- (`deleted_at IS NULL`) is applied to the new row of an UPDATE, and
+-- authenticated no longer even holds an UPDATE grant on deleted_at.
+SELECT matches(
+    pg_temp.attempt($q$UPDATE public.community_comments SET deleted_at = now() WHERE id = 'f1f1f1f1-0008-4000-8000-00000000000f'$q$),
+    '^42501',
+    'a browser soft-delete of a comment is refused (this is why removal is a hard DELETE)'
+);
+
+SELECT matches(
+    pg_temp.attempt($q$INSERT INTO public.challenge_participants (challenge_id, user_id, completed_at) VALUES ('c4c4c4c4-0002-4000-8000-000000000002', 'f1f1f1f1-0000-4000-8000-00000000000f', now())$q$),
+    '^42501',
+    'FLAME cannot mark a challenge complete while joining it'
+);
+
+-- ---------------------------------------------------------------------------
+-- 5. past_due FLAME subscriber D (R-4).
+--
+--     The user decision is that past_due keeps access. That verdict belongs to
+--     public.user_subscription_tier() — PR 8 changes it — and must NOT be
+--     re-decided inside these policies. So the assertion is a consistency one:
+--     every FLAME gate returns exactly what the shared predicate returns for a
+--     past_due subscriber. Green on this base (the predicate says FREE and the
+--     policies deny) and green after PR 8 (the predicate says FLAME and the
+--     policies allow); red the moment a policy grows a status rule of its own,
+--     or a tier check drifts away from the helper.
+--
+--     PR 8 merge step (exec/integration-notes.md): once 20260920000800 is on
+--     the branch, replace `public.user_has_min_tier('FLAME')` below with a
+--     literal true so past_due access is asserted unconditionally.
+-- ---------------------------------------------------------------------------
+SELECT pg_temp.act_as('d1d1d1d1-0000-4000-8000-00000000000d');
+
+SELECT is(
+    pg_temp.attempt(c.stmt) = 'rows:1',
+    public.user_has_min_tier('FLAME'),
+    'past_due FLAME: ' || c.label || ' follows user_has_min_tier(FLAME)'
+)
+FROM (VALUES
+    ('INSERT community_comments', $q$INSERT INTO public.community_comments (user_id, item_id, item_type, body) VALUES ('d1d1d1d1-0000-4000-8000-00000000000d', 'f1f1f1f1-0005-4000-8000-00000000000f', 'routine', 'x')$q$),
+    ('INSERT community_votes', $q$INSERT INTO public.community_votes (user_id, item_id, item_type) VALUES ('d1d1d1d1-0000-4000-8000-00000000000d', 'f1f1f1f1-0005-4000-8000-00000000000f', 'routine')$q$),
+    ('INSERT creator_follows', $q$INSERT INTO public.creator_follows (follower_id, followed_id) VALUES ('d1d1d1d1-0000-4000-8000-00000000000d', 'c1c1c1c1-0000-4000-8000-00000000000c')$q$),
+    ('INSERT saved_community_items', $q$INSERT INTO public.saved_community_items (user_id, shared_item_id, item_type) VALUES ('d1d1d1d1-0000-4000-8000-00000000000d', 'f1f1f1f1-0005-4000-8000-00000000000f', 'routine')$q$),
+    ('INSERT challenge_participants', $q$INSERT INTO public.challenge_participants (challenge_id, user_id) VALUES ('c4c4c4c4-0002-4000-8000-000000000002', 'd1d1d1d1-0000-4000-8000-00000000000d')$q$),
+    ('INSERT user_integrations', $q$INSERT INTO public.user_integrations (user_id, provider) VALUES ('d1d1d1d1-0000-4000-8000-00000000000d', 'strava')$q$),
+    ('INSERT sync_queue', $q$INSERT INTO public.sync_queue (user_id, provider) VALUES ('d1d1d1d1-0000-4000-8000-00000000000d', 'strava')$q$),
+    ('INSERT routines', $q$INSERT INTO public.routines (user_id, name) VALUES ('d1d1d1d1-0000-4000-8000-00000000000d', 'x')$q$)
+) AS c(label, stmt);
+
+SELECT is(
+    pg_temp.attempt($q$SELECT public.import_shared_routine('f1f1f1f1-0005-4000-8000-00000000000f'::uuid)$q$) LIKE 'rows:%',
+    public.user_has_min_tier('FLAME'),
+    'past_due FLAME: import_shared_routine follows user_has_min_tier(FLAME)'
 );
 
 RESET ROLE;
