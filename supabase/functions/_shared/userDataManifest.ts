@@ -199,6 +199,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"subscription_created_at",
 			"subscription_updated_at",
 			"row_snapshot",
+			"note",
 		],
 		{
 			mayBeAbsent: true,
@@ -591,8 +592,9 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"created_at",
 			"updated_at",
 			"exercise_id",
+			"predicted_completion_date",
 		],
-		{ optionalColumns: ["last_snapshot_at", "predicted_completion_date"] },
+		{ optionalColumns: ["last_snapshot_at"] },
 	),
 	owned(
 		"goal_snapshots",
@@ -622,6 +624,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"confidence",
 			"created_at",
 			"expires_at",
+			"exercise_id",
 		],
 		{ mayBeAbsent: true, note: PROD_ONLY_NOTE },
 	),

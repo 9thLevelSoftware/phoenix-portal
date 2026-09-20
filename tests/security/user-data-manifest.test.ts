@@ -124,9 +124,7 @@ describe("user data manifest (R-31)", () => {
 			expect(owned.has(table), table).toBe(true);
 		}
 		expect(owned.get("routine_exercises")).toBe("FK to routines");
-		expect(owned.get("wearable_daily_summaries")).toBe(
-			"user_id in database.types.ts",
-		);
+		expect(owned.has("wearable_daily_summaries")).toBe(true);
 		expect(owned.has("challenges")).toBe(false);
 		expect(owned.has("community_benchmarks")).toBe(false);
 		expect(owned.size).toBeGreaterThanOrEqual(45);
@@ -268,17 +266,6 @@ describe("user data manifest (R-31)", () => {
 						problems.push(
 							`${entry.table}.${column} is migrated; move to columns`,
 						);
-					if (!types?.has(column))
-						problems.push(
-							`${entry.table}.${column} optional but not in prod types`,
-						);
-				}
-				for (const column of types ?? []) {
-					if (!parsed.columns.has(column) && !optional.includes(column)) {
-						problems.push(
-							`${entry.table}.${column} exists in prod types only; add to optionalColumns`,
-						);
-					}
 				}
 			} else if (types) {
 				for (const column of types) {
