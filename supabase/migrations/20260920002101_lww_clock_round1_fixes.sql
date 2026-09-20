@@ -142,6 +142,14 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+    -- Edge (service_role) reads on behalf of a verified user; anyone else
+    -- may only read their own rows. Preserve the guard from the function this
+    -- migration replaces.
+    IF coalesce(auth.role(), '') <> 'service_role'
+       AND p_user_id IS DISTINCT FROM auth.uid() THEN
+        RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+    END IF;
+
     RETURN QUERY
     SELECT
         ws.id,
