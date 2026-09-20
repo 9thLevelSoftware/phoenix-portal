@@ -1,4 +1,5 @@
--- Untracked-subscription guard for apply_subscription_event (F-022, R-34).
+-- Untracked-subscription guard for apply_subscription_event (F-022, R-34),
+-- plus a partial UNIQUE index binding a Paddle subscription to one user.
 --
 -- The portal keeps ONE subscriptions row per user, but a Paddle customer can
 -- hold more than one subscription. Before this migration every event with a
@@ -6,23 +7,27 @@
 -- subscription's `subscription.canceled` (the end of dunning) revoked the
 -- access the new, paid subscription had just granted.
 --
--- Rule (identical to _shared/billingAction.ts#classifySubscriptionEventTarget,
--- which paddle-webhooks applies before it calls this function; this copy
--- closes the read-then-decide race between concurrent deliveries):
---   Ignore an event whose subscription id differs from the stored, non-null
---   one, UNLESS the incoming status is 'active'/'trialing' and the stored row
---   is not entitled — which is how a user who resubscribed under a new
---   subscription id is adopted rather than locked out.
+-- Rule: ignore an event whose subscription id differs from the stored,
+-- non-null one UNLESS the incoming status would leave the user entitled
+-- ('active' / 'trialing' / 'past_due'). That blocks the F-022 money bug — an
+-- old subscription's `canceled` revoking the access a newer paid one grants —
+-- while still letting a user who resubscribed under a new subscription id be
+-- adopted rather than locked out.
+--
+-- The stricter preference "don't let a second LIVE subscription take over a
+-- row that is still entitled" lives in app code
+-- (_shared/billingAction.ts#classifySubscriptionEventTarget, which
+-- paddle-webhooks applies before calling this function). It is deliberately
+-- not duplicated here: this copy exists to close the read-then-decide race
+-- between concurrent deliveries, and anything that slips past the app-code
+-- check can only KEEP the user entitled, never revoke.
 --
 -- On ignore the untracked subscription id and status are recorded in
 -- public.subscription_events as a note='untracked_subscription' row (the
 -- evidence PR 68's manual double-subscription resolution works from) and the
 -- function returns false, exactly like a stale event.
 --
--- Entitlement here is the shared predicate (20260920000800): past_due keeps
--- access; active has a 48h renewal grace unless cancel_at_period_end; trialing
--- has none. Parity fixture: tests/fixtures/entitlement-cases.json.
---
+
 -- Same signature and return type as 20260628130000, so this is a plain
 -- CREATE OR REPLACE. Grants are restated because CREATE OR REPLACE resets
 -- omitted attributes (KD-3 rule 3b).
@@ -67,7 +72,68 @@ END;
 $$;
 
 -- ---------------------------------------------------------------------------
--- 2. apply_subscription_event: the guard.
+-- 2. One Paddle subscription may back at most one portal user.
+--
+-- Structural defence in depth for the R-34 adoption path (security review R-1):
+-- whatever code path gets there, two rows must never hold the same
+-- paddle_subscription_id, because every billing function (cancel, refresh,
+-- plan change) keys off the stored id — a second binding would hand one user
+-- control of another's subscription.
+--
+-- The old Stripe-era UNIQUE was dropped in 20260303_revenuecat_schema_migration
+-- and 20260317150000_paddle_schema_fix re-added the column as plain TEXT, so
+-- duplicates may already exist in prod. Name them in the exception rather than
+-- letting CREATE UNIQUE INDEX fail with a single opaque pair: the operator has
+-- to decide which user legitimately owns the subscription before this applies.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_duplicates text;
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_class
+    WHERE relname = 'subscriptions_paddle_subscription_id_key'
+      AND relnamespace = 'public'::regnamespace
+  ) THEN
+    RETURN;
+  END IF;
+
+  SELECT string_agg(
+           format('%s (users: %s)', paddle_subscription_id, user_ids),
+           '; ' ORDER BY paddle_subscription_id
+         )
+    INTO v_duplicates
+    FROM (
+      SELECT paddle_subscription_id,
+             string_agg(user_id::text, ', ' ORDER BY user_id) AS user_ids
+        FROM public.subscriptions
+       WHERE paddle_subscription_id IS NOT NULL
+       GROUP BY paddle_subscription_id
+      HAVING count(*) > 1
+    ) dupes;
+
+  IF v_duplicates IS NOT NULL THEN
+    RAISE EXCEPTION
+      'Cannot add the unique paddle_subscription_id index: % Paddle subscription(s) are bound to more than one user: %. Resolve the duplicates (decide the true owner, clear the other row) and re-run.',
+      (SELECT count(*) FROM (
+         SELECT 1 FROM public.subscriptions
+          WHERE paddle_subscription_id IS NOT NULL
+          GROUP BY paddle_subscription_id HAVING count(*) > 1
+       ) d),
+      v_duplicates;
+  END IF;
+
+  CREATE UNIQUE INDEX subscriptions_paddle_subscription_id_key
+    ON public.subscriptions (paddle_subscription_id)
+    WHERE paddle_subscription_id IS NOT NULL;
+END;
+$$;
+
+COMMENT ON INDEX public.subscriptions_paddle_subscription_id_key IS
+  'One Paddle subscription backs at most one portal user. Every billing function keys off the stored id, so a second binding would hand one user control of another user''s subscription (PR 44 security review R-1).';
+
+-- ---------------------------------------------------------------------------
+-- 3. apply_subscription_event: the guard.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.apply_subscription_event(
   p_user_id UUID,
@@ -90,7 +156,6 @@ AS $$
 DECLARE
   v_rows INT;
   v_stored RECORD;
-  v_stored_entitled BOOLEAN;
 BEGIN
   SELECT s.paddle_subscription_id, s.status, s.current_period_end, s.cancel_at_period_end
     INTO v_stored
@@ -102,24 +167,23 @@ BEGIN
      AND p_paddle_subscription_id IS NOT NULL
      AND p_paddle_subscription_id <> v_stored.paddle_subscription_id
   THEN
-    v_stored_entitled := (
-      v_stored.status = 'past_due'
-      OR (
-        v_stored.status = 'active'
-        AND v_stored.current_period_end IS NOT NULL
-        AND now() < v_stored.current_period_end + CASE
-          WHEN COALESCE(v_stored.cancel_at_period_end, false) THEN interval '0'
-          ELSE interval '48 hours'
-        END
-      )
-      OR (
-        v_stored.status = 'trialing'
-        AND v_stored.current_period_end IS NOT NULL
-        AND now() < v_stored.current_period_end
-      )
-    );
-
-    IF p_status NOT IN ('active', 'trialing') OR v_stored_entitled THEN
+    -- Block exactly the dangerous direction: an untracked subscription whose
+    -- state would NOT leave the user entitled (the F-022 money bug — an old
+    -- subscription's `canceled` revoking the access a newer paid one grants).
+    -- 'past_due' is in the allowed set because it keeps access during
+    -- Paddle's retry window (binding user decision, R-33); leaving it out
+    -- would make the rescue unable to adopt a past-due sibling and drop a
+    -- paying user to FREE.
+    --
+    -- Deliberately NOT also requiring "the stored row is not entitled": that
+    -- preference ("don't let a second live subscription steal an entitled
+    -- row") is enforced in app code by
+    -- _shared/billingAction.ts#classifySubscriptionEventTarget, which runs
+    -- before this function. Enforcing it here too would block the R-34
+    -- rescue's single-statement adopt and force a cancel-then-adopt sequence
+    -- that exposes a transient `canceled` row. Anything that slips past the
+    -- app-code check can only ever KEEP the user entitled, never revoke.
+    IF p_status NOT IN ('active', 'trialing', 'past_due') THEN
       IF to_regclass('public.subscription_events') IS NOT NULL THEN
         INSERT INTO public.subscription_events (
           user_id, operation, note, status, paddle_customer_id,

@@ -12,6 +12,13 @@ export interface PaddleSubscriptionState {
   status: string;
   /** Paddle's own last-modified clock; used to order writes it did not push. */
   updated_at?: string | null;
+  /**
+   * Checkout custom_data. `user_id` is only trustworthy together with a
+   * `cd_sig` that verifies (see _shared/paddleWebhookSecurity.ts) — a Paddle
+   * customer is keyed by a buyer-typed email, so sharing a customer proves
+   * nothing about who owns a subscription.
+   */
+  custom_data?: { user_id?: unknown; cd_sig?: unknown } | null;
   items?: Array<{
     price?: {
       id?: string;

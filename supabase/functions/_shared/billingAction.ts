@@ -143,6 +143,18 @@ export function existingSubscriptionResponseBody(result: BillingActionResult): {
 
 export type SubscriptionEventTarget = 'apply' | 'ignore_untracked_subscription';
 
+/**
+ * Portal statuses that can leave a user entitled, i.e. the states an
+ * untracked subscription may be adopted in. Mirrors the `status=` filter the
+ * webhook sends to Paddle and the `p_status IN (…)` test inside
+ * `public.apply_subscription_event` — change all three together.
+ */
+export const ENTITLEMENT_KEEPING_STATUSES: ReadonlySet<string> = new Set([
+  'active',
+  'trialing',
+  'past_due',
+]);
+
 export interface SubscriptionEventTargetInput {
   /** `data.id` of the incoming Paddle event. */
   incomingSubscriptionId: string | null | undefined;
@@ -178,9 +190,10 @@ export function classifySubscriptionEventTarget(
     return 'apply';
   }
 
-  const incomingKeepsAccess =
-    input.incomingStatus === 'active' || input.incomingStatus === 'trialing';
-  if (!incomingKeepsAccess) {
+  // `past_due` belongs here: it keeps access during Paddle's retry window
+  // (binding user decision, R-33). Leaving it out would make the rescue
+  // unable to adopt a past-due sibling and drop a paying user to FREE.
+  if (!ENTITLEMENT_KEEPING_STATUSES.has(input.incomingStatus)) {
     return 'ignore_untracked_subscription';
   }
 

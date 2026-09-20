@@ -98,6 +98,23 @@ class FakeDb implements PaddleWebhooksDbClient {
     }
     if (this.rpcError) return Promise.resolve({ data: null, error: this.rpcError });
     if (this.forceNotApplied) return Promise.resolve({ data: false, error: null });
+
+    // The untracked-subscription half of the guard (migration
+    // 20260920004400): a write for a subscription other than the stored one
+    // is refused unless it would leave the user entitled. Modelled here too,
+    // so a handler change that starts sending a write the real function
+    // would reject fails in this suite instead of only in pgTAP.
+    const incomingSubscriptionId =
+      (args.p_paddle_subscription_id as string | null) ?? null;
+    if (
+      this.row?.paddle_subscription_id &&
+      incomingSubscriptionId &&
+      incomingSubscriptionId !== this.row.paddle_subscription_id &&
+      !["active", "trialing", "past_due"].includes(String(args.p_status))
+    ) {
+      return Promise.resolve({ data: false, error: null });
+    }
+
     const incoming = Date.parse(String(args.p_last_event_occurred_at));
     const stored = this.row?.last_event_occurred_at ? Date.parse(this.row.last_event_occurred_at) : null;
     if (stored !== null && incoming <= stored) {
@@ -652,6 +669,10 @@ Deno.test("paddle-webhooks: two tabs — A then B active, then A canceled, the r
 
   // A is cancelled. B is still live in Paddle, so the row follows B instead
   // of downgrading the user (R-34).
+  const signedCustomData = {
+    user_id: USER_ID,
+    cd_sig: await hmacSha256Hex(CUSTOM_DATA_SECRET, USER_ID),
+  };
   const calls: PaddleCall[] = [];
   const { result: cancelResponse, lines } = await captureConsoleError(async () =>
     await makeHandler(db, {
@@ -669,6 +690,9 @@ Deno.test("paddle-webhooks: two tabs — A then B active, then A canceled, the r
                 status: "active",
                 updated_at: "2026-09-18T11:55:00.000Z",
                 items: [{ price: { id: EMBER_PRICE }, quantity: 1 }],
+                // Signed custom_data proving sub_b belongs to this user —
+                // without it the adoption is refused (security review R-1).
+                custom_data: signedCustomData,
                 current_billing_period: {
                   starts_at: "2026-09-18T00:00:00.000Z",
                   ends_at: "2026-10-18T00:00:00.000Z",
@@ -699,22 +723,20 @@ Deno.test("paddle-webhooks: two tabs — A then B active, then A canceled, the r
   });
   assertEquals(
     calls[0]?.url,
-    "https://sandbox-api.paddle.com/subscriptions?customer_id=ctm_01&status=active,trialing,past_due",
+    "https://sandbox-api.paddle.com/subscriptions?customer_id=ctm_01" +
+      "&status=active,trialing,past_due&order_by=-created_at",
   );
-  // Three writes in all: A active, then the cancellation and the adoption.
-  // (B's own event wrote nothing — it was ignored.)
-  assertEquals(db.rpcCalls.length, 3);
-  assertEquals(db.rpcCalls[1]!.p_paddle_subscription_id, "sub_a");
-  assertEquals(db.rpcCalls[1]!.p_status, "canceled");
-  // The cancellation is recorded under a synthetic id so a redelivery after a
-  // failed adoption is not dismissed as a duplicate.
-  assertEquals(
-    db.rpcCalls[1]!.p_last_event_id,
-    "cancel:sub_a:2026-09-18T11:58:00.000Z",
+  // Two writes in all: A active, then ONE write that moves the row straight
+  // to B. The cancellation is never applied, so no reader can observe a
+  // transient `canceled` row. (B's own event wrote nothing — it was ignored.)
+  assertEquals(db.rpcCalls.length, 2);
+  assertEquals(db.rpcCalls[1]!.p_paddle_subscription_id, "sub_b");
+  assertEquals(db.rpcCalls[1]!.p_status, "active");
+  assertEquals(db.rpcCalls[1]!.p_last_event_id, "evt_a_canceled");
+  assert(
+    !db.rpcCalls.some((call) => call.p_status === "canceled"),
+    "the cancellation must never be written when a sibling is adopted",
   );
-  assertEquals(db.rpcCalls[2]!.p_paddle_subscription_id, "sub_b");
-  assertEquals(db.rpcCalls[2]!.p_status, "active");
-  assertEquals(db.rpcCalls[2]!.p_last_event_id, "evt_a_canceled");
   // The user is left entitled on B.
   assertEquals(db.row?.paddle_subscription_id, "sub_b");
   assertEquals(db.row?.status, "active");
@@ -756,7 +778,7 @@ Deno.test("paddle-webhooks: a cancellation with no other live subscription still
   assertEquals(db.row?.status, "canceled");
 });
 
-Deno.test("paddle-webhooks: a failed adoption is 500, and the redelivery is stale rather than a retry", async () => {
+Deno.test("paddle-webhooks: a failed adoption leaves the row untouched and the redelivery retries it", async () => {
   const db = new FakeDb({
     last_event_id: "evt_prev",
     last_event_occurred_at: "2026-09-18T11:00:00.000Z",
@@ -766,6 +788,10 @@ Deno.test("paddle-webhooks: a failed adoption is 500, and the redelivery is stal
     current_period_end: "2026-10-01T00:00:00.000Z",
     cancel_at_period_end: false,
   });
+  const bCustomData = {
+    user_id: USER_ID,
+    cd_sig: await hmacSha256Hex(CUSTOM_DATA_SECRET, USER_ID),
+  };
   const liveB = () =>
     new Response(
       JSON.stringify({
@@ -776,6 +802,7 @@ Deno.test("paddle-webhooks: a failed adoption is 500, and the redelivery is stal
             status: "active",
             updated_at: "2026-09-18T11:55:00.000Z",
             items: [{ price: { id: EMBER_PRICE }, quantity: 1 }],
+            custom_data: bCustomData,
             current_billing_period: {
               starts_at: "2026-09-18T00:00:00.000Z",
               ends_at: "2026-10-18T00:00:00.000Z",
@@ -794,9 +821,9 @@ Deno.test("paddle-webhooks: a failed adoption is 500, and the redelivery is stal
     occurredAt: "2026-09-18T11:58:00.000Z",
   });
 
-  // The adoption write fails after the cancellation has already been applied.
-  db.failRpcFrom = 2;
-  const { result: failed } = await captureConsoleError(async () =>
+  // The adoption write fails.
+  db.failRpcFrom = 1;
+  const { result: failed, lines } = await captureConsoleError(async () =>
     await makeHandler(db, {
       PADDLE_API_KEY: "pdl_test_key",
       PADDLE_ENVIRONMENT: "sandbox",
@@ -805,43 +832,277 @@ Deno.test("paddle-webhooks: a failed adoption is 500, and the redelivery is stal
 
   assertEquals(failed.status, 500);
   assertEquals(await failed.json(), { error: "Failed to adopt live subscription" });
-  assertEquals(db.row?.status, "canceled");
-  assertEquals(db.row?.last_event_id, "cancel:sub_a:2026-09-18T11:58:00.000Z");
+  assert(
+    lines.some((line) =>
+      line.includes("switch_to_untracked_subscription_failed")
+    ),
+    "expected the failure alert",
+  );
+  // Crucially the row is UNTOUCHED: still the old subscription, still
+  // entitled. A failed rescue must never be the reason a paying user drops to
+  // FREE, and must never leave them on a `canceled` row (which billingAction
+  // maps to `checkout`, i.e. an invitation to open a third subscription).
+  assertEquals(db.row?.paddle_subscription_id, "sub_a");
+  assertEquals(db.row?.status, "active");
+  assertEquals(db.row?.last_event_id, "evt_prev");
+  assertEquals(db.row?.last_event_occurred_at, "2026-09-18T11:00:00.000Z");
 
-  // Paddle redelivers. The cancellation already advanced
-  // last_event_occurred_at to this event's occurred_at, so the delivery is
-  // stale: the switch is NOT retried. Recovery is the adopted subscription's
-  // own next event (or paddle-refresh-subscription), not this redelivery.
+  // Because last_event_occurred_at never moved, Paddle's redelivery is
+  // accepted rather than dismissed as stale, and the whole rescue runs again.
   db.failRpcFrom = null;
-  const rpcCallsBeforeRedelivery = db.rpcCalls.length;
-  const { result: redelivered } = await captureConsole(
-    "warn",
-    async () =>
-      await makeHandler(db, {
-        PADDLE_API_KEY: "pdl_test_key",
-        PADDLE_ENVIRONMENT: "sandbox",
-      }, { listResponse: liveB })(await signedRequest(cancelEvent)),
+  const { result: redelivered } = await captureConsoleError(async () =>
+    await makeHandler(db, {
+      PADDLE_API_KEY: "pdl_test_key",
+      PADDLE_ENVIRONMENT: "sandbox",
+    }, { listResponse: liveB })(await signedRequest(cancelEvent))
   );
 
   assertEquals(redelivered.status, 200);
-  assertEquals(await redelivered.json(), { received: true, stale: true });
-  assertEquals(db.rpcCalls.length, rpcCallsBeforeRedelivery);
-  assertEquals(db.row?.paddle_subscription_id, "sub_a");
-  assertEquals(db.row?.status, "canceled");
-
-  // The documented recovery: sub_b's own next event is adopted, because the
-  // stored row is no longer entitled.
-  const recovered = await makeHandler(db)(
-    await signedRequest(
-      await subscriptionEvent({
-        eventId: "evt_b_renewed",
-        subscriptionId: "sub_b",
-        status: "active",
-        occurredAt: "2026-09-18T12:05:00.000Z",
-      }),
-    ),
-  );
-  assertEquals(recovered.status, 200);
+  assertEquals(await redelivered.json(), {
+    received: true,
+    switchedToUntrackedSubscription: true,
+  });
   assertEquals(db.row?.paddle_subscription_id, "sub_b");
   assertEquals(db.row?.status, "active");
+});
+
+Deno.test("paddle-webhooks: a past_due sibling is adopted, not left to downgrade the user", async () => {
+  // past_due keeps access (binding user decision, R-33). The rescue asks
+  // Paddle for past_due subscriptions, so it must be able to adopt one —
+  // otherwise this paying user drops to FREE for good.
+  const db = new FakeDb({
+    last_event_id: "evt_prev",
+    last_event_occurred_at: "2026-09-18T11:00:00.000Z",
+    tier: "EMBER",
+    paddle_subscription_id: "sub_a",
+    status: "active",
+    current_period_end: "2026-10-01T00:00:00.000Z",
+    cancel_at_period_end: false,
+  });
+  const { result: response } = await cancelTrackedSubscription(
+    db,
+    [await liveCandidate({ id: "sub_past_due", status: "past_due" })],
+    "sub_a",
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), {
+    received: true,
+    switchedToUntrackedSubscription: true,
+  });
+  assertEquals(db.row?.paddle_subscription_id, "sub_past_due");
+  assertEquals(db.row?.status, "past_due");
+  assertEquals(db.row?.tier, "EMBER");
+});
+
+Deno.test("paddle-webhooks: an items-less candidate is not adopted at tier FREE", async () => {
+  const db = trackedActiveRow("sub_a");
+  const candidate = await liveCandidate({ id: "sub_no_items" });
+  const { result: response, lines } = await cancelTrackedSubscription(
+    db,
+    [{ ...candidate, items: [] }],
+    "sub_a",
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { received: true });
+  assertEquals(db.row?.paddle_subscription_id, "sub_a");
+  assertEquals(db.row?.status, "canceled");
+  assert(
+    lines.some((line) => line.includes("no usable price ID")),
+    "expected the unusable-price alert",
+  );
+});
+
+// ─── Adoption authorization (security review R-1) ───────────────────────────
+
+const VICTIM_USER_ID = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff";
+
+/** A live Paddle subscription belonging to `ownerUserId` (or nobody). */
+async function liveCandidate(options: {
+  id?: string;
+  ownerUserId?: string | null;
+  /** `null` omits cd_sig; a string replaces the valid signature. */
+  cdSig?: string | null;
+  customerId?: string;
+  status?: string;
+} = {}) {
+  const ownerUserId = options.ownerUserId === undefined
+    ? USER_ID
+    : options.ownerUserId;
+  const cdSig = options.cdSig === undefined
+    ? (ownerUserId === null
+      ? undefined
+      : await hmacSha256Hex(CUSTOM_DATA_SECRET, ownerUserId))
+    : options.cdSig;
+  return {
+    id: options.id ?? "sub_candidate",
+    customer_id: options.customerId ?? "ctm_01",
+    status: options.status ?? "active",
+    updated_at: "2026-09-18T11:55:00.000Z",
+    items: [{ price: { id: EMBER_PRICE }, quantity: 1 }],
+    current_billing_period: {
+      starts_at: "2026-09-18T00:00:00.000Z",
+      ends_at: "2026-10-18T00:00:00.000Z",
+    },
+    scheduled_change: null,
+    ...(ownerUserId === null && cdSig === undefined ? {} : {
+      custom_data: {
+        ...(ownerUserId === null ? {} : { user_id: ownerUserId }),
+        ...(cdSig === null || cdSig === undefined ? {} : { cd_sig: cdSig }),
+      },
+    }),
+  };
+}
+
+function trackedActiveRow(subscriptionId = "sub_mine"): FakeDb {
+  return new FakeDb({
+    last_event_id: "evt_prev",
+    last_event_occurred_at: "2026-09-18T11:00:00.000Z",
+    tier: "EMBER",
+    paddle_subscription_id: subscriptionId,
+    status: "active",
+    current_period_end: "2026-10-01T00:00:00.000Z",
+    cancel_at_period_end: false,
+  });
+}
+
+async function cancelTrackedSubscription(
+  db: FakeDb,
+  candidates: unknown[],
+  subscriptionId = "sub_mine",
+) {
+  const calls: PaddleCall[] = [];
+  const captured = await captureConsoleError(async () =>
+    await makeHandler(db, {
+      PADDLE_API_KEY: "pdl_test_key",
+      PADDLE_ENVIRONMENT: "sandbox",
+    }, {
+      calls,
+      listResponse: () =>
+        new Response(JSON.stringify({ data: candidates }), { status: 200 }),
+    })(
+      await signedRequest(
+        await subscriptionEvent({
+          eventId: "evt_mine_canceled",
+          eventType: "subscription.canceled",
+          subscriptionId,
+          status: "canceled",
+          occurredAt: "2026-09-18T11:58:00.000Z",
+        }),
+      ),
+    )
+  );
+  return { ...captured, calls };
+}
+
+Deno.test("paddle-webhooks: a live subscription owned by ANOTHER user is never adopted", async () => {
+  // The attack: the attacker checked out under the victim's billing email, so
+  // both subscriptions hang off one Paddle customer. Cancelling their own
+  // must NOT bind the victim's subscription into the attacker's row.
+  const db = trackedActiveRow();
+  const { result: response, lines } = await cancelTrackedSubscription(db, [
+    await liveCandidate({ id: "sub_victim", ownerUserId: VICTIM_USER_ID }),
+  ]);
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { received: true });
+  // Exactly one write, and it is the plain cancellation of the attacker's own
+  // subscription: no adoption.
+  assertEquals(db.rpcCalls.length, 1);
+  assertEquals(db.rpcCalls[0]!.p_paddle_subscription_id, "sub_mine");
+  assertEquals(db.rpcCalls[0]!.p_status, "canceled");
+  assertEquals(db.row?.paddle_subscription_id, "sub_mine");
+  assertEquals(db.row?.status, "canceled");
+  assert(
+    lines.some((line) => line.includes("untracked_subscription_not_adopted")),
+    "expected a [BILLING_ALERT] untracked_subscription_not_adopted line",
+  );
+  assert(
+    !lines.some((line) => line.includes("switched_to_untracked_subscription:")),
+    "must not report a switch",
+  );
+});
+
+Deno.test("paddle-webhooks: an unsigned or forged candidate is never adopted", async () => {
+  for (
+    const candidate of [
+      // Right user id, no cd_sig at all.
+      await liveCandidate({ cdSig: null }),
+      // Right user id, a cd_sig that does not verify.
+      await liveCandidate({ cdSig: "00".repeat(32) }),
+      // Someone else's valid cd_sig replayed under our user id.
+      await liveCandidate({
+        cdSig: await hmacSha256Hex(CUSTOM_DATA_SECRET, VICTIM_USER_ID),
+      }),
+      // No custom_data at all (a legacy or externally created subscription).
+      await liveCandidate({ ownerUserId: null, cdSig: null }),
+    ]
+  ) {
+    const db = trackedActiveRow();
+    const { result: response, lines } = await cancelTrackedSubscription(db, [
+      candidate,
+    ]);
+
+    assertEquals(response.status, 200);
+    assertEquals(db.rpcCalls.length, 1, JSON.stringify(candidate.custom_data));
+    assertEquals(db.row?.status, "canceled");
+    assertEquals(db.row?.paddle_subscription_id, "sub_mine");
+    assert(
+      lines.some((line) => line.includes("untracked_subscription_not_adopted")),
+      `expected the refusal alert for ${JSON.stringify(candidate.custom_data)}`,
+    );
+  }
+});
+
+Deno.test("paddle-webhooks: a candidate that proves ownership is still adopted", async () => {
+  // The legitimate R-34 case: the user's own second subscription, carrying
+  // their own signed custom_data.
+  const db = trackedActiveRow();
+  const { result: response, lines } = await cancelTrackedSubscription(db, [
+    await liveCandidate({ id: "sub_mine_2" }),
+  ]);
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), {
+    received: true,
+    switchedToUntrackedSubscription: true,
+  });
+  assertEquals(db.rpcCalls.length, 1);
+  assertEquals(db.row?.paddle_subscription_id, "sub_mine_2");
+  assertEquals(db.row?.status, "active");
+  assert(
+    lines.some((line) => line.includes("switched_to_untracked_subscription:")),
+    "expected the switch alert",
+  );
+});
+
+Deno.test("paddle-webhooks: listing rows for another customer or a dead status are dropped", async () => {
+  for (
+    const candidate of [
+      // A wrong-customer row (filter regression / wrong page).
+      await liveCandidate({ id: "sub_other_customer", customerId: "ctm_other" }),
+      // A status outside the requested live set.
+      await liveCandidate({ id: "sub_dead", status: "canceled" }),
+    ]
+  ) {
+    const db = trackedActiveRow();
+    const { result: response } = await cancelTrackedSubscription(db, [candidate]);
+
+    assertEquals(response.status, 200);
+    assertEquals(db.rpcCalls.length, 1);
+    assertEquals(db.row?.paddle_subscription_id, "sub_mine");
+    assertEquals(db.row?.status, "canceled");
+  }
+});
+
+Deno.test("paddle-webhooks: the customer listing asks Paddle for a deterministic order", async () => {
+  const db = trackedActiveRow();
+  const { calls } = await cancelTrackedSubscription(db, []);
+
+  assertEquals(
+    calls[0]?.url,
+    "https://sandbox-api.paddle.com/subscriptions?customer_id=ctm_01" +
+      "&status=active,trialing,past_due&order_by=-created_at",
+  );
 });
