@@ -49,9 +49,20 @@ function defaultPaddleCheckoutCustomDataDependencies(): PaddleCheckoutCustomData
  * - Refuses to sign at all while the user already has a live Paddle
  *   subscription (409 `existing_subscription`, F-022/A-016). That is exactly
  *   the set of states for which paddle-update-subscription does NOT answer
- *   `checkout_required`, so no user is sent to a checkout that is then
- *   refused — and a past-due subscriber can never open a second subscription
- *   while Paddle is still charging the first one.
+ *   `checkout_required`, so no user is ever sent to a checkout that is then
+ *   refused.
+ *
+ * What the 409 does NOT guarantee: `cd_sig` is `HMAC(secret, user_id)` with
+ * no timestamp, nonce or subscription binding (the pre-existing P1-10 token
+ * design), so a signature handed out for a legitimate first checkout stays
+ * valid forever and can be replayed straight into `Paddle.Checkout.open`
+ * without calling this function again. The gate is therefore best-effort for
+ * portal-originated checkouts, not an enforceable server-side bar on a second
+ * subscription. The outcome self-heals rather than escalating — the second
+ * subscription's `active` event is ignored while the first is entitled, and
+ * the R-34 path adopts it once the first is cancelled — but the user can be
+ * double-billed in between. Binding the signature to a short expiry would
+ * close it; see the PR 44 security review R-3.
  */
 async function paddleCheckoutCustomDataHandler(
   req: Request,

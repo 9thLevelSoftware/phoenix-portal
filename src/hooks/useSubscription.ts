@@ -10,6 +10,15 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
+// SPA -> Edge `_shared` import. This is the one billing predicate, shared so
+// the CTA and the server cannot disagree (R-11). It is safe because
+// billingAction.ts and its only transitive import (subscriptionEntitlement.ts)
+// are pure predicates: no Deno.*, no env reads, no secret names, no
+// service-role path. That is NOT true of the directory as a whole
+// (paddleWebhookSecurity.ts, hmac.ts and every handler's default dependencies
+// read secrets), so only these two modules may ever be imported from src/, and
+// neither may grow a re-export of anything else in `_shared`. Bundle guard:
+// tests/security/edge-function-security.test.ts.
 import {
 	type BillingActionName,
 	billingAction,

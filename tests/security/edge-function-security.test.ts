@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { globSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -728,5 +728,61 @@ describe("Garmin webhook identity helpers", () => {
 			laps: [{ distance: 400 }],
 		});
 		expect(JSON.stringify(row.raw_data)).not.toMatch(/token/i);
+	});
+});
+
+describe("SPA -> Edge _shared import boundary", () => {
+	// src/hooks/useSubscription.ts imports the shared billing predicate by
+	// relative path so the CTA and the server cannot disagree (R-11). The
+	// directory it opens onto is full of modules that read secrets, and one
+	// careless re-export would put a service-role code path or a secret name
+	// into dist/. Pin the boundary: only these two modules are reachable from
+	// src/, and neither may contain a server-only token.
+	const SPA_REACHABLE_SHARED_MODULES = [
+		"billingAction.ts",
+		"subscriptionEntitlement.ts",
+	];
+
+	function readShared(file: string) {
+		return readFileSync(
+			join(process.cwd(), "supabase/functions/_shared", file),
+			"utf8",
+		);
+	}
+
+	it("only billingAction and subscriptionEntitlement are imported from src/", () => {
+		const sources = globSync("src/**/*.{ts,tsx}", { cwd: process.cwd() });
+		const sharedImports = new Set<string>();
+		for (const file of sources) {
+			// The tests may import anything; only shipped code matters.
+			if (/__tests__|\.test\.tsx?$/.test(file)) continue;
+			const source = readFileSync(join(process.cwd(), file), "utf8");
+			for (const [, path] of source.matchAll(
+				/from\s+"[^"]*supabase\/functions\/_shared\/([\w.-]+)"/g,
+			)) {
+				sharedImports.add(path);
+			}
+		}
+		// Not vacuous: useSubscription really does import the predicate, so a
+		// broken matcher fails here instead of passing with an empty set.
+		expect([...sharedImports]).toContain("billingAction.ts");
+		for (const imported of sharedImports) {
+			expect(SPA_REACHABLE_SHARED_MODULES).toContain(imported);
+		}
+	});
+
+	it("the SPA-reachable shared modules contain no server-only code", () => {
+		for (const file of SPA_REACHABLE_SHARED_MODULES) {
+			const source = readShared(file);
+			expect(source, `${file} must not touch Deno`).not.toMatch(/\bDeno\./);
+			expect(source, `${file} must not name a secret`).not.toMatch(
+				/SERVICE_ROLE|_SECRET|API_KEY|createClient/,
+			);
+			// ...and it must not re-open the door by importing anything else
+			// from _shared beyond the allow-list.
+			for (const [, imported] of source.matchAll(/from\s+'\.\/([\w.-]+)'/g)) {
+				expect(SPA_REACHABLE_SHARED_MODULES).toContain(imported);
+			}
+		}
 	});
 });

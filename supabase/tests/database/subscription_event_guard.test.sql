@@ -68,15 +68,59 @@ SELECT is(
     'the ignored event is audited as note=untracked_subscription'
 );
 
--- A second live subscription may not steal an entitled row either.
+-- A pause is stored as 'canceled' too, and must not revoke access either.
+SELECT is(
+    public.apply_subscription_event(
+        '5b5b5b5b-0000-4000-8000-00000000005b'::uuid, 'ctm_01', 'sub_old',
+        'FREE', 'none', NULL, NULL, NULL, false, 'evt_old_none', now()
+    ),
+    false,
+    'any untracked state that would not keep the user entitled is ignored'
+);
+
+-- A live untracked subscription IS allowed through by this function: the
+-- "don't let a second live subscription take over an entitled row"
+-- preference lives in app code (classifySubscriptionEventTarget), which runs
+-- first. This copy exists to block the dangerous direction only, so that the
+-- R-34 rescue can adopt a sibling in ONE write without first having to
+-- cancel the tracked row.
 SELECT is(
     public.apply_subscription_event(
         '5b5b5b5b-0000-4000-8000-00000000005b'::uuid, 'ctm_01', 'sub_other',
         'INFERNO', 'active', NULL, now(), now() + INTERVAL '30 days', false,
-        'evt_other_active', now()
+        'evt_other_active', now() + INTERVAL '1 minute'
     ),
-    false,
-    'an untracked live subscription cannot take over an entitled row'
+    true,
+    'an untracked subscription that KEEPS the user entitled is allowed'
+);
+
+-- Restore the tracked-subscription fixture for the checks below.
+UPDATE public.subscriptions
+   SET paddle_subscription_id = 'sub_new', tier = 'EMBER', status = 'active',
+       current_period_end = now() + INTERVAL '30 days'
+ WHERE user_id = '5b5b5b5b-0000-4000-8000-00000000005b'::uuid;
+
+-- past_due keeps access (R-33), so the rescue must be able to adopt a
+-- past-due sibling. Rejecting it here would 500 the webhook and strand a
+-- paying customer on FREE.
+SELECT is(
+    public.apply_subscription_event(
+        '5b5b5b5b-0000-4000-8000-00000000005b'::uuid, 'ctm_01', 'sub_dunning',
+        'FLAME', 'past_due', NULL, now() - INTERVAL '40 days',
+        now() - INTERVAL '10 days', false, 'evt_dunning', now() + INTERVAL '2 minutes'
+    ),
+    true,
+    'a past_due untracked subscription can be adopted'
+);
+
+SELECT is(
+    (
+        SELECT paddle_subscription_id || ':' || status
+        FROM public.subscriptions
+        WHERE user_id = '5b5b5b5b-0000-4000-8000-00000000005b'::uuid
+    ),
+    'sub_dunning:past_due',
+    'the row follows the adopted past_due subscription'
 );
 
 -- ---------------------------------------------------------------------------
@@ -90,7 +134,7 @@ SELECT is(
     public.apply_subscription_event(
         '5b5b5b5b-0000-4000-8000-00000000005b'::uuid, 'ctm_01', 'sub_other',
         'FLAME', 'active', NULL, now(), now() + INTERVAL '30 days', false,
-        'evt_other_active_2', now()
+        'evt_other_active_2', now() + INTERVAL '3 minutes'
     ),
     true,
     'a live subscription is adopted when the stored row is not entitled'
@@ -106,19 +150,30 @@ SELECT is(
     'the row follows the adopted subscription'
 );
 
--- past_due keeps access, so it is NOT an adoption window.
+-- A cancellation from an untracked subscription is refused whatever the
+-- stored row looks like — that is the F-022 money bug this guard exists for.
 UPDATE public.subscriptions
-   SET status = 'past_due', current_period_end = now() - INTERVAL '10 days'
+   SET paddle_subscription_id = 'sub_other', status = 'past_due',
+       current_period_end = now() - INTERVAL '10 days'
  WHERE user_id = '5b5b5b5b-0000-4000-8000-00000000005b'::uuid;
 
 SELECT is(
     public.apply_subscription_event(
         '5b5b5b5b-0000-4000-8000-00000000005b'::uuid, 'ctm_01', 'sub_third',
-        'EMBER', 'active', NULL, now(), now() + INTERVAL '30 days', false,
-        'evt_third_active', now()
+        'FREE', 'canceled', NULL, NULL, NULL, false, 'evt_third_canceled',
+        now() + INTERVAL '4 minutes'
     ),
     false,
-    'past_due is entitled, so an untracked subscription is still ignored'
+    'an untracked cancellation cannot revoke a past_due (entitled) row'
+);
+
+SELECT is(
+    (
+        SELECT status FROM public.subscriptions
+        WHERE user_id = '5b5b5b5b-0000-4000-8000-00000000005b'::uuid
+    ),
+    'past_due',
+    'the past_due row keeps its access'
 );
 
 -- ---------------------------------------------------------------------------
@@ -129,7 +184,7 @@ SELECT is(
     public.apply_subscription_event(
         '5b5b5b5b-0000-4000-8000-00000000005b'::uuid, 'ctm_01', 'sub_other',
         'FREE', 'canceled', NULL, NULL, NULL, false, 'evt_other_canceled',
-        now() + INTERVAL '1 minute'
+        now() + INTERVAL '5 minutes'
     ),
     true,
     'the tracked subscription may cancel itself'
@@ -153,10 +208,46 @@ SELECT is(
     public.apply_subscription_event(
         '5b5b5b5b-0000-4000-8000-00000000005b'::uuid, 'ctm_01', 'sub_first',
         'EMBER', 'active', NULL, now(), now() + INTERVAL '30 days', false,
-        'evt_first', now()
+        'evt_first', now() + INTERVAL '6 minutes'
     ),
     true,
     'the first event for a user is applied'
+);
+
+-- ---------------------------------------------------------------------------
+-- One Paddle subscription backs at most one portal user (security R-1).
+-- ---------------------------------------------------------------------------
+SELECT has_index(
+    'public', 'subscriptions', 'subscriptions_paddle_subscription_id_key',
+    'subscriptions has a unique paddle_subscription_id index'
+);
+
+INSERT INTO auth.users (id, email)
+VALUES ('6c6c6c6c-0000-4000-8000-00000000006c'::uuid, 'sub-guard-2@example.test')
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
+
+DELETE FROM public.subscriptions
+WHERE user_id = '6c6c6c6c-0000-4000-8000-00000000006c'::uuid;
+
+-- The attack the index backstops: binding a subscription another user
+-- already holds. 'sub_first' belongs to the user above.
+SELECT throws_ok(
+    $$
+      INSERT INTO public.subscriptions (user_id, paddle_subscription_id, tier, status)
+      VALUES ('6c6c6c6c-0000-4000-8000-00000000006c'::uuid, 'sub_first', 'FLAME', 'active')
+    $$,
+    '23505',
+    NULL,
+    'a second user cannot be bound to an already-bound Paddle subscription'
+);
+
+-- NULL ids are exempt: users who never subscribed all share "no subscription".
+SELECT lives_ok(
+    $$
+      INSERT INTO public.subscriptions (user_id, paddle_subscription_id, tier, status)
+      VALUES ('6c6c6c6c-0000-4000-8000-00000000006c'::uuid, NULL, 'FREE', 'none')
+    $$,
+    'the unique index is partial, so multiple NULL subscription ids coexist'
 );
 
 SELECT * FROM finish();
