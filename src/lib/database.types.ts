@@ -2206,6 +2206,7 @@ export type Database = {
 					period: string;
 					predicted_completion_date: string | null;
 					status: string;
+					target_basis: string;
 					target_unit: string;
 					target_value: number;
 					updated_at: string;
@@ -2223,6 +2224,7 @@ export type Database = {
 					period?: string;
 					predicted_completion_date?: string | null;
 					status?: string;
+					target_basis: string;
 					target_unit: string;
 					target_value: number;
 					updated_at?: string;
@@ -2240,6 +2242,7 @@ export type Database = {
 					period?: string;
 					predicted_completion_date?: string | null;
 					status?: string;
+					target_basis?: string;
 					target_unit?: string;
 					target_value?: number;
 					updated_at?: string;

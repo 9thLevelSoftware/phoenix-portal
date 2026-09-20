@@ -17,10 +17,9 @@ const nullableSetting = <T>(normalize: (value: unknown) => T | null) =>
 		.nullish()
 		.transform((value) => normalize(value));
 
-// Per-cable to total weight conversion
-// The trainer has dual cables; DB stores per-cable, portal shows total
-// Change to 1 if DB convention changes to store total
-export const WEIGHT_MULTIPLIER = 2;
+// Loads are stored and returned per cable, exactly as the phone shows them.
+// Schemas never convert them: the display adapter (src/lib/units/loadDisplay.ts)
+// adds a total only when the exercise's cable_count is known (KD-8).
 
 // Nullable ISO timestamp → Date | null, rejecting malformed strings (which would
 // otherwise parse as `Invalid Date` and corrupt downstream sorting/formatting).
@@ -39,9 +38,7 @@ const nullableOptionalDate = z
 	.optional()
 	.transform((s) => (s ? new Date(s) : null))
 	.refine(validDate, { message: "Invalid date" });
-const weightTransform = z
-	.number()
-	.transform((perCable) => perCable * WEIGHT_MULTIPLIER);
+const perCableWeight = z.number();
 
 // Workout mode mapping from DB enum values to friendly display names
 const workoutModeMap: Record<string, string> = {
@@ -101,7 +98,7 @@ export const workoutSessionSchema = z.object({
 		.transform((name) => name?.trim() || "Untitled Workout"),
 	started_at: z.coerce.date(),
 	duration_seconds: z.number(),
-	total_volume: z.number(), // Total volume in kg — already total (not per-cable). Phase 40 fix: removed weightTransform that was incorrectly doubling volume.
+	total_volume: z.number(), // Volume in kg, per cable as stored (KD-8).
 	set_count: z.number(),
 	exercise_count: z.number(),
 	pr_count: z.number(),
@@ -124,7 +121,7 @@ export const workoutSessionSchema = z.object({
 		.number()
 		.nullable()
 		.optional()
-		.transform((v) => (v != null ? v * WEIGHT_MULTIPLIER : null)),
+		.transform((v) => v ?? null), // per cable
 	eccentric_load: z.number().nullable().optional(),
 	echo_level: z.number().nullable().optional(),
 	warmup_reps: z.number().nullable().optional(),
@@ -145,6 +142,12 @@ export const exerciseSchema = z.object({
 	muscle_group: z.string(),
 	order_index: z.number(),
 	exercise_id: z.string().nullable().optional(),
+	// Cables used for this exercise: 1 | 2, or null when unknown (legacy rows).
+	// Never assume 2 (KD-8).
+	cable_count: z
+		.unknown()
+		.optional()
+		.transform((v): 1 | 2 | null => (v === 1 || v === 2 ? v : null)),
 });
 
 export type Exercise = z.infer<typeof exerciseSchema>;
@@ -157,7 +160,7 @@ export const setSchema = z.object({
 	set_number: z.number(),
 	target_reps: z.number().nullable(),
 	actual_reps: z.number(),
-	weight_kg: weightTransform,
+	weight_kg: perCableWeight,
 	rpe: z.number().nullable(),
 	is_pr: z.boolean(),
 	notes: z.string().nullable(),
@@ -181,13 +184,10 @@ export const personalRecordSchema = z.object({
 	exercise_id: z.string().nullable().optional(),
 	muscle_group: z.string(),
 	record_type: z.string(),
-	value: weightTransform,
+	value: perCableWeight,
 	unit: z.string(),
 	achieved_at: z.coerce.date(),
-	previous_value: z
-		.number()
-		.nullable()
-		.transform((v) => (v !== null ? v * WEIGHT_MULTIPLIER : null)),
+	previous_value: z.number().nullable(),
 	workout_phase: z
 		.string()
 		.nullable()
@@ -250,7 +250,7 @@ export const analyticsSummarySchema = z.object({
 	user_id: z.string().uuid(),
 	period: z.string(),
 	total_workouts: z.number(),
-	total_volume: z.number(), // Total volume in kg — already total (not per-cable). Phase 40 fix: removed weightTransform.
+	total_volume: z.number(), // Volume in kg, per cable as stored (KD-8).
 	total_duration: z.number(),
 	avg_session_duration: z.number(),
 	streak_days: z.number(),
@@ -269,7 +269,7 @@ export const routineExerciseSchema = z.object({
 	exercise_id: z.string().nullable().optional(),
 	sets: z.number(),
 	reps: z.number(),
-	weight: weightTransform,
+	weight: perCableWeight,
 	rest_seconds: z.number(),
 	duration_seconds: z.number().nullable().optional(),
 	// Stored as wire names; legacy display names / aliases normalize to wire.
@@ -279,17 +279,8 @@ export const routineExerciseSchema = z.object({
 	superset_id: z.string().nullable().optional(),
 	superset_color: nullableSetting(toSupersetColorName),
 	superset_order: z.number().nullable().optional(),
-	// Stored per-cable to match the single `weight` column; multiply back to
-	// display totals so the UI keeps round-trip symmetry with `weight`.
-	per_set_weights: z
-		.unknown()
-		.nullable()
-		.optional()
-		.transform((v) =>
-			Array.isArray(v)
-				? v.map((x) => (typeof x === "number" ? x * WEIGHT_MULTIPLIER : x))
-				: v,
-		),
+	// Per cable, like the single `weight` column.
+	per_set_weights: z.unknown().nullable().optional(),
 	per_set_rest: z.unknown().nullable().optional(),
 	per_set_reps: z.unknown().nullable().optional(),
 	per_set_echo_levels: z.unknown().nullable().optional(),
@@ -319,7 +310,7 @@ export const routineExerciseSchema = z.object({
 		.number()
 		.nullable()
 		.optional()
-		.transform((v) => (v == null ? null : v * WEIGHT_MULTIPLIER)),
+		.transform((v) => v ?? null), // per cable
 	created_at: z.coerce.date(),
 });
 

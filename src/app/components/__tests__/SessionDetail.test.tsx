@@ -24,6 +24,11 @@ const mockParams = vi.hoisted(() => ({
 	} as Record<string, string | undefined>,
 }));
 
+const mockDetail = vi.hoisted(() => ({
+	exercises: [] as unknown[],
+	heaviest_lift_kg: null as number | null,
+}));
+
 vi.mock("@/app/hooks/useAuth", () => mockAuth);
 vi.mock("@/providers/AuthProvider", () => mockAuth);
 vi.mock("@/hooks/useSubscription", () => ({
@@ -64,7 +69,8 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 						routine_name: null,
 						workout_mode: "Old School",
 						notes: null,
-						exercises: [],
+						heaviest_lift_kg: mockDetail.heaviest_lift_kg,
+						exercises: mockDetail.exercises,
 					},
 					isPending: false,
 					isError: false,
@@ -96,6 +102,64 @@ describe("SessionDetail", () => {
 	beforeEach(() => {
 		mockSub.isFlame = true;
 		mockParams.current = { sessionId: SESSION_ID };
+		mockDetail.exercises = [];
+		mockDetail.heaviest_lift_kg = null;
+	});
+
+	function exerciseWith(id: string, cableCount: 1 | 2 | null) {
+		return {
+			id,
+			session_id: SESSION_ID,
+			name: "Bench Press",
+			muscle_group: "Chest",
+			order_index: 0,
+			cable_count: cableCount,
+			hasPR: false,
+			sets: [
+				{
+					id: `${id}-set`,
+					exercise_id: id,
+					set_number: 1,
+					target_reps: 10,
+					actual_reps: 10,
+					weight_kg: 20,
+					rpe: null,
+					is_pr: false,
+					notes: null,
+				},
+			],
+		};
+	}
+
+	it("shows set weight per cable first with the total for 2 cables", () => {
+		mockDetail.exercises = [
+			exerciseWith("00000000-0000-4000-8000-0000000000e1", 2),
+		];
+		renderWithProviders(<SessionDetail />);
+		expect(
+			screen.getByText("20 kg per cable · 40 kg total"),
+		).toBeInTheDocument();
+	});
+
+	it("never doubles a single-cable set", () => {
+		mockDetail.exercises = [
+			exerciseWith("00000000-0000-4000-8000-0000000000e2", 1),
+		];
+		renderWithProviders(<SessionDetail />);
+		expect(
+			screen.getByText("20 kg per cable · 20 kg total"),
+		).toBeInTheDocument();
+	});
+
+	it("shows per cable only when the cable count is unknown", () => {
+		mockDetail.exercises = [
+			exerciseWith("00000000-0000-4000-8000-0000000000e3", null),
+		];
+		mockDetail.heaviest_lift_kg = 30;
+		renderWithProviders(<SessionDetail />);
+		expect(screen.getByText("20 kg per cable")).toBeInTheDocument();
+		expect(screen.getByText("30 kg per cable")).toBeInTheDocument();
+		expect(screen.queryByText(/total/)).not.toBeInTheDocument();
 	});
 
 	it("shows Flame Compare and Session Replay entries", () => {

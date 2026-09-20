@@ -6,11 +6,11 @@ import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Switch } from "@/app/components/ui/switch";
 import {
-	formatWeight,
 	type WeightUnit,
 	weightInputToKg,
 	weightInputValue,
 } from "@/lib/units";
+import { formatLoad, perCableUnitLabel } from "@/lib/units/loadDisplay";
 import type { DeloadConfig, ProgressionConfig } from "./types";
 
 interface ProgressionRulesProps {
@@ -251,12 +251,13 @@ export function ProgressionRules({
 									<div className="text-sm text-muted-foreground">
 										<span className="text-accent">💡 EXAMPLE</span>
 										<br />
-										If you're lifting {formatWeight(80, unit)} and complete the
-										cycle successfully, next cycle will use{" "}
-										{formatWeight(
+										If you're lifting {formatLoad(80, null, unit)} and complete
+										the cycle successfully, next cycle will use{" "}
+										{formatLoad(
 											80 *
 												(1 +
 													(progressionConfig.percentageIncrease || 2.5) / 100),
+											null,
 											unit,
 										)}{" "}
 										(+
@@ -317,7 +318,7 @@ export function ProgressionRules({
 											className="text-center bg-background border-secondary"
 										/>
 										<span className="text-muted-foreground">
-											{unit} per cycle
+											{perCableUnitLabel(unit)} per cycle
 										</span>
 										<Button
 											size="sm"
@@ -382,7 +383,7 @@ export function ProgressionRules({
 											className="text-center bg-background border-secondary"
 										/>
 										<span className="text-muted-foreground">
-											{unit} per cycle
+											{perCableUnitLabel(unit)} per cycle
 										</span>
 										<Button
 											size="sm"

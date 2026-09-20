@@ -158,7 +158,7 @@ MOCK_EDGE_FUNCTIONS=false npm test          # Live mode against real Supabase
 ```
 
 **Test files:**
-- `tests/sync/transforms.test.ts` — Weight ×2 transforms (39 tests)
+- `tests/sync/transforms/weight-transform.test.ts` — Per-cable weights and the load display adapter
 - `tests/sync/mode-transform.test.ts` — Workout mode round-trips (43 tests)
 - `tests/sync/multi-device.test.ts` — Concurrent device scenarios (12 tests)
 - `tests/sync/hierarchy.test.ts` — Nested entity integrity (35 tests)

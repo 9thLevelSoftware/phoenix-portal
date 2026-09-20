@@ -5,7 +5,6 @@ import { supabase } from "@/lib/supabase";
 import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import {
 	normalizeEccentricLoad,
@@ -27,16 +26,9 @@ function estimatedRoutineDurationSeconds(
 }
 
 function normalizePerSetWeights(per: unknown): Json | null {
+	// The builder collects per_set_weights per cable, like `weight`, which is
+	// exactly what is stored (KD-8). No conversion.
 	if (per == null) return null;
-	// UI collects per_set_weights in the same "total weight" units as the
-	// single `weight` field (which is divided by WEIGHT_MULTIPLIER before
-	// storage). Divide array entries by the same multiplier so the stored
-	// per-cable representation stays consistent.
-	if (Array.isArray(per)) {
-		return per.map((x) =>
-			typeof x === "number" ? x / WEIGHT_MULTIPLIER : x,
-		) as Json;
-	}
 	return per as Json;
 }
 
@@ -104,7 +96,7 @@ export function toRoutineExerciseRows(
 		exercise_id: ex.exercise_id ?? null,
 		sets: ex.sets,
 		reps: ex.reps,
-		weight: ex.weight / WEIGHT_MULTIPLIER,
+		weight: ex.weight, // per cable, stored as entered (KD-8)
 		rest_seconds: ex.rest_seconds,
 		duration_seconds: ex.duration_seconds ?? null,
 		mode: requireWireMode(ex.mode, preservedModes),
@@ -126,10 +118,7 @@ export function toRoutineExerciseRows(
 		eccentric_load: normalizeEccentricLoad(ex.eccentric_load),
 		echo_level: toEchoLevel(ex.echo_level),
 		drop_set_enabled: ex.drop_set_enabled ?? false,
-		drop_set_min_weight_kg:
-			ex.drop_set_min_weight_kg == null
-				? null
-				: ex.drop_set_min_weight_kg / WEIGHT_MULTIPLIER,
+		drop_set_min_weight_kg: ex.drop_set_min_weight_kg ?? null,
 	}));
 }
 

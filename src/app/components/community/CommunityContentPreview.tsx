@@ -1,12 +1,12 @@
 import { Calendar, Clock, Dumbbell, Repeat } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { formatWeight, type WeightUnit } from "@/lib/units";
+import { formatLoad as formatPerCableLoad } from "@/lib/units/loadDisplay";
 import type {
 	CycleSnapshot,
 	EmbeddedRoutineSnapshot,
 	RoutineExerciseSnapshot,
 } from "@/schemas/community";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import {
 	eccentricLoadLabel,
 	echoLevelLabel,
@@ -35,7 +35,8 @@ function formatStoredDurationMinutes(duration: number | null | undefined) {
 
 function formatLoad(exercise: RoutineExerciseSnapshot, unit: WeightUnit) {
 	if (exercise.is_bodyweight) return "Bodyweight";
-	return formatWeight((exercise.weight ?? 0) * WEIGHT_MULTIPLIER, unit);
+	// Routine weights are per cable; routines carry no cable count (KD-8).
+	return formatPerCableLoad(exercise.weight, null, unit);
 }
 
 function formatPrescription(
@@ -76,9 +77,7 @@ function exerciseBadges(exercise: RoutineExerciseSnapshot) {
 
 function perSetRows(exercise: RoutineExerciseSnapshot, unit: WeightUnit) {
 	const weights = asPrimitiveArray(exercise.per_set_weights).map((value) =>
-		typeof value === "number"
-			? formatWeight(value * WEIGHT_MULTIPLIER, unit)
-			: String(value),
+		typeof value === "number" ? formatWeight(value, unit) : String(value),
 	);
 	const reps = asPrimitiveArray(exercise.per_set_reps).map(String);
 	const rest = asPrimitiveArray(exercise.per_set_rest).map((value) =>
@@ -87,7 +86,7 @@ function perSetRows(exercise: RoutineExerciseSnapshot, unit: WeightUnit) {
 	const echoLevels = asPrimitiveArray(exercise.per_set_echo_levels).map(String);
 
 	return [
-		weights.length ? `Weights: ${weights.join(", ")}` : null,
+		weights.length ? `Weights per cable: ${weights.join(", ")}` : null,
 		reps.length ? `Reps: ${reps.join(", ")}` : null,
 		rest.length ? `Rest: ${rest.join(", ")}` : null,
 		echoLevels.length ? `Echo: ${echoLevels.join(", ")}` : null,
