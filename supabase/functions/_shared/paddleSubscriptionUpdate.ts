@@ -1,11 +1,19 @@
+import { isSubscriptionEntitled } from './subscriptionEntitlement.ts';
+
 export type PaddleSubscriptionPatchDecision =
   | { action: 'already_current' }
-  | { action: 'uncancel'; body: { scheduled_change: null } }
+  | {
+    action: 'uncancel';
+    body: { scheduled_change: null; on_payment_failure: 'prevent_change' };
+  }
   | {
     action: 'switch';
     body: {
       items: Array<{ price_id: string; quantity: number }>;
       proration_billing_mode: 'prorated_immediately';
+      // Explicit, not Paddle's implicit default: if the prorated charge fails,
+      // Paddle rejects the change instead of applying it unpaid.
+      on_payment_failure: 'prevent_change';
       scheduled_change?: null;
     };
   };
@@ -70,7 +78,10 @@ export function buildPaddleSubscriptionPatch(
 ): PaddleSubscriptionPatchDecision {
   if (currentPriceId === newPriceId) {
     return cancelAtPeriodEnd
-      ? { action: 'uncancel', body: { scheduled_change: null } }
+      ? {
+        action: 'uncancel',
+        body: { scheduled_change: null, on_payment_failure: 'prevent_change' },
+      }
       : { action: 'already_current' };
   }
 
@@ -79,6 +90,7 @@ export function buildPaddleSubscriptionPatch(
     body: {
       items: buildSwitchItems(currentItems, currentPriceId, newPriceId),
       proration_billing_mode: 'prorated_immediately',
+      on_payment_failure: 'prevent_change',
       ...(cancelAtPeriodEnd ? { scheduled_change: null } : {}),
     },
   };
@@ -96,4 +108,103 @@ export function checkoutRequiredResponseBody(reason: string): {
     message: 'Open checkout to start a new subscription.',
     reason,
   };
+}
+
+export interface LocalSubscriptionGateRow {
+  paddle_subscription_id?: string | null;
+  status?: string | null;
+  current_period_end?: string | null;
+  cancel_at_period_end?: boolean | null;
+}
+
+export type PlanChangeGate =
+  | {
+    action: 'checkout_required';
+    reason: 'missing_subscription' | 'inactive_or_expired_subscription';
+  }
+  | { action: 'payment_past_due' }
+  | { action: 'proceed'; paddleSubscriptionId: string };
+
+/**
+ * Decide whether paddle-update-subscription may send a plan change to Paddle.
+ *
+ * `past_due` keeps access (shared entitlement predicate), but Paddle rejects
+ * item changes on a past-due subscription (`subscription_update_when_past_due`)
+ * and a second checkout would risk a duplicate subscription. So a past_due
+ * row is refused explicitly and the user is asked to update their payment
+ * method.
+ */
+export function decidePlanChangeGate(
+  sub: LocalSubscriptionGateRow | null | undefined,
+  now: Date = new Date(),
+): PlanChangeGate {
+  if (!sub || !sub.paddle_subscription_id) {
+    return { action: 'checkout_required', reason: 'missing_subscription' };
+  }
+  if (sub.status === 'past_due') {
+    return { action: 'payment_past_due' };
+  }
+  if (
+    !isSubscriptionEntitled(sub.status ?? 'none', sub.current_period_end ?? null, {
+      cancelAtPeriodEnd: Boolean(sub.cancel_at_period_end),
+      now,
+    })
+  ) {
+    return { action: 'checkout_required', reason: 'inactive_or_expired_subscription' };
+  }
+  return { action: 'proceed', paddleSubscriptionId: sub.paddle_subscription_id };
+}
+
+export const PAYMENT_PAST_DUE_HTTP_STATUS = 409;
+
+export function paymentPastDueResponseBody(): {
+  error: 'payment_past_due';
+  code: 'payment_past_due';
+  message: string;
+} {
+  return {
+    error: 'payment_past_due',
+    code: 'payment_past_due',
+    message: 'Your last payment failed. Update your payment method before changing your plan.',
+  };
+}
+
+export type PaddleCancelRequest =
+  | { allowed: false }
+  | {
+    allowed: true;
+    effectiveFrom: 'next_billing_period' | 'immediately';
+    localPatch:
+      | { cancel_at_period_end: true }
+      | { status: 'canceled'; cancel_at_period_end: false };
+  };
+
+/**
+ * Decide how paddle-cancel-subscription cancels a subscription.
+ *
+ * - active / trialing: cancel at the end of the billing period (Paddle
+ *   `next_billing_period`), keeping access until then.
+ * - past_due: the user keeps access during Paddle's retry window and may
+ *   leave. A scheduled cancel is the wrong model while payment is
+ *   outstanding, so cancel immediately.
+ * - anything else: nothing to cancel.
+ */
+export function resolvePaddleCancelRequest(
+  status: string | null | undefined,
+): PaddleCancelRequest {
+  if (status === 'active' || status === 'trialing') {
+    return {
+      allowed: true,
+      effectiveFrom: 'next_billing_period',
+      localPatch: { cancel_at_period_end: true },
+    };
+  }
+  if (status === 'past_due') {
+    return {
+      allowed: true,
+      effectiveFrom: 'immediately',
+      localPatch: { status: 'canceled', cancel_at_period_end: false },
+    };
+  }
+  return { allowed: false };
 }

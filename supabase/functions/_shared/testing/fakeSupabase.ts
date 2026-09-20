@@ -3,6 +3,8 @@
  * (no network, no live secrets). Supports the PostgREST builder subset the
  * sync handlers use: select / insert / update / upsert(onConflict), eq / is /
  * lt, order / limit, single / maybeSingle, and awaiting the builder.
+ * lt / lte / gt / gte / in, order / limit, single / maybeSingle, awaiting the
+ * builder, and `rpc()` against registered stubs.
  */
 
 export type Row = Record<string, unknown>;
@@ -24,10 +26,18 @@ export interface FakeUniqueIndex {
   key: (row: Row) => string | null;
 }
 
+/** Stub for one RPC: return `{data}` or `{error}`; may throw to simulate a crash. */
+export type RpcHandler = (args: Row) => Result;
+
 export class FakeDb {
   tables: Record<string, Row[]>;
   uniqueIndexes: FakeUniqueIndex[];
   constructor(tables: Record<string, Row[]> = {}, uniqueIndexes: FakeUniqueIndex[] = []) {
+  /** Registered `rpc(name, args)` stubs. An unregistered name errors. */
+  rpcHandlers: Record<string, RpcHandler> = {};
+  /** Every rpc call in order, so tests can assert one call per user. */
+  rpcCalls: Array<{ name: string; args: Row }> = [];
+  constructor(tables: Record<string, Row[]> = {}) {
     this.tables = tables;
     this.uniqueIndexes = uniqueIndexes;
   }
@@ -42,6 +52,21 @@ export class FakeDb {
   rows(table: string): Row[] {
     this.tables[table] ??= [];
     return this.tables[table];
+  }
+  rpc(name: string, args: Row = {}): Promise<Result> {
+    this.rpcCalls.push({ name, args });
+    const handler = this.rpcHandlers[name];
+    if (!handler) {
+      return Promise.resolve({
+        data: null,
+        error: { message: `no rpc stub registered for ${name}` },
+      });
+    }
+    return Promise.resolve(handler(args));
+  }
+  /** Names of the rpc calls made so far, in order. */
+  rpcCallNames(): string[] {
+    return this.rpcCalls.map((c) => c.name);
   }
 }
 
@@ -118,6 +143,22 @@ export class FakeQuery implements PromiseLike<Result> {
   }
   lt(col: string, value: string) {
     this.filters.push((r) => r[col] != null && compare(r[col], value) < 0);
+    return this;
+  }
+  lte(col: string, value: string) {
+    this.filters.push((r) => r[col] != null && compare(r[col], value) <= 0);
+    return this;
+  }
+  gt(col: string, value: string) {
+    this.filters.push((r) => r[col] != null && compare(r[col], value) > 0);
+    return this;
+  }
+  gte(col: string, value: string) {
+    this.filters.push((r) => r[col] != null && compare(r[col], value) >= 0);
+    return this;
+  }
+  in(col: string, values: readonly unknown[]) {
+    this.filters.push((r) => values.includes(r[col]));
     return this;
   }
   order(col: string, opts: { ascending: boolean }) {

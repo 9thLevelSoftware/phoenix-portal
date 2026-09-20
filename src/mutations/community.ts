@@ -6,6 +6,13 @@ import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
+import {
+	normalizeEccentricLoad,
+	toEchoLevel,
+	toRepCountTiming,
+	toStopAtPosition,
+	toSupersetColorName,
+} from "../../supabase/functions/_shared/workoutModes.ts";
 
 // ---------- useVote (confirmed pattern) ----------
 
@@ -120,7 +127,9 @@ function routineExerciseSnapshot(exercise: RoutineExerciseRow) {
 		mode: exercise.mode,
 		order_index: exercise.order_index,
 		superset_id: exercise.superset_id,
-		superset_color: exercise.superset_color,
+		// Published in mobile's vocabulary (a DB trigger also normalizes on
+		// import, which covers snapshots published before this).
+		superset_color: toSupersetColorName(exercise.superset_color),
 		superset_order: exercise.superset_order,
 		per_set_weights: exercise.per_set_weights,
 		per_set_rest: exercise.per_set_rest,
@@ -129,11 +138,11 @@ function routineExerciseSnapshot(exercise: RoutineExerciseRow) {
 		is_amrap: exercise.is_amrap,
 		is_bodyweight: exercise.is_bodyweight,
 		pr_percentage: exercise.pr_percentage,
-		rep_count_timing: exercise.rep_count_timing,
-		stop_at_position: exercise.stop_at_position,
+		rep_count_timing: toRepCountTiming(exercise.rep_count_timing),
+		stop_at_position: toStopAtPosition(exercise.stop_at_position),
 		stall_detection: exercise.stall_detection,
-		eccentric_load: exercise.eccentric_load,
-		echo_level: exercise.echo_level,
+		eccentric_load: normalizeEccentricLoad(exercise.eccentric_load),
+		echo_level: toEchoLevel(exercise.echo_level),
 		warmup_sets: exercise.warmup_sets,
 		drop_set_enabled: exercise.drop_set_enabled,
 		drop_set_min_weight_kg: exercise.drop_set_min_weight_kg,

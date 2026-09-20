@@ -13,6 +13,10 @@
 -- The FK removes existing tombstones when an account is deleted. The trigger
 -- skips users whose auth.users row is already gone, so the cascade adds no new
 -- tombstones while routines and cycles are being removed.
+-- No FK to auth.users: the trigger can fire while an account deletion cascades.
+-- The trigger skips users whose auth.users row is already gone, so the cascade
+-- adds no tombstones. Tombstones recorded while the account was live are
+-- purged by the account purge (PR 34) and by 180-day retention (PR 31).
 -- A portal create-rollback delete also records a tombstone for an id no
 -- device ever held; clients must treat reported ids as "delete if present".
 --
@@ -27,6 +31,7 @@ ALTER TABLE public.routines
 
 CREATE TABLE IF NOT EXISTS public.sync_tombstones (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL,
   entity TEXT NOT NULL CHECK (entity IN ('routine', 'cycle')),
   entity_id UUID NOT NULL,
   deleted_at TIMESTAMPTZ NOT NULL DEFAULT now(),

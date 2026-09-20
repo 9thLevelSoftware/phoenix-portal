@@ -4,13 +4,14 @@ type PaidTier = Exclude<SubscriptionTier, "FREE">;
 
 /**
  * Minimum subscription tier per portal feature. `src/app/routes/index.tsx`
- * reads every route gate from this map, the INFERNO biomechanics gates inside
- * Analytics (`analytics/PerformanceTab.tsx`,
+ * reads every route gate from this map, the session-replay gate
+ * (`session-replay/SessionReplay.tsx`) and the INFERNO biomechanics gates
+ * inside Analytics (`analytics/PerformanceTab.tsx`,
  * `analytics/MobilePerformanceTab.tsx`) and the `/biomechanics` page
- * (`Biomechanics.tsx`) read `biomechanics` from it, and
+ * (`Biomechanics.tsx`) read from it, and
  * `src/lib/__tests__/pricing-tier-matrix.test.ts` checks they all agree.
  *
- * The route gates are UX only. What the server enforces:
+ * Most route gates are UX only. What the server enforces:
  *   - EMBER: cloud sync (mobile-sync-push / mobile-sync-pull) and workout,
  *     record and profile writes (RLS).
  *   - FLAME: writes to community, sharing, challenges, follows, saved items,
@@ -18,10 +19,16 @@ type PaidTier = Exclude<SubscriptionTier, "FREE">;
  *     20260920000900_flame_write_policies.sql), the import RPCs, OAuth start
  *     (initiate-oauth) and the integration sync / rankings Edge Functions.
  *     Routines and cycles pushed from mobile stay EMBER (service-role push).
- *   - Analytics, compare, session replay and biomechanics (INFERNO — force
- *     curves, VBT, ROM, SRA, form) are gated in the browser only; they are
- *     computed from data the user can already read. Session replay without
- *     force curves stays FLAME.
+ *   - INFERNO: the force-curve and biomechanics DATA — rep_telemetry (and the
+ *     telemetry_points view), vbt_assessments, session_phase_statistics and
+ *     exercise_signatures — is SELECT-gated in RLS
+ *     (20260920003800_inferno_read_policies.sql), so a FLAME user reads zero
+ *     rows rather than being stopped at a screen. The GDPR export is
+ *     unaffected (export-user-data reads with the service role).
+ *   - Analytics, compare and session replay itself stay browser-gated: they
+ *     are computed from data the user can already read. Session replay
+ *     without force curves is FLAME and degrades to rep-by-rep playback from
+ *     rep_summaries, with an explicit "Force curves require Inferno" notice.
  */
 export const FEATURE_MIN_TIER = {
 	dashboard: "EMBER",

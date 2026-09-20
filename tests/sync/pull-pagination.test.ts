@@ -19,10 +19,16 @@
  * CRITICAL: The mock harness (tests/sync/helpers/mock-edge-functions.ts)
  * returns every stored entity on each pull — it does not implement
  * cursor/pageSize semantics. Tests that require true pagination behaviour
- * are marked with `liveIt` or `test.skip` with a clear pointer to the live Edge Function
+ * are marked with `liveIt` and a clear pointer to the live Edge Function
  * and a description of how to exercise them via `npm run test:sync:live`.
  * Tests that can be validated via interface assertions (response shape,
  * empty-delta semantics, entity order) run as normal Vitest tests.
+ *
+ * Nothing here may be left as a bare `it.skip`: a skip in this file executes
+ * in no mode at all and is therefore not coverage. If the behaviour needs a
+ * real handler, write it in `supabase/functions/mobile-sync-pull/index.test.ts`
+ * (`npm run test:edge`) or as an `integration: `-prefixed case in the same
+ * file (`npm run test:edge:integration`).
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -142,21 +148,16 @@ describe("mobile-sync-pull pagination", () => {
 		);
 	});
 
-	describe("Composite cursor stability", () => {
-		it.skip("entities with identical updated_at but different id are each returned exactly once when paginated one-at-a-time — requires live Edge Function", async () => {
-			// Real pull builds a PostgREST `.or()` filter:
-			//   updated_at.gt.{cursor}
-			//   OR (updated_at.eq.{cursor} AND id.gt.{cursorId})
-			// (see mobile-sync-pull/index.ts line 408).
-			// This test confirms the compound predicate does not duplicate or
-			// skip rows when the timestamp collision is non-trivial.
-			//
-			// Seed 3 sessions with identical started_at/updated_at, varying IDs
-			// (sorted ASC). Pull with pageSize=1. Accumulate IDs across 3 pulls.
-			// Expect all 3 unique IDs, each returned exactly once, in id-ASC
-			// order (stable secondary sort).
-		});
-	});
+	// Composite cursor stability was a permanently-skipped placeholder here. It
+	// now executes against the real handler in
+	// `supabase/functions/mobile-sync-pull/index.test.ts`:
+	//   "identical-timestamp sessions are each returned exactly once when paged
+	//    one at a time"        (sessions, `get_sessions_excluding_ids`)
+	//   "identical-microsecond personal records produce a distinct nextCursor"
+	//                          (personal records, same cursor plumbing)
+	// Both run in `npm run test:edge`. Do not re-add a mock version: the mock
+	// returns every stored row on every pull and honours neither pageSize nor
+	// cursor.
 
 	describe("Empty delta (lastSync at or after latest push)", () => {
 		it("returns empty arrays and hasMore=false when nothing has changed since lastSync", async () => {

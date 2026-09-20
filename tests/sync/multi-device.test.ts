@@ -1,18 +1,29 @@
 /**
- * Multi-Device Sync Integration Tests
+ * Multi-device — harness/fixture smoke (mock Edge)
  *
- * Validates sync behavior when multiple devices push and pull data.
- * Tests conflict resolution, data integrity, and profile isolation.
+ * These cases push two device-shaped payloads through the in-memory mock in
+ * `tests/sync/helpers/mock-edge-functions.ts` and pull them back. The mock
+ * keeps one global store with no user column, no profile column, no LWW and
+ * no per-row delta, so the only thing these cases can prove is that the
+ * fixtures and the harness carry a multi-device payload intact. Whatever the
+ * describe blocks are named, they do not prove a server invariant.
  *
- * CRITICAL NOTE: These tests verify the ACTUAL implementation behavior,
- * which may differ from documented strategy. See docs/multi-device-test-design.md.
+ * Where the server invariants are actually proven:
+ * - profile scoping: `supabase/functions/mobile-sync-pull/index.test.ts`
+ *   ("parity RPCs get lastSync minus the commit-time overlap when lastSync > 0",
+ *   "real lastSync with empty known ids uses every id RPC and no timestamp-only
+ *   table read"), plus the Docker-gated
+ *   "integration: real mutation canonicals equal isolated first-page pull and
+ *   absence never creates"
+ * - delta / commit-time overlap: same file, "every lastSync-based table filter
+ *   uses lastSync minus the overlap"
+ * - personal-record precedence: `supabase/functions/mobile-sync-push/index.test.ts`
+ *   ("a newer active personal record cannot resurrect a stored tombstone",
+ *   "deletedAt is the LWW timestamp when a tombstone omits updatedAt")
  *
- * Actual conflict resolution (from code analysis):
- * - Sessions: UPSERT (Last Push Wins) - NOT "LOCAL WINS" as plan claims
- * - Personal Records: INSERT OR IGNORE (Local Wins) - matches plan
- * - Routines: UPSERT (Last Push Wins)
- * - Cycles: UPSERT (Last Push Wins)
- * - Badges: UPSERT on (user_id, badge_id) - Union-like behavior
+ * Do not add assertions here that restate mock behaviour, and do not add a
+ * case whose only assertion is `expect(result.success).toBe(true)`.
+ * See `tests/sync/BASELINE.md` for the invariants this suite cannot prove.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,19 +34,16 @@ import {
 	callPushEndpoint,
 	createMinimalPushPayload,
 	createTestUser,
-	type ExerciseDto,
 	generateTestId,
-	type PushPayload,
 	type RoutineDto,
 	type SessionDto,
-	type SetDto,
 } from "./helpers/edge-function-harness";
 import { resetMockStore } from "./helpers/mock-edge-functions";
 
 // Configure longer timeout for integration tests
 vi.setConfig({ testTimeout: 30000 });
 
-describe("Multi-Device Sync Integration Tests", () => {
+describe("Multi-device harness/fixture smoke (mock Edge)", () => {
 	// Simulated device identifiers
 	const DEVICE_A = {
 		deviceId: "device-a-" + Date.now(),
@@ -625,296 +633,6 @@ describe("Multi-Device Sync Integration Tests", () => {
 				(b) => b.badgeId === "FIRST_WORKOUT",
 			);
 			expect(firstWorkoutBadges.length).toBe(1);
-		});
-	});
-
-	// ===========================================================================
-	// Scenario 6: Profile Isolation
-	// ===========================================================================
-	describe("Scenario 6: Profile Isolation - No Cross-Contamination", () => {
-		it("should not leak sessions between profiles", async () => {
-			const profile1Id = generateTestId();
-			const profile2Id = generateTestId();
-			const sessionProfile1 = generateTestId();
-			const sessionProfile2 = generateTestId();
-
-			// Device A pushes session for profile 1
-			const session1: SessionDto = {
-				id: sessionProfile1,
-				userId: testUser.id,
-				name: "Profile 1 Workout",
-				startedAt: new Date().toISOString(),
-				durationSeconds: 3600,
-				totalVolume: 5000,
-				setCount: 10,
-				exerciseCount: 3,
-				prCount: 0,
-				routineName: null,
-				workoutMode: "OLD_SCHOOL",
-				routineSessionId: null,
-				exercises: [],
-			};
-
-			await callPushEndpoint(
-				createMinimalPushPayload(testUser.id, {
-					deviceId: DEVICE_A.deviceId,
-					profileId: profile1Id,
-					sessions: [session1],
-				}),
-				testUser.accessToken,
-			);
-
-			// Device B pushes session for profile 2
-			const session2: SessionDto = {
-				id: sessionProfile2,
-				userId: testUser.id,
-				name: "Profile 2 Workout",
-				startedAt: new Date().toISOString(),
-				durationSeconds: 2400,
-				totalVolume: 3000,
-				setCount: 8,
-				exerciseCount: 2,
-				prCount: 1,
-				routineName: null,
-				workoutMode: "PUMP",
-				routineSessionId: null,
-				exercises: [],
-			};
-
-			await callPushEndpoint(
-				createMinimalPushPayload(testUser.id, {
-					deviceId: DEVICE_B.deviceId,
-					profileId: profile2Id,
-					sessions: [session2],
-				}),
-				testUser.accessToken,
-			);
-
-			// Pull for profile 1 only
-			const pullProfile1 = await callPullEndpoint(0, testUser.accessToken, {
-				deviceId: DEVICE_A.deviceId,
-				profileId: profile1Id,
-			});
-
-			// Pull for profile 2 only
-			const pullProfile2 = await callPullEndpoint(0, testUser.accessToken, {
-				deviceId: DEVICE_B.deviceId,
-				profileId: profile2Id,
-			});
-
-			// Verify isolation (note: actual isolation depends on pull implementation)
-			// The pull endpoint filters by profileId when provided
-			// If mock doesn't implement this, test documents expected behavior
-			expect(pullProfile1.success).toBe(true);
-			expect(pullProfile2.success).toBe(true);
-		});
-	});
-
-	// ===========================================================================
-	// Scenario 7: Personal Record Preservation (LOCAL WINS)
-	// ===========================================================================
-	describe("Scenario 7: Personal Record Preservation - INSERT OR IGNORE", () => {
-		/**
-		 * Personal records use INSERT (not upsert) after deduplication check.
-		 * This means existing PRs are NOT overwritten - true LOCAL WINS behavior.
-		 */
-		it("should preserve existing PRs and add new ones without overwriting", async () => {
-			const sessionIdA = generateTestId();
-			const sessionIdB = generateTestId();
-			const exerciseId = generateTestId();
-			const setIdA = generateTestId();
-			const setIdB = generateTestId();
-
-			// Device A pushes session with a PR
-			const setWithPR: SetDto = {
-				id: setIdA,
-				exerciseId,
-				setNumber: 1,
-				targetReps: 5,
-				actualReps: 5,
-				weightKg: 100, // PR weight
-				rpe: 9,
-				isPr: true,
-				notes: null,
-				workoutMode: "OLD_SCHOOL",
-				repSummaries: [],
-			};
-
-			const exerciseA: ExerciseDto = {
-				id: exerciseId,
-				sessionId: sessionIdA,
-				name: "Bench Press",
-				muscleGroup: "Chest",
-				orderIndex: 0,
-				sets: [setWithPR],
-			};
-
-			const sessionA: SessionDto = {
-				id: sessionIdA,
-				userId: testUser.id,
-				name: "PR Session Device A",
-				startedAt: "2026-04-12T08:00:00.000Z",
-				durationSeconds: 3600,
-				totalVolume: 5000,
-				setCount: 1,
-				exerciseCount: 1,
-				prCount: 1,
-				routineName: null,
-				workoutMode: "OLD_SCHOOL",
-				routineSessionId: null,
-				exercises: [exerciseA],
-			};
-
-			// Device A pushes first
-			await callPushEndpoint(
-				createMinimalPushPayload(testUser.id, {
-					deviceId: DEVICE_A.deviceId,
-					sessions: [sessionA],
-				}),
-				testUser.accessToken,
-			);
-
-			// Device B pushes a different session with lower PR for same exercise
-			const setWithLowerPR: SetDto = {
-				id: setIdB,
-				exerciseId: generateTestId(),
-				setNumber: 1,
-				targetReps: 5,
-				actualReps: 5,
-				weightKg: 95, // Lower weight
-				rpe: 8,
-				isPr: true, // Still marked as PR by device
-				notes: null,
-				workoutMode: "OLD_SCHOOL",
-				repSummaries: [],
-			};
-
-			const exerciseB: ExerciseDto = {
-				id: generateTestId(),
-				sessionId: sessionIdB,
-				name: "Bench Press", // Same exercise name
-				muscleGroup: "Chest",
-				orderIndex: 0,
-				sets: [setWithLowerPR],
-			};
-
-			const sessionB: SessionDto = {
-				id: sessionIdB,
-				userId: testUser.id,
-				name: "PR Session Device B",
-				startedAt: "2026-04-12T18:00:00.000Z", // Different time
-				durationSeconds: 2400,
-				totalVolume: 3000,
-				setCount: 1,
-				exerciseCount: 1,
-				prCount: 1,
-				routineName: null,
-				workoutMode: "OLD_SCHOOL",
-				routineSessionId: null,
-				exercises: [exerciseB],
-			};
-
-			// Device B pushes second
-			await callPushEndpoint(
-				createMinimalPushPayload(testUser.id, {
-					deviceId: DEVICE_B.deviceId,
-					sessions: [sessionB],
-				}),
-				testUser.accessToken,
-			);
-
-			// Pull to verify both PRs exist
-			const pullResult = await callPullEndpoint(0, testUser.accessToken);
-
-			// Both sessions should exist
-			expect(pullResult.data!.sessions.length).toBeGreaterThanOrEqual(2);
-
-			// Both PRs should exist in personal_records (different achieved_at timestamps)
-			// This validates INSERT OR IGNORE behavior
-			// Note: The mock may not track personal_records, but real impl does
-		});
-	});
-
-	// ===========================================================================
-	// Scenario 8: Delta Sync Accuracy
-	// ===========================================================================
-	describe("Scenario 8: Delta Sync - Only Modified Data Returned", () => {
-		it("should return only data modified after lastSync timestamp", async () => {
-			const sessionId1 = generateTestId();
-			const sessionId2 = generateTestId();
-
-			// Push first session
-			const session1: SessionDto = {
-				id: sessionId1,
-				userId: testUser.id,
-				name: "Session 1",
-				startedAt: new Date().toISOString(),
-				durationSeconds: 3600,
-				totalVolume: 5000,
-				setCount: 10,
-				exerciseCount: 3,
-				prCount: 0,
-				routineName: null,
-				workoutMode: "OLD_SCHOOL",
-				routineSessionId: null,
-				exercises: [],
-			};
-
-			const push1Result = await callPushEndpoint(
-				createMinimalPushPayload(testUser.id, {
-					deviceId: DEVICE_A.deviceId,
-					sessions: [session1],
-				}),
-				testUser.accessToken,
-			);
-			expect(push1Result.success).toBe(true);
-
-			// Record sync time after first push
-			const syncTimeAfterFirst = push1Result.data?.syncTime ?? Date.now();
-
-			// Wait to ensure timestamp difference
-			await new Promise((resolve) => setTimeout(resolve, 100));
-
-			// Push second session after sync time
-			const session2: SessionDto = {
-				id: sessionId2,
-				userId: testUser.id,
-				name: "Session 2",
-				startedAt: new Date().toISOString(),
-				durationSeconds: 2400,
-				totalVolume: 3000,
-				setCount: 8,
-				exerciseCount: 2,
-				prCount: 1,
-				routineName: null,
-				workoutMode: "PUMP",
-				routineSessionId: null,
-				exercises: [],
-			};
-
-			await callPushEndpoint(
-				createMinimalPushPayload(testUser.id, {
-					deviceId: DEVICE_A.deviceId,
-					sessions: [session2],
-				}),
-				testUser.accessToken,
-			);
-
-			// Pull with lastSync=0 should return both
-			const fullPull = await callPullEndpoint(0, testUser.accessToken);
-			expect(fullPull.data!.sessions.length).toBeGreaterThanOrEqual(2);
-
-			// Pull with lastSync after first push
-			// Note: The mock doesn't implement true delta sync per-item,
-			// but validates the expected interface
-			const deltaPull = await callPullEndpoint(
-				syncTimeAfterFirst,
-				testUser.accessToken,
-			);
-			expect(deltaPull.success).toBe(true);
-
-			// In real implementation, only session2 would be returned
-			// Mock returns all sessions if lastPushTime > lastSync
 		});
 	});
 

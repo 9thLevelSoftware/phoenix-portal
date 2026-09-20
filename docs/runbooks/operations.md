@@ -39,13 +39,18 @@ supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --li
 
 **Key log messages:**
 
-| Log message                                     | Meaning                                           | Severity                                 |
-| ----------------------------------------------- | ------------------------------------------------- | ---------------------------------------- |
-| `Missing custom_data.user_id in Paddle event`   | Checkout created without `user_id` in custom_data | HIGH -- user pays but gets no access     |
-| `Unknown price ID mapped to FREE tier`          | Price ID not in `PADDLE_*_PRICE_IDS` env vars     | HIGH -- silent tier mismatch             |
-| `Error upserting subscription for <event_type>` | Database write failed                             | MEDIUM -- Paddle retries on 5xx          |
-| `Webhook signature too old`                     | Signature age > 5 minutes                         | LOW -- replay protection, retry will fix |
-| `Unhandled event type: <type>`                  | Non-subscription event (normal)                   | NONE                                     |
+| Log message                                              | Meaning                                           | Severity                                 |
+| -------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------- |
+| `Missing custom_data.user_id in Paddle event`            | Checkout created without `user_id` in custom_data | HIGH -- user pays but gets no access     |
+| `[BILLING_ALERT] Unknown price ID`                       | Price ID not in `PADDLE_*_PRICE_IDS` env vars     | HIGH -- silent tier mismatch             |
+| `[BILLING_ALERT] Error applying subscription event for`  | Database write failed                             | MEDIUM -- Paddle retries on 5xx          |
+| `[BILLING_ALERT] Webhook signature too old:`             | Signature age > 5 minutes                         | LOW -- replay protection, retry will fix |
+| `Unhandled event type: <type>`                           | Non-subscription event (normal)                   | NONE                                     |
+
+Every `[BILLING_ALERT]` string, what it means and what to do about it, is
+catalogued in
+**Section 7: Checking Edge Function Logs** of
+[billing-incident-response.md](billing-incident-response.md).
 
 ### Identify missed events in Paddle
 
@@ -71,13 +76,17 @@ curl -X POST "https://api.paddle.com/notifications/{notification_id}/replay" \
 **If idempotency blocks the replay** (handler returns 200 with `duplicate: true` but state is still wrong):
 
 ```sql
--- Clear the idempotency marker to allow reprocessing
+-- Clear BOTH idempotency markers to allow reprocessing
 UPDATE subscriptions
-SET last_event_id = NULL
+SET last_event_id = NULL,
+    last_event_occurred_at = NULL
 WHERE user_id = '<uuid>';
 ```
 
-Then retry the notification.
+Clearing `last_event_id` alone is not enough: `apply_subscription_event` also
+refuses any event whose `occurred_at` is not strictly newer than the stored
+`last_event_occurred_at`, so the replay would be accepted with a 200 and write
+nothing. Clear both, then retry the notification.
 
 ### Financial reconciliation
 
@@ -338,12 +347,42 @@ After any rollback, check these surfaces:
 
 ## 5. Manual GDPR Deletion
 
+> Last verified against `8f7d3b8` (PR 35 `delete-account` / `_shared/accountPurge.ts`,
+> migration `20260920003500`).
+
 ### When to use
 
-Use this procedure only if the `delete-account` Edge Function fails **and**
-cannot be fixed quickly. The Edge Function is the preferred path because it
-handles storage cleanup and uses `auth.admin.deleteUser()` which CASCADE-deletes
-most user data automatically.
+Hand-deleting an account is the **last** resort. Work down this list:
+
+1. **Let the scheduled pass run it.** The hourly `delete-due-accounts` pg_cron
+   job calls `delete-account` with `{"mode":"process_due"}`. It claims up to
+   `PROCESS_DUE_BATCH_SIZE` = 10 due requests per run, reclaims any claim older
+   than `STUCK_CLAIM_MINUTES` = 15, and retries a failed purge on the next pass
+   — every step of `purgeUser` is idempotent. A request that just failed once
+   needs nothing from you.
+2. **Check the job is actually running.** The migration creates the job
+   **inactive** on first apply, so a request can sit due for ever with no alert
+   other than `[DELETION_ALERT] overdue`:
+   ```sql
+   SELECT jobid, jobname, schedule, active FROM cron.job
+   WHERE jobname = 'delete-due-accounts';
+
+   SELECT status, return_message, start_time FROM cron.job_run_details
+   WHERE jobid = (SELECT jobid FROM cron.job WHERE jobname = 'delete-due-accounts')
+   ORDER BY start_time DESC LIMIT 5;
+
+   -- Gateway/transport result of each invocation (200 = the pass ran).
+   SELECT id, status_code, timed_out, error_msg, created
+   FROM net._http_response ORDER BY created DESC LIMIT 20;
+   ```
+   A `401` means the Vault `edge_cron_secret` and the Edge `CRON_SECRET` differ,
+   or `verify_jwt` is still on for `delete-account`. Fix that rather than
+   deleting by hand.
+3. **Check the request is not parked for support.** `process_due` skips any row
+   with a non-null `needs_support_reason`. See
+   [Deletion alerts and the needs-support path](#deletion-alerts-and-the-needs-support-path)
+   below — clearing the reason usually re-arms the automatic purge.
+4. Only if all of the above are exhausted, follow the manual procedure.
 
 **Before proceeding:** Check Edge Function logs to understand why it failed.
 
@@ -355,6 +394,9 @@ Common failure reasons:
 - Rate limit hit (1 request/hour/user) -- wait and retry.
 - No pending deletion request -- check `deletion_requests` table.
 - Grace period not expired -- check `scheduled_for` timestamp.
+- `[DELETION_ALERT] needs_support billing_subscription_not_found` -- Paddle has
+  no record of a subscription the local row still calls live. Resolve the
+  billing question first; see Step 2 below.
 - Auth admin API failure -- proceed with manual deletion below.
 
 ### Step-by-step manual deletion
@@ -368,7 +410,7 @@ tables, but if that call is what failed, you need to delete data manually first.
 -- Save this output before deleting anything
 SELECT 'profiles' AS tbl, COUNT(*) FROM profiles WHERE id = '<uuid>'
 UNION ALL SELECT 'workout_sessions', COUNT(*) FROM workout_sessions WHERE user_id = '<uuid>'
-UNION ALL SELECT 'exercises', COUNT(*) FROM exercises WHERE workout_id IN (SELECT id FROM workout_sessions WHERE user_id = '<uuid>')
+UNION ALL SELECT 'exercises', COUNT(*) FROM exercises WHERE user_id = '<uuid>'
 UNION ALL SELECT 'sets', COUNT(*) FROM sets WHERE user_id = '<uuid>'
 UNION ALL SELECT 'rep_summaries', COUNT(*) FROM rep_summaries WHERE user_id = '<uuid>'
 UNION ALL SELECT 'rep_telemetry', COUNT(*) FROM rep_telemetry WHERE user_id = '<uuid>'
@@ -377,7 +419,7 @@ UNION ALL SELECT 'exercise_progress', COUNT(*) FROM exercise_progress WHERE user
 UNION ALL SELECT 'routines', COUNT(*) FROM routines WHERE user_id = '<uuid>'
 UNION ALL SELECT 'routine_exercises', COUNT(*) FROM routine_exercises WHERE routine_id IN (SELECT id FROM routines WHERE user_id = '<uuid>')
 UNION ALL SELECT 'training_cycles', COUNT(*) FROM training_cycles WHERE user_id = '<uuid>'
-UNION ALL SELECT 'cycle_days', COUNT(*) FROM cycle_days WHERE training_cycle_id IN (SELECT id FROM training_cycles WHERE user_id = '<uuid>')
+UNION ALL SELECT 'cycle_days', COUNT(*) FROM cycle_days WHERE cycle_id IN (SELECT id FROM training_cycles WHERE user_id = '<uuid>')
 UNION ALL SELECT 'user_goals', COUNT(*) FROM user_goals WHERE user_id = '<uuid>'
 UNION ALL SELECT 'external_activities', COUNT(*) FROM external_activities WHERE user_id = '<uuid>'
 UNION ALL SELECT 'user_integrations', COUNT(*) FROM user_integrations WHERE user_id = '<uuid>'
@@ -397,10 +439,73 @@ UNION ALL SELECT 'content_reports', COUNT(*) FROM content_reports WHERE user_id 
 UNION ALL SELECT 'creator_follows', COUNT(*) FROM creator_follows WHERE user_id = '<uuid>'
 UNION ALL SELECT 'user_blocks', COUNT(*) FROM user_blocks WHERE user_id = '<uuid>'
 UNION ALL SELECT 'sync_queue', COUNT(*) FROM sync_queue WHERE user_id = '<uuid>'
+UNION ALL SELECT 'sync_tombstones', COUNT(*) FROM sync_tombstones WHERE user_id = '<uuid>'
+UNION ALL SELECT 'rate_limit_tracking', COUNT(*) FROM rate_limit_tracking WHERE user_id = '<uuid>'
 UNION ALL SELECT 'deletion_requests', COUNT(*) FROM deletion_requests WHERE user_id = '<uuid>';
 ```
 
-**Step 2: Delete storage objects**
+**FK-less tables the CASCADE does not reach.** `purgeUser` deletes these
+explicitly (`EXPLICIT_PURGE_TARGETS` in
+`supabase/functions/_shared/accountPurge.ts`); a manual deletion has to do the
+same or the rows outlive the account. Some are prod-only (they have no
+migration in this repo yet), so a query against them errors on a local stack —
+that is expected, skip the ones that do not exist here:
+
+```sql
+-- Always present
+SELECT 'oauth_tokens' AS tbl, COUNT(*) FROM oauth_tokens WHERE user_id = '<uuid>'
+UNION ALL SELECT 'rate_limit_tracking', COUNT(*) FROM rate_limit_tracking WHERE user_id = '<uuid>'
+UNION ALL SELECT 'sync_tombstones', COUNT(*) FROM sync_tombstones WHERE user_id = '<uuid>';
+
+-- Prod-only (marked mayBeAbsent in EXPLICIT_PURGE_TARGETS): run one at a time
+-- and ignore "relation does not exist" on a database that lacks them.
+SELECT COUNT(*) FROM paddle_webhook_events WHERE user_id = '<uuid>';
+SELECT COUNT(*) FROM paddle_webhook_events
+ WHERE payload->'data'->'custom_data'->>'user_id' = '<uuid>';  -- rows whose user_id was never filled in
+SELECT COUNT(*) FROM subscription_events WHERE user_id = '<uuid>';
+SELECT COUNT(*) FROM goal_snapshots WHERE user_id = '<uuid>';
+SELECT COUNT(*) FROM overload_suggestions WHERE user_id = '<uuid>';
+SELECT COUNT(*) FROM telemetry_analysis WHERE user_id = '<uuid>';
+SELECT COUNT(*) FROM wearable_daily_summaries WHERE user_id = '<uuid>';
+```
+
+This list is transcribed from `EXPLICIT_PURGE_TARGETS` on the branch this
+section was verified against. It is **not** machine-generated: if that array
+gains a table, this block goes stale silently. Re-read the array before
+trusting it.
+
+**Step 2: Settle billing in Paddle before you delete anything**
+
+`purgeUser` cancels the user's Paddle subscription **first**, from Paddle's
+live status (never from `subscriptions.status`, which can be stale), and aborts
+the whole purge if it cannot. Do the same by hand: Step 4 deletes the
+`subscriptions` row, which is the only local record of the Paddle ids — once it
+is gone you cannot find the subscription to cancel, and the user keeps being
+billed.
+
+```sql
+SELECT user_id, tier, status, paddle_customer_id, paddle_subscription_id
+FROM subscriptions WHERE user_id = '<uuid>';
+```
+
+- `paddle_subscription_id IS NULL` -- nothing to cancel, continue.
+- Otherwise open **Paddle Dashboard > Subscriptions**, find that id, and read
+  its **live** status there.
+  - Already `canceled` -- continue.
+  - Anything else (including `paused`) -- cancel it in Paddle now, immediately,
+    not at period end. **This is irreversible**; a cancelled Paddle
+    subscription cannot be un-cancelled, only replaced by a new checkout.
+  - Paddle returns 404 for the id -- this is the
+    `[DELETION_ALERT] needs_support billing_subscription_not_found` case. Do
+    **not** continue unless the local row is already `canceled` or `expired`.
+    A 404 on a non-terminal local row means the portal and Paddle disagree
+    about a live subscription, and deleting the account would destroy the only
+    link to it. Resolve that first (see
+    [billing-incident-response.md](billing-incident-response.md) §3).
+
+Record the ids you saw here before continuing — they are gone after Step 4.
+
+**Step 3: Delete storage objects**
 
 ```bash
 # List and remove avatar files for the user
@@ -420,7 +525,7 @@ WHERE bucket_id = 'avatars'
   AND name LIKE '<uuid>/%';
 ```
 
-**Step 3: Delete dependent data (leaf tables first)**
+**Step 4: Delete dependent data (leaf tables first)**
 
 ```sql
 -- Telemetry and rep data (deepest nesting)
@@ -477,14 +582,35 @@ DELETE FROM training_cycles WHERE user_id = '<uuid>';
 DELETE FROM user_goals WHERE user_id = '<uuid>';
 DELETE FROM subscriptions WHERE user_id = '<uuid>';
 DELETE FROM profiles WHERE id = '<uuid>';
-
--- Deletion tracking
-UPDATE deletion_requests
-SET status = 'executed', executed_at = NOW()
-WHERE user_id = '<uuid>';
 ```
 
-**Step 4: Delete the Supabase Auth user**
+Then the FK-less tables from Step 1 that the CASCADE never reaches. Skip any
+that do not exist on this database:
+
+```sql
+DELETE FROM oauth_tokens WHERE user_id = '<uuid>';
+DELETE FROM sync_tombstones WHERE user_id = '<uuid>';
+DELETE FROM rate_limit_tracking WHERE user_id = '<uuid>';
+DELETE FROM subscription_events WHERE user_id = '<uuid>';          -- prod-only
+DELETE FROM paddle_webhook_events WHERE user_id = '<uuid>';        -- prod-only
+DELETE FROM paddle_webhook_events                                  -- prod-only
+ WHERE payload->'data'->'custom_data'->>'user_id' = '<uuid>';
+DELETE FROM goal_snapshots WHERE user_id = '<uuid>';               -- prod-only
+DELETE FROM overload_suggestions WHERE user_id = '<uuid>';         -- prod-only
+DELETE FROM telemetry_analysis WHERE user_id = '<uuid>';           -- prod-only
+DELETE FROM wearable_daily_summaries WHERE user_id = '<uuid>';     -- prod-only
+```
+
+**Do NOT touch `deletion_requests` here.** Its `user_id` is
+`ON DELETE CASCADE`, so the row disappears by itself when Step 5 deletes the
+auth user — that is the signal the erasure actually completed. Writing
+`status = 'executed'` by hand builds the exact dead end this design removed:
+nothing in the code writes `'executed'` any more (migration `20260920003500`
+even flips legacy `'executed'` rows back to `'pending'`), and a request marked
+`'executed'` while the account still exists can no longer be retried by
+`process_due`, cancelled by the user, or re-requested. Leave the row alone.
+
+**Step 5: Delete the Supabase Auth user**
 
 ```bash
 # Via Supabase Dashboard: Authentication > Users > find user > delete
@@ -494,10 +620,32 @@ curl -X DELETE "https://<project-ref>.supabase.co/auth/v1/admin/users/<uuid>" \
   -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}"
 ```
 
-**Step 5: Verify nothing was missed**
+**Step 6: Verify nothing was missed**
 
-Re-run the footprint query from Step 1. All counts should be 0 (except
-`deletion_requests` which should show 1 with `status = 'executed'`).
+Re-run the footprint query from Step 1. **Every count should be 0, including
+`deletion_requests`.**
+
+A surviving `deletion_requests` row is not a receipt — it is a failure signal.
+`deletion_requests.user_id` is `ON DELETE CASCADE` (`20260301_deletion_support.sql`),
+so the row can only still be there if the `auth.users` row is still there.
+Go back to Step 5 and confirm the auth user is actually gone.
+
+Once it is, the row is gone with it and there is nothing to update. If the
+account genuinely cannot be deleted through the admin API, leave the request
+`status = 'pending'` and mark it for support instead of closing it:
+
+```sql
+-- Park it: process_due skips rows with a reason, the user still sees and can
+-- cancel the request, and the hourly pass alerts on it under
+-- [DELETION_ALERT] needs_support_overdue rather than the generic overdue tag.
+UPDATE public.deletion_requests
+SET needs_support_reason = 'request_survived_purge'
+WHERE user_id = '<uuid>' AND status = 'pending';
+```
+
+This is also the state `delete-account` itself leaves behind when a purge
+reports success but the request row is still present — see the alert catalogue
+below.
 
 ```sql
 -- Quick verification: any remaining references to this user?
@@ -514,6 +662,69 @@ Also verify the auth user is gone:
 SELECT id, email FROM auth.users WHERE id = '<uuid>';
 -- Should return 0 rows
 ```
+
+### Deletion alerts and the needs-support path
+
+Every string below is logged verbatim by `delete-account` or
+`_shared/accountPurge.ts`, so it can be grepped in the Edge Function logs:
+
+```bash
+supabase functions logs delete-account --project-ref $SUPABASE_PROJECT_REF --limit 200 \
+  | grep DELETION_ALERT
+```
+
+`process_due`'s HTTP response body (persisted by pg_net in
+`net._http_response`) deliberately carries **counts only** — no user ids — so
+the ids for every alert below live in the Edge logs and nowhere else.
+
+| Alert string                                      | What happened                                                                                                                              | What the operator does                                                                                                                       |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `[DELETION_ALERT] reclaimed_stuck_claim`          | A request sat in `executing` for more than `STUCK_CLAIM_MINUTES` (15) — a previous run died mid-purge. This pass took the claim over.        | Nothing, once. The purge is idempotent and re-runs immediately. Repeated reclaims of the same user mean the purge is crashing: read the logs.   |
+| `[DELETION_ALERT] overdue`                        | A `pending`/`executing` request is more than `OVERDUE_ALERT_DAYS` (2) past its `scheduled_for`, with no support reason.                     | The scheduler is not draining. Check the cron job's `active` flag and `net._http_response` (see "When to use" above) before anything manual.     |
+| `[DELETION_ALERT] needs_support <reason>`         | A purge stopped for a reason only a human can resolve; the row is back to `pending` with `needs_support_reason` set, and `process_due` now skips it. | Resolve the named reason, then clear the column (below).                                                                            |
+| `[DELETION_ALERT] needs_support_overdue <reason>` | The same row is now 2+ days overdue and still parked. Separate tag so a parked row does not drown the generic `overdue` alert every hour.    | It has been waiting for a human for two days. Work it.                                                                                         |
+| `[DELETION_ALERT] request_survived_purge`         | The purge reported success but the request row is still there — so the auth user was NOT deleted. Parked `pending` + this reason.            | Treat as a live account. Finish the erasure (this section), then clear the reason or let the row cascade away.                                  |
+| `[DELETION_ALERT] claim_revert_failed`            | Releasing a claim back to `pending` failed. The row may be stuck in `executing`.                                                            | It self-heals: the next pass reclaims anything `executing` older than 15 minutes. Investigate if it repeats.                                    |
+| `[DELETION_ALERT] account deleted with residual rows` | The auth user is gone, but the post-delete pass could not clear some FK-less tables. `residual_tables` names them.                      | Nothing immediately — the hourly residue sweep retries. Check those tables are empty for that user a few hours later.                           |
+| `[DELETION_ALERT] post_delete_purge_failed`       | Same class, logged from `purgeUser` itself.                                                                                                 | As above.                                                                                                                                      |
+| `[DELETION_ALERT] residue_sweep_skipped_tables`   | `sweep_deleted_account_residue` could not touch a table (missing table or missing `user_id` column — schema drift). `skipped` names each.    | Residue is silently surviving in those tables. Fix the drift, or clear them by hand with the Step 4 queries.                                    |
+| `[DELETION_ALERT] residue_sweep_failed`           | The sweep RPC itself errored, or an avatar folder could not be removed.                                                                    | Check the error; the sweep runs again next hour.                                                                                               |
+| `[DELETION_ALERT] overdue_check_failed`           | The overdue query errored, so **this pass produced no overdue alerts at all**.                                                             | Absence of `overdue` alerts after this one proves nothing. Run the overdue query below by hand.                                                 |
+| `[DELETION_ALERT] avatar_cleanup_failed`          | Avatar objects for a deleted user could not be removed. The `avatars` bucket is public, so those images stay publicly fetchable.            | **Act on this one.** Delete the objects by hand (Step 3's `storage.objects` query) — the residue sweep retries the folder, but do not wait.     |
+| `[DELETION_ALERT] process_due_failed`             | The whole hourly pass threw.                                                                                                               | Nothing was processed this hour. Read the error; the next pass retries everything.                                                             |
+
+There is no `claim_finish_failed` string in the code — that outcome is folded
+into `claim_revert_failed`. Do not grep for it.
+
+**Read-only overdue / parked query.** This is the same predicate
+`process_due`'s alert step uses:
+
+```sql
+SELECT user_id, status, scheduled_for, claimed_at, needs_support_reason, last_attempt_at
+FROM public.deletion_requests
+WHERE status IN ('pending', 'executing')
+  AND (scheduled_for < now() - interval '2 days'
+       OR needs_support_reason IS NOT NULL);
+```
+
+**Clearing `needs_support_reason`.** Two reasons are written today:
+
+- `billing_subscription_not_found` — Paddle returned 404 for a subscription the
+  local row does not consider terminal. Settle it in Paddle first (Step 2).
+- `request_survived_purge` — see above.
+
+Once resolved, hand the request back to the scheduler:
+
+```sql
+UPDATE public.deletion_requests
+SET needs_support_reason = NULL
+WHERE user_id = '<uuid>';
+```
+
+That single statement re-arms an irreversible deletion: the row becomes
+eligible again and the next hourly pass (within the hour, oldest
+`last_attempt_at` first) will purge the account permanently. Only run it once
+the reason genuinely no longer applies.
 
 ---
 
@@ -876,15 +1087,105 @@ never accidentally targets a deleted project.
 
 ---
 
-## 10. Scheduled Jobs
+## 9. Pre-Apply Check: 20260920007600 (Prod Schema Drift Reconciliation)
 
+`supabase/migrations/20260920007600_reconcile_prod_schema_drift.sql` is the one
+migration in this set whose behaviour depends on production's current catalog,
+and the two pieces of evidence available in the repo disagree about it. **Run
+the read-only check below before `supabase db push` and record the result in
+`prod-evidence.md`.** It is a plain `SELECT` against `information_schema`: it
+takes no locks and changes nothing.
+
+### Required read-only pre-apply query
+
+```sql
+SELECT table_name, column_name, data_type, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND (table_name, column_name) IN (
+    ('routines',          'created_at'),
+    ('routines',          'updated_at'),
+    ('training_cycles',   'updated_at'),
+    ('routine_exercises', 'per_set_echo_levels'),
+    ('profiles',          'digest_frequency'),
+    ('profiles',          'digest_last_sent_at'),
+    ('profiles',          'feature_flags'),
+    ('user_goals',        'last_snapshot_at')
+  )
+ORDER BY table_name, column_name;
+```
+
+### What each outcome means
+
+| Result | What the migration does | Action |
+| --- | --- | --- |
+| `routines.created_at` / `routines.updated_at` / `training_cycles.updated_at` all `is_nullable = NO` | Section 2 is skipped entirely. No lock, no `UPDATE`. | Push normally. |
+| Any of those three is `is_nullable = YES` | Section 2 **runs on production**: it backfills the NULL rows, then takes `ACCESS EXCLUSIVE` plus a full verification scan on that table for `SET NOT NULL`, under `lock_timeout = '5s'`. | Push in a maintenance window. A lock timeout aborts the whole push cleanly (single transaction, nothing partially applied) -- retry when the table is quiet. The backfill runs with the row triggers suppressed, so `updated_at` does not move and devices do **not** re-pull those routines. |
+| `routine_exercises.per_set_echo_levels` `data_type = jsonb` | Section 1 is skipped. | Push normally. |
+| `data_type = json` or `text` | Section 1 **runs on production**: `ALTER COLUMN ... TYPE jsonb USING to_jsonb(...)`, i.e. `ACCESS EXCLUSIVE` plus a table rewrite. Semantically correct in both cases (mobile stores a JSON *string*; `to_jsonb` preserves it, `::jsonb` would not). | Push in a maintenance window. The generated types cannot tell `json` from `jsonb`, which is why this check exists. |
+| The four `profiles` / `user_goals` columns all present | Section 3 is skipped. | Push normally, **and** paste the `data_type` / `column_default` values into `prod-evidence.md`: the repo's values for them are transcribed from the 2026-04-20 audit DDL (`ad2eb6b`) and have never been catalog-verified. If they differ from what the migration ships, open a follow-up -- the `ADD COLUMN IF NOT EXISTS` branches can never correct an existing column. |
+| Any of them missing | Section 3 adds it with the reconstructed type/default. | Push normally. |
+
+### What changes on production regardless of the answer
+
+- **Section 4** revokes `TRUNCATE`, `REFERENCES` and `TRIGGER` from `anon` and
+  `authenticated` on every table in `public`, and in the default privileges of
+  every grantor role the migration role can alter.
+- **Section 6** replaces `profiles`' table-wide `INSERT`/`UPDATE` grant for
+  `authenticated` with a column list, so `feature_flags`, `digest_frequency`,
+  `digest_last_sent_at` and `stripe_customer_id` stop being client-writable.
+- **Section 7** revokes all client privileges on `oauth_tokens` and
+  `oauth_states` (service-role only; RLS was previously the only barrier).
+- **Section 5** re-asserts the SECURITY DEFINER function grants. This is a
+  converging rewrite, not a no-op: it re-grants `request_account_deletion()`,
+  which `20260920000100`'s allow-list does not contain.
+
+### Ordering constraint
+
+`20260920007600` must be applied **with or before** any replay of
+`20260920000100`. Only 007600's allow-list contains
+`public.request_account_deletion()`; a 000100 replay on its own revokes
+`authenticated`'s `EXECUTE` on it.
+
+### Post-apply verification (read-only)
+
+```sql
+-- Expect zero rows: no client TRUNCATE/REFERENCES/TRIGGER anywhere in public.
+SELECT c.oid::regclass::text, r.rolname, pr.priv
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(rolname)
+CROSS JOIN (VALUES ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) AS pr(priv)
+WHERE n.nspname = 'public'
+  AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+  AND has_table_privilege(r.rolname, c.oid, pr.priv);
+
+-- Expect all false: the OAuth tables and the server-owned profile columns.
+SELECT has_table_privilege('authenticated', 'public.oauth_tokens', 'SELECT')  AS oauth_tokens_select,
+       has_table_privilege('authenticated', 'public.oauth_states', 'SELECT')  AS oauth_states_select,
+       has_table_privilege('authenticated', 'public.profiles', 'UPDATE')      AS profiles_table_update,
+       has_column_privilege('authenticated', 'public.profiles', 'feature_flags', 'UPDATE') AS feature_flags_update;
+```
+
+### Known residual (not fixable from a `db push`)
+
+`supabase_admin`'s default privileges in schema `public` still grant
+`TRUNCATE`, `REFERENCES` and `TRIGGER` to `anon` and `authenticated`, so a
+table created by Supabase platform tooling running as `supabase_admin` gets
+them. `postgres` is not a member of `supabase_admin`, so
+`ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin` fails with `42501` -- the
+migration attempts it, catches the error and reports it as a `residual:`
+NOTICE. Every table in `public` today is `postgres`-owned. The same default
+grants also remain in the `storage` and `supabase_functions` schemas, which is
+out of scope: those tables are owned by `supabase_storage_admin` /
+`supabase_functions_admin` and storage-api re-grants them on every upgrade.
+Keep the project's API "Exposed schemas" setting at `public, graphql_public`.
+## 10. Scheduled Jobs
 Everything that runs on a schedule runs from **pg_cron inside the production
 database**. There is no external scheduler, no GitHub Actions cron and no
 third-party job runner in this stack. (`.github/workflows/prod-migration-drift.yml`
 is a CI drift detector, not an application job.)
-
 Two kinds of job exist:
-
 - **Pure SQL** -- the cron command is the statement itself. It needs no secret.
 - **Edge invocation** -- the cron command calls
   `private.invoke_edge_function(fn, body)` (created by
@@ -892,35 +1193,27 @@ Two kinds of job exist:
   That function reads the Vault secrets `edge_cron_secret` and `project_url`,
   then `net.http_post`s to `<project_url>/functions/v1/<fn>` with the header
   `x-cron-secret`.
-
 ### One shared cron secret, not one per job
-
 All Edge-invoking jobs use the **same** credential -- one secret under two
 names, plus the project URL. There is no per-job secret:
-
 | Name                  | Where it lives                            | Set by                                   |
 | --------------------- | ----------------------------------------- | ---------------------------------------- |
 | `edge_cron_secret`    | Supabase Vault (`vault.secrets`)          | Operator Action 7, once, before PR 31    |
 | `project_url`         | Supabase Vault (`vault.secrets`)          | Operator Action 7, once, before PR 31    |
 | `CRON_SECRET`         | Edge Function secrets (all functions)     | Operator Action 7, from the Vault value  |
-
 `CRON_SECRET` must equal `edge_cron_secret` exactly. Never paste either value
 into the SQL editor or a shell command line -- see
 [§13 Rotating the shared cron secret](#13-rotating-the-shared-cron-secret) for
 the only supported way to move the value.
-
 Receivers compare it in constant time via
 `supabase/functions/_shared/cronSecret.ts`. That helper reads `CRON_SECRET`
 first and only falls back to a legacy name (`PROCESS_SYNC_QUEUE_SECRET`,
 `CRON_SYNC_QUEUE_SECRET`) when `CRON_SECRET` is unset; once `CRON_SECRET` is
 set, a caller holding only a legacy value gets 401.
-
 **Until the Vault secrets exist, `private.invoke_edge_function` raises a NOTICE
 and returns.** The cron run is still recorded as `succeeded` -- see
 [§10.1](#101-verify-a-jobs-last-run) for why `succeeded` alone proves nothing.
-
 ### Re-apply semantics
-
 The four migrations that schedule jobs in this series -- `20260920003100`,
 `20260920003500`, `20260920005600` and `20260920006400` -- each look their job
 up by `jobname`, call `cron.schedule` when it is absent, and
@@ -938,11 +1231,13 @@ schedule or command without undoing an operator pause or activation. For
 owned-row provider handlers are first deployed. Its private release-gate marker
 means re-applying that migration after activation leaves the job active.
 
+**None of them ever changes `active`, in either direction.** A re-apply repairs
+a drifted schedule or command; it never activates a job you paused, and never
+pauses a job that is running. For `generate-insights` a re-apply also preserves
+the batch cursor in `private.insights_batch_state`.
 `20260920000200` is different: it only schedules a job when no job of that name
 exists, and never alters an existing one.
-
 ### The jobs
-
 | Job name (`cron.job.jobname`)    | Cadence                            | What it runs                                                                                              | Migration                                             | Cron secret | Created active?                        |
 | -------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------- | -------------------------------------- |
 | `process-sync-queue`             | `*/5 * * * *` (every 5 min)        | Edge `process-sync-queue` via `private.invoke_edge_function('process-sync-queue', '{}')`                   | `20260920003100_scheduler_and_sync_queue_cron.sql`; existing jobs paused once by `20260920005210_pause_sync_queue_for_owned_handlers.sql` | shared      | **No -- activate after the provider handlers deploy** |
@@ -952,115 +1247,82 @@ exists, and never alters an existing one.
 | `generate-insights`              | `*/15 * * * *` (every 15 min)      | Edge `generate-insights` with `{"mode":"batch","cursor":…}` read from `private.insights_batch_state`       | `20260920006400_schedule_generate_insights.sql`       | shared      | Yes (cache refresh, nothing to activate) |
 | `refresh-hot-scores`             | `*/15 * * * *` (every 15 min)      | SQL: `SELECT public.refresh_hot_scores()`                                                                  | `20260920000200_capture_dashboard_functions_and_cron.sql` (captured from prod) | --          | As already scheduled in prod           |
 | `refresh-community-benchmarks`   | `0 */6 * * *` (every 6 h, on the hour) | SQL: `SELECT public.refresh_community_benchmarks()`                                                    | `20260920000200_capture_dashboard_functions_and_cron.sql` (captured from prod) | --          | As already scheduled in prod           |
-
 Routine and training-cycle tombstones are durable deletion evidence so an
 offline device cannot recreate deleted data when it eventually reconnects.
 `20260920003100` removes the legacy `sync-tombstones-retention` job if it
 exists. Tombstones are deleted with their account through the
 `sync_tombstones.user_id` cascade.
-
 Cadences are pg_cron expressions, evaluated in the **database** timezone.
 Confirm it with `SHOW timezone;` before converting any of these to local time.
-
 The last two jobs were created from the dashboard and existed in no migration
 until `20260920000200` captured them, so their live schedule is whatever prod
 holds -- the values above are what was captured on 2026-09-18.
-
 **Prerequisites and deploy order**
-
 | Job                   | Must be true before it can work                                                                                                                          |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `process-sync-queue`  | Deploy `process-sync-queue`, Strava, Fitbit, Hevy and Liftosaur handlers from this release, set the shared secret, then activate the initially paused job with `SELECT cron.alter_job((SELECT jobid FROM cron.job WHERE jobname = 'process-sync-queue'), active := true);`. `verify_jwt = false` is already set for the queue handler. |
 | `delete-due-accounts` | Apply `20260920003500` **then** deploy the `delete-account` Edge Function -- the new handler writes `status='executing'` and `claimed_at`, which the old CHECK rejects. PR 35 also sets `verify_jwt = false` for `delete-account`; without it the gateway 401s pg_net. |
 | `generate-insights`   | `20260920000800_entitlement_grace_window.sql` (defines `subscription_tier_for`) must be in prod **before** `20260920006400`, which calls it. PR 64 sets `verify_jwt = false` for `generate-insights`. Migration-first and Edge-first are both safe: migration-first logs gateway 401s in `net._http_response` until the Edge lands; Edge-first means no job exists yet and the user path still works. |
-
 ### 10.1 Verify a job's last run
-
 Job history (substitute the job name):
-
-```sql
 SELECT d.jobid, j.jobname, d.status, d.return_message, d.start_time, d.end_time
 FROM cron.job_run_details d
 JOIN cron.job j USING (jobid)
 WHERE j.jobname = 'process-sync-queue'
 ORDER BY d.start_time DESC
 LIMIT 5;
-```
-
 `cron.job_run_details` only holds the last 7 days -- `cron-job-run-details-retention`
 prunes it. Anything older is gone.
-
 Schedule, owner and pause state of every job:
-
-```sql
 SELECT jobid, jobname, schedule, active, username, command
 FROM cron.job
 ORDER BY jobname;
-```
-
 `username` is the role each job runs as -- normally the role that applied the
 migration. Read it; do not assume it. If a pure-SQL job starts failing with a
 permission error after a grant change, this column is the first thing to check.
-
 **For the three Edge-invoking jobs, `status = 'succeeded'` is not proof the Edge
 Function ran.** A missing Vault secret, a missing `project_url` or an absent
 `pg_net` makes `private.invoke_edge_function` emit a NOTICE and return, which
 pg_cron records as a successful run. Check the HTTP side too:
-
-```sql
 SELECT id, status_code, timed_out, error_msg, created
 FROM net._http_response
 ORDER BY created DESC
 LIMIT 20;
-```
-
 | Observation                                                  | Meaning                                                                                                   |
 | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | `status_code = 200`                                          | The pass ran. The body carries counts -- `processed`/`failed`/`skipped` for the sync queue, `processed`/`failed`/`nextCursor` for insights, the purge counters for deletions. |
 | `status_code = 401`                                          | Vault `edge_cron_secret` and the Edge `CRON_SECRET` differ, **or** `verify_jwt` is still `true` for that function. |
 | `timed_out = true`                                           | The pass ran past the pg_net timeout. `private.invoke_edge_function` sets `timeout_milliseconds := 400000` for every Edge job, so this is 400 s in all three cases. Claimed rows wait out their lease. |
 | No new rows, while `cron.job_run_details` says `succeeded`   | Vault secret, `project_url` or `pg_net` is missing. The NOTICE is in the Postgres log.                       |
-
 `net._http_response` is pruned by pg_net itself. **Unverified from this repo:**
 the exact retention window is not stated in any migration header here, so treat
 it as a short window covering the most recent passes only and do not use it as
 an audit trail.
-
 Per-job follow-up queries:
-
-```sql
 -- process-sync-queue
 SELECT status, count(*) FROM public.sync_queue GROUP BY 1;
-
 -- generate-insights
 SELECT count(*) FROM public.user_insights WHERE expires_at > now();
 SELECT * FROM private.insights_batch_state;  -- next_cursor wraps to NULL each full pass
-
 -- delete-due-accounts
 SELECT user_id, status, scheduled_for, claimed_at
 FROM public.deletion_requests
 WHERE status IN ('pending', 'executing')
   AND scheduled_for < now() - interval '2 days';
-```
-
 Note for the first `generate-insights` pass: rows written before
 `20260920006400` have `expires_at IS NULL`, and PostgREST `gt` excludes NULLs,
 so they count as expired. Those users see the on-device fallback until their
 turn comes round. That is intended.
-
 ### 10.2 Activating `delete-due-accounts` (irreversible)
-
 `20260920003500` creates this job **inactive** and raises
 `NOTICE: delete-due-accounts scheduled INACTIVE; activate with cron.alter_job(<id>, active := true)`.
 The shared cron secret is already set by the time this migration lands (it is
 PR 31's secret), so the secret is not the gate -- the `active` flag is.
-
 1. Apply `20260920003500_due_deletion_cron.sql`.
 2. Deploy the `delete-account` Edge Function.
 3. Review **every row** this read-only preview returns (the same query is in the
    migration header). Each one is purged and has its subscription cancelled once
    the job reaches it:
-
    ```sql
    SELECT id, user_id, status, requested_at, scheduled_for, claimed_at,
           needs_support_reason, last_attempt_at
@@ -1069,57 +1331,41 @@ PR 31's secret), so the secret is not the gate -- the `active` flag is.
      AND scheduled_for <= now()
    ORDER BY scheduled_for;
    ```
-
    Contact any account that still looks active before continuing, if support
    policy requires it.
 4. **This step starts irreversible deletions.** Once active, the next :17 run
    purges up to `PROCESS_DUE_BATCH_SIZE` (10) due accounts, oldest first, and
    repeats hourly until the backlog is clear. There is no undo and no
    soft-delete.
-
    ```sql
    SELECT cron.alter_job(
      (SELECT jobid FROM cron.job WHERE jobname = 'delete-due-accounts'),
      active := true
    );
    ```
-
 5. After the next :17, check both the job run and the HTTP response using the
    queries in [§10.1](#101-verify-a-jobs-last-run).
-
 To pause it again, run the same statement with `active := false`. Re-applying
 the migration will not undo either change.
-
 ### 10.3 Pausing or resuming any job
-
-```sql
 -- Pause
 SELECT cron.alter_job((SELECT jobid FROM cron.job WHERE jobname = '<jobname>'), active := false);
 -- Resume
 SELECT cron.alter_job((SELECT jobid FROM cron.job WHERE jobname = '<jobname>'), active := true);
-```
-
 A later re-apply of the owning migration preserves whichever state you set, and
 for `generate-insights` also preserves the batch cursor in
 `private.insights_batch_state`.
-
 ### 10.4 Manual periodic checks (nothing schedules these)
-
 | Check                                 | Cadence   | Query                                                                                  | Act when                                                                     |
 | ------------------------------------- | --------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Per-set telemetry storage growth      | Monthly   | `SELECT pg_size_pretty(pg_total_relation_size('public.rep_telemetry')), count(*) FROM public.rep_telemetry;` | Size exceeds 2 GB or the table exceeds 10M rows -- that is the trigger to revisit the telemetry storage redesign, which is deliberately not done now. |
 | `personal_records` bloat              | After any dedupe/backfill | `SELECT pg_size_pretty(pg_total_relation_size('public.personal_records')), count(*) FROM public.personal_records;` | The size is out of proportion to the live row count (it was ~5.9k rows in 104 MB after the July 2026 duplicate cleanup) -- schedule `VACUUM FULL` or `pg_repack` in a low-traffic window. |
-
 ---
-
 ## 11. Backups and Point-in-Time Recovery
-
 ### Current state -- NOT YET RECORDED
-
 Nothing in this repository establishes the production backup configuration.
 The table below is the record to fill in -- an unrecorded row means *unknown*,
 not *enabled*.
-
 | Item                               | Value                                     |
 | ---------------------------------- | ----------------------------------------- |
 | Supabase plan tier                 | _Operator Action 6: not yet recorded_     |
@@ -1129,42 +1375,32 @@ not *enabled*.
 | Daily backup retention             | _Operator Action 6: not yet recorded_     |
 | Date of last **tested** restore    | _Operator Action 6: not yet recorded_     |
 | Scratch project used for the test  | _Operator Action 6: not yet recorded_     |
-
 PITR is a paid add-on and is not available on every plan, so "is PITR on?" and
 "which plan are we on?" are one question. Confirm both in the Supabase
 Dashboard under **Project Settings > Database > Backups** and write the answers
 into the table above in the same change.
-
 **Do this before the first data backfill or dedupe migration** (Operator
 Action 6). The migrations that rewrite rows in place -- the gamification
 backfill `20260920002501_backfill_server_derived_gamification.sql`, the
 goal-target halving `20260920003000_user_goals_per_cable_targets.sql`, the
 personal-records dedupe in `20260920005700_personal_records_source_identity.sql`
 -- have no automatic rollback.
-
 ### Restore procedure
-
 Restores are performed from the Supabase Dashboard, not from this repo, and
 which path applies depends on what is enabled.
-
 **If PITR is enabled**
-
 1. Dashboard > **Database > Backups > Point in Time**.
 2. Pick the target timestamp. Everything written after it is lost.
 3. **Restore into a new (scratch) project first** whenever the goal is to
    recover specific rows. Restoring over production is destructive and takes the
    project offline.
 4. Copy the rows you need out of the scratch project, then delete it.
-
 **If only daily physical backups are enabled**
-
 1. Dashboard > **Database > Backups > Scheduled backups**.
 2. The recovery point is the backup timestamp -- up to 24 hours of writes are
    lost. There is no finer granularity.
 3. The same "restore into a scratch project first" rule applies.
-
 **After any restore of production itself**
-
 - Re-check the cron jobs: `SELECT jobname, schedule, active FROM cron.job;`.
   A restore brings back whatever `active` flags existed at the restore point,
   including a `delete-due-accounts` that was active.
@@ -1175,48 +1411,36 @@ which path applies depends on what is enabled.
   `updated_at`, and `mobile-sync-pull` is a delta on `lastSync`, so a device
   whose watermark is ahead of the restore point will not be served the rows it
   is missing until it forces a full `lastSync=0` pull.
-
 ### Test restore (Operator Action 6)
-
 1. Restore the most recent backup or PITR point into a **new scratch project**.
 2. Confirm the restore actually contains data:
    `SELECT count(*) FROM public.workout_sessions;` and
    `SELECT count(*) FROM auth.users;` against the scratch project.
 3. Record the date, the plan tier and the recovery point in the table above.
 4. Delete the scratch project.
-
 ---
-
 ## 12. Paddle Environment Cutover
-
 Paddle configuration is split across **four** groups that switch
 **independently**. Getting them out of step is the failure this checklist
 exists to prevent: checkout then succeeds against one environment while the
 webhook and price mapping expect the other, and a paying customer lands on no
 tier at all.
-
 **The trap, stated plainly:**
-
 - The client treats only the exact string `sandbox` as sandbox
   (`src/lib/paddle-client.ts:148-153`). Empty or unset means **production**.
 - Server functions default `PADDLE_ENVIRONMENT` to `"production"` when unset
   (for example `paddle-cancel-subscription/index.ts:90`,
   `delete-account/index.ts:16`).
-
 So "I didn't set it" means production on both sides, and nothing warns you.
-
 ### The four groups
-
 Names only. Never record a value in this repo or in a ticket; a value that must
 be shown in an example is written `[REDACTED]`.
-
 | Group                     | Where it is set                        | Variables                                                                                                                                                                       | Notes                                                                                             |
 | ------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | 1. Client (build-time)    | Cloudflare dashboard (build env vars)  | `VITE_PADDLE_CLIENT_TOKEN`, `VITE_PADDLE_ENVIRONMENT`                                                                                                                              | Baked into the bundle. A change needs a **rebuild and redeploy**, not just an env edit.             |
 | 2. Client price IDs (6)   | Cloudflare dashboard (build env vars)  | `VITE_PADDLE_{EMBER,FLAME,INFERNO}_{MONTHLY,ANNUAL}_PRICE_ID`                                                                                                                      | Read by `src/lib/pricing.ts` -- the single source of truth for what checkout opens.                 |
 | 3. Server env             | Supabase Edge Function secrets         | `PADDLE_ENVIRONMENT`, `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CUSTOM_DATA_SECRET`                                                                                       | The first three are environment-specific -- a sandbox API key cannot read production subscriptions. `PADDLE_CUSTOM_DATA_SECRET` is **not** a Paddle credential (see below). |
 | 4. Server price IDs       | Supabase Edge Function secrets         | 3 comma-separated lists `PADDLE_{EMBER,FLAME,INFERNO}_PRICE_IDS`, **plus** the 6 singles `PADDLE_{EMBER,FLAME,INFERNO}_{MONTHLY,ANNUAL}_PRICE_ID`                                   | `_shared/paddlePriceIds.ts` unions the list and the two singles per tier. See the note below.        |
-
 **On the 6 server singles.** `getPaddlePriceIdSets` merges
 `PADDLE_<TIER>_PRICE_IDS` with `PADDLE_<TIER>_MONTHLY_PRICE_ID` and
 `PADDLE_<TIER>_ANNUAL_PRICE_ID`, so tier mapping works with either shape. The
@@ -1225,7 +1449,6 @@ singles are separately required by
 `paddle-update-subscription/index.ts:116` -- **a plan change to a
 tier/interval whose single is unset fails there even though webhooks map that
 price correctly.** Set both shapes.
-
 **On `PADDLE_CUSTOM_DATA_SECRET`.** This one is **self-issued**, not obtained
 from Paddle: `paddle-checkout-custom-data` HMACs the user id with it
 (`hmacSha256Hex(secret, user.id)`) and `paddle-webhooks` and
@@ -1233,7 +1456,6 @@ from Paddle: `paddle-checkout-custom-data` HMACs the user id with it
 in the Paddle dashboard, and do not change it during a cutover -- signer and
 verifiers must share one value, and rotating it invalidates checkouts that are
 already open.
-
 **Where groups 1 and 2 actually live.** `wrangler.toml` states that the
 production build runs in Cloudflare Workers Builds (`npx wrangler deploy`,
 auto-triggered on push to `main` by the Cloudflare GitHub integration) and that
@@ -1241,14 +1463,10 @@ the `VITE_*` variables are set in the Cloudflare dashboard, not in
 `wrangler.toml`. There is **no SPA deploy workflow in `.github/workflows/`** --
 `ci.yml` only runs `npm run build` as a check. If that ever changes, the
 variables move with the build and this row must be updated.
-
 Never use a `VITE_*` variable server-side (`_shared/paddlePriceIds.ts:4`).
-
 ### Cutover checklist
-
 Perform in this order. Steps 1-4 can be done ahead of time; step 5 is the
 switch.
-
 1. In the Paddle dashboard for the **target** environment, collect the 6 price
    IDs (3 tiers x monthly/annual), the client-side token, the API key and the
    webhook signing secret.
@@ -1263,29 +1481,22 @@ switch.
    so until a new build ships the client is still on the old environment
    regardless of what the dashboard shows.
 6. Run the smoke test below before announcing the cutover.
-
 ### `PADDLE_API_KEY` is a hard dependency of `paddle-webhooks` (PR 44)
-
 Before PR 44, `paddle-webhooks` never called the Paddle API, so `PADDLE_API_KEY`
 was only needed by the update/cancel/refresh functions. It now lists the
 customer's subscriptions when the tracked one is cancelled, and a listing
 failure **deliberately fails closed** -- it logs
 `[BILLING_ALERT] untracked_subscription_lookup_failed` and returns 500 so Paddle
 redelivers, rather than downgrading a customer who may still be paying.
-
 **Consequence: with `PADDLE_API_KEY` missing or wrong for `paddle-webhooks`,
 every cancellation delivery 500s and Paddle retries it, and no cancellation is
 recorded.** Before deploying `paddle-webhooks`, confirm the key is set and that
 it belongs to the same Paddle environment as `PADDLE_ENVIRONMENT`.
-
 ### Smoke test
-
 You cannot read Edge secret values back, so the comparison is structural,
 log-based and functional -- in that order.
-
 **(a) Structural.** For each of the 6 client price IDs, confirm it appears in
 exactly one server tier, and that the tier matches:
-
 - Take each `VITE_PADDLE_<TIER>_<INTERVAL>_PRICE_ID` value from the Cloudflare
   environment.
 - Confirm the same value is in `PADDLE_<TIER>_PRICE_IDS` (or is the matching
@@ -1293,88 +1504,67 @@ exactly one server tier, and that the tier matches:
 - Confirm no price ID appears under two tiers. `mapPriceIdToTier` resolves such
   a collision by fixed precedence (INFERNO > FLAME > EMBER), which silently maps
   customers to the wrong tier.
-
 **(b) Log-based.** Trigger one call to `paddle-webhooks`,
 `paddle-update-subscription` or `paddle-refresh-subscription` -- the three that
 validate the price-ID configuration on entry -- and read that function's logs.
 Both of these are fatal configuration errors and each returns 500:
-
 | Log line                                                                                                  | Cause                                             |
 | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | `[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set`      | No paid price ID is configured at all.              |
 | `[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence): [...]`    | A price ID was copied into more than one tier list. |
-
 **(c) Functional.** In sandbox, or with a real card in production if policy
 allows, run one checkout per tier and confirm the tier lands:
-
-```sql
 SELECT user_id, tier, status, paddle_subscription_id, current_period_end
 FROM public.subscriptions
 WHERE user_id = '<test user id>';
-```
-
 A checkout that completes while `subscriptions.tier` stays `FREE` is exactly the
 client/server mismatch this section exists to catch: the webhook arrived but
 `mapPriceIdToTier` did not recognise the price ID.
-
 See also [paddle-simulation-testing.md](paddle-simulation-testing.md) for
 webhook simulation, and [billing-incident-response.md](billing-incident-response.md)
 for what to do when a paying customer has the wrong tier.
-
 ---
-
 ## 13. Rotating the Shared Cron Secret
-
 Rotate on the usual triggers: a suspected leak, an operator offboarding, or a
 scheduled rotation. The value is generated **inside the database** and moved to
 the Edge secret store without ever appearing in the SQL editor, a shell history
 entry, or a file on disk.
-
 1. Generate and store the new value in Vault. This prints nothing:
-
    ```sql
    SELECT vault.update_secret(
      (SELECT id FROM vault.secrets WHERE name = 'edge_cron_secret'),
      encode(extensions.gen_random_bytes(32), 'hex')
    );
    ```
-
 2. Read it once and pipe it straight into the Edge secret store. The Supabase
    CLI has no stdin mode for this -- `supabase secrets set` takes either
    `NAME=VALUE` arguments (which land in shell history) or `--env-file <path>`
    (verified against CLI 2.117.0 `secrets set --help`). Use process
    substitution so the path is a pipe and the value never touches disk:
-
    ```bash
    supabase secrets set --env-file \
      <(printf 'CRON_SECRET=%s\n' \
        "$(psql "$PROD_DB_URL" -Atc \
           "select decrypted_secret from vault.decrypted_secrets where name='edge_cron_secret'")")
    ```
-
    This needs a POSIX shell with process substitution (bash or zsh). If you only
    have a shell without it, write the env file to a RAM-backed path, run
    `supabase secrets set --env-file <path>`, and delete it immediately -- and if
    it ever lands in a backed-up or cloud-synced folder, treat the secret as
    compromised and rotate again.
-
    Never render the value in the dashboard at all. The SQL editor saves the
    query text and displays the result on screen, so a `SELECT decrypted_secret`
    there puts the secret somewhere you cannot reliably clear.
-
 3. Confirm the next scheduled pass is not 401:
-
    ```sql
    SELECT id, status_code, timed_out, error_msg, created
    FROM net._http_response
    ORDER BY created DESC
    LIMIT 20;
    ```
-
    Non-401 on the next `process-sync-queue` pass (within 5 minutes) is the
    check. `generate-insights` confirms within 15 minutes;
    `delete-due-accounts` only if it is active.
-
 **The gap between steps 1 and 2 is a 401 window, and it is self-healing.** Jobs
 firing in that window are rejected by the receiver's own `x-cron-secret`
 comparison (`_shared/cronSecret.ts`) -- not by the gateway, which is not
@@ -1382,20 +1572,15 @@ checking JWTs for these functions -- and simply run again on their next tick:
 `process-sync-queue` rows stay `pending`, `delete-due-accounts` rows
 stay `pending` (nothing is deleted), and `generate-insights` leaves the batch
 cursor where it was. Keep the window short anyway.
-
 Once `CRON_SECRET` is set, the legacy names `PROCESS_SYNC_QUEUE_SECRET` and
 `CRON_SYNC_QUEUE_SECRET` are dead -- they are only consulted when `CRON_SECRET`
 is unset. Rotating `CRON_SECRET` does not require touching them; leaving stale
 copies in the secret store is untidy but not a bypass.
-
 ---
-
 ## 14. Migration Pre-Apply Checks and Audits
-
 Some migrations in this series require a **read-only** check first, or ship an
 audit to run afterwards. Running these before opening a push window is the point
 -- discovering them mid-push is the failure mode.
-
 | Migration / PR                                             | What to run, and when                                                                                                                                                                                   |
 | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `20260920007600_reconcile_prod_schema_drift.sql` (PR 76)   | **Required read-only pre-apply check.** Full procedure and outcome table in §9 of this runbook (added by PR 76). It decides whether the push takes an ACCESS EXCLUSIVE lock, and therefore whether it needs a maintenance window. It must be applied with or before any replay of `20260920000100_lockdown_definer_function_grants.sql` -- only 007600's allow-list contains `public.request_account_deletion()`. |
@@ -1403,27 +1588,22 @@ audit to run afterwards. Running these before opening a push window is the point
 | `20260920004400_apply_subscription_event_subscription_guard.sql` (PR 44) | **This migration aborts by design** if production already binds one Paddle subscription to more than one portal user; its pre-check RAISEs and names every offender. That is intended -- silently picking a winner would assign someone's paid subscription to the wrong account. Run the "OPERATOR PREVIEW" query from the migration header read-only first (zero rows means it applies cleanly), decide the true owner of each named subscription, and clear `paddle_subscription_id` on the losing row(s) before pushing. |
 | `20260920003000_user_goals_per_cable_targets.sql` (PR 30)  | Apply **before** the PR 30 SPA deploy, then run the post-deploy audit in the migration header -- and read the three divergences below before acting on its output.                                        |
 | `20260920003500_due_deletion_cron.sql` (PR 35)             | Apply, deploy `delete-account`, then review the overdue preview before activating the job -- [§10.2](#102-activating-delete-due-accounts-irreversible).                                                    |
-
 ### The PR 30 goals audit has three known divergences from the app
-
 After deploying PR 30, the audit query in the migration header finds PR goals
 marked completed against an inflated target. It mirrors the app's
 `computePrGoalProgress` on record types (uppercase `MAX_WEIGHT` / `1RM`, never
 `MAX_VOLUME`), on `deleted_at IS NULL` and on units -- but it is **close, not
 exact**. Treat its output as a candidate list to review, never a list to reopen
 blindly:
-
 | # | Divergence                                                                                                                                             | Effect         |
 | - | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
 | 1 | The goal has an `exercise_id` and the matching record has `exercise_id IS NULL`. The app falls back to a name match per record; the SQL does not.        | False positive |
 | 2 | The app compares the **catalog-resolved** display name (`resolvePersonalRecordDisplayNames`); the SQL compares the raw `pr.exercise_name`, so a record stored under an opaque id is flagged. | False positive |
 | 3 | The app narrows records by `local_profile_id` when a profile filter is active; the SQL does not, so a completion justified only by another profile's record is missed. | False negative |
-
 Both false-positive classes self-heal -- the Goals page re-completes anything
 back at 100%. Reopening a goal is the operator's call; the app deliberately has
 no reopen path, because auto-reopening would let a records edit un-achieve a
 goal.
-
 ---
 
 ## Related Runbooks

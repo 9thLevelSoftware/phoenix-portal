@@ -15,6 +15,7 @@ import { Button } from "@/app/components/ui/button";
 import { PHOENIX } from "@/lib/colors";
 import type { ProgressionWorkbenchModel } from "@/lib/progression-workbench";
 import type { WeightUnit } from "@/lib/units";
+import { perCableUnitLabel } from "@/lib/units/loadDisplay";
 import {
 	WORKOUT_PHASE_FILTERS,
 	type WorkoutPhaseFilter,
@@ -131,7 +132,7 @@ export default function MobileProgressTab({
 			/>
 
 			<MobileChartCard
-				title={`TOP LIFTS (${titlePhase} - ${unit.toUpperCase()})`}
+				title={`TOP LIFTS (${titlePhase} - ${unit.toUpperCase()} PER CABLE)`}
 			>
 				{mobileStrengthData.length > 0 ? (
 					<ResponsiveContainer width="100%" height={250}>
@@ -161,7 +162,7 @@ export default function MobileProgressTab({
 							<Tooltip content={<RechartsTooltip />} />
 							<Bar
 								dataKey="weight"
-								name={`Weight (${unit})`}
+								name={`Weight (${perCableUnitLabel(unit)})`}
 								fill={PHOENIX.ember}
 								radius={[0, 4, 4, 0]}
 								animationDuration={800}

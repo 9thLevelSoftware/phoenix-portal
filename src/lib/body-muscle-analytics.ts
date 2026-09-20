@@ -3,7 +3,6 @@ import {
 	getExerciseProfile,
 	normalizeExerciseName,
 } from "@/lib/exercise-muscles";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { BODY_MUSCLE_MAP } from "./body-muscle-map.generated";
 
 export interface BodyMuscleWeight {
@@ -189,8 +188,9 @@ function resolveDate(value: string | Date | null | undefined): Date | null {
 	return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function toTotalWeightKg(weightKg: number | null | undefined): number {
-	return (weightKg ?? 0) * WEIGHT_MULTIPLIER;
+// Per cable, as stored (KD-8). Load shares are ratios, so they are unaffected.
+function toPerCableWeightKg(weightKg: number | null | undefined): number {
+	return weightKg ?? 0;
 }
 
 function normalizeWeights(weights: BodyMuscleWeight[]): BodyMuscleWeight[] {
@@ -328,7 +328,7 @@ export function buildBodyMuscleFocusModel(
 		const reps = sets.reduce((sum, set) => sum + (set.actual_reps ?? 0), 0);
 		const volumeKg = sets.reduce(
 			(sum, set) =>
-				sum + (set.actual_reps ?? 0) * toTotalWeightKg(set.weight_kg),
+				sum + (set.actual_reps ?? 0) * toPerCableWeightKg(set.weight_kg),
 			0,
 		);
 		const contributionLoad = Math.max(volumeKg, setCount);

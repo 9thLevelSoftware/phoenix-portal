@@ -82,6 +82,8 @@
 --      the active flag; PR 2's pattern):
 --        - process-sync-queue              */5 * * * *; created INACTIVE so
 --          queue-id-aware Edge handlers can deploy before backlog draining
+--        - process-sync-queue              */5 * * * *
+--        - sync-tombstones-retention       daily, tombstones > 180 days
 --        - cron-job-run-details-retention  daily, run history > 7 days
 --          (prod has no purge; the 5-minute job adds 288 rows/day)
 --      Any legacy sync-tombstones-retention job is unscheduled because stale
@@ -474,6 +476,8 @@ BEGIN
     FROM (VALUES
       ('process-sync-queue', '*/5 * * * *',
        'SELECT private.invoke_edge_function(''process-sync-queue'', ''{}''::jsonb)'),
+      ('sync-tombstones-retention', '23 3 * * *',
+       'DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval ''180 days'''),
       ('cron-job-run-details-retention', '41 3 * * *',
        'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days''')
     ) AS v(jobname, schedule, command)

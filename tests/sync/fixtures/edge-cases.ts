@@ -18,7 +18,6 @@ import {
 	createCycleFixture,
 	type NestedCycleFixture,
 } from "./cycle-fixtures";
-import { createExternalActivityFixture } from "./external-fixtures";
 import {
 	createBadgeFixture,
 	createGamificationStatsFixture,
@@ -44,15 +43,12 @@ import {
 type WorkoutSessionRow =
 	Database["public"]["Tables"]["workout_sessions"]["Row"];
 type RoutineRow = Database["public"]["Tables"]["routines"]["Row"];
-type TrainingCycleRow = Database["public"]["Tables"]["training_cycles"]["Row"];
 type PersonalRecordRow =
 	Database["public"]["Tables"]["personal_records"]["Row"];
 type RpgAttributesRow = Database["public"]["Tables"]["rpg_attributes"]["Row"];
 type EarnedBadgeRow = Database["public"]["Tables"]["earned_badges"]["Row"];
 type GamificationStatsRow =
 	Database["public"]["Tables"]["gamification_stats"]["Row"];
-type ExternalActivityRow =
-	Database["public"]["Tables"]["external_activities"]["Row"];
 type RoutineExerciseRow =
 	Database["public"]["Tables"]["routine_exercises"]["Row"];
 type CycleDayRow = Database["public"]["Tables"]["cycle_days"]["Row"];

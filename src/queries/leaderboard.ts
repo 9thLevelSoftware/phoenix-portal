@@ -98,10 +98,13 @@ export const userRankingOptions = (userId: string) =>
 		enabled: !!userId,
 	});
 
-function getCurrentWeekStart(): string {
-	const now = new Date();
-	const day = now.getDay();
-	const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-	const monday = new Date(now.setDate(diff));
-	return monday.toISOString().split("T")[0];
+// The UTC ISO-week Monday, which is how compute-rankings keys weekly
+// leaderboard snapshots. (A browser-local Monday formatted with toISOString
+// could come out as the Sunday before or the Tuesday after.)
+export function getCurrentWeekStart(now: Date = new Date()): string {
+	const monday = new Date(
+		Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+	);
+	monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+	return monday.toISOString().slice(0, 10);
 }

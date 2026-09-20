@@ -46,3 +46,17 @@ BEGIN
   RAISE NOTICE 'sync_queue triage outcome matches the seeded expectations';
 END
 $$;
+
+-- Restore the PR-52 unique indexes dropped by seed.sql so later suites
+-- (pgTAP sync_queue_dedupe + scheduler) see the production shape.
+CREATE UNIQUE INDEX IF NOT EXISTS sync_queue_one_active
+  ON public.sync_queue (
+    user_id,
+    provider,
+    ((coalesce(sync_type, 'incremental') = 'initial'))
+  )
+  WHERE status IN ('pending', 'processing');
+
+CREATE UNIQUE INDEX IF NOT EXISTS sync_queue_one_processing
+  ON public.sync_queue (user_id, provider)
+  WHERE status = 'processing';
