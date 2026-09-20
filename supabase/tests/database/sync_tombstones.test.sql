@@ -24,11 +24,18 @@ SELECT col_is_pk(
     'primary key is (user_id, entity, entity_id)'
 );
 SELECT ok(
-    NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'public.sync_tombstones'::regclass AND contype = 'f'
+    EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_attribute a
+          ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+        WHERE c.conrelid = 'public.sync_tombstones'::regclass
+          AND c.contype = 'f'
+          AND c.confrelid = 'auth.users'::regclass
+          AND c.confdeltype = 'c'
+          AND a.attname = 'user_id'
     ),
-    'sync_tombstones has no foreign key (the trigger can fire during an account cascade)'
+    'sync_tombstones.user_id cascades when the auth user is deleted'
 );
 SELECT ok(
     (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.sync_tombstones'::regclass),
@@ -177,7 +184,14 @@ SELECT ok(
 );
 
 -- Account deletion cascade: auth.users is gone before the cascade deletes the
--- user's routines and cycles, so the trigger records nothing.
+-- user's routines and cycles, so the trigger records nothing. Existing
+-- tombstones are removed by the sync_tombstones.user_id foreign key.
+INSERT INTO public.sync_tombstones (user_id, entity, entity_id)
+VALUES (
+    '16161616-0000-4000-8000-000000000003'::uuid,
+    'routine',
+    '16161616-0000-4000-8000-0000000000d3'::uuid
+);
 DELETE FROM auth.users WHERE id = '16161616-0000-4000-8000-000000000003'::uuid;
 
 SELECT is(

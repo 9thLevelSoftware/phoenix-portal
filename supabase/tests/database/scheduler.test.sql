@@ -277,16 +277,14 @@ SELECT set_eq(
     $$ VALUES
         ('process-sync-queue', '*/5 * * * *',
          'SELECT private.invoke_edge_function(''process-sync-queue'', ''{}''::jsonb)'),
-        ('sync-tombstones-retention', '23 3 * * *',
-         'DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval ''180 days'''),
         ('cron-job-run-details-retention', '41 3 * * *',
          'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days''')
     $$,
-    'the three scheduler jobs exist with the expected schedule and command'
+    'the scheduler jobs exist with the expected schedule and command'
 );
 SELECT is(
     (SELECT count(*)::int FROM pg_temp.scheduler_jobs()),
-    3,
+    2,
     'each scheduler job exists exactly once'
 );
 

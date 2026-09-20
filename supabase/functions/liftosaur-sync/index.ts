@@ -1,4 +1,5 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { completeClaimedSyncQueueEntry } from "../_shared/completeSyncQueueEntry.ts";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { errorMessage } from "../_shared/errorMessage.ts";
 import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
@@ -124,6 +125,9 @@ Deno.serve(async (req) => {
 		}
 
 		const { api_key, sync_type } = body;
+		const queueId = !jwtUser && typeof body.queue_id === "string"
+			? body.queue_id
+			: null;
 
 		const supabase = createClient(
 			Deno.env.get("SUPABASE_URL")!,
@@ -387,18 +391,11 @@ Deno.serve(async (req) => {
 			.eq("user_id", userId)
 			.eq("provider", "liftosaur");
 
-		// Mark sync queue entry as completed
-		if (sync_type) {
-			await supabase
-				.from("sync_queue")
-				.update({
-					status: "completed",
-					completed_at: new Date().toISOString(),
-				})
-				.eq("user_id", userId)
-				.eq("provider", "liftosaur")
-				.eq("status", "pending");
-		}
+		await completeClaimedSyncQueueEntry(supabase, {
+			queueId,
+			userId,
+			provider: "liftosaur",
+		});
 
 		return new Response(
 			JSON.stringify({
