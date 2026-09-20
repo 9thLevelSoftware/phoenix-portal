@@ -611,6 +611,15 @@ export function useSaveItem() {
 
 		onError: (error: Error) => {
 			console.error("[useSaveItem] failed:", error);
+			// import_shared_routine / import_shared_cycle raise FLAME_REQUIRED
+			// (P0001) below FLAME, which a generic toast hides.
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
 			toast.error("Failed to save content. Please try again.");
 		},
 	});
