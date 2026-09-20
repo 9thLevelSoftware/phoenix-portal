@@ -3329,6 +3329,35 @@ Deno.test({
       assertEquals(afterRpc.data[0].id, stored.id);
       assertEquals(Number(afterRpc.data[0].value), 95);
 
+      // JS Date.parse and the handler identity key have millisecond precision.
+      // The SQL identity uses the same resolution, so a timestamp differing
+      // only by PostgreSQL microseconds updates the same logical record.
+      const submillisecond = await fixture.admin.rpc(
+        "upsert_set_derived_personal_records",
+        {
+          p_user_id: fixture.ownerId,
+          p_rows: [{
+            ...identity,
+            achieved_at: "2026-01-20T10:00:00.000999Z",
+            value: 97,
+          }],
+        },
+      );
+      if (submillisecond.error) {
+        throw new Error(`submillisecond RPC failed: ${submillisecond.error.message}`);
+      }
+      assertEquals(submillisecond.data, 1);
+      const afterSubmillisecond = await fixture.admin.from("personal_records")
+        .select("id,value,achieved_at")
+        .eq("user_id", fixture.ownerId);
+      if (afterSubmillisecond.error) {
+        throw new Error("submillisecond verification failed");
+      }
+      assertEquals(afterSubmillisecond.data.length, 1);
+      assertEquals(afterSubmillisecond.data[0].id, stored.id);
+      assertEquals(Number(afterSubmillisecond.data[0].value), 97);
+      assertEquals(afterSubmillisecond.data[0].achieved_at, "2026-01-20T10:00:00+00:00");
+
       // A deleted set-derived PR stays deleted when the old phone re-pushes
       // the session: the partial index ignores tombstones, so only the probe
       // (which returns tombstones) stops the resurrection.
@@ -3408,7 +3437,7 @@ Deno.test({
       if (ownerRows.error) throw new Error("final verification failed");
       assertEquals(
         ownerRows.data.map((row) => [row.source, Number(row.value)]),
-        [["dedicated", 100], ["set_derived", 95]],
+        [["dedicated", 100], ["set_derived", 97]],
       );
 
       // A set-derived PR whose session row does not exist: the RPC raises the

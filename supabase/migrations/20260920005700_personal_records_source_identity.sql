@@ -18,11 +18,10 @@
 --      exercise  'id:' || exercise_id when exercise_id is non-NULL and non-empty
 --                (NULLIF(exercise_id, '') - TS treats '' as absent too),
 --                else 'name:' || exercise_name
---      achieved_at  timestamptz equality (microseconds). The TS key normalizes
---                to epoch milliseconds, so the index is at least as fine as the
---                TS key: two instants in the same millisecond are one identity
---                to the TS pre-filter but two to the index. The TS pre-filter
---                is therefore the stricter of the two; no duplicate can result.
+--      achieved_at  UTC epoch milliseconds. The TS key uses Date.parse(),
+--                which has millisecond precision, so the database index,
+--                payload de-duplication, conflict target, and candidate lookup
+--                must all truncate to the same resolution.
 --      record_type
 --      phase     COALESCE(workout_phase, 'COMBINED')
 --    plus user_id, which the TS key omits because its lookups are user-scoped.
@@ -62,7 +61,8 @@
 --       PARTITION BY user_id, COALESCE(local_profile_id, 'default'),
 --         (CASE WHEN NULLIF(exercise_id, '') IS NOT NULL
 --           THEN 'id:' || exercise_id ELSE 'name:' || exercise_name END),
---         achieved_at, record_type, COALESCE(workout_phase, 'COMBINED')
+--         date_trunc('milliseconds', achieved_at AT TIME ZONE 'UTC'),
+--         record_type, COALESCE(workout_phase, 'COMBINED')
 --       ORDER BY updated_at DESC NULLS LAST, id ASC) AS rn
 --     FROM public.personal_records
 --     WHERE source = 'set_derived' AND deleted_at IS NULL)
@@ -124,7 +124,7 @@ WITH ranked AS (
         (CASE WHEN NULLIF(pr.exercise_id, '') IS NOT NULL
           THEN 'id:' || pr.exercise_id
           ELSE 'name:' || pr.exercise_name END),
-        pr.achieved_at,
+        date_trunc('milliseconds', pr.achieved_at AT TIME ZONE 'UTC'),
         pr.record_type,
         COALESCE(pr.workout_phase, 'COMBINED')
       ORDER BY pr.updated_at DESC NULLS LAST, pr.id ASC
@@ -147,7 +147,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_personal_records_set_derived_identity
     (CASE WHEN NULLIF(exercise_id, '') IS NOT NULL
       THEN 'id:' || exercise_id
       ELSE 'name:' || exercise_name END),
-    achieved_at,
+    (date_trunc('milliseconds', achieved_at AT TIME ZONE 'UTC')),
     record_type,
     (COALESCE(workout_phase, 'COMBINED'))
   )
@@ -210,7 +210,7 @@ BEGIN
     (CASE WHEN NULLIF(r.exercise_id, '') IS NOT NULL
       THEN 'id:' || r.exercise_id
       ELSE 'name:' || r.exercise_name END),
-    r.achieved_at,
+    date_trunc('milliseconds', r.achieved_at AT TIME ZONE 'UTC'),
     COALESCE(r.record_type, 'MAX_WEIGHT'),
     COALESCE(r.workout_phase, 'COMBINED')
   )
@@ -226,7 +226,7 @@ BEGIN
     r.reps,
     COALESCE(r.unit, 'kg'),
     r.session_id,
-    r.achieved_at,
+    date_trunc('milliseconds', r.achieved_at AT TIME ZONE 'UTC'),
     COALESCE(r.workout_phase, 'COMBINED'),
     'set_derived',
     NULL
@@ -250,7 +250,7 @@ BEGIN
     (CASE WHEN NULLIF(r.exercise_id, '') IS NOT NULL
       THEN 'id:' || r.exercise_id
       ELSE 'name:' || r.exercise_name END),
-    r.achieved_at,
+    date_trunc('milliseconds', r.achieved_at AT TIME ZONE 'UTC'),
     COALESCE(r.record_type, 'MAX_WEIGHT'),
     COALESCE(r.workout_phase, 'COMBINED'),
     e.ord DESC
@@ -260,7 +260,7 @@ BEGIN
     (CASE WHEN NULLIF(exercise_id, '') IS NOT NULL
       THEN 'id:' || exercise_id
       ELSE 'name:' || exercise_name END),
-    achieved_at,
+    (date_trunc('milliseconds', achieved_at AT TIME ZONE 'UTC')),
     record_type,
     (COALESCE(workout_phase, 'COMBINED'))
   )
@@ -341,7 +341,12 @@ AS $$
   FROM public.personal_records pr
   WHERE pr.user_id = p_user_id
     AND (
-      pr.achieved_at = ANY(COALESCE(p_achieved_at, '{}'))
+      EXISTS (
+        SELECT 1
+        FROM unnest(COALESCE(p_achieved_at, '{}')) AS requested(achieved_at)
+        WHERE date_trunc('milliseconds', requested.achieved_at AT TIME ZONE 'UTC') =
+              date_trunc('milliseconds', pr.achieved_at AT TIME ZONE 'UTC')
+      )
       OR pr.id = ANY(COALESCE(p_ids, '{}'))
     )
     AND (p_after_id IS NULL OR pr.id > p_after_id)
