@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/queries/keys";
 
+// --- Supabase mock ---------------------------------------------------------
+
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
 	for (const method of ["select", "eq", "is", "order"]) {
@@ -15,57 +17,299 @@ function buildChain(terminal: { data: unknown; error: unknown }) {
 let chain: ReturnType<typeof buildChain>;
 const fromFn = vi.fn(() => chain);
 
+interface RpcCall {
+	fn: string;
+	args: Record<string, unknown>;
+}
+
+const rpcCalls: RpcCall[] = [];
+let rpcHandler: (
+	fn: string,
+	args: Record<string, unknown>,
+) => { data: unknown; error: unknown };
+
+function rpcBuilder(fn: string, args: Record<string, unknown> = {}) {
+	rpcCalls.push({ fn, args });
+	const settle = async () => rpcHandler(fn, args);
+	// A real promise (awaitable like PostgrestFilterBuilder) that also accepts
+	// `.select(...)` for the embed form.
+	return Object.assign(settle(), { select: () => settle() });
+}
+
 vi.mock("@/lib/supabase", () => ({
-	supabase: { from: (...args: unknown[]) => fromFn(...args) },
+	supabase: {
+		from: (...args: unknown[]) => fromFn(...args),
+		rpc: (fn: string, args?: Record<string, unknown>) =>
+			rpcBuilder(fn, args ?? {}),
+	},
 }));
 
-describe("progressionWorkbenchOptions", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		fromFn.mockImplementation(() => chain);
+// --- Seeded exercise_progress ---------------------------------------------
+//
+// R-17: 1,200 rows across 4 exercises, i.e. more than PostgREST's 1,000-row
+// `max_rows`, so the pre-PR-40 "select every row ascending" shape could not
+// return the newest ones.
+
+const MAX_ROWS = 1000;
+const EXERCISES = [
+	"Bench Press",
+	"Deadlift",
+	"Overhead Press",
+	"Zercher Squat",
+];
+const ROWS_PER_EXERCISE = 300;
+const TOTAL_PROGRESS_ROWS = EXERCISES.length * ROWS_PER_EXERCISE;
+const USER_ID = "22222222-2222-4222-8222-222222222222";
+
+interface ProgressSeedRow {
+	id: string;
+	user_id: string;
+	exercise_name: string;
+	session_id: string;
+	recorded_at: string;
+	max_weight_kg: number;
+	total_volume_kg: number;
+	estimated_1rm_kg: number;
+	velocity_estimated_1rm_kg: number | null;
+	max_reps: number;
+	set_count: number;
+}
+
+/** Ascending by recorded_at; the last element is the newest row overall. */
+function seedProgress(): ProgressSeedRow[] {
+	const base = Date.UTC(2024, 0, 1);
+	const rows: ProgressSeedRow[] = [];
+	for (let i = 0; i < TOTAL_PROGRESS_ROWS; i++) {
+		rows.push({
+			id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+			user_id: USER_ID,
+			exercise_name: EXERCISES[i % EXERCISES.length],
+			session_id: `11111111-1111-4111-8111-${String(i).padStart(12, "0")}`,
+			recorded_at: new Date(base + i * 3_600_000).toISOString(),
+			max_weight_kg: 50 + i,
+			total_volume_kg: 1000 + i,
+			estimated_1rm_kg: 60 + i,
+			velocity_estimated_1rm_kg: null,
+			max_reps: 8,
+			set_count: 4,
+		});
+	}
+	return rows;
+}
+
+const PROGRESS = seedProgress();
+const NEWEST = PROGRESS[PROGRESS.length - 1];
+
+/**
+ * What the pre-PR-40 shape returned: every row, ascending, silently cut at
+ * `max_rows`. The rows it drops are the NEWEST ones (F-034).
+ */
+function legacyAscendingSelect(store: ProgressSeedRow[]): ProgressSeedRow[] {
+	return store.slice(0, MAX_ROWS);
+}
+
+function newestFirst(rows: ProgressSeedRow[]) {
+	return [...rows].sort((a, b) =>
+		a.recorded_at === b.recorded_at
+			? b.id.localeCompare(a.id)
+			: b.recorded_at.localeCompare(a.recorded_at),
+	);
+}
+
+/** Serves the three progress RPCs from the seeded store. */
+function progressHandler(store: ProgressSeedRow[]) {
+	return (fn: string, args: Record<string, unknown>) => {
+		if (fn === "exercise_names") {
+			const names = [...new Set(store.map((row) => row.exercise_name))].sort();
+			return {
+				data: names.map((exercise_name) => ({ exercise_name })),
+				error: null,
+			};
+		}
+		if (fn === "exercise_progress_series") {
+			const limit = Math.min((args.p_limit as number) ?? 500, MAX_ROWS);
+			const rows = newestFirst(
+				store.filter((row) => row.exercise_name === args.p_exercise),
+			).slice(0, limit);
+			return { data: rows, error: null };
+		}
+		if (fn === "exercise_progress_series_many") {
+			const limit = Math.min(
+				(args.p_limit_per_exercise as number) ?? 100,
+				MAX_ROWS,
+			);
+			const names = [...new Set(store.map((row) => row.exercise_name))];
+			const groups = names.map((name) => {
+				const rows = newestFirst(
+					store.filter((row) => row.exercise_name === name),
+				).slice(0, limit);
+				return {
+					exercise_name: name,
+					latest_recorded_at: rows[0]?.recorded_at ?? null,
+					rows,
+				};
+			});
+			// One row per exercise: far below max_rows, unlike a flat SETOF.
+			expect(groups.length).toBeLessThan(MAX_ROWS);
+			return { data: groups, error: null };
+		}
+		return { data: null, error: { code: "42883", message: `no ${fn}` } };
+	};
+}
+
+beforeEach(() => {
+	vi.clearAllMocks();
+	rpcCalls.length = 0;
+	chain = buildChain({ data: [], error: null });
+	fromFn.mockImplementation(() => chain);
+	rpcHandler = progressHandler(PROGRESS);
+});
+
+describe("exerciseListOptions", () => {
+	it("de-duplicates names in SQL instead of reading every progress row", async () => {
+		const { exerciseListOptions } = await import("../progress");
+		const opts = exerciseListOptions("user-1", "profile-1");
+		const names = await opts.queryFn?.({} as never);
+
+		expect(opts.queryKey).toEqual(
+			queryKeys.progress.exercises("user-1", "profile-1"),
+		);
+		expect(fromFn).not.toHaveBeenCalled();
+		expect(rpcCalls).toEqual([
+			{ fn: "exercise_names", args: { p_profile_id: "profile-1" } },
+		]);
+		expect(names).toEqual([...EXERCISES].sort());
 	});
 
-	it("fetches all exercise progress and personal records for the active profile", async () => {
-		const progressChain = buildChain({
-			data: [
-				{
-					id: "11111111-1111-4111-8111-111111111111",
-					user_id: "22222222-2222-4222-8222-222222222222",
-					exercise_name: "Bench Press",
-					session_id: "33333333-3333-4333-8333-333333333333",
-					recorded_at: "2026-06-05T00:00:00Z",
-					max_weight_kg: 50,
-					total_volume_kg: 1000,
-					estimated_1rm_kg: 60,
-					max_reps: 8,
-					set_count: 4,
-				},
-			],
-			error: null,
-		});
-		const recordsChain = buildChain({ data: [], error: null });
-		let callCount = 0;
-		fromFn.mockImplementation(() => {
-			callCount++;
-			return callCount === 1 ? progressChain : recordsChain;
-		});
+	it("keeps the alphabetically last exercise that the 1,000-row cap dropped", async () => {
+		// 1,200 exercises, one progress row each (R-17).
+		const manyNames = Array.from({ length: 1200 }, (_, index) => ({
+			...PROGRESS[0],
+			id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+			exercise_name: `Exercise ${String(index).padStart(4, "0")}`,
+		}));
+		rpcHandler = progressHandler(manyNames);
+		const lastName = manyNames[manyNames.length - 1].exercise_name;
 
-		const { progressionWorkbenchOptions } = await import("../progress");
+		const { exerciseListOptions } = await import("../progress");
+		const names = await exerciseListOptions("user-1").queryFn?.({} as never);
+
+		expect(names).toContain(lastName);
+		// The shape this replaces read `exercise_progress` ordered by name and
+		// was cut at max_rows, so the tail of the alphabet disappeared.
+		const legacyNames = new Set(
+			[...manyNames]
+				.sort((a, b) => a.exercise_name.localeCompare(b.exercise_name))
+				.slice(0, MAX_ROWS)
+				.map((row) => row.exercise_name),
+		);
+		expect(legacyNames.has(lastName)).toBe(false);
+	});
+
+	it("omits the profile argument rather than passing null", async () => {
+		const { exerciseListOptions } = await import("../progress");
+		await exerciseListOptions("user-1").queryFn?.({} as never);
+		expect(rpcCalls[0].args).toEqual({});
+	});
+});
+
+describe("exerciseProgressOptions", () => {
+	it("reads the newest rows through exercise_progress_series and returns them ascending", async () => {
+		const { exerciseProgressOptions, EXERCISE_PROGRESS_SERIES_LIMIT } =
+			await import("../progress");
+		const opts = exerciseProgressOptions("user-1", "Bench Press", "profile-1");
+		const rows = await opts.queryFn?.({} as never);
+
+		expect(fromFn).not.toHaveBeenCalled();
+		expect(rpcCalls).toEqual([
+			{
+				fn: "exercise_progress_series",
+				args: {
+					p_exercise: "Bench Press",
+					p_limit: EXERCISE_PROGRESS_SERIES_LIMIT,
+					p_profile_id: "profile-1",
+				},
+			},
+		]);
+		expect(EXERCISE_PROGRESS_SERIES_LIMIT).toBeLessThanOrEqual(MAX_ROWS);
+		expect(rows).toHaveLength(ROWS_PER_EXERCISE);
+		// Callers chart chronologically.
+		expect(rows[0].recorded_at.getTime()).toBeLessThan(
+			rows[rows.length - 1].recorded_at.getTime(),
+		);
+		const newestBench = newestFirst(
+			PROGRESS.filter((row) => row.exercise_name === "Bench Press"),
+		)[0];
+		expect(rows[rows.length - 1].recorded_at).toEqual(
+			new Date(newestBench.recorded_at),
+		);
+	});
+});
+
+describe("progressionWorkbenchOptions", () => {
+	it("fetches every exercise's series in one batched call and no personal records", async () => {
+		const { progressionWorkbenchOptions, WORKBENCH_ROWS_PER_EXERCISE } =
+			await import("../progress");
 		const opts = progressionWorkbenchOptions("user-1", "profile-1");
 		const result = await opts.queryFn?.({} as never);
 
 		expect(opts.queryKey).toEqual(
 			queryKeys.progress.summary("user-1", "workbench", "profile-1"),
 		);
-		expect(fromFn).toHaveBeenCalledWith("exercise_progress");
-		expect(fromFn).toHaveBeenCalledWith("personal_records");
-		expect(progressChain.eq).toHaveBeenCalledWith("user_id", "user-1");
-		expect(progressChain.eq).toHaveBeenCalledWith(
-			"local_profile_id",
-			"profile-1",
+		// One call, not one per exercise, and no `p_exercises: null`.
+		expect(rpcCalls).toEqual([
+			{
+				fn: "exercise_progress_series_many",
+				args: {
+					p_limit_per_exercise: WORKBENCH_ROWS_PER_EXERCISE,
+					p_profile_id: "profile-1",
+				},
+			},
+		]);
+		// Records now come from the shared personalRecordsOptions query, so the
+		// workbench issues no record request of its own (the duplicate fetch).
+		expect(fromFn).not.toHaveBeenCalled();
+		expect(result).not.toHaveProperty("records");
+		expect(result.progressRows.length).toBe(
+			EXERCISES.length *
+				Math.min(WORKBENCH_ROWS_PER_EXERCISE, ROWS_PER_EXERCISE),
 		);
-		expect(recordsChain.is).toHaveBeenCalledWith("deleted_at", null);
-		expect(result.progressRows).toHaveLength(1);
-		expect(result.records).toEqual([]);
+	});
+
+	it("keeps the newest progress row that the 1,000-row cap dropped", async () => {
+		const { progressionWorkbenchOptions } = await import("../progress");
+		const result = await progressionWorkbenchOptions("user-1").queryFn?.(
+			{} as never,
+		);
+
+		const ids = result.progressRows.map((row) => row.id);
+		expect(ids).toContain(NEWEST.id);
+		// The shape this replaces returned every row ascending and was cut at
+		// max_rows, so the newest row was the first thing lost.
+		const legacyIds = legacyAscendingSelect(PROGRESS).map((row) => row.id);
+		expect(legacyIds).not.toContain(NEWEST.id);
+		expect(legacyIds).toHaveLength(MAX_ROWS);
+		expect(TOTAL_PROGRESS_ROWS).toBeGreaterThan(MAX_ROWS);
+	});
+
+	it("parses each jsonb rows element with the exercise progress schema", async () => {
+		const { progressionWorkbenchOptions } = await import("../progress");
+		const result = await progressionWorkbenchOptions("user-1").queryFn?.(
+			{} as never,
+		);
+
+		const row = result.progressRows[0];
+		expect(row.recorded_at).toBeInstanceOf(Date);
+		// weightTransform doubles stored kilograms.
+		const source = PROGRESS.find((seed) => seed.id === row.id);
+		expect(row.max_weight_kg).toBe((source?.max_weight_kg ?? 0) * 2);
+	});
+
+	it("throws when the RPC fails", async () => {
+		rpcHandler = () => ({ data: null, error: { message: "boom" } });
+		const { progressionWorkbenchOptions } = await import("../progress");
+		await expect(
+			progressionWorkbenchOptions("user-1").queryFn?.({} as never),
+		).rejects.toMatchObject({ message: "boom" });
 	});
 });

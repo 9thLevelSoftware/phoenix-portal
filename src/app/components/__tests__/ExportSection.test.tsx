@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,6 +31,7 @@ vi.mock("@tanstack/react-query", async () => {
 	return {
 		...actual,
 		useQuery: vi.fn(),
+		useInfiniteQuery: vi.fn(),
 	};
 });
 
@@ -69,6 +70,15 @@ describe("ExportSection", () => {
 			}
 			return { data: [], isLoading: false } as ReturnType<typeof useQuery>;
 		});
+		vi.mocked(useInfiniteQuery).mockImplementation(
+			() =>
+				({
+					data: [],
+					isLoading: false,
+					hasNextPage: false,
+					fetchNextPage: vi.fn(),
+				}) as unknown as ReturnType<typeof useInfiniteQuery>,
+		);
 		exportMocks.exportAnalyticsTablesZip.mockResolvedValue(undefined);
 		exportMocks.getRunningUserDataExport.mockReturnValue(null);
 	});
