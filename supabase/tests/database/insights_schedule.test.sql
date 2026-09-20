@@ -39,7 +39,7 @@ SELECT ok(
 );
 SELECT ok(
     (SELECT proconfig FROM pg_proc WHERE oid = 'public.set_insights_batch_cursor(uuid)'::regprocedure)
-      @> ARRAY['search_path='],
+      @> ARRAY['search_path=""'],
     'set_insights_batch_cursor pins an empty search_path'
 );
 SELECT ok(
