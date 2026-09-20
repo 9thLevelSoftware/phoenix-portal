@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import type { IntegrationProvider } from "@/lib/integrations/types";
 import { supabase } from "@/lib/supabase";
+import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { queryKeys } from "@/queries/keys";
 
 /**
@@ -107,6 +109,20 @@ export function useManualSync() {
 				queryKey: queryKeys.integrations.external(userId),
 			});
 		},
+		onError: (error: Error) => {
+			console.error("[useManualSync] failed:", error);
+			// The sync_queue INSERT (RLS 42501) and the `<provider>-sync` Edge
+			// Function (402) both refuse below FLAME; the user was told nothing
+			// before this.
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
+			toast.error("Sync failed. Please try again.");
+		},
 	});
 }
 
@@ -143,14 +159,16 @@ export function useConnectIntegration() {
 
 			if (error) throw error;
 
-			// Queue initial sync after connecting
+			// Queue initial sync after connecting. A duplicate (23505,
+			// `sync_already_queued`) means an initial import is already queued
+			// or running for this provider — the outcome we wanted.
 			const { error: queueError } = await supabase.from("sync_queue").insert({
 				user_id: userId,
 				provider,
 				sync_type: "initial",
 				status: "pending",
 			});
-			if (queueError) throw queueError;
+			if (queueError && queueError.code !== "23505") throw queueError;
 		},
 		onSuccess: (_, { userId }) => {
 			queryClient.invalidateQueries({

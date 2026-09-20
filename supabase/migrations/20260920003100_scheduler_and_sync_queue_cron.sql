@@ -80,10 +80,13 @@
 --      idempotent: lookup by jobname -> cron.schedule if absent,
 --      cron.alter_job in place if schedule/command differ, keeping jobid and
 --      the active flag; PR 2's pattern):
---        - process-sync-queue              */5 * * * *
---        - sync-tombstones-retention       daily, tombstones > 180 days
+--        - process-sync-queue              */5 * * * *; created INACTIVE so
+--          queue-id-aware Edge handlers can deploy before backlog draining
 --        - cron-job-run-details-retention  daily, run history > 7 days
 --          (prod has no purge; the 5-minute job adds 288 rows/day)
+--      Any legacy sync-tombstones-retention job is unscheduled because stale
+--      clients need durable deletion evidence; account deletion cascades the
+--      user's tombstones.
 --      Skipped with a NOTICE where pg_cron is not installed (local/CI apply;
 --      prod has it). scheduler.test.sql installs pg_cron in its own
 --      transaction and asserts the jobs, so CI exercises this path.
@@ -454,13 +457,23 @@ BEGIN
     RETURN;
   END IF;
 
+  -- Tombstones are durable deletion evidence. Age-based cleanup lets a stale
+  -- offline client recreate deleted routines or cycles on its next push. They
+  -- are removed by the auth.users ON DELETE CASCADE instead.
+  SELECT jobid INTO v_jobid
+  FROM cron.job
+  WHERE jobname = 'sync-tombstones-retention'
+  ORDER BY jobid
+  LIMIT 1;
+  IF v_jobid IS NOT NULL THEN
+    PERFORM cron.unschedule(v_jobid);
+  END IF;
+
   FOR j IN
     SELECT *
     FROM (VALUES
       ('process-sync-queue', '*/5 * * * *',
        'SELECT private.invoke_edge_function(''process-sync-queue'', ''{}''::jsonb)'),
-      ('sync-tombstones-retention', '23 3 * * *',
-       'DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval ''180 days'''),
       ('cron-job-run-details-retention', '41 3 * * *',
        'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days''')
     ) AS v(jobname, schedule, command)
@@ -471,7 +484,11 @@ BEGIN
       USING j.jobname;
 
     IF v_jobid IS NULL THEN
-      PERFORM cron.schedule(j.jobname, j.schedule, j.command);
+      v_jobid := cron.schedule(j.jobname, j.schedule, j.command);
+      IF j.jobname = 'process-sync-queue' THEN
+        PERFORM cron.alter_job(v_jobid, active := false);
+        RAISE NOTICE 'process-sync-queue scheduled INACTIVE; deploy compatible provider handlers, then activate with cron.alter_job(%, active := true)', v_jobid;
+      END IF;
     ELSIF v_schedule IS DISTINCT FROM j.schedule OR v_command IS DISTINCT FROM j.command THEN
       PERFORM cron.alter_job(v_jobid, schedule := j.schedule, command := j.command);
     END IF;

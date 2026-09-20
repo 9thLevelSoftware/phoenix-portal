@@ -10,7 +10,15 @@ import {
 } from '../_shared/providerRateLimit.ts';
 import { checkManualSyncRateLimit } from '../_shared/manualSyncRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
-import { completeSyncQueueEntry, heartbeatSyncQueueEntry } from '../_shared/syncQueue.ts';
+import {
+  completeSyncQueueEntry,
+  createSyncQueueEntry,
+  heartbeatSyncQueueEntry,
+  noOwnedQueueRow,
+  type OwnedQueueRow,
+  releaseOwnedQueueRow,
+  syncAlreadyQueuedResponse,
+} from '../_shared/syncQueue.ts';
 import { nextWatermark } from '../_shared/syncWatermark.ts';
 import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
 
@@ -48,7 +56,10 @@ const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
  *   - user_id: string
  *   - sync_type: 'initial' | 'manual' | 'incremental'
  *   - queue_id?: string (sent by process-sync-queue; the only row this run
- *     completes, and the row whose lease it heartbeats)
+ *     completes, and the row whose lease it heartbeats). A browser-initiated
+ *     run (user JWT) instead creates its own row, directly in `processing`,
+ *     and owns it the same way; a concurrent duplicate loses the
+ *     `sync_queue_one_active` race and gets 409 `sync_already_queued`.
  *
  * Environment variables:
  *   - STRAVA_CLIENT_ID
@@ -350,6 +361,21 @@ if (import.meta.main) {
 }
 
 async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<Response> {
+  // A browser-initiated run owns the row it created: hand it back when the run
+  // ends badly, so the user's next manual sync is not refused with a 409 until
+  // the lease expires. Queue-dispatched rows deliberately stay `processing`
+  // for process-sync-queue to re-run (PR 51).
+  const owned: OwnedQueueRow = noOwnedQueueRow();
+  const response = await runStravaSync(req, deps, owned);
+  if (!response.ok) await releaseOwnedQueueRow(owned);
+  return response;
+}
+
+async function runStravaSync(
+  req: Request,
+  deps: StravaSyncDependencies,
+  owned: OwnedQueueRow,
+): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -403,10 +429,13 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
     }
 
     const sync_type = body.sync_type ?? 'incremental';
-    const queueId = typeof body.queue_id === 'string' ? body.queue_id : null;
     const calledByQueueProcessor = !jwtUser;
-    // Only the queue path holds a lease on a sync_queue row.
-    const leaseQueueId = calledByQueueProcessor ? queueId : null;
+    // The dispatched row (queue path only): a browser caller's `queue_id` is
+    // ignored — it may name any row at all — and replaced by its own below.
+    const dispatchedQueueId =
+      calledByQueueProcessor && typeof body.queue_id === 'string' ? body.queue_id : null;
+    // The row this run owns and leases.
+    let ownedQueueId = dispatchedQueueId;
 
     const supabase = deps.createClient(
       deps.env('SUPABASE_URL')!,
@@ -432,11 +461,27 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
     // Renew the lease immediately: the processor claimed this row before it
     // called us, and the work below (subscription check, token refresh, page
     // fetches) must not be counted against that claim's clock.
-    await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
+    await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 
     // Subscription gate — FLAME or higher required for integrations
     const gate = await requireSubscription(supabase, userId, 'FLAME', cors);
     if (!gate.allowed) return gate.response;
+
+    // Browser-initiated: take a queue row of our own so this run is visible to
+    // the portal, holds a lease, and blocks a concurrent duplicate sync.
+    if (!calledByQueueProcessor) {
+      const created = await createSyncQueueEntry(supabase, {
+        userId,
+        provider: 'strava',
+        syncType: typeof sync_type === 'string' ? sync_type : 'manual',
+        now: deps.now(),
+      });
+      if (created.conflict) return syncAlreadyQueuedResponse(cors);
+      ownedQueueId = created.queueId;
+      owned.supabase = supabase;
+      owned.queueId = ownedQueueId;
+      owned.userId = userId;
+    }
 
     // ---------------------------------------------------------------
     // Fetch user's Strava tokens from oauth_tokens (server-only table)
@@ -489,10 +534,11 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
         // vocabulary. Never the response body.
         console.error(`[STRAVA_REFRESH] ${describeRefreshFailure(refreshError)}`);
 
-        // A lost rotation race looks exactly like a revoked grant: the other
-        // run has already exchanged (and thereby revoked) the token this run
-        // read. Downgrade only while the rejected token is still the stored
-        // one; otherwise the grant is alive and this run simply lost.
+        // Migration 20260920005200 serializes all processing rows for this
+        // user/provider, including browser runs. The re-read below remains a
+        // rolling-deploy defense: an older handler that did not own a row may
+        // still have exchanged the token before the index-aware release lands.
+        // Downgrade only while the rejected token is still the stored one.
         const revoked = isRevokedGrant(refreshError)
           && await storedRefreshTokenMatches(supabase, userId, refreshToken);
 
@@ -644,13 +690,28 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
       const params = new URLSearchParams(baseParams);
       params.set('page', String(page));
 
-      const activitiesResponse = await deps.fetch(
-        `https://www.strava.com/api/v3/athlete/activities?${params}`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
-        }
-      );
+      let activitiesResponse: Response;
+      try {
+        activitiesResponse = await deps.fetch(
+          `https://www.strava.com/api/v3/athlete/activities?${params}`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+          }
+        );
+      } catch {
+        // AbortSignal timeouts, DNS failures and connection resets are
+        // transient provider failures. 502 is in process-sync-queue's retry
+        // set; a 500 would terminally fail the task.
+        console.error('Strava activities request failed before a response');
+        return new Response(
+          JSON.stringify({
+            error: 'Failed to fetch Strava activities',
+            code: 'activities_fetch_failed',
+          }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
 
       // Record what Strava reports about our quota on every response, success
       // or failure — a 429 is exactly when this information matters most.
@@ -658,7 +719,7 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
       await recordStravaUsage(supabase, lastSnapshot);
       // Renew the lease per page: the fetch phase is otherwise silent, and a
       // reclaimed row would be dispatched a second time while this run lives.
-      await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
+      await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 
       if (activitiesResponse.status === 429) {
         const retryAfter = parseRetryAfterSeconds(activitiesResponse.headers);
@@ -771,7 +832,7 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
         failedCount += chunkRaw.length;
         errors.push(`${rangeLabel}: ${(err as Error).message}`);
       }
-      await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
+      await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
     }
 
     // ---------------------------------------------------------------
@@ -892,12 +953,12 @@ async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<R
       .eq('user_id', userId)
       .eq('provider', 'strava');
 
+    // Complete only the row this run owns. Never sweep every pending row:
+    // a second queued task (a kept `initial`) must still run.
     await completeSyncQueueEntry(supabase, {
       userId,
       provider: 'strava',
-      syncType: sync_type,
-      queueId,
-      calledByQueueProcessor,
+      queueId: ownedQueueId,
     });
 
     return new Response(

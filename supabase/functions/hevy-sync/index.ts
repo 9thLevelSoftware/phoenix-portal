@@ -16,8 +16,13 @@ import { checkManualSyncRateLimit } from '../_shared/manualSyncRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
   completeSyncQueueEntry,
+  createSyncQueueEntry,
   type DbClient,
   heartbeatSyncQueueEntry,
+  noOwnedQueueRow,
+  type OwnedQueueRow,
+  releaseOwnedQueueRow,
+  syncAlreadyQueuedResponse,
 } from '../_shared/syncQueue.ts';
 import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
 
@@ -44,6 +49,11 @@ import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
  * without a heartbeat. The lease is renewed on entry, after every fetched page
  * and after every upsert chunk, so the longest silent window is one request
  * (capped by PROVIDER_REQUEST_TIMEOUT_MS) or one upsert chunk.
+ *
+ * A browser-initiated run (user JWT, no `queue_id`) creates its OWN queue row
+ * instead, directly in `processing`, and owns it exactly the same way. A
+ * second concurrent sync loses the `sync_queue_one_active` race and is
+ * answered with 409 `sync_already_queued`.
  */
 
 /** Per-request ceiling for Hevy calls, so a hung request cannot outlast the lease. */
@@ -78,6 +88,21 @@ if (import.meta.main) {
 }
 
 async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Response> {
+  // A browser-initiated run owns the row it created: hand it back when the run
+  // ends badly, so the user's next manual sync is not refused with a 409 until
+  // the lease expires. Queue-dispatched rows deliberately stay `processing`
+  // for process-sync-queue to re-run (PR 51).
+  const owned: OwnedQueueRow = noOwnedQueueRow();
+  const response = await runHevySync(req, deps, owned);
+  if (!response.ok) await releaseOwnedQueueRow(owned);
+  return response;
+}
+
+async function runHevySync(
+  req: Request,
+  deps: HevySyncDependencies,
+  owned: OwnedQueueRow,
+): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -131,10 +156,13 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
     }
 
     const { api_key, sync_type } = body;
-    const queueId = typeof body.queue_id === 'string' ? body.queue_id : null;
     const calledByQueueProcessor = !jwtUser;
-    // Only the queue path holds a lease on a sync_queue row.
-    const leaseQueueId = calledByQueueProcessor ? queueId : null;
+    // The dispatched row (queue path only): a browser caller's `queue_id` is
+    // ignored — it may name any row at all — and replaced by its own below.
+    const dispatchedQueueId =
+      calledByQueueProcessor && typeof body.queue_id === 'string' ? body.queue_id : null;
+    // The row this run owns and leases.
+    let ownedQueueId = dispatchedQueueId;
 
     const supabase = deps.createClient(
       deps.env('SUPABASE_URL')!,
@@ -159,11 +187,27 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
 
     // Renew the lease immediately: the processor claimed this row before it
     // called us, so the work below must not run on that claim's clock.
-    await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
+    await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 
     // Subscription gate — FLAME or higher required for integrations
     const gate = await requireSubscription(supabase, userId, 'FLAME', cors);
     if (!gate.allowed) return gate.response;
+
+    // Browser-initiated: take a queue row of our own so this run is visible to
+    // the portal, holds a lease, and blocks a concurrent duplicate sync.
+    if (!calledByQueueProcessor) {
+      const created = await createSyncQueueEntry(supabase, {
+        userId,
+        provider: 'hevy',
+        syncType: typeof sync_type === 'string' ? sync_type : 'manual',
+        now: deps.now(),
+      });
+      if (created.conflict) return syncAlreadyQueuedResponse(cors);
+      ownedQueueId = created.queueId;
+      owned.supabase = supabase;
+      owned.queueId = ownedQueueId;
+      owned.userId = userId;
+    }
 
     // If api_key provided, store it in oauth_tokens (server-only table)
     if (api_key) {
@@ -255,7 +299,7 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
           ...init,
           signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
         });
-        await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
+        await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
         return response;
       };
       const fetchPage = createHevyPageFetcher(storedApiKey, fetchWithHeartbeat);
@@ -374,7 +418,7 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
       } else {
         importedCount += chunk.length;
       }
-      await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
+      await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
     }
 
     // If any activity failed to persist, do NOT advance last_sync_at: the next
@@ -466,18 +510,13 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
       .eq('user_id', userId)
       .eq('provider', 'hevy');
 
-    // Complete only the queue row this run was dispatched for (or, for a
-    // browser run, at most the newest pending row of the same sync_type).
-    // Never sweep every pending row: a second queued task must still run.
-    if (queueId || sync_type) {
-      await completeSyncQueueEntry(supabase, {
-        userId,
-        provider: 'hevy',
-        syncType: sync_type ?? 'incremental',
-        queueId,
-        calledByQueueProcessor,
-      });
-    }
+    // Complete only the row this run owns. Never sweep every pending row:
+    // a second queued task (a kept `initial`) must still run.
+    await completeSyncQueueEntry(supabase, {
+      userId,
+      provider: 'hevy',
+      queueId: ownedQueueId,
+    });
 
     return new Response(
       JSON.stringify({

@@ -62,8 +62,15 @@ export function processingLeaseMs(provider: string): number {
 
 const PROVIDERS = ['strava', 'fitbit', 'garmin', 'hevy', 'liftosaur'] as const;
 
-/** Maximum sync tasks dispatched per provider per cron pass. */
-const TASKS_PER_PROVIDER = 5;
+/** How often pg_cron invokes this function (migration 20260920003100). */
+const CRON_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Ceiling on tasks dispatched per provider per pass, whatever the quota says.
+ * A pass runs inside the Edge wall clock, and each dispatched task is a nested
+ * provider sync, so the budget below is clamped to this.
+ */
+const MAX_TASKS_PER_PROVIDER = 5;
 
 const RETRYABLE_STATUSES = [429, 502, 503, 504];
 
@@ -119,6 +126,39 @@ function rateLimitScope(provider: string): 'app' | 'user' {
 const DAILY_RATE_LIMITS: Record<string, { requests: number; windowMs: number }> = {
   strava: { requests: 800, windowMs: 24 * 60 * 60 * 1000 }, // reserve 20% of 1,000
 };
+
+/**
+ * How many tasks this pass may dispatch for a provider, derived from that
+ * provider's own quota constants instead of one hard-coded number for all of
+ * them.
+ *
+ * An application-scoped quota (RATE_LIMIT_SCOPE 'app') is shared by every
+ * user, so a pass may only spend the slice of it that accrues between two cron
+ * ticks: `requests * CRON_INTERVAL_MS / windowMs`, taken over the TIGHTEST of
+ * the provider's windows and counting one request per dispatched task (a real
+ * sync spends at least that; the pre-dispatch bucket check still short-circuits
+ * the provider once the quota is actually exhausted). Strava's daily budget is
+ * the binding one — 800 reads spread over 288 passes — so it comes out at 2 per
+ * pass rather than 5.
+ *
+ * A user-scoped quota (fitbit, hevy, liftosaur) is charged to each authorizing
+ * user separately and is checked per task just before the claim, so it says
+ * nothing about how many DIFFERENT users may be dispatched in one pass: those
+ * providers keep the wall-clock ceiling.
+ */
+export function tasksPerProvider(provider: string): number {
+  if (rateLimitScope(provider) === 'user') return MAX_TASKS_PER_PROVIDER;
+
+  const windows = [RATE_LIMITS[provider], DAILY_RATE_LIMITS[provider]].filter(
+    (w): w is { requests: number; windowMs: number } => w !== undefined,
+  );
+  if (windows.length === 0) return MAX_TASKS_PER_PROVIDER;
+
+  const perPass = Math.min(
+    ...windows.map((w) => Math.floor((w.requests * CRON_INTERVAL_MS) / w.windowMs)),
+  );
+  return Math.max(1, Math.min(MAX_TASKS_PER_PROVIDER, perPass));
+}
 
 // CRON_SECRET (Operator Action 7) is read first by the shared helper; these
 // older per-function names stay accepted as fallbacks.
@@ -279,8 +319,8 @@ async function processSyncQueue(
     // sitting at the head of the queue would stall every other user until
     // their window rolled over. Reading deeper lets the processor step past
     // them to tasks it can actually run.
-    const candidateLimit =
-      scope === 'user' ? TASKS_PER_PROVIDER * 5 : TASKS_PER_PROVIDER;
+    const dispatchBudget = tasksPerProvider(provider);
+    const candidateLimit = scope === 'user' ? dispatchBudget * 5 : dispatchBudget;
     const { data: tasks } = await supabase
       .from('sync_queue')
       .select('*')
@@ -307,7 +347,7 @@ async function processSyncQueue(
     for (const task of tasks ?? []) {
       // Honour the per-provider dispatch budget regardless of how many
       // candidates were read above.
-      if (claimedThisProvider >= TASKS_PER_PROVIDER) break;
+      if (claimedThisProvider >= dispatchBudget) break;
 
       // SQ-04: Enforce max retry cap before processing
       if ((task.retry_count ?? 0) >= MAX_RETRIES) {
@@ -322,7 +362,10 @@ async function processSyncQueue(
             error_message: 'max_retries_exceeded',
             completed_at: new Date().toISOString(),
           })
-          .eq('id', task.id);
+          .eq('id', task.id)
+          // Still the row this pass read: a concurrent pass may have claimed
+          // it, and a cancelled row must not be resurrected as failed.
+          .eq('status', 'pending');
         console.warn(
           `[SYNC_QUEUE] Task ${task.id} permanently failed after ${MAX_RETRIES} retries;`,
           `last error: ${task.error_message ?? 'unknown'}`,
@@ -384,7 +427,8 @@ async function processSyncQueue(
             error_message: `Subscription required: ${gate.tier} does not meet FLAME minimum`,
             completed_at: new Date().toISOString(),
           })
-          .eq('id', task.id);
+          .eq('id', task.id)
+          .eq('status', 'processing');
         results.failed++;
         continue;
       }
@@ -409,11 +453,15 @@ async function processSyncQueue(
           }
         );
 
-        // Mark completed
+        // Mark completed. Only while the row is still the one this pass
+        // claimed (PR 54 R-7): a row reclaimed after a lease expiry, or
+        // cancelled meanwhile (a disconnect), must not be overwritten by an
+        // in-flight worker.
         await supabase
           .from('sync_queue')
           .update({ status: 'completed', completed_at: new Date().toISOString() })
-          .eq('id', task.id);
+          .eq('id', task.id)
+          .eq('status', 'processing');
 
         // Increment rate limit counter
         // Charge the request against the same bucket the dispatch check reads.
@@ -468,7 +516,9 @@ async function processSyncQueue(
             retry_count: nextRetryCount,
             ...(nextStatus !== 'pending' && { completed_at: new Date().toISOString() }),
           })
-          .eq('id', task.id);
+          .eq('id', task.id)
+          // Same rule as the success path (PR 54 R-7).
+          .eq('status', 'processing');
 
         results.failed++;
       }

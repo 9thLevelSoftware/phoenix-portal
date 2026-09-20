@@ -12,14 +12,31 @@ type Result = {
   error: { message: string; code?: string } | null;
 };
 
+/**
+ * A unique index over one table. `key` returns the index key of a row, or null
+ * when the row is outside the index's partial predicate (and so unconstrained).
+ * An insert whose key collides with an existing row fails the way Postgres
+ * does: SQLSTATE 23505, naming the index.
+ */
+export interface FakeUniqueIndex {
+  name: string;
+  table: string;
+  key: (row: Row) => string | null;
+}
+
 export class FakeDb {
   tables: Record<string, Row[]>;
-  constructor(tables: Record<string, Row[]> = {}) {
+  uniqueIndexes: FakeUniqueIndex[];
+  constructor(tables: Record<string, Row[]> = {}, uniqueIndexes: FakeUniqueIndex[] = []) {
     this.tables = tables;
+    this.uniqueIndexes = uniqueIndexes;
   }
   from(table: string): FakeQuery {
     this.tables[table] ??= [];
-    return new FakeQuery(this.tables[table]);
+    return new FakeQuery(
+      this.tables[table],
+      this.uniqueIndexes.filter((index) => index.table === table),
+    );
   }
   /** Rows of `table` (created on first access). */
   rows(table: string): Row[] {
@@ -27,6 +44,29 @@ export class FakeDb {
     return this.tables[table];
   }
 }
+
+/**
+ * The `sync_queue_one_active` index from migration 20260920005200: one active
+ * (pending/processing) row per (user_id, provider, initial-or-not).
+ */
+export const syncQueueOneActiveIndex: FakeUniqueIndex = {
+  name: 'sync_queue_one_active',
+  table: 'sync_queue',
+  key: (row) => {
+    const status = row.status as string | undefined;
+    if (status !== 'pending' && status !== 'processing') return null;
+    const isInitial = (row.sync_type ?? 'incremental') === 'initial';
+    return `${row.user_id}|${row.provider}|${isInitial}`;
+  },
+};
+
+/** One worker per user/provider, even when pending rows use different classes. */
+export const syncQueueOneProcessingIndex: FakeUniqueIndex = {
+  name: 'sync_queue_one_processing',
+  table: 'sync_queue',
+  key: (row) =>
+    row.status === 'processing' ? `${row.user_id}|${row.provider}` : null,
+};
 
 function compare(a: unknown, b: unknown): number {
   if (typeof a === 'string' && typeof b === 'string') {
@@ -46,10 +86,13 @@ export class FakeQuery implements PromiseLike<Result> {
   private mode: 'many' | 'single' | 'maybeSingle' = 'many';
   private orderBy: { col: string; asc: boolean } | null = null;
   private max: number | null = null;
+  private returning = false;
 
-  constructor(private rows: Row[]) {}
+  constructor(private rows: Row[], private uniqueIndexes: FakeUniqueIndex[] = []) {}
 
   select(_cols?: string) {
+    // `insert(...).select()` returns the inserted rows, as PostgREST does.
+    if (this.insertRows) this.returning = true;
     return this;
   }
   update(patch: Row) {
@@ -96,15 +139,47 @@ export class FakeQuery implements PromiseLike<Result> {
 
   private run(): Result {
     if (this.insertRows) {
+      const written: Row[] = [];
       for (const row of this.insertRows) {
         const keys = this.upsertConflict;
         const existing = keys
           ? this.rows.find((r) => keys.every((k) => r[k] === row[k]))
           : undefined;
-        if (existing) Object.assign(existing, row);
-        else this.rows.push({ ...row });
+        if (existing) {
+          Object.assign(existing, row);
+          written.push(existing);
+          continue;
+        }
+        // Only mint an id when the caller asked for the row back (PostgREST
+        // would return the DB default); other inserts keep their exact shape.
+        const inserted: Row =
+          this.returning && row.id === undefined
+            ? { id: crypto.randomUUID(), ...row }
+            : { ...row };
+        const violated = this.uniqueIndexes.find((index) => {
+          const key = index.key(inserted);
+          return key !== null && this.rows.some((r) => index.key(r) === key);
+        });
+        if (violated) {
+          return {
+            data: null,
+            error: {
+              code: '23505',
+              message:
+                `duplicate key value violates unique constraint "${violated.name}"`,
+            },
+          };
+        }
+        this.rows.push(inserted);
+        written.push(inserted);
       }
-      return { data: null, error: null };
+      if (!this.returning) return { data: null, error: null };
+      const copies = written.map((r) => ({ ...r }));
+      if (this.mode === 'many') return { data: copies, error: null };
+      if (this.mode === 'single' && copies.length !== 1) {
+        return { data: null, error: { message: `expected 1 row, got ${copies.length}` } };
+      }
+      return { data: copies[0] ?? null, error: null };
     }
     let matched = this.rows.filter((r) => this.filters.every((f) => f(r)));
     if (this.patch) {
