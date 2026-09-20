@@ -18,6 +18,11 @@ import {
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import {
+  defaultProviderRevokeDependencies,
+  type ProviderRevokeDependencies,
+  revokeAndDisconnect,
+} from '../_shared/providerRevoke.ts';
 
 /**
  * Loose Supabase client type for helper signatures. The bare
@@ -316,8 +321,16 @@ export interface MobileIntegrationSyncAuthClient {
 }
 
 export interface MobileIntegrationSyncDependencies {
+  /** Client acting as the caller (their JWT), used only to identify them. */
   createAuthClient(authorization: string): MobileIntegrationSyncAuthClient;
+  /** Service-role client for DB operations (bypasses RLS). */
   createAdminClient(): DbClient;
+  /**
+   * Provider revoke HTTP + credentials; injected so tests never hit a provider.
+   * Optional so the pre-existing handler fixtures (API-key providers, which are
+   * not revocable) need not stub it; omitted means the env-backed default.
+   */
+  revoke?: ProviderRevokeDependencies;
 }
 
 function defaultDependencies(): MobileIntegrationSyncDependencies {
@@ -335,6 +348,7 @@ function defaultDependencies(): MobileIntegrationSyncDependencies {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
       );
     },
+    revoke: defaultProviderRevokeDependencies(),
   };
 }
 
@@ -370,11 +384,9 @@ async function mobileIntegrationSyncHandler(
       );
     }
 
-    const supabaseAuth = deps.createAuthClient(authHeader);
-
     const {
       data: { user },
-    } = await supabaseAuth.auth.getUser();
+    } = await deps.createAuthClient(authHeader).auth.getUser();
 
     if (!user) {
       return new Response(
@@ -436,27 +448,32 @@ async function mobileIntegrationSyncHandler(
     // 4. Handle DISCONNECT
     // =========================================================================
     if (action === 'disconnect') {
-      await Promise.all([
-        supabase
-          .from('oauth_tokens')
-          .delete()
-          .eq('user_id', userId)
-          .eq('provider', provider),
-        supabase
-          .from('user_integrations')
-          .update({
-            status: 'disconnected',
-            connected_at: null,
-            error_message: null,
-            // Drop any in-progress liftosaur-sync backfill so a reconnect
-            // starts fresh instead of resuming a stale chain.
-            backfill_before: null,
-            backfill_after: null,
-            backfill_started_at: null,
-          })
-          .eq('user_id', userId)
-          .eq('provider', provider),
-      ]);
+      // Same path as the portal's disconnect-integration (FP-5): revoke (a
+      // no-op for these API-key providers), then disconnect_integration
+      // deletes the key, resets the integration and cancels queued syncs in
+      // one transaction. Stays ahead of the subscription gate so a lapsed
+      // user can always disconnect.
+      const result = await revokeAndDisconnect(supabase, userId, provider, deps.revoke);
+      if (!result.ok) {
+        return new Response(
+          JSON.stringify({ status: 'error', error: 'Failed to disconnect integration. Please try again.' }),
+          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Chain behaviour preserved from the pre-PR-54 inline path: the
+      // disconnect_integration RPC does not touch the backfill columns, so
+      // drop any in-progress liftosaur-sync backfill here. A reconnect then
+      // starts fresh instead of resuming a stale chain.
+      await supabase
+        .from('user_integrations')
+        .update({
+          backfill_before: null,
+          backfill_after: null,
+          backfill_started_at: null,
+        })
+        .eq('user_id', userId)
+        .eq('provider', provider);
 
       return new Response(
         JSON.stringify({ status: 'disconnected' }),

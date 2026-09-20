@@ -6,6 +6,7 @@ import {
   type PurgeUserDependencies,
 } from "../_shared/accountPurge.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
+import { assertNoSecretsLogged, captureLogs } from "../_shared/testLogCapture.ts";
 import { createDeleteAccountHandler } from "./index.ts";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -14,6 +15,9 @@ const SUBSCRIPTION_ID = "sub_01purgetest";
 const CUSTOMER_ID = "ctm_01purgetest";
 const PAST = "2020-01-01T00:00:00.000Z";
 const FUTURE = "2999-01-01T00:00:00.000Z";
+const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
+const REFRESHED_STRAVA_ACCESS = "refreshed-strava-access-secret";
+const REFRESHED_STRAVA_REFRESH = "refreshed-strava-refresh-secret";
 
 // ---------------------------------------------------------------------------
 // In-process doubles
@@ -24,6 +28,7 @@ type Call =
   | { kind: "delete"; table: string; filters: [string, unknown][] }
   | { kind: "update"; table: string; values: Record<string, unknown>; filters: [string, unknown][] }
   | { kind: "rpc"; name: string; args: unknown }
+  | { kind: "revoke"; url: string }
   | { kind: "deleteUser"; userId: string }
   | { kind: "storage.list"; prefix: string }
   | { kind: "storage.remove"; paths: string[] };
@@ -66,6 +71,19 @@ interface FakeState {
   otherSubscriptionRefs: Record<string, number>;
   /** Error returned by the shared-subscription check. */
   sharedCheckError: FakeError | null;
+  /** Stored provider tokens (plaintext: no encryption key in tests). */
+  oauthTokens: {
+    provider: string;
+    access_token: string | null;
+    refresh_token: string | null;
+    token_expires_at?: string | null;
+  }[];
+  /** Error returned by the step-1b provider-list read of oauth_tokens. */
+  tokenListError: FakeError | null;
+  /** Error returned by the per-provider token read (maybeSingle). */
+  tokenReadError: FakeError | null;
+  /** Error returned by rpc('disconnect_integration'). */
+  disconnectRpcError: FakeError | null;
 }
 
 function fakeState(overrides: Partial<FakeState> = {}): FakeState {
@@ -83,6 +101,10 @@ function fakeState(overrides: Partial<FakeState> = {}): FakeState {
     claimRace: false,
     otherSubscriptionRefs: {},
     sharedCheckError: null,
+    oauthTokens: [],
+    tokenListError: null,
+    tokenReadError: null,
+    disconnectRpcError: null,
     ...overrides,
   };
 }
@@ -140,6 +162,10 @@ class FakeQuery {
       return request;
     }
     if (this.table === "subscriptions") return this.state.subscription;
+    if (this.table === "oauth_tokens") {
+      const provider = this.filters.find(([c]) => c === "provider")?.[1];
+      return this.state.oauthTokens.find((t) => t.provider === provider) ?? null;
+    }
     return null;
   }
 
@@ -155,6 +181,9 @@ class FakeQuery {
     this.record();
     if (this.table === "subscriptions" && this.state.subscriptionError) {
       return Promise.resolve({ data: null, error: this.state.subscriptionError });
+    }
+    if (this.table === "oauth_tokens" && this.state.tokenReadError) {
+      return Promise.resolve({ data: null, error: this.state.tokenReadError });
     }
     return Promise.resolve({ data: this.row(), error: null });
   }
@@ -199,6 +228,10 @@ class FakeQuery {
       ? this.resolveUpdate()
       : this.op === "delete"
       ? this.resolveDelete()
+      : this.table === "oauth_tokens"
+      ? this.state.tokenListError
+        ? { data: null, error: this.state.tokenListError }
+        : { data: this.state.oauthTokens.map((t) => ({ provider: t.provider })), error: null }
       : this.resolveCount();
     return Promise.resolve(result).then(resolve);
   }
@@ -215,6 +248,14 @@ function fakeAdmin(state: FakeState): SupabaseClient {
     },
     rpc(name: string, args: unknown) {
       state.calls.push({ kind: "rpc", name, args });
+      if (name === "disconnect_integration") {
+        const error = state.disconnectRpcError;
+        if (!error) {
+          const provider = (args as { p_provider: string }).p_provider;
+          state.oauthTokens = state.oauthTokens.filter((t) => t.provider !== provider);
+        }
+        return Promise.resolve({ data: null, error });
+      }
       const allowed = state.rateLimitAllowed && !state.rateLimitUsed;
       if (allowed) state.rateLimitUsed = true;
       return Promise.resolve({
@@ -264,8 +305,39 @@ function fakePaddle(options: {
   cancelStatus?: number;
   /** Runs when the live status is fetched (mid-purge). */
   onGet?: () => void;
-}): { deps: PurgeUserDependencies; calls: PaddleCall[] } {
+  /** Also records provider revoke calls into this state's call log. */
+  state?: FakeState;
+  /** HTTP status the provider revoke endpoint answers with. */
+  revokeStatus?: number;
+}): {
+  deps: PurgeUserDependencies;
+  calls: PaddleCall[];
+  revokeCalls: { url: string; body: string }[];
+  refreshCalls: { body: string }[];
+} {
   const calls: PaddleCall[] = [];
+  const revokeCalls: { url: string; body: string }[] = [];
+  const refreshCalls: { body: string }[] = [];
+  // Never reach a real provider, in unit or integration tests.
+  const revokeFetch = (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url === STRAVA_TOKEN_URL) {
+      refreshCalls.push({ body: String(init?.body ?? "") });
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            access_token: REFRESHED_STRAVA_ACCESS,
+            refresh_token: REFRESHED_STRAVA_REFRESH,
+            expires_at: Math.floor(Date.now() / 1000) + 21600,
+          }),
+          { status: 200 },
+        ),
+      );
+    }
+    revokeCalls.push({ url, body: String(init?.body ?? "") });
+    options.state?.calls.push({ kind: "revoke", url });
+    return Promise.resolve(new Response("{}", { status: options.revokeStatus ?? 200 }));
+  };
   const fetchImpl = (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input));
     const method = init?.method ?? "GET";
@@ -291,10 +363,21 @@ function fakePaddle(options: {
   };
   return {
     calls,
+    revokeCalls,
+    refreshCalls,
     deps: {
       fetch: fetchImpl as typeof fetch,
       paddleApiKey: "test-paddle-key",
       paddleEnvironment: "sandbox",
+      providerRevoke: {
+        fetch: revokeFetch as typeof fetch,
+        fitbitClientId: "fitbit-client",
+        fitbitClientSecret: "fitbit-secret",
+        stravaClientId: "strava-client",
+        stravaClientSecret: "strava-client-secret",
+        garminConsumerKey: "garmin-consumer",
+        garminConsumerSecret: "garmin-consumer-secret",
+      },
     },
   };
 }
@@ -627,6 +710,133 @@ Deno.test("delete-account: order is billing, explicit rows, deleteUser, post-del
   assertEquals(state.avatars, []);
 });
 
+const isRevoke = (call: Call) => call.kind === "revoke";
+const isDisconnectRpc = (provider: string) => (call: Call) =>
+  call.kind === "rpc" && call.name === "disconnect_integration" &&
+  (call.args as { p_provider?: string }).p_provider === provider;
+
+Deno.test("purgeUser: each connected provider is revoked, then disconnected, after billing and before any row delete (PR 54)", async () => {
+  const state = withSubscription({
+    oauthTokens: [
+      // Expired (no expiry recorded): refreshed before the deauthorize.
+      { provider: "strava", access_token: "strava-access-secret", refresh_token: "strava-refresh-secret" },
+      { provider: "hevy", access_token: null, refresh_token: null },
+    ],
+  });
+  const paddle = fakePaddle({ status: "active", state });
+  const { result, logs } = await captureLogs(() => purgeUser(fakeAdmin(state), USER_ID, paddle.deps));
+  assertEquals(result.ok, true);
+
+  assertEquals(paddle.refreshCalls.length, 1, "expired strava token refreshed");
+  assertEquals(JSON.parse(paddle.refreshCalls[0].body).refresh_token, "strava-refresh-secret");
+  assertEquals(paddle.revokeCalls.length, 1, "only strava has a revocable grant");
+  assertEquals(paddle.revokeCalls[0].url, "https://www.strava.com/oauth/deauthorize");
+  assertEquals(
+    new URLSearchParams(paddle.revokeCalls[0].body).get("access_token"),
+    REFRESHED_STRAVA_ACCESS,
+  );
+  assertNoSecretsLogged(logs, [
+    "strava-access-secret",
+    "strava-refresh-secret",
+    REFRESHED_STRAVA_ACCESS,
+    REFRESHED_STRAVA_REFRESH,
+  ]);
+
+  const revokeAt = indexOfCall(state, isRevoke);
+  const stravaRpcAt = indexOfCall(state, isDisconnectRpc("strava"));
+  const hevyRpcAt = indexOfCall(state, isDisconnectRpc("hevy"));
+  const firstRowDelete = indexOfCall(state, isRowDelete);
+  assert(revokeAt >= 0 && revokeAt < stravaRpcAt, "revoke before disconnect_integration");
+  assert(hevyRpcAt >= 0, "hevy disconnected too");
+  assert(Math.max(stravaRpcAt, hevyRpcAt) < firstRowDelete, "disconnects before the pre-pass");
+  assert(paddle.calls.length > 0 && indexOfCall(state, isDeleteUser) > firstRowDelete);
+});
+
+Deno.test("purgeUser: a failed provider revoke still disconnects and deletes the account (PR 54)", async () => {
+  const state = fakeState({
+    oauthTokens: [{ provider: "fitbit", access_token: "fb-access-secret", refresh_token: "fb-refresh-secret" }],
+  });
+  const paddle = fakePaddle({ state, revokeStatus: 503 });
+  const { result, logs } = await captureLogs(() => purgeUser(fakeAdmin(state), USER_ID, paddle.deps));
+  assertEquals(result.ok, true);
+  assertEquals(new URLSearchParams(paddle.revokeCalls[0].body).get("token"), "fb-refresh-secret");
+  assert(indexOfCall(state, isDisconnectRpc("fitbit")) > indexOfCall(state, isRevoke));
+  assert(indexOfCall(state, isDeleteUser) >= 0);
+  assertStringIncludes(logs, "provider revoke failed");
+  assertNoSecretsLogged(logs, ["fb-access-secret", "fb-refresh-secret", "fitbit-secret"]);
+});
+
+Deno.test("purgeUser: a skipped revoke (fitbit client not configured) logs the reason, never the token (PR 54)", async () => {
+  const state = fakeState({
+    oauthTokens: [{ provider: "fitbit", access_token: "fb-access-secret", refresh_token: "fb-refresh-secret" }],
+  });
+  const paddle = fakePaddle({ state });
+  const deps = {
+    ...paddle.deps,
+    providerRevoke: { ...paddle.deps.providerRevoke!, fitbitClientId: undefined, fitbitClientSecret: undefined },
+  };
+  const { result, logs } = await captureLogs(() => purgeUser(fakeAdmin(state), USER_ID, deps));
+  assertEquals(result.ok, true);
+  assertEquals(paddle.revokeCalls, []);
+  assert(indexOfCall(state, isDisconnectRpc("fitbit")) >= 0);
+  assertStringIncludes(logs, "fitbit_client_not_configured");
+  assertNoSecretsLogged(logs, ["fb-access-secret", "fb-refresh-secret"]);
+});
+
+Deno.test("delete-account: a disconnect_integration error aborts the purge with the user intact (PR 54)", async () => {
+  const state = fakeState({
+    oauthTokens: [{ provider: "strava", access_token: "strava-access", refresh_token: null, token_expires_at: FUTURE }],
+    disconnectRpcError: { code: "XX000", message: "boom" },
+  });
+  const res = await silenced(() => handlerFor(state, fakePaddle({ state }).deps)(post()));
+  assertEquals(res.status, 500);
+  assertUntouched(state);
+});
+
+Deno.test("purgeUser: a provider-list read error aborts step 1b with nothing revoked or deleted (R-10)", async () => {
+  const state = fakeState({
+    oauthTokens: [{ provider: "strava", access_token: "strava-access", refresh_token: null, token_expires_at: FUTURE }],
+    tokenListError: { code: "57014", message: "canceling statement due to statement timeout" },
+  });
+  const paddle = fakePaddle({ state });
+  const result = await silenced(() => purgeUser(fakeAdmin(state), USER_ID, paddle.deps));
+  assertEquals(result.ok, false);
+  assertEquals(result.ok === false && result.stage, "provider_disconnect");
+  assertEquals(indexOfCall(state, isDeleteUser), -1);
+  assertEquals(paddle.revokeCalls, []);
+  assertEquals(indexOfCall(state, isDisconnectRpc("strava")), -1);
+
+  const handlerState = fakeState({
+    oauthTokens: state.oauthTokens,
+    tokenListError: state.tokenListError,
+  });
+  const res = await silenced(() => handlerFor(handlerState, fakePaddle({ state: handlerState }).deps)(post()));
+  assertEquals(res.status, 500);
+  assertUntouched(handlerState);
+});
+
+Deno.test("purgeUser: a per-provider token read error aborts step 1b with nothing revoked or deleted (R-10)", async () => {
+  const state = fakeState({
+    oauthTokens: [{ provider: "strava", access_token: "strava-access", refresh_token: null, token_expires_at: FUTURE }],
+    tokenReadError: { code: "57014", message: "canceling statement due to statement timeout" },
+  });
+  const paddle = fakePaddle({ state });
+  const result = await silenced(() => purgeUser(fakeAdmin(state), USER_ID, paddle.deps));
+  assertEquals(result.ok, false);
+  assertEquals(result.ok === false && result.stage, "provider_disconnect");
+  assertEquals(indexOfCall(state, isDeleteUser), -1);
+  assertEquals(paddle.revokeCalls, []);
+  assertEquals(indexOfCall(state, isDisconnectRpc("strava")), -1);
+
+  const handlerState = fakeState({
+    oauthTokens: state.oauthTokens,
+    tokenReadError: state.tokenReadError,
+  });
+  const res = await silenced(() => handlerFor(handlerState, fakePaddle({ state: handlerState }).deps)(post()));
+  assertEquals(res.status, 500);
+  assertUntouched(handlerState);
+});
+
 function webhookDeleteFilters(state: FakeState): [string, unknown][][] {
   return state.calls
     .filter(deletesTable("paddle_webhook_events"))
@@ -910,6 +1120,7 @@ async function seedPurgeFixture(
     user_id: user.id,
     provider: "strava",
     access_token: "fixture-token",
+    refresh_token: "fixture-refresh-token",
   }));
   // Prod-only table (no migration until PR 2 captures it; it cannot be
   // created through PostgREST): seeded when the local stack has it. One row
@@ -1039,6 +1250,15 @@ Deno.test({
 
       assertEquals(result, { ok: true, billingCancelled: true, residualTables: [] });
       assertEquals(paddle.calls.map((c) => c.method), ["GET", "POST"]);
+      // PR 54: the fixture's Strava token has no expiry, so it was refreshed
+      // (the rotated pair persisted to the real row) and the grant revoked
+      // with the refreshed access token.
+      assertEquals(paddle.refreshCalls.length, 1);
+      assertEquals(paddle.revokeCalls.map((c) => c.url), ["https://www.strava.com/oauth/deauthorize"]);
+      assertEquals(
+        new URLSearchParams(paddle.revokeCalls[0].body).get("access_token"),
+        REFRESHED_STRAVA_ACCESS,
+      );
       const gone = await admin.auth.admin.getUserById(user.id);
       assert(gone.error || !gone.data.user, "auth user deleted");
       assertEquals(await rowsReferencing(admin, user.id, paddleIds), []);
