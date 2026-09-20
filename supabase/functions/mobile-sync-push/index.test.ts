@@ -2437,6 +2437,7 @@ Deno.test("retrying the identical payload after a 503 succeeds and replays the s
   assertEquals(first.status, 503);
   assertEquals(harness.broadcastPayloads, []);
   const firstWrites = [...harness.adminWriteCalls];
+  const firstRpcCallCount = harness.adminRpcCalls.length;
 
   delete writeErrors["routines:delete"];
   const second = await harness.handler(requestFromBody(body));
@@ -2450,8 +2451,8 @@ Deno.test("retrying the identical payload after a 503 succeeds and replays the s
   const secondWrites = harness.adminWriteCalls.slice(firstWrites.length);
   assertEquals(secondWrites.slice(0, firstWrites.length), firstWrites);
   assert(
-    secondWrites.slice(firstWrites.length).some((call) =>
-      call.table === "training_cycles" && call.method === "upsert"
+    harness.adminRpcCalls.slice(firstRpcCallCount).some((call) =>
+      call.name === "merge_training_cycles_from_push"
     ),
   );
   // Session-graph writes are id-keyed upserts, never blind inserts.
