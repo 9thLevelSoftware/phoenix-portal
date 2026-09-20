@@ -116,10 +116,23 @@
 --    the next recompute. A clean ordered apply is fine. Any reconciliation
 --    migration that replays 000200 must drop them again afterwards.
 --
--- !! DEPLOY ORDER: this migration must be applied BEFORE mobile-sync-push AND
---    mobile-sync-pull are deployed. Edge-first is a total push outage (the
---    handler calls recompute_gamification_stats, which would not exist) and
---    the pull would select device_* columns that do not exist yet.
+-- !! DEPLOY ORDER: apply this migration BEFORE deploying mobile-sync-push.
+--    Push-first is a total push OUTAGE for every existing user: the handler
+--    stops sending `updated_at` and sends `last_workout_at` instead, and the
+--    OLD RPC bodies compare `existing_ts <= rec.updated_at`, which evaluates
+--    NULL — so every stats and rpg write is rejected, silently under
+--    flag-off. The handler also calls recompute_gamification_stats, which
+--    would not exist (that half alone is survivable: step 14a fails open).
+--
+--    mobile-sync-pull is NOT subject to this ordering. Correcting an earlier
+--    version of this note, which claimed the pull would fail because it
+--    selects device_* columns that do not exist: it does not select them by
+--    name — it has always used `.select('*')` — and it explicitly handles the
+--    absent-column case by falling back to the canonical columns, which on a
+--    pre-migration database ARE the device-reported values. The pull may
+--    therefore be deployed before or after this migration. The instruction
+--    "migrations before both Edge functions" is still the safe one to give an
+--    operator; only the reason for the pull half was wrong.
 --
 -- The one-time reconciliation of pre-existing drift lives in the separate,
 -- re-runnable 20260920002501 so a slow backfill cannot roll back this schema
