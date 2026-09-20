@@ -110,6 +110,49 @@ function deduplicateByKey<T>(rows: T[], keyFn: (row: T) => string): T[] {
 }
 
 /**
+ * A required push sub-step (profile upsert, routine/cycle delete, routine
+ * exercise upsert or orphan cleanup) failed after earlier steps may already have
+ * written. The whole push is idempotent (upserts by id, deletes of absent
+ * rows are no-ops), so the handler answers a retryable 503 instead of a 200:
+ * mobile then keeps its dirty rows and does not advance lastSync, and the
+ * next sync re-sends the same batch (F-024).
+ */
+class PartialWriteRetryError extends Error {
+  constructor(step: string, cause: { message?: string } | null) {
+    // The DB message goes to the function log only, never to the response.
+    super(`${step} failed: ${cause?.message ?? 'unknown error'}`);
+    this.name = 'PartialWriteRetry';
+  }
+}
+
+/**
+ * Hard-delete the caller's rows by id in chunks of 100, like the ownership
+ * probe. One `.in()` with every tombstone id (up to 10,000 by schema) can
+ * exceed the PostgREST URL limit, which would fail identically on every
+ * retry and wedge sync behind a permanent 503. Deletes are idempotent, so a
+ * failure after some chunks committed is still safe to retry.
+ */
+async function deleteOwnedRowsInChunks(
+  supabase: SupabaseClient,
+  table: string,
+  ids: string[],
+  userId: string,
+  step: string,
+): Promise<void> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  const chunkSize = 100;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .in('id', chunk)
+      .eq('user_id', userId);
+    if (error) throw new PartialWriteRetryError(step, error);
+  }
+}
+
+/**
  * Prevent cross-user takeover when upserting by primary key only.
  *
  * For tables with a direct `user_id` column, this checks that any existing
@@ -744,9 +787,62 @@ async function readBoundedRequestBody(
   return { kind: 'ok', bytes };
 }
 
+const CATALOG_LOOKUP_COLUMNS = 'id, name, display_name, aliases, user_id, is_custom, archived';
+const PUBLIC_CATALOG_TTL_MS = 10 * 60 * 1000;
+
+/** Isolate-memory cache of the public (is_custom = false) exercise catalog. */
+interface PublicCatalogCache {
+  rows: CatalogLookupRow[] | null;
+  fetchedAt: number;
+}
+
+async function fetchCatalogLookupPages(
+  fetchPage: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<CatalogLookupRow[]> {
+  const pageSize = 1000;
+  const rows: CatalogLookupRow[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await fetchPage(from, from + pageSize - 1);
+    if (error) {
+      throw new Error(`exercise_catalog lookup failed: ${error.message}`);
+    }
+    const batch = catalogLookupFromUnknown(data);
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+  return rows;
+}
+
+async function getPublicCatalogRows(
+  supabase: SupabaseClient,
+  cache: PublicCatalogCache,
+  nowMs: number,
+): Promise<CatalogLookupRow[]> {
+  const age = nowMs - cache.fetchedAt;
+  if (cache.rows !== null && age >= 0 && age < PUBLIC_CATALOG_TTL_MS) {
+    return cache.rows;
+  }
+  // Only a complete, successful fetch is cached; errors propagate uncached.
+  const rows = await fetchCatalogLookupPages((from, to) =>
+    supabase
+      .from('exercise_catalog')
+      .select(CATALOG_LOOKUP_COLUMNS)
+      .eq('is_custom', false)
+      .order('id', { ascending: true })
+      .range(from, to)
+  );
+  cache.rows = rows;
+  cache.fetchedAt = nowMs;
+  return rows;
+}
+
 async function mobileSyncPushHandler(
   req: Request,
   dependencies: MobileSyncPushHandlerDependencies,
+  publicCatalogCache: PublicCatalogCache,
 ): Promise<Response> {
   const cors = getCorsHeaders(req);
 
@@ -1008,7 +1104,6 @@ async function mobileSyncPushHandler(
       r.exercises.map((e) => e.id),
     );
     const allCycleIds = (payload.cycles ?? []).map((c) => c.id);
-    const allCycleDayIds = (payload.cycles ?? []).flatMap((c) => c.days.map((d) => d.id));
     const allPersonalRecordIds = (payload.personalRecords ?? [])
       .map((pr) => pr.id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0);
@@ -1146,31 +1241,22 @@ async function mobileSyncPushHandler(
       }
     }
 
-    async function fetchAccessibleCatalogRows(
-      client: typeof supabase,
-      ownerId: string,
-    ): Promise<CatalogLookupRow[]> {
-      const pageSize = 1000;
-      const rows: CatalogLookupRow[] = [];
-      for (let from = 0; ; from += pageSize) {
-        const { data, error } = await client
-          .from('exercise_catalog')
-          .select('id, name, display_name, aliases, user_id, is_custom, archived')
-          .or(`is_custom.eq.false,user_id.eq.${ownerId}`)
-          .order('id', { ascending: true })
-          .range(from, from + pageSize - 1);
-        if (error) {
-          throw new Error(`exercise_catalog lookup failed: ${error.message}`);
-        }
-        const batch = catalogLookupFromUnknown(data);
-        rows.push(...batch);
-        if (batch.length < pageSize) break;
-      }
-      return rows;
-    }
-
+    // Public library rows are cached per isolate (PUBLIC_CATALOG_TTL_MS); the
+    // caller's custom rows are read on every push, after the upsert above.
+    // Public rows precede custom rows, so a public name wins a name collision.
     const catalogIndexes = buildCatalogIndexes(
-      await fetchAccessibleCatalogRows(supabase, userId),
+      [
+        ...(await getPublicCatalogRows(supabase, publicCatalogCache, dependencies.now())),
+        ...(await fetchCatalogLookupPages((from, to) =>
+          supabase
+            .from('exercise_catalog')
+            .select(CATALOG_LOOKUP_COLUMNS)
+            .eq('is_custom', true)
+            .eq('user_id', userId)
+            .order('id', { ascending: true })
+            .range(from, to)
+        )),
+      ],
       userId,
     );
     const catalogResolution = resolveCatalogExerciseIds(catalogIndexes, [
@@ -1214,10 +1300,10 @@ async function mobileSyncPushHandler(
     // IMPORTANT: local_profile_id on workout_sessions/routines/cycles has a
     // composite FK → local_profiles(user_id, id).  The profile row MUST exist
     // before any session insert, otherwise the FK fires.  If the upsert fails
-    // for any reason we null out localProfileId so downstream inserts store
-    // rows as profile-unscoped (NULL) rather than crashing with a FK violation.
+    // the push answers a retryable 503 before any session write (PR 22); it
+    // never stores this push's rows profile-unscoped (NULL).
     // =========================================================================
-    // Use `let` so we can clear it to null if the profile upsert fails.
+    // `let`: cleared to null when the id is absent from allProfiles.
     let localProfileId: string | null = payload.profileId ?? null;
     const allProfiles: LocalProfileDto[] | null = payload.allProfiles ?? null;
     const dedicatedRecordLocalProfileIds = collectDedicatedRecordLocalProfileIds(
@@ -1253,13 +1339,10 @@ async function mobileSyncPushHandler(
         .upsert(profileRows, { onConflict: 'user_id,id' });
 
       if (upsertError) {
-        // Null out localProfileId so subsequent session/routine/cycle inserts
-        // store rows as profile-unscoped (NULL) instead of hitting the FK.
-        console.warn('Failed to upsert local profiles:', upsertError.message);
-        if (localProfileId) {
-          console.warn('Clearing localProfileId to avoid FK violation on session insert');
-          localProfileId = null;
-        }
+        // Fail the push before any session write rather than storing rows
+        // profile-unscoped (NULL): unscoped rows leak across local profiles
+        // and are never re-scoped. Mobile retries the idempotent push.
+        throw new PartialWriteRetryError('local_profiles upsert', upsertError);
       } else {
         const activeIds = allProfiles.map((p) => p.id);
         for (const id of activeIds) validLocalProfileIdsForPush.add(id);
@@ -1306,10 +1389,8 @@ async function mobileSyncPushHandler(
         );
 
       if (profileError) {
-        // Null out so sessions are stored unscoped rather than failing the FK.
-        console.warn('Failed to upsert local profile:', profileError.message);
-        console.warn('Clearing localProfileId to avoid FK violation on session insert');
-        localProfileId = null;
+        // Same as above: never write this push's sessions unscoped.
+        throw new PartialWriteRetryError('local_profiles upsert', profileError);
       } else if (localProfileId) {
         validLocalProfileIdsForPush.add(localProfileId);
       }
@@ -1437,16 +1518,9 @@ async function mobileSyncPushHandler(
     );
     if (reBlocked) return reBlocked;
 
-    const cdBlocked = await assertChildRowsOwnedViaParent(
-      supabase,
-      'cycle_days',
-      'cycle_id',
-      'training_cycles',
-      allCycleDayIds,
-      userId,
-      cors,
-    );
-    if (cdBlocked) return cdBlocked;
+    // cycle_days ids are not probed: the day upsert never writes `id` (it
+    // conflicts on (cycle_id, day_number)), and every day's cycleId must equal
+    // its payload parent cycle, whose id is covered by directOwnerChecks.
 
     // Telemetry, phase stats and cycle days may reference parent rows from
     // previous pushes, not this payload. Validate those cross-payload parent
@@ -1552,6 +1626,16 @@ async function mobileSyncPushHandler(
       externalActivities: [] as EntityRejection[],
       rpgAttributes: [] as EntityRejection[],
       gamificationStats: [] as EntityRejection[],
+    };
+    // Optional GAP tables whose write failed. The push still answers 200
+    // (these rows are non-critical and old mobile would otherwise retry the
+    // whole batch forever); the ids are the mobile DTO ids so a mobile
+    // follow-up can keep exactly those rows dirty. Old mobile ignores the key.
+    const failed = {
+      phaseStatistics: [] as string[],
+      exerciseSignatures: [] as string[],
+      assessments: [] as string[],
+      externalActivities: [] as string[],
     };
     // null = flag OFF (accept-all semantics). Set = flag ON (only listed IDs
     // cleared the LWW gate).
@@ -1696,17 +1780,7 @@ async function mobileSyncPushHandler(
         updated_at: s.updatedAt ?? null,
       }));
 
-      // Cross-user takeover defense (from main beta audit hardening): always
-      // verify every primary key is either absent or owned by the caller
-      // before the service-role upsert touches it.
-      const sessionOwnershipResp = await assertRowsOwnedByUser(
-        supabase,
-        'workout_sessions',
-        sessionRows.map((r) => r.id),
-        userId,
-        cors,
-      );
-      if (sessionOwnershipResp) return sessionOwnershipResp;
+      // Ownership of every session id was verified once in directOwnerChecks.
 
       if (SYNC_LWW_ENABLED) {
         // Phase 3.2: route through the LWW RPC so the server rejects stale
@@ -1780,19 +1854,8 @@ async function mobileSyncPushHandler(
       // case-sensitive JS Set check while PostgreSQL treats them as equal.
       const dedupedExerciseRows = deduplicateByKey(exerciseRows, (r) => r.id);
 
-      // Ownership pre-check: reject any incoming id already owned by a different
-      // user before the atomic replace deletes/re-inserts. The actual write
-      // happens in the replace_session_children RPC below.
-      if (dedupedExerciseRows.length > 0) {
-        const exerciseOwnershipResp = await assertRowsOwnedByUser(
-          supabase,
-          'exercises',
-          dedupedExerciseRows.map((r) => r.id),
-          userId,
-          cors,
-        );
-        if (exerciseOwnershipResp) return exerciseOwnershipResp;
-      }
+      // Ownership of these ids (a subset of allExerciseIds) was verified once
+      // in directOwnerChecks, before the replace_session_children RPC below.
 
       // --- 4c. Build set rows ---
       // NOTE: `prType`, `prPhase`, `prVolume` are intentionally NOT in this row
@@ -1822,16 +1885,7 @@ async function mobileSyncPushHandler(
 
       const dedupedSetRows = deduplicateByKey(setRows, (r) => r.id);
 
-      if (dedupedSetRows.length > 0) {
-        const setOwnershipResp = await assertRowsOwnedByUser(
-          supabase,
-          'sets',
-          dedupedSetRows.map((r) => r.id),
-          userId,
-          cors,
-        );
-        if (setOwnershipResp) return setOwnershipResp;
-      }
+      // Ownership (subset of allSetIds) was verified once in directOwnerChecks.
 
       // --- 4d. Build rep_summary rows ---
       const repRows = payload.sessions
@@ -1862,16 +1916,8 @@ async function mobileSyncPushHandler(
 
       const dedupedRepRows = deduplicateByKey(repRows, (r) => r.id);
 
-      if (dedupedRepRows.length > 0) {
-        const repOwnershipResp = await assertRowsOwnedByUser(
-          supabase,
-          'rep_summaries',
-          dedupedRepRows.map((r) => r.id),
-          userId,
-          cors,
-        );
-        if (repOwnershipResp) return repOwnershipResp;
-      }
+      // Ownership (subset of allRepSummaryIds) was verified once in
+      // directOwnerChecks.
 
       // --- 4e. Build rep_telemetry rows (GAP 1: force curves) ---
       // NOTE: ownership for rep_telemetry.id is already verified in the
@@ -2282,14 +2328,7 @@ async function mobileSyncPushHandler(
         updated_at: r.updatedAt ?? null,
       }));
 
-      const routineOwnershipResp = await assertRowsOwnedByUser(
-        supabase,
-        'routines',
-        routineRows.map((r) => r.id),
-        userId,
-        cors,
-      );
-      if (routineOwnershipResp) return routineOwnershipResp;
+      // Ownership of every routine id was verified once in directOwnerChecks.
 
       if (SYNC_LWW_ENABLED) {
         const rows = routineRows.map((r) => ({
@@ -2399,7 +2438,8 @@ async function mobileSyncPushHandler(
         const { error: reErr } = await supabase
           .from('routine_exercises')
           .upsert(reRows, { onConflict: 'id' });
-        if (reErr) throw new Error(`routine_exercises upsert failed: ${reErr.message}`);
+        // Same retryable contract as the orphan cleanup that follows (R-5).
+        if (reErr) throw new PartialWriteRetryError('routine_exercises upsert', reErr);
       }
 
       // Remove orphan exercises: rows belonging to synced routines whose IDs
@@ -2413,22 +2453,18 @@ async function mobileSyncPushHandler(
           ? reRows.filter((r) => r.routine_id === routineId).map((r) => r.id)
           : [];
 
-        if (idsForRoutine.length > 0) {
-          // Delete exercises in this routine that are NOT in the payload
-          const { error: orphanErr } = await supabase
-            .from('routine_exercises')
-            .delete()
-            .eq('routine_id', routineId)
-            .not('id', 'in', `(${idsForRoutine.join(',')})`);
-          if (orphanErr) console.warn(`routine_exercises orphan cleanup warning for ${routineId}:`, orphanErr.message);
-        } else {
-          // Routine has zero exercises now -- delete all
-          const { error: orphanErr } = await supabase
-            .from('routine_exercises')
-            .delete()
-            .eq('routine_id', routineId);
-          if (orphanErr) console.warn(`routine_exercises orphan cleanup warning for ${routineId}:`, orphanErr.message);
-        }
+        // Keep IDs in the RPC POST body. A PostgREST `.not('id', 'in', ...)`
+        // query puts every UUID in the URL and deterministically fails for
+        // large routines. An empty array intentionally deletes every child.
+        const { error: orphanErr } = await supabase.rpc(
+          'cleanup_routine_exercise_orphans',
+          {
+            p_user_id: userId,
+            p_routine_id: routineId,
+            p_keep_ids: idsForRoutine,
+          },
+        );
+        if (orphanErr) throw new PartialWriteRetryError('routine_exercises orphan cleanup', orphanErr);
       }
 
       // R-4 race guard: undo a re-create of a routine deleted meanwhile.
@@ -2460,16 +2496,14 @@ async function mobileSyncPushHandler(
       );
       if (ownershipResp) return ownershipResp;
 
-      const { error: delErr } = await supabase
-        .from('routines')
-        .delete()
-        .in('id', payload.deletedRoutineIds)
-        .eq('user_id', userId);
-      if (delErr) {
-        console.warn('routine deletion warning:', delErr.message);
-      } else {
-        console.log(`Deleted ${payload.deletedRoutineIds.length} routine(s) from server`);
-      }
+      await deleteOwnedRowsInChunks(
+        supabase,
+        'routines',
+        payload.deletedRoutineIds,
+        userId,
+        'routine delete',
+      );
+      console.log(`Deleted ${payload.deletedRoutineIds.length} routine(s) from server`);
     }
 
     // =========================================================================
@@ -2487,16 +2521,14 @@ async function mobileSyncPushHandler(
       );
       if (cycleDelOwnershipResp) return cycleDelOwnershipResp;
 
-      const { error: cycleDelErr } = await supabase
-        .from('training_cycles')
-        .delete()
-        .in('id', payload.deletedCycleIds)
-        .eq('user_id', userId);
-      if (cycleDelErr) {
-        console.warn('cycle deletion warning:', cycleDelErr.message);
-      } else {
-        console.log(`Deleted ${payload.deletedCycleIds.length} cycle(s) from server`);
-      }
+      await deleteOwnedRowsInChunks(
+        supabase,
+        'training_cycles',
+        payload.deletedCycleIds,
+        userId,
+        'cycle delete',
+      );
+      console.log(`Deleted ${payload.deletedCycleIds.length} cycle(s) from server`);
     }
 
     // =========================================================================
@@ -2524,14 +2556,7 @@ async function mobileSyncPushHandler(
         updated_at: c.updatedAt ?? null,
       }));
 
-      const cycleOwnershipResp = await assertRowsOwnedByUser(
-        supabase,
-        'training_cycles',
-        cycleRows.map((r) => r.id),
-        userId,
-        cors,
-      );
-      if (cycleOwnershipResp) return cycleOwnershipResp;
+      // Ownership of every cycle id was verified once in directOwnerChecks.
 
       if (SYNC_LWW_ENABLED) {
         const rows = cycleRows.map((r) => ({
@@ -2800,17 +2825,21 @@ async function mobileSyncPushHandler(
       const { error: psErr } = await supabase
         .from('session_phase_statistics')
         .upsert(phaseRows, { onConflict: 'session_id' });
-      if (psErr) console.warn('phase_statistics upsert warning:', psErr.message);
-      else phaseStatisticsInserted = phaseRows.length;
+      if (psErr) {
+        console.warn('phase_statistics upsert warning:', psErr.message);
+        failed.phaseStatistics.push(...payload.phaseStatistics.map((ps) => ps.id));
+      } else phaseStatisticsInserted = phaseRows.length;
     }
 
     // =========================================================================
     // 12. Exercise signatures (GAP 8)
     // =========================================================================
     if (payload.exerciseSignatures && payload.exerciseSignatures.length > 0) {
+      const sigIds: string[] = [];
       const sigRows = payload.exerciseSignatures.flatMap((es) => {
         const exerciseId = catalogId(es.exerciseId);
         if (!exerciseId) return [];
+        sigIds.push(es.id);
         return [{
         user_id: userId,
         exercise_id: exerciseId,
@@ -2828,8 +2857,10 @@ async function mobileSyncPushHandler(
       const { error: sigErr } = await supabase
         .from('exercise_signatures')
         .upsert(sigRows, { onConflict: 'user_id,exercise_id' });
-      if (sigErr) console.warn('exercise_signatures upsert warning:', sigErr.message);
-      else exerciseSignaturesUpserted = sigRows.length;
+      if (sigErr) {
+        console.warn('exercise_signatures upsert warning:', sigErr.message);
+        failed.exerciseSignatures.push(...sigIds);
+      } else exerciseSignaturesUpserted = sigRows.length;
     }
 
     // =========================================================================
@@ -2840,6 +2871,7 @@ async function mobileSyncPushHandler(
         const exerciseId = catalogId(a.exerciseId);
         if (!exerciseId) return [];
         return [{
+        clientId: a.id,
         user_id: userId,
         exercise_id: exerciseId,
         estimated_1rm_kg: a.estimatedOneRepMaxKg,
@@ -2877,9 +2909,11 @@ async function mobileSyncPushHandler(
       if (newAssess.length > 0) {
         const { error: aErr } = await supabase
           .from('vbt_assessments')
-          .insert(newAssess);
-        if (aErr) console.warn('vbt_assessments insert warning:', aErr.message);
-        else assessmentsInserted = newAssess.length;
+          .insert(newAssess.map(({ clientId: _clientId, ...row }) => row));
+        if (aErr) {
+          console.warn('vbt_assessments insert warning:', aErr.message);
+          failed.assessments.push(...newAssess.map((r) => r.clientId));
+        } else assessmentsInserted = newAssess.length;
       }
     }
 
@@ -2920,6 +2954,7 @@ async function mobileSyncPushHandler(
         );
         if (lwwErr) {
           console.warn('external_activities LWW RPC warning:', lwwErr.message);
+          failed.externalActivities.push(...activityRows.map((r) => r.id));
           externalActivityIds = [];
           externalActivityKeys = [];
         } else {
@@ -2961,6 +2996,7 @@ async function mobileSyncPushHandler(
           .select('id, external_id, provider, updated_at');
         if (extErr) {
           console.warn('external_activities upsert warning:', extErr.message);
+          failed.externalActivities.push(...activityRows.map((r) => r.id));
           externalActivityIds = [];
           externalActivityKeys = [];
         } else {
@@ -3095,6 +3131,8 @@ async function mobileSyncPushHandler(
         // server (tombstoned) and therefore not re-created. New response key;
         // older builds ignore it.
         skippedDeleted,
+        // PR 22: optional-table writes that failed (push still 200).
+        failed,
         ...(preferenceEnvelope.present ? { profilePreferencesAccepted: true } : {}),
         canonicalProfilePreferenceSections,
         profilePreferenceRejections,
@@ -3102,6 +3140,17 @@ async function mobileSyncPushHandler(
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
+    if (err instanceof PartialWriteRetryError) {
+      console.warn('mobile-sync-push partial write, answering 503:', err.message);
+      dependencies.logOperationalFailure({ name: err.name });
+      return new Response(
+        JSON.stringify({
+          error: 'Sync temporarily unavailable',
+          code: 'partial_write_retry',
+        }),
+        { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
     dependencies.logOperationalFailure({
       name: safeErrorName(err, 'MobileSyncPushFailure'),
     });
@@ -3126,7 +3175,9 @@ async function mobileSyncPushHandler(
 export function createMobileSyncPushHandler(
   dependencies: MobileSyncPushHandlerDependencies = defaultMobileSyncPushDependencies(),
 ): (req: Request) => Promise<Response> {
-  return (req) => mobileSyncPushHandler(req, dependencies);
+  // One handler per isolate in production, so this is isolate memory.
+  const publicCatalogCache: PublicCatalogCache = { rows: null, fetchedAt: 0 };
+  return (req) => mobileSyncPushHandler(req, dependencies, publicCatalogCache);
 }
 
 if (import.meta.main) {
