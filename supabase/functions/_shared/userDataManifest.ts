@@ -297,6 +297,8 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"working_reps",
 		"local_profile_id",
 		"updated_at",
+		// PR 21 (KD-5): the device LWW key; `updated_at` stays server-owned.
+		"client_updated_at",
 	]),
 	owned("exercises", "cascade", [
 		"id",
@@ -306,6 +308,8 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"order_index",
 		"user_id",
 		"exercise_id",
+		// PR 28/29 (KD-8): 1, 2, or NULL when the build did not report it.
+		"cable_count",
 	]),
 	owned("sets", "cascade", [
 		"id",
@@ -476,8 +480,10 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"is_favorite",
 			"updated_at",
 			"local_profile_id",
+			"created_at",
+			// PR 21 (KD-5): the device LWW key.
+			"client_updated_at",
 		],
-		{ optionalColumns: ["created_at"] },
 	),
 	{
 		table: "routine_exercises",
@@ -540,6 +546,11 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"updated_at",
 		"local_profile_id",
 		"template_id",
+		// PR 18 (KD-6): portal-edit bookkeeping for the cycle merge.
+		"portal_edited_at",
+		"portal_duration_set_at",
+		// PR 21 (KD-5): the device LWW key.
+		"client_updated_at",
 	]),
 	{
 		table: "cycle_days",
@@ -591,8 +602,11 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"created_at",
 			"updated_at",
 			"exercise_id",
+			"predicted_completion_date",
+			// PR 30 (KD-8): whether the target is a per-cable or total load.
+			"target_basis",
 		],
-		{ optionalColumns: ["last_snapshot_at", "predicted_completion_date"] },
+		{ optionalColumns: ["last_snapshot_at"] },
 	),
 	owned(
 		"goal_snapshots",
@@ -622,6 +636,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"confidence",
 			"created_at",
 			"expires_at",
+			"exercise_id",
 		],
 		{ mayBeAbsent: true, note: PROD_ONLY_NOTE },
 	),

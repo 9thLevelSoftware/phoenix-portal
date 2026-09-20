@@ -7,13 +7,12 @@
  *      a `user_id` column, a `REFERENCES auth.users` FK, or (transitively) an
  *      FK to such a table. Limitation: DDL built dynamically in `EXECUTE`
  *      strings or inside function bodies is not parsed.
- *   2. src/lib/database.types.ts (generated from prod): tables whose Row has
- *      `user_id`. This catches prod tables whose migration is only a stub
- *      (e.g. 20260420210411_comprehensive_dashboard_drift_reconciliation.sql).
- *
- * Merge-order note: TABLES_WITHOUT_MIGRATION_DDL lists subscription_events
- * (DDL from PR 2) and sync_tombstones (DDL from PR 16). When their DDL lands,
- * this test only warns; remove the entry then so the column checks apply.
+ *   2. src/lib/database.types.ts: tables whose Row has `user_id`. This used to
+ *      catch prod tables whose migration is only a stub. Since PR 4 the file is
+ *      generated from the MIGRATED local schema (`npm run gen:types:local`), so
+ *      it no longer records prod's shape and this source adds nothing that
+ *      source 1 misses. Prod's own shape is evidenced outside the repo
+ *      (prod-evidence.md, as cited throughout userDataManifest.ts).
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -58,13 +57,13 @@ const typeUserIdTables = [...typeColumns]
  * migrations".
  */
 const TABLES_WITHOUT_MIGRATION_DDL: Record<string, string> = {
-	subscription_events: "prod table; captured into migrations by PR 2",
-	sync_tombstones: "created by PR 16",
-	paddle_webhook_events: "prod table; no migration",
-	goal_snapshots: "prod table; stub migration 20260420210411",
-	overload_suggestions: "prod table; stub migration 20260420210411",
-	telemetry_analysis: "prod table; stub migration 20260420210411",
-	wearable_daily_summaries: "prod table; stub migration 20260420210411",
+	// Empty on this branch: PR 2 (20260920000200) captured subscription_events,
+	// paddle_webhook_events, goal_snapshots, overload_suggestions,
+	// telemetry_analysis and wearable_daily_summaries, and PR 16
+	// (20260920001600) creates sync_tombstones, so every manifest and EXCLUDED
+	// table is now parseable from the migrations and the column checks apply to
+	// all of them. Add an entry here only for a table that genuinely has no
+	// DDL on the branch.
 };
 
 const CREDENTIAL_COLUMN = /token|api_key|secret|password/;
@@ -124,9 +123,10 @@ describe("user data manifest (R-31)", () => {
 			expect(owned.has(table), table).toBe(true);
 		}
 		expect(owned.get("routine_exercises")).toBe("FK to routines");
-		expect(owned.get("wearable_daily_summaries")).toBe(
-			"user_id in database.types.ts",
-		);
+		// Was "user_id in database.types.ts": PR 2 captured this table's DDL, so
+		// migration discovery now finds it first. The types-only discovery path
+		// is still exercised by any prod table whose migration is a stub.
+		expect(owned.has("wearable_daily_summaries")).toBe(true);
 		expect(owned.has("challenges")).toBe(false);
 		expect(owned.has("community_benchmarks")).toBe(false);
 		expect(owned.size).toBeGreaterThanOrEqual(45);
@@ -247,6 +247,12 @@ describe("user data manifest (R-31)", () => {
 		}
 	});
 
+	// PR 4 (7f87b880) regenerated src/lib/database.types.ts from the MIGRATED
+	// local schema, so it is no longer a record of prod's shape: the two rules
+	// this test used to run against it ("optional but not in prod types" and
+	// "exists in prod types only; add to optionalColumns") now only report the
+	// migration/prod drift that optionalColumns exists to tolerate. The prod
+	// oracle is the operator's own read (prod-evidence.md) — not this file.
 	it("exports exactly the migrated columns, plus prod-only drift columns as optional", () => {
 		const problems: string[] = [];
 		for (const entry of USER_DATA_MANIFEST) {
@@ -268,17 +274,6 @@ describe("user data manifest (R-31)", () => {
 						problems.push(
 							`${entry.table}.${column} is migrated; move to columns`,
 						);
-					if (!types?.has(column))
-						problems.push(
-							`${entry.table}.${column} optional but not in prod types`,
-						);
-				}
-				for (const column of types ?? []) {
-					if (!parsed.columns.has(column) && !optional.includes(column)) {
-						problems.push(
-							`${entry.table}.${column} exists in prod types only; add to optionalColumns`,
-						);
-					}
 				}
 			} else if (types) {
 				for (const column of types) {
