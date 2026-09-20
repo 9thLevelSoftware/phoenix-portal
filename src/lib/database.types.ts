@@ -3037,6 +3037,7 @@ export type Database = {
 					server_revision: number;
 				}[];
 			};
+			recompute_all_gamification_stats: { Args: never; Returns: number };
 			recompute_gamification_stats: {
 				Args: { p_user_id: string };
 				Returns: undefined;

@@ -57,8 +57,7 @@
 
 DO $$
 DECLARE
-  v_user_id uuid;
-  v_count   bigint := 0;
+  v_count bigint;
 BEGIN
   -- Bound the blast radius of a pathological history: a timeout aborts THIS
   -- migration only, and re-running it resumes from wherever it got to,
@@ -66,16 +65,10 @@ BEGIN
   SET LOCAL lock_timeout = '5s';
   SET LOCAL statement_timeout = '15min';
 
-  -- Only users that already have a stats row matter:
-  -- recompute_gamification_stats is UPDATE-only by design (see
-  -- 20260920002500 section 3), and a user with sessions but no stats row gets
-  -- one on their next push that carries gamificationStats.
-  FOR v_user_id IN
-    SELECT gs.user_id FROM public.gamification_stats gs ORDER BY gs.user_id
-  LOOP
-    PERFORM public.recompute_gamification_stats(v_user_id);
-    v_count := v_count + 1;
-  END LOOP;
+  -- The selection predicate lives in 20260920002500 as
+  -- recompute_all_gamification_stats() so gamification_stats.test.sql can
+  -- seed drift for it and invoke it directly (R-19).
+  v_count := public.recompute_all_gamification_stats();
 
   RAISE NOTICE 'recompute_gamification_stats: reconciled % gamification_stats rows', v_count;
 END

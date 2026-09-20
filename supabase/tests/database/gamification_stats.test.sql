@@ -22,7 +22,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(44);
+SELECT plan(46);
 
 SELECT diag('database:gamification-derivation-catalog');
 
@@ -70,12 +70,13 @@ SELECT is(
     (SELECT count(*)::int FROM unnest(ARRAY[
         'public.derive_gamification_stats(uuid)',
         'public.recompute_gamification_stats(uuid)',
+        'public.recompute_all_gamification_stats()',
         'public.recompute_gamification_stats_after_change()',
         'public.upsert_gamification_stats_lww(jsonb)',
         'public.upsert_rpg_attributes_lww(jsonb)'
      ]) AS sig WHERE to_regprocedure(sig) IS NOT NULL),
-    5,
-    'all five gamification function signatures resolve'
+    6,
+    'all six gamification function signatures resolve'
 );
 
 SELECT is_empty(
@@ -84,6 +85,7 @@ SELECT is_empty(
         FROM unnest(ARRAY[
             'public.derive_gamification_stats(uuid)',
             'public.recompute_gamification_stats(uuid)',
+            'public.recompute_all_gamification_stats()',
             'public.recompute_gamification_stats_after_change()',
             'public.upsert_gamification_stats_lww(jsonb)',
             'public.upsert_rpg_attributes_lww(jsonb)'
@@ -269,11 +271,17 @@ SELECT is(
     (SELECT count(*)::int FROM public.gamification_stats
       WHERE user_id = 'e5e5e5e5-0000-4000-8000-000000000005'::uuid),
     1,
-    'sanity: device A has exactly one stats row to compare cursors against'
+    'sanity: device A has exactly one stats row to compare against'
 );
 
+-- NB: `now()` is the TRANSACTION timestamp, so inside one pgTAP transaction
+-- an unwanted `updated_at = now()` writes the value that is already there
+-- and no comparison of updated_at can see it. The row version (ctid) does
+-- change on any rewrite, so that is what pins "the rejected write touched
+-- nothing at all"; for the recompute, which rewrites the row by design, the
+-- guard is on the function body instead.
 CREATE TEMP TABLE pr25_cursor AS
-SELECT updated_at FROM public.gamification_stats
+SELECT ctid AS row_version FROM public.gamification_stats
  WHERE user_id = 'e5e5e5e5-0000-4000-8000-000000000005'::uuid;
 
 SELECT public.upsert_gamification_stats_lww(
@@ -285,21 +293,39 @@ SELECT public.upsert_gamification_stats_lww(
 );
 
 SELECT is(
-    (SELECT gs.updated_at FROM public.gamification_stats gs
+    (SELECT gs.ctid FROM public.gamification_stats gs
       WHERE gs.user_id = 'e5e5e5e5-0000-4000-8000-000000000005'::uuid),
-    (SELECT updated_at FROM pr25_cursor),
-    'a rejected write does not bump updated_at (the pull cursor)'
+    (SELECT row_version FROM pr25_cursor),
+    'a rejected write does not touch the row at all, so it cannot bump the pull cursor'
 );
 
--- The recompute must not bump it either: nothing it writes is served to the
--- phone, so re-delivering the row would only make the phone''s value flap.
+-- The recompute must not bump updated_at either: nothing it writes is served
+-- to the phone, so re-delivering the row would only make the phone's value
+-- flap between the pull and its own local recompute.
+SELECT is(
+    (SELECT count(*)::int
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'recompute_gamification_stats'
+        AND p.prosrc ~* 'updated_at'),
+    0,
+    'recompute_gamification_stats never writes updated_at (the pull cursor)'
+);
+
+-- …and it does rewrite a corrupted derived column, so the guard above is not
+-- protecting a function that does nothing.
+UPDATE public.gamification_stats
+   SET total_workouts = 1
+ WHERE user_id = 'e5e5e5e5-0000-4000-8000-000000000005'::uuid;
+
 SELECT public.recompute_gamification_stats('e5e5e5e5-0000-4000-8000-000000000005'::uuid);
 
 SELECT is(
-    (SELECT gs.updated_at FROM public.gamification_stats gs
+    (SELECT gs.total_workouts FROM public.gamification_stats gs
       WHERE gs.user_id = 'e5e5e5e5-0000-4000-8000-000000000005'::uuid),
-    (SELECT updated_at FROM pr25_cursor),
-    'the recompute does not bump updated_at'
+    100::bigint,
+    'the recompute rewrites a corrupted derived column'
 );
 
 -- R-2 / R-24: a far-future key must be clamped, or it would pin every
@@ -545,18 +571,14 @@ INSERT INTO public.gamification_stats (
 VALUES ('a7a7a7a7-0000-4000-8000-000000000007'::uuid,
         999, 9990, 99999, 99999, 77, 55, 66, 66, 12, 3, 4);
 
-DO $$
-DECLARE
-  v_user_id uuid;
-BEGIN
-  -- Verbatim from 20260920002501.
-  FOR v_user_id IN
-    SELECT gs.user_id FROM public.gamification_stats gs ORDER BY gs.user_id
-  LOOP
-    PERFORM public.recompute_gamification_stats(v_user_id);
-  END LOOP;
-END
-$$;
+-- The exact call 20260920002501 makes. Deleting recompute_all_gamification_stats
+-- (or breaking its selection predicate) now turns this red; before it was
+-- extracted, truncating the migration at the backfill left the suite green
+-- (mutation M12).
+SELECT ok(
+    public.recompute_all_gamification_stats() >= 1,
+    'recompute_all_gamification_stats visits the existing stats rows'
+);
 
 SELECT results_eq(
     $sql$

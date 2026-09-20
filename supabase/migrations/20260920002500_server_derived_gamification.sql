@@ -348,6 +348,46 @@ COMMENT ON FUNCTION public.recompute_gamification_stats(uuid) IS
   'the delete triggers below.';
 
 -- ---------------------------------------------------------------------------
+-- 3b. recompute_all_gamification_stats — the backfill's selection predicate
+--
+--     Extracted into a function (R-19 option b) so 20260920002501 is one
+--     call and the predicate is an artifact a pgTAP test can seed drift for
+--     and invoke. Left in place as a re-runnable operator repair tool.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.recompute_all_gamification_stats()
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_user_id uuid;
+  v_count   bigint := 0;
+BEGIN
+  -- Only users that already have a stats row matter: the recompute is
+  -- UPDATE-only by design (section 3), and a user with sessions but no stats
+  -- row gets one on their next push that carries gamificationStats.
+  FOR v_user_id IN
+    SELECT gs.user_id FROM public.gamification_stats gs ORDER BY gs.user_id
+  LOOP
+    PERFORM public.recompute_gamification_stats(v_user_id);
+    v_count := v_count + 1;
+  END LOOP;
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.recompute_all_gamification_stats() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.recompute_all_gamification_stats() FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.recompute_all_gamification_stats() TO service_role;
+
+COMMENT ON FUNCTION public.recompute_all_gamification_stats() IS
+  'Recomputes every existing gamification_stats row and returns how many were '
+  'visited. Used by the 20260920002501 backfill and re-runnable as an '
+  'operator repair; safe to call twice (the per-user recompute writes only '
+  'when the stored values differ and never touches updated_at).';
+
+-- ---------------------------------------------------------------------------
 -- 4. Recompute after a session or PR disappears
 --
 --    Statement-level triggers with transition tables so every delete path is
