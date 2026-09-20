@@ -7,7 +7,7 @@ import {
 // Offline/PWA smoke. The service worker only exists in a production build, so
 // this config builds the app and serves it with `vite preview` instead of the
 // dev server used by playwright.config.ts.
-const PWA_PORT = 45174;
+const PWA_PORT = Number(process.env.PWA_PORT ?? 45174);
 const PWA_BASE_URL = `http://127.0.0.1:${PWA_PORT}`;
 
 export default defineConfig({

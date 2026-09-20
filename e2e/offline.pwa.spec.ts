@@ -41,6 +41,15 @@ test("app shell boots offline; visited routes work, unvisited ones say offline",
 		page.getByRole("heading", { name: /Terms/i }).first(),
 	).toBeVisible();
 
+	// Playwright's offline emulation does not reliably stop a service worker
+	// from fetching localhost assets. Block asset requests in Chromium as well:
+	// cached Terms assets remain available through Workbox, while an uncached
+	// route chunk fails exactly as it would without a network connection.
+	const session = await context.newCDPSession(page);
+	await session.send("Network.enable");
+	await session.send("Network.setBlockedURLs", {
+		urls: [`${new URL(page.url()).origin}/assets/*`],
+	});
 	await context.setOffline(true);
 	try {
 		// Visited route: shell from precache, route chunk from runtime cache.
@@ -60,6 +69,8 @@ test("app shell boots offline; visited routes work, unvisited ones say offline",
 		await expectOfflineRouteMessage(page);
 	} finally {
 		await context.setOffline(false);
+		await session.send("Network.setBlockedURLs", { urls: [] });
+		await session.detach();
 	}
 });
 
