@@ -2673,17 +2673,11 @@ export type Database = {
 			};
 			exercise_frequency: {
 				Args: { p_profile_id?: string };
-				Returns: {
-					exercise_name: string;
-					muscle_group: string;
-					sessions: number;
-				}[];
+				Returns: Json;
 			};
 			exercise_names: {
 				Args: { p_profile_id?: string };
-				Returns: {
-					exercise_name: string;
-				}[];
+				Returns: Json;
 			};
 			exercise_progress_series: {
 				Args: { p_exercise: string; p_limit?: number; p_profile_id?: string };

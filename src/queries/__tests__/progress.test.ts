@@ -121,10 +121,9 @@ function progressHandler(store: ProgressSeedRow[]) {
 	return (fn: string, args: Record<string, unknown>) => {
 		if (fn === "exercise_names") {
 			const names = [...new Set(store.map((row) => row.exercise_name))].sort();
-			return {
-				data: names.map((exercise_name) => ({ exercise_name })),
-				error: null,
-			};
+			// A jsonb-returning RPC is one PostgREST row regardless of how many
+			// elements its JSON array contains.
+			return { data: names, error: null };
 		}
 		if (fn === "exercise_progress_series") {
 			const limit = Math.min((args.p_limit as number) ?? 500, MAX_ROWS);
@@ -149,8 +148,8 @@ function progressHandler(store: ProgressSeedRow[]) {
 					rows,
 				};
 			});
-			// One row per exercise: far below max_rows, unlike a flat SETOF.
-			expect(groups.length).toBeLessThan(MAX_ROWS);
+			// The scalar JSON envelope is one PostgREST row even when it contains
+			// more than max_rows exercise groups.
 			return { data: groups, error: null };
 		}
 		return { data: null, error: { code: "42883", message: `no ${fn}` } };
@@ -194,9 +193,10 @@ describe("exerciseListOptions", () => {
 		const { exerciseListOptions } = await import("../progress");
 		const names = await exerciseListOptions("user-1").queryFn?.({} as never);
 
+		expect(names).toHaveLength(1200);
 		expect(names).toContain(lastName);
-		// The shape this replaces read `exercise_progress` ordered by name and
-		// was cut at max_rows, so the tail of the alphabet disappeared.
+		// A row-returning RPC or direct select is cut at max_rows, so the tail of
+		// the alphabet disappears. The scalar JSON response keeps every name.
 		const legacyNames = new Set(
 			[...manyNames]
 				.sort((a, b) => a.exercise_name.localeCompare(b.exercise_name))

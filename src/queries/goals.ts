@@ -2,13 +2,14 @@ import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { goalListSchema } from "@/schemas/goals";
+import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
 
 const goalPrBestSchema = z.object({
 	exercise_id: z.string().nullable(),
 	exercise_name: z.string(),
 	record_type: z.string(),
-	value: z.number(),
+	value: z.number().transform((perCable) => perCable * WEIGHT_MULTIPLIER),
 });
 
 /**
@@ -36,9 +37,8 @@ export function goalsOptions(userId: string) {
 export function goalPrBestsOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
 		queryKey: [
-			...queryKeys.goals.progress(userId),
-			"pr-bests",
-			profileId ?? "all",
+			...queryKeys.records.byUser(userId, profileId),
+			"goal-pr-bests",
 		] as const,
 		queryFn: async () => {
 			const { data, error } = await supabase.rpc(

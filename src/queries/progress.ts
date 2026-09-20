@@ -17,6 +17,8 @@ import { queryKeys } from "./keys";
 export const EXERCISE_PROGRESS_SERIES_LIMIT = 1000;
 export const WORKBENCH_ROWS_PER_EXERCISE = 200;
 
+const exerciseNamesSchema = z.array(z.string());
+
 const progressGroupSchema = z.object({
 	exercise_name: z.string(),
 	latest_recorded_at: z.string(),
@@ -36,7 +38,7 @@ export function exerciseListOptions(userId: string, profileId?: string | null) {
 				profileId ? { p_profile_id: profileId } : {},
 			);
 			if (error) throw error;
-			return (data ?? []).map((row) => row.exercise_name);
+			return exerciseNamesSchema.parse(data ?? []);
 		},
 	});
 }

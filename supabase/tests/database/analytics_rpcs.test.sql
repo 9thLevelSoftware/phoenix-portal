@@ -292,31 +292,35 @@ SELECT diag('database:analytics-rpcs-owner');
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.act_as('a4040404-0000-4000-8000-00000000000a');
 
--- exercise_frequency: one row per name, distinct sessions, latest
+-- exercise_frequency: scalar JSON envelope, distinct sessions, latest
 -- non-General raw group.
 SELECT results_eq(
-    $$SELECT exercise_name, muscle_group, sessions FROM public.exercise_frequency()$$,
+    $$SELECT exercise_name, muscle_group, sessions
+      FROM jsonb_to_recordset(public.exercise_frequency())
+           AS f(exercise_name text, muscle_group text, sessions integer)$$,
     $$VALUES ('Bench Press'::text, 'Chest'::text, 3),
              ('Plank'::text, 'General'::text, 1),
              ('Row'::text, 'Back'::text, 1)$$,
-    'exercise_frequency: one row per name, distinct sessions (s2 double counted once), latest non-General group'
+    'exercise_frequency: JSON entries are one per name, distinct sessions (s2 double counted once), latest non-General group'
 );
 
 SELECT results_eq(
-    $$SELECT exercise_name, muscle_group, sessions FROM public.exercise_frequency('p2')$$,
+    $$SELECT exercise_name, muscle_group, sessions
+      FROM jsonb_to_recordset(public.exercise_frequency('p2'))
+           AS f(exercise_name text, muscle_group text, sessions integer)$$,
     $$VALUES ('Bench Press'::text, 'General'::text, 1)$$,
     'exercise_frequency filters by profile through the parent session (General fallback)'
 );
 
 -- exercise_names.
 SELECT results_eq(
-    $$SELECT exercise_name FROM public.exercise_names()$$,
+    $$SELECT exercise_name FROM jsonb_array_elements_text(public.exercise_names()) AS n(exercise_name)$$,
     $$VALUES ('Bench Press'::text), ('Deadlift'::text), ('Squat'::text)$$,
     'exercise_names returns distinct names A-Z across 1,215 progress rows'
 );
 
 SELECT results_eq(
-    $$SELECT exercise_name FROM public.exercise_names('p2')$$,
+    $$SELECT exercise_name FROM jsonb_array_elements_text(public.exercise_names('p2')) AS n(exercise_name)$$,
     $$VALUES ('Deadlift'::text)$$,
     'exercise_names filters by profile'
 );
@@ -693,6 +697,41 @@ SELECT throws_ok(
     'session_volume_buckets rejects an unknown time zone'
 );
 
+-- A scalar JSON envelope is a single PostgREST result row, so neither RPC is
+-- clipped when a caller has more than the configured 1,000 API rows.
+RESET ROLE;
+INSERT INTO public.exercises (id, session_id, name, muscle_group, user_id)
+SELECT
+    ('a4040404-7002-4000-8000-' || lpad(i::text, 12, '0'))::uuid,
+    'a4040404-0001-4000-8000-000000000001',
+    'Generated Exercise ' || lpad(i::text, 4, '0'),
+    'General',
+    'a4040404-0000-4000-8000-00000000000a'
+FROM generate_series(1, 1001) AS i;
+
+INSERT INTO public.exercise_progress
+    (user_id, exercise_name, session_id, recorded_at, estimated_1rm_kg)
+SELECT
+    'a4040404-0000-4000-8000-00000000000a',
+    'Generated Exercise ' || lpad(i::text, 4, '0'),
+    'a4040404-0001-4000-8000-000000000001',
+    TIMESTAMPTZ '2026-03-01 00:00+00' + make_interval(secs => i),
+    i
+FROM generate_series(1, 1001) AS i;
+
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.act_as('a4040404-0000-4000-8000-00000000000a');
+SELECT is(
+    jsonb_array_length(public.exercise_frequency()),
+    1004,
+    'exercise_frequency scalar JSON preserves more than 1,000 exercise names'
+);
+SELECT is(
+    jsonb_array_length(public.exercise_names()),
+    1004,
+    'exercise_names scalar JSON preserves more than 1,000 exercise names'
+);
+
 RESET ROLE;
 
 -- Period mapping (user C: probes 12 hours either side of each cutoff).
@@ -725,12 +764,14 @@ SET LOCAL ROLE authenticated;
 SELECT pg_temp.act_as('b4040404-0000-4000-8000-00000000000b');
 
 SELECT results_eq(
-    $$SELECT exercise_name, muscle_group, sessions FROM public.exercise_frequency()$$,
+    $$SELECT exercise_name, muscle_group, sessions
+      FROM jsonb_to_recordset(public.exercise_frequency())
+           AS f(exercise_name text, muscle_group text, sessions integer)$$,
     $$VALUES ('Squat'::text, 'Legs'::text, 1)$$,
     'B sees only its own exercise frequency'
 );
 SELECT results_eq(
-    $$SELECT exercise_name FROM public.exercise_names()$$,
+    $$SELECT exercise_name FROM jsonb_array_elements_text(public.exercise_names()) AS n(exercise_name)$$,
     $$VALUES ('Bench Press'::text)$$,
     'B sees only its own exercise names'
 );
@@ -784,8 +825,8 @@ SELECT results_eq(
 SELECT set_config('request.jwt.claims', '{"role":"authenticated"}', true);
 SELECT is(
     (
-        (SELECT count(*) FROM public.exercise_frequency())
-        + (SELECT count(*) FROM public.exercise_names())
+        jsonb_array_length(public.exercise_frequency())
+        + jsonb_array_length(public.exercise_names())
         + (SELECT count(*) FROM public.exercise_progress_series('Bench Press'))
         + jsonb_array_length(public.exercise_progress_series_many())
         + (SELECT count(*) FROM public.personal_record_history())

@@ -54,7 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_exercise_progress_user_exercise_recorded
   ON public.exercise_progress (user_id, exercise_name, recorded_at DESC, id DESC);
 
 -- ---------------------------------------------------------------------------
--- exercise_frequency: one row per exercise NAME with the number of distinct
+-- exercise_frequency: one JSONB array with the number of distinct
 -- sessions it appears in (a name repeated within a session counts once).
 -- muscle_group is the most recent non-'General' raw value for that name
 -- (by session start, then exercise id), falling back to the most recent raw
@@ -65,61 +65,68 @@ CREATE INDEX IF NOT EXISTS idx_exercise_progress_user_exercise_recorded
 DROP FUNCTION IF EXISTS public.exercise_frequency(text);
 
 CREATE FUNCTION public.exercise_frequency(p_profile_id text DEFAULT NULL)
-RETURNS TABLE (exercise_name text, muscle_group text, sessions integer)
+RETURNS jsonb
 LANGUAGE sql
 STABLE
 SECURITY INVOKER
 SET search_path = ''
 AS $$
-  SELECT
-    e.name AS exercise_name,
-    (
-      array_agg(
-        e.muscle_group
-        ORDER BY
-          (e.muscle_group IS NULL OR e.muscle_group = 'General'),
-          ws.started_at DESC,
-          e.id DESC
-      )
-    )[1] AS muscle_group,
-    count(DISTINCT e.session_id)::integer AS sessions
-  FROM public.exercises e
-  JOIN public.workout_sessions ws ON ws.id = e.session_id
-  WHERE e.user_id = auth.uid()
-    AND ws.user_id = auth.uid()
-    AND (p_profile_id IS NULL OR ws.local_profile_id = p_profile_id)
-  GROUP BY e.name
-  ORDER BY sessions DESC, exercise_name ASC;
+  SELECT COALESCE(
+    jsonb_agg(to_jsonb(frequency) ORDER BY frequency.sessions DESC, frequency.exercise_name ASC),
+    '[]'::jsonb
+  )
+  FROM (
+    SELECT
+      e.name AS exercise_name,
+      (
+        array_agg(
+          e.muscle_group
+          ORDER BY
+            (e.muscle_group IS NULL OR e.muscle_group = 'General'),
+            ws.started_at DESC,
+            e.id DESC
+        )
+      )[1] AS muscle_group,
+      count(DISTINCT e.session_id)::integer AS sessions
+    FROM public.exercises e
+    JOIN public.workout_sessions ws ON ws.id = e.session_id
+    WHERE e.user_id = auth.uid()
+      AND ws.user_id = auth.uid()
+      AND (p_profile_id IS NULL OR ws.local_profile_id = p_profile_id)
+    GROUP BY e.name
+  ) frequency;
 $$;
 
 COMMENT ON FUNCTION public.exercise_frequency(text) IS
-  'Caller-scoped: one row per exercise name; sessions = distinct sessions containing it; muscle_group = latest non-General raw value. NULL profile = all profiles.';
+  'Caller-scoped: one JSONB array of exercise names; sessions = distinct sessions containing each; muscle_group = latest non-General raw value. Scalar envelope avoids PostgREST row truncation. NULL profile = all profiles.';
 
 REVOKE ALL ON FUNCTION public.exercise_frequency(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.exercise_frequency(text) FROM anon;
 GRANT EXECUTE ON FUNCTION public.exercise_frequency(text) TO authenticated;
 
 -- ---------------------------------------------------------------------------
--- exercise_names: distinct exercise names with progress rows, A-Z.
+-- exercise_names: one JSONB array of distinct names with progress rows, A-Z.
 -- ---------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.exercise_names(text);
 
 CREATE FUNCTION public.exercise_names(p_profile_id text DEFAULT NULL)
-RETURNS TABLE (exercise_name text)
+RETURNS jsonb
 LANGUAGE sql
 STABLE
 SECURITY INVOKER
 SET search_path = ''
 AS $$
-  SELECT DISTINCT ep.exercise_name
-  FROM public.exercise_progress ep
-  WHERE ep.user_id = auth.uid()
-    AND (p_profile_id IS NULL OR ep.local_profile_id = p_profile_id)
-  ORDER BY ep.exercise_name ASC;
+  SELECT COALESCE(jsonb_agg(names.exercise_name ORDER BY names.exercise_name ASC), '[]'::jsonb)
+  FROM (
+    SELECT DISTINCT ep.exercise_name
+    FROM public.exercise_progress ep
+    WHERE ep.user_id = auth.uid()
+      AND (p_profile_id IS NULL OR ep.local_profile_id = p_profile_id)
+  ) names;
 $$;
 
 COMMENT ON FUNCTION public.exercise_names(text) IS
-  'Caller-scoped: distinct exercise_progress.exercise_name values, ascending. NULL profile = all profiles.';
+  'Caller-scoped: one JSONB array of distinct exercise_progress.exercise_name values, ascending. Scalar envelope avoids PostgREST row truncation. NULL profile = all profiles.';
 
 REVOKE ALL ON FUNCTION public.exercise_names(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.exercise_names(text) FROM anon;
