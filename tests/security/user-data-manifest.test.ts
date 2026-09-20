@@ -7,9 +7,9 @@
  *      a `user_id` column, a `REFERENCES auth.users` FK, or (transitively) an
  *      FK to such a table. Limitation: DDL built dynamically in `EXECUTE`
  *      strings or inside function bodies is not parsed.
- *   2. src/lib/database.types.ts (generated from prod): tables whose Row has
- *      `user_id`. This catches prod tables whose migration is only a stub
- *      (e.g. 20260420210411_comprehensive_dashboard_drift_reconciliation.sql).
+ *   2. src/lib/database.types.ts (generated from the clean migrated schema):
+ *      tables whose Row has `user_id`. This catches migration DDL shapes the
+ *      lightweight SQL parser does not understand.
  *
  * Merge-order note: TABLES_WITHOUT_MIGRATION_DDL lists subscription_events
  * (DDL from PR 2) and sync_tombstones (DDL from PR 16). When their DDL lands,
@@ -124,12 +124,12 @@ describe("user data manifest (R-31)", () => {
 			expect(owned.has(table), table).toBe(true);
 		}
 		expect(owned.get("routine_exercises")).toBe("FK to routines");
-		expect(owned.get("wearable_daily_summaries")).toBe(
-			"user_id in database.types.ts",
-		);
+		// Prod-only tables are declared explicitly below and are intentionally
+		// absent from the canonical clean-migration type snapshot.
+		expect(owned.has("wearable_daily_summaries")).toBe(false);
 		expect(owned.has("challenges")).toBe(false);
 		expect(owned.has("community_benchmarks")).toBe(false);
-		expect(owned.size).toBeGreaterThanOrEqual(45);
+		expect(owned.size).toBeGreaterThanOrEqual(40);
 		expect(schema.get("routines")?.uniques.get("routines_pkey")).toEqual([
 			"id",
 		]);
@@ -247,7 +247,7 @@ describe("user data manifest (R-31)", () => {
 		}
 	});
 
-	it("exports exactly the migrated columns, plus prod-only drift columns as optional", () => {
+	it("exports exactly the migrated columns and keeps prod-only drift columns optional", () => {
 		const problems: string[] = [];
 		for (const entry of USER_DATA_MANIFEST) {
 			const parsed = schema.get(entry.table);
@@ -268,10 +268,8 @@ describe("user data manifest (R-31)", () => {
 						problems.push(
 							`${entry.table}.${column} is migrated; move to columns`,
 						);
-					if (!types?.has(column))
-						problems.push(
-							`${entry.table}.${column} optional but not in prod types`,
-						);
+					// database.types.ts is generated from a clean migrated schema, so
+					// production-only drift columns are expected to be absent from it.
 				}
 				for (const column of types ?? []) {
 					if (!parsed.columns.has(column) && !optional.includes(column)) {
