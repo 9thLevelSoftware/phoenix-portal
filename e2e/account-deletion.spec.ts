@@ -35,6 +35,13 @@ import {
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 
+/**
+ * How long to let the page settle before asserting that NO direct
+ * deletion_requests insert was sent. See the use site for why this is a fixed
+ * window rather than `waitForLoadState("networkidle")`.
+ */
+const INSERT_SETTLE_MS = 1000;
+
 type DeletionRow = {
 	id: string;
 	user_id: string;
@@ -271,10 +278,21 @@ test.describe("Account deletion flow", () => {
 
 		// The RPC was called; row is now pending and the UI shows State B
 		await expect.poll(() => state.rpcCalls).toBeGreaterThanOrEqual(1);
-		await expect(page.getByText(/Deletion Scheduled/i)).toBeVisible();
-		// Let any in-flight request land before asserting a negative, so a
-		// fire-and-forget direct insert cannot slip past this check.
-		await page.waitForLoadState("networkidle");
+		// Target the State B card heading specifically: the success toast text
+		// ("Account deletion scheduled…") also matches this phrase, and a bare
+		// getByText is a strict-mode violation whenever both are mounted.
+		await expect(
+			page.getByRole("heading", { name: /Deletion Scheduled/i }),
+		).toBeVisible();
+		// Bounded settle before asserting a negative. Deliberately NOT
+		// `waitForLoadState("networkidle")`: that is a 500ms-quiet heuristic
+		// that returns immediately when nothing happens to be in flight, so it
+		// is no barrier at all for a request issued at this moment (measured:
+		// it returned in <=1ms with a probe request paused inside its route
+		// handler). A fixed window is crude but it is a real barrier — the
+		// route handler counts an insert synchronously on interception, so
+		// anything the success path dispatches has landed by now.
+		await page.waitForTimeout(INSERT_SETTLE_MS);
 		expect(state.insertCalls).toBe(0); // No direct table insert
 		expect(state.deleteAccountCalls).toBe(0); // No immediate purge
 	});
