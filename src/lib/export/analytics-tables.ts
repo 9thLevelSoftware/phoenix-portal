@@ -346,14 +346,23 @@ function buildRepRows(
 	});
 }
 
-async function fetchUserAnalyticsRows(userId: string) {
+/**
+ * Reads the analytics source rows. Every offset-paged read is ordered by a
+ * unique key (`id`, after any display order) so `.range()` pages never skip
+ * or repeat rows.
+ */
+export async function fetchUserAnalyticsRows(
+	userId: string,
+	client: Pick<typeof supabase, "from"> = supabase,
+) {
 	const workouts = await fetchAllSupabasePages<AnalyticsRawWorkoutRow>(
 		(from, to) =>
-			supabase
+			client
 				.from("workout_sessions")
 				.select("id, name, started_at, duration_seconds")
 				.eq("user_id", userId)
 				.order("started_at", { ascending: false })
+				.order("id")
 				.range(from, to),
 	);
 	const workoutIds = workouts.map((workout) => workout.id);
@@ -363,29 +372,32 @@ async function fetchUserAnalyticsRows(userId: string) {
 			? await fetchAllSupabasePagesForChunks<AnalyticsRawExerciseRow, string>(
 					workoutIds,
 					(ids, from, to) =>
-						supabase
+						client
 							.from("exercises")
 							.select("id, exercise_id, name, muscle_group, session_id")
 							.in("session_id", ids)
+							.order("id")
 							.range(from, to),
 				)
 			: [];
 
 	const sets = await fetchAllSupabasePages<AnalyticsRawSetRow>((from, to) =>
-		supabase
+		client
 			.from("sets")
 			.select("id, exercise_id, set_number, actual_reps, weight_kg")
 			.eq("user_id", userId)
+			.order("id")
 			.range(from, to),
 	);
 
 	const repSummaries = await fetchAllSupabasePages<RepSummaryRow>((from, to) =>
-		supabase
+		client
 			.from("rep_summaries")
 			.select(
 				"id, set_id, rep_number, mean_velocity_mps, peak_velocity_mps, mean_force_n, peak_force_n, power_watts, rom_mm, tut_ms, asymmetry_pct, vbt_zone",
 			)
 			.eq("user_id", userId)
+			.order("id")
 			.range(from, to),
 	);
 
