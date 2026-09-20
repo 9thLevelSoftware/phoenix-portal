@@ -83,6 +83,10 @@ verify_jwt = true
 [functions.paddle-webhooks]
 verify_jwt = false
 
+# Gateway verification is intentionally disabled (KD-10 / R-18): pg_cron calls
+# this through private.invoke_edge_function with no JWT. The handler accepts
+# either the `x-cron-secret` header (constant-time compare against CRON_SECRET)
+# or an exact service-role bearer key, and returns 401 otherwise.
 [functions.process-sync-queue]
 verify_jwt = false
 
