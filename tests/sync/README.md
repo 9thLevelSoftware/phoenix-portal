@@ -158,8 +158,10 @@ with the service client's `auth.admin.createUser` API and confirms their email
 without invoking public sign-up. Each user receives one active EMBER
 subscription with a future period end before the anon client signs in for the
 real user session. Tests that intentionally exercise the absent/FREE gate pass
-`{ seedSubscription: false }`; this exception is used only by the validation
-gate tests and the training-cycle test that inserts its own EMBER row.
+`{ seedSubscription: false }`; this exception is used only by the harness
+live test and the training-cycle test that inserts its own EMBER row. (The
+push/pull subscription deny paths are pinned by the Deno handler tests under
+`supabase/functions/`, not by live sync tests.)
 
 The live workflow enables sanitized failure labels for non-OK push/pull
 responses and runs an always-run cleanup after the live test step. Cleanup
