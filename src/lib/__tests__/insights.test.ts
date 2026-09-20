@@ -1,24 +1,51 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { generateInsights, type InsightInput } from "../insights";
+import {
+	generateInsights,
+	type InsightInput,
+	type TrainingInsight,
+	type WeightUnit,
+} from "../insights";
 
-const baseInput: InsightInput = {
-	currentVolume: 15000,
-	previousVolume: 12000,
-	muscleGroups: {
-		Chest: 30,
-		Back: 25,
-		Legs: 8,
-		Shoulders: 15,
-		Arms: 14,
-		Core: 8,
-	},
-	avgSessionsPerWeek: 4.2,
-	currentStreak: 12,
-	bestStreak: 21,
-	recentPRs: [{ exercise: "Bench Press", value: 225, previousValue: 215 }],
-	plateauExercises: ["Overhead Press"],
-	trainingLoadScore: 72,
-};
+interface FixtureCase {
+	id: string;
+	unit: WeightUnit;
+	input: InsightInput;
+	expected: TrainingInsight[];
+}
+
+// Same file the Deno suite reads (vitest runs from the repo root).
+const fixture: { cases: FixtureCase[] } = JSON.parse(
+	readFileSync(
+		resolve(process.cwd(), "tests/fixtures/insight-cases.json"),
+		"utf8",
+	),
+);
+
+function fixtureCase(id: string): FixtureCase {
+	const found = fixture.cases.find((c) => c.id === id);
+	if (!found) throw new Error(`insight fixture case "${id}" is missing`);
+	return found;
+}
+
+const baseInput: InsightInput = fixtureCase("balanced-progress-kg").input;
+
+// The Deno side (supabase/functions/_shared/insightRules.test.ts) asserts the
+// same file. Both runtimes import ONE module, so this pins the rules rather
+// than the wiring: fork the rules and the golden goes red (F-059 / KD-14).
+describe("insight rule parity fixture", () => {
+	it("has cases", () => {
+		expect(fixture.cases.length).toBeGreaterThan(0);
+	});
+
+	it.each(
+		fixture.cases.map((c) => [c.id, c] as const),
+	)("matches the golden output for %s", (_id, testCase) => {
+		const actual = generateInsights(testCase.input, testCase.unit);
+		expect(JSON.parse(JSON.stringify(actual))).toEqual(testCase.expected);
+	});
+});
 
 describe("generateInsights", () => {
 	it("flags volume increase as success", () => {
@@ -52,7 +79,7 @@ describe("generateInsights", () => {
 		expect(pr?.description).toContain("up 10 kg from 215 kg");
 		expect(pr?.description).not.toContain("lbs");
 		expect(pr?.metric).toMatchObject({
-			name: "Bench Press",
+			name: "Bench Press Max Weight",
 			value: 225,
 			unit: "kg",
 			delta: 10,
@@ -67,11 +94,39 @@ describe("generateInsights", () => {
 		expect(pr?.description).toContain("496.0 lbs");
 		expect(pr?.description).toContain("up 22.0 lbs from 474.0 lbs");
 		expect(pr?.metric).toMatchObject({
-			name: "Bench Press",
+			name: "Bench Press Max Weight",
 			value: 496,
 			unit: "lbs",
 			delta: 22,
 		});
+	});
+
+	it("abbreviates MAX_VOLUME records instead of formatting them as a load", () => {
+		const insights = generateInsights({
+			...baseInput,
+			recentPRs: [
+				{
+					exercise: "Deadlift",
+					displayName: "Deadlift Max Volume",
+					recordType: "MAX_VOLUME",
+					value: 12500,
+					previousValue: 11000,
+				},
+			],
+		});
+		const pr = insights.find((i) => i.title.startsWith("New PR:"));
+		expect(pr?.description).toContain("12.5K kg");
+		expect(pr?.description).not.toContain("12500 kg");
+	});
+
+	it("falls back to the exercise name when no displayName is supplied", () => {
+		const insights = generateInsights({
+			...baseInput,
+			recentPRs: [{ exercise: "Squat", value: 180 }],
+		});
+		const pr = insights.find((i) => i.title.startsWith("New PR:"));
+		expect(pr?.title).toBe("New PR: Squat");
+		expect(pr?.id).toBe("pr-squat");
 	});
 
 	it("flags plateau exercises", () => {

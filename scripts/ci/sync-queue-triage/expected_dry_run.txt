@@ -1,0 +1,6 @@
+failed|integration_not_connected|2
+failed|provider_not_queueable|1
+failed|subscription_required|1
+kept||5
+superseded_duplicate||3
+superseded_stale||1

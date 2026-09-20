@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { requireSubscription } from '../_shared/requireSubscription.ts';
 
 const PUBLIC_SUPABASE_URL =
   Deno.env.get('SUPABASE_PUBLIC_URL') ?? Deno.env.get('SUPABASE_URL')!;
@@ -71,6 +72,11 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    // Integrations are a FLAME feature; enforce it before any OAuth state is
+    // created (402 below FLAME, 503 if the subscription lookup fails).
+    const gate = await requireSubscription(supabase, user.id, 'FLAME', cors);
+    if (!gate.allowed) return gate.response;
 
     // Clean up expired state tokens (prevents table bloat)
     await supabase.from('oauth_states').delete().lt('expires_at', new Date().toISOString());
