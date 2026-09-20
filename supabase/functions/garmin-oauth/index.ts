@@ -2,6 +2,11 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { extractGarminProviderUserId } from '../_shared/garminIdentity.ts';
+import {
+  buildAuthHeader,
+  generateNonce,
+  generateOAuthSignature,
+} from '../_shared/garminOAuth1.ts';
 
 const GARMIN_CONSUMER_KEY = Deno.env.get('GARMIN_CONSUMER_KEY')!;
 const GARMIN_CONSUMER_SECRET = Deno.env.get('GARMIN_CONSUMER_SECRET')!;
@@ -29,63 +34,6 @@ const GARMIN_PENDING_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
  * NOTE: Garmin developer program approval may be pending.
  * Edge Function is ready but untested until credentials are available.
  */
-
-/**
- * Generate OAuth 1.0a signature base string and HMAC-SHA1 signature.
- * Per RFC 5849 Section 3.4.
- */
-async function generateOAuthSignature(
-  method: string,
-  url: string,
-  params: Record<string, string>,
-  consumerSecret: string,
-  tokenSecret: string = '',
-): Promise<string> {
-  // Sort parameters alphabetically and encode
-  const sortedParams = Object.entries(params)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join('&');
-
-  // Create signature base string
-  const signatureBase = [
-    method.toUpperCase(),
-    encodeURIComponent(url),
-    encodeURIComponent(sortedParams),
-  ].join('&');
-
-  // Signing key = consumer_secret&token_secret
-  const signingKey = `${encodeURIComponent(consumerSecret)}&${encodeURIComponent(tokenSecret)}`;
-
-  // HMAC-SHA1
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(signingKey),
-    { name: 'HMAC', hash: 'SHA-1' },
-    false,
-    ['sign'],
-  );
-  const signatureBytes = await crypto.subtle.sign('HMAC', key, encoder.encode(signatureBase));
-  return btoa(String.fromCharCode(...new Uint8Array(signatureBytes)));
-}
-
-/**
- * Generate a random nonce for OAuth requests.
- */
-function generateNonce(): string {
-  return crypto.randomUUID().replace(/-/g, '');
-}
-
-/**
- * Build an OAuth 1.0a Authorization header.
- */
-function buildAuthHeader(params: Record<string, string>): string {
-  const headerParts = Object.entries(params)
-    .map(([k, v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`)
-    .join(', ');
-  return `OAuth ${headerParts}`;
-}
 
 Deno.serve(async (req) => {
   const cors = getCorsHeaders(req);
