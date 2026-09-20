@@ -317,6 +317,12 @@ npm run test:edge          # Deno handler tests for the Edge Functions
 npm run test:edge:integration  # real-SQL "integration: " tests, local stack only
 ```
 
+**Test files:**
+- `tests/sync/transforms/weight-transform.test.ts` — Per-cable weights and the load display adapter
+- `tests/sync/mode-transform.test.ts` — Workout mode round-trips (43 tests)
+- `tests/sync/multi-device.test.ts` — Concurrent device scenarios (12 tests)
+- `tests/sync/hierarchy.test.ts` — Nested entity integrity (35 tests)
+- `tests/sync/helpers/mock-edge-functions.ts` — Mock implementation
 **Where things live** (`tests/sync/README.md` has the full tree):
 - `tests/sync/transforms/` — `weight-transform.test.ts` (per-cable loads and
   the display adapter), `mode-transform.test.ts`, `velocity-zones.test.ts`

@@ -16,6 +16,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { formatLoad, toLoadDisplay } from "@/lib/units/loadDisplay";
 import {
+	createRoutineExerciseFixture,
+	createSessionFixture,
+	createSetFixture,
+	WEIGHT_BOUNDARY_VALUES,
+} from "../fixtures";
+import {
 	callPullEndpoint,
 	callPushEndpoint,
 	createMinimalPushPayload,
