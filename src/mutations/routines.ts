@@ -2,10 +2,20 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Database, Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
+import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
 import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
+import {
+	normalizeEccentricLoad,
+	toEchoLevel,
+	toRepCountTiming,
+	toStopAtPosition,
+	toSupersetColorName,
+	toWireMode,
+} from "../../supabase/functions/_shared/workoutModes.ts";
+import { toWireMode } from "../../supabase/functions/_shared/workoutModes.ts";
 
 function estimatedRoutineDurationSeconds(
 	exercises: RoutineExerciseInput[],
@@ -63,9 +73,30 @@ interface RoutineExerciseInput {
 type RoutineExerciseInsert =
 	Database["public"]["Tables"]["routine_exercises"]["Insert"];
 
-function toRoutineExerciseRows(
+/**
+ * Mobile only understands wire mode names (OLD_SCHOOL, ECHO, ...). Normalize
+ * display names / legacy aliases and refuse anything else rather than storing
+ * a value mobile would silently turn into Old School.
+ *
+ * `preservedModes` are unrecognized values that were already stored on the
+ * routine being edited (e.g. a mode from a newer mobile build). They are
+ * written back verbatim so a portal edit never downgrades them; the DB
+ * trigger likewise passes unknown values through.
+ */
+function requireWireMode(
+	mode: string,
+	preservedModes: readonly string[] = [],
+): string {
+	const wire = toWireMode(mode);
+	if (wire) return wire;
+	if (preservedModes.includes(mode)) return mode;
+	throw new Error(`Unknown workout mode: ${mode}`);
+}
+
+export function toRoutineExerciseRows(
 	routineId: string,
 	exercises: RoutineExerciseInput[],
+	preservedModes: readonly string[] = [],
 ): RoutineExerciseInsert[] {
 	return exercises.map((ex, i) => ({
 		routine_id: routineId,
@@ -77,10 +108,12 @@ function toRoutineExerciseRows(
 		weight: ex.weight / WEIGHT_MULTIPLIER,
 		rest_seconds: ex.rest_seconds,
 		duration_seconds: ex.duration_seconds ?? null,
-		mode: ex.mode,
+		mode: requireWireMode(ex.mode, preservedModes),
 		order_index: i,
 		superset_id: ex.superset_id ?? null,
-		superset_color: ex.superset_color ?? null,
+		// Settings are stored in mobile's vocabulary. Anything outside it is
+		// stored as null, which is the default mobile would parse it to.
+		superset_color: toSupersetColorName(ex.superset_color),
 		superset_order: ex.superset_order ?? null,
 		per_set_weights: normalizePerSetWeights(ex.per_set_weights),
 		per_set_rest: (ex.per_set_rest ?? null) as Json,
@@ -88,11 +121,11 @@ function toRoutineExerciseRows(
 		is_amrap: ex.is_amrap ?? false,
 		is_bodyweight: ex.is_bodyweight ?? false,
 		pr_percentage: ex.pr_percentage ?? null,
-		rep_count_timing: ex.rep_count_timing ?? null,
-		stop_at_position: ex.stop_at_position ?? null,
+		rep_count_timing: toRepCountTiming(ex.rep_count_timing),
+		stop_at_position: toStopAtPosition(ex.stop_at_position),
 		stall_detection: ex.stall_detection ?? true,
-		eccentric_load: ex.eccentric_load ?? null,
-		echo_level: ex.echo_level ?? null,
+		eccentric_load: normalizeEccentricLoad(ex.eccentric_load),
+		echo_level: toEchoLevel(ex.echo_level),
 		drop_set_enabled: ex.drop_set_enabled ?? false,
 		drop_set_min_weight_kg:
 			ex.drop_set_min_weight_kg == null
@@ -109,6 +142,8 @@ interface SaveRoutineInput {
 
 interface UpdateRoutineInput extends SaveRoutineInput {
 	routineId: string;
+	/** Unrecognized modes already stored on this routine; saved verbatim. */
+	preservedModes?: readonly string[];
 }
 
 export function useSaveRoutine() {
@@ -118,6 +153,9 @@ export function useSaveRoutine() {
 	return useMutation({
 		mutationFn: async (input: SaveRoutineInput) => {
 			if (!user) throw new Error("Must be logged in to save routines");
+			// Validate modes before the parent insert so an unknown mode can't
+			// leave an orphaned routine row behind.
+			for (const ex of input.exercises) requireWireMode(ex.mode);
 
 			// Create the routine row
 			const { data: routine, error: routineError } = await supabase
@@ -173,6 +211,9 @@ export function useSaveRoutine() {
 	});
 }
 
+/** Sentinel for "the favourite UPDATE matched no row". */
+const ROUTINE_NOT_UPDATED = "Routine was not updated";
+
 export function useToggleFavorite() {
 	const { user } = useAuth();
 	const queryClient = useQueryClient();
@@ -186,18 +227,40 @@ export function useToggleFavorite() {
 			isFavorite: boolean;
 		}) => {
 			if (!user) throw new Error("Must be logged in");
-			const { error } = await supabase
+			// `.select("id")` so a 0-row UPDATE is observable. The routines
+			// UPDATE policy is owner AND FLAME, so a user whose plan lapsed
+			// while this page was open matches no row and PostgREST returns
+			// success with an empty body — silently doing nothing.
+			const { data: updated, error } = await supabase
 				.from("routines")
 				.update({ is_favorite: isFavorite })
 				.eq("id", routineId)
-				.eq("user_id", user.id);
+				.eq("user_id", user.id)
+				.select("id")
+				.maybeSingle();
 			if (error) throw error;
+			if (!updated) throw new Error(ROUTINE_NOT_UPDATED);
 			return { routineId, isFavorite };
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: queryKeys.routines.all,
 			});
+		},
+		onError: (error: Error) => {
+			console.error("[useToggleFavorite] failed:", error);
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
+			toast.error(
+				error.message === ROUTINE_NOT_UPDATED
+					? "Routine not found, or you can no longer edit it."
+					: "Failed to update this routine. Please try again.",
+			);
 		},
 	});
 }
@@ -226,6 +289,7 @@ export function useUpdateRoutine() {
 					p_exercises: toRoutineExerciseRows(
 						input.routineId,
 						input.exercises,
+						input.preservedModes,
 					) as unknown as Json,
 				},
 			);

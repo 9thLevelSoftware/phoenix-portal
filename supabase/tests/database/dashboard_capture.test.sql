@@ -114,6 +114,10 @@ SELECT ok(
 
 SELECT has_trigger('public', 'subscriptions', 'subscriptions_audit_trigger',
     'subscriptions has subscriptions_audit_trigger');
+SELECT has_trigger('public', 'workout_sessions', 'trg_update_profile_stats_on_workout',
+    'workout_sessions has trg_update_profile_stats_on_workout');
+SELECT has_trigger('public', 'personal_records', 'trg_update_pr_count_on_record',
+    'personal_records has trg_update_pr_count_on_record');
 
 -- The two add-only counter triggers captured here are dropped again by
 -- 20260920002500 (server-derived gamification counters). Their functions stay
@@ -135,6 +139,9 @@ SELECT set_eq(
     $sql$,
     $sql$
         VALUES
+            ('CREATE TRIGGER subscriptions_audit_trigger AFTER INSERT OR DELETE OR UPDATE ON public.subscriptions FOR EACH ROW EXECUTE FUNCTION log_subscription_event()'::text, 'O'::text),
+            ('CREATE TRIGGER trg_update_profile_stats_on_workout AFTER INSERT ON public.workout_sessions FOR EACH ROW EXECUTE FUNCTION update_profile_stats_on_workout()', 'O'),
+            ('CREATE TRIGGER trg_update_pr_count_on_record AFTER INSERT ON public.personal_records FOR EACH ROW EXECUTE FUNCTION update_pr_count_on_record()', 'O')
             ('CREATE TRIGGER subscriptions_audit_trigger AFTER INSERT OR DELETE OR UPDATE ON public.subscriptions FOR EACH ROW EXECUTE FUNCTION log_subscription_event()'::text, 'O'::text)
     $sql$,
     'trigger definitions match the prod capture byte for byte and are enabled'
@@ -207,6 +214,11 @@ SELECT set_has(
     $sql$,
     $sql$
         VALUES
+            -- 'IGNORED' was added by 20260920004400 (PR 44): apply_subscription_event
+            -- records an event from an untracked subscription that it refused to
+            -- apply. The other three are prod's original audit-trigger operations.
+            ('subscription_events'::text, 'subscription_events_operation_check'::text,
+             'CHECK ((operation = ANY (ARRAY[''INSERT''::text, ''UPDATE''::text, ''DELETE''::text, ''IGNORED''::text])))'::text),
             ('subscription_events'::text, 'subscription_events_operation_check'::text,
              'CHECK ((operation = ANY (ARRAY[''INSERT''::text, ''UPDATE''::text, ''DELETE''::text])))'::text),
             ('goal_snapshots', 'goal_snapshots_goal_id_fkey',
@@ -376,6 +388,42 @@ WHERE user_id IN (
     'd4d4d4d4-0000-4000-8000-000000000004'::uuid
 );
 
+-- trg_update_profile_stats_on_workout
+INSERT INTO public.workout_sessions (user_id, name, total_volume, duration_seconds, started_at)
+VALUES ('c3c3c3c3-0000-4000-8000-000000000003'::uuid, 'capture session 1', 100, 600, now());
+
+SELECT results_eq(
+    $sql$
+        SELECT total_workouts, total_volume_kg, total_time_seconds
+        FROM public.gamification_stats
+        WHERE user_id = 'c3c3c3c3-0000-4000-8000-000000000003'::uuid
+    $sql$,
+    $values$ VALUES (1::bigint, 100::numeric, 600::bigint) $values$,
+    'inserting a workout_sessions row fires trg_update_profile_stats_on_workout (creates the stats row)'
+);
+
+INSERT INTO public.workout_sessions (user_id, name, total_volume, duration_seconds, started_at)
+VALUES ('c3c3c3c3-0000-4000-8000-000000000003'::uuid, 'capture session 2', 50, 300, now());
+
+SELECT results_eq(
+    $sql$
+        SELECT total_workouts, total_volume_kg, total_time_seconds
+        FROM public.gamification_stats
+        WHERE user_id = 'c3c3c3c3-0000-4000-8000-000000000003'::uuid
+    $sql$,
+    $values$ VALUES (2::bigint, 150::numeric, 900::bigint) $values$,
+    'a second workout increments the existing stats row'
+);
+
+-- trg_update_pr_count_on_record
+INSERT INTO public.personal_records (user_id, exercise_name, value)
+VALUES ('c3c3c3c3-0000-4000-8000-000000000003'::uuid, 'Capture Press', 80);
+
+SELECT is(
+    (SELECT pr_count FROM public.gamification_stats
+     WHERE user_id = 'c3c3c3c3-0000-4000-8000-000000000003'::uuid),
+    1,
+    'inserting a personal_records row fires trg_update_pr_count_on_record'
 -- The counter triggers are gone (20260920002500): inserting sessions and
 -- records no longer touches gamification_stats by itself.
 INSERT INTO public.workout_sessions (user_id, name, total_volume, duration_seconds, started_at)
