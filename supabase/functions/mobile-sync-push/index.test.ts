@@ -429,13 +429,17 @@ function permissiveQuery(
   },
   subscriptionResult: { data: unknown; error: unknown } =
     DEFAULT_SUBSCRIPTION_RESULT,
+  writeError?: (method: string) => unknown,
+  onCall?: (method: string, args: unknown[]) => void,
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
+  let injectedWriteError: unknown = null;
   const chainMethods = [
     "select",
     "eq",
     "neq",
+    "gt",
     "in",
     "is",
     "or",
@@ -454,6 +458,11 @@ function permissiveQuery(
       if (method === "neq") ownershipProbe = true;
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method, args);
+      onCall?.(method, args);
+      if (method === "neq") ownershipProbe = true;
+      if (["insert", "upsert", "update", "delete"].includes(method)) {
+        onWrite(method);
+        injectedWriteError = writeError?.(method) ?? injectedWriteError;
       }
       return query;
     };
@@ -470,7 +479,11 @@ function permissiveQuery(
     reject?: (reason: unknown) => unknown,
   ) =>
     Promise.resolve(
-      ownershipProbe ? { data: [], error: null, count: 0 } : terminalResult,
+      injectedWriteError
+        ? { data: null, error: injectedWriteError }
+        : ownershipProbe
+        ? { data: [], error: null, count: 0 }
+        : terminalResult,
     ).then(resolve, reject);
   return query;
 }
@@ -492,6 +505,13 @@ interface PushHarness {
   setAuthCalls: { value: number };
   subscribeCalls: { value: number };
   removeChannelCalls: { value: number };
+  /** Every admin query builder with its chained calls and arguments. */
+  adminQueries: AdminQueryRecord[];
+}
+
+interface AdminQueryRecord {
+  table: string;
+  calls: Array<{ method: string; args: unknown[] }>;
 }
 
 function makeHarness(
@@ -504,6 +524,10 @@ function makeHarness(
     personalRecordsResult?: { data: unknown; error: unknown };
     localProfilesResult?: { data: unknown; error: unknown };
     subscriptionResult?: { data: unknown; error: unknown };
+    /** Terminal result for non-write queries on a table (e.g. catalog rows). */
+    tableResults?: Record<string, { data: unknown; error: unknown }>;
+    /** Error injected into a write, keyed `table:method` (e.g. `routines:delete`). */
+    writeErrors?: Record<string, unknown>;
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -526,6 +550,7 @@ function makeHarness(
   const subscribeCalls = { value: 0 };
   const setAuthCalls = { value: 0 };
   const removeChannelCalls = { value: 0 };
+  const adminQueries: AdminQueryRecord[] = [];
 
   const admin = {
     realtime: {
@@ -548,6 +573,20 @@ function makeHarness(
         : undefined);
       }, table === "personal_records" ? options.personalRecordsResult : undefined,
         options.subscriptionResult);
+      const record: AdminQueryRecord = { table, calls: [] };
+      adminQueries.push(record);
+      return permissiveQuery(
+        table,
+        (method) => {
+          adminWriteCalls.push({ table, method });
+          operationEvents.push(`write:${table}:${method}`);
+        },
+        table === "personal_records"
+          ? options.personalRecordsResult
+          : options.tableResults?.[table],
+        (method) => options.writeErrors?.[`${table}:${method}`],
+        (method, args) => record.calls.push({ method, args }),
+      );
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -649,7 +688,23 @@ function makeHarness(
     setAuthCalls,
     subscribeCalls,
     removeChannelCalls,
+    adminQueries,
   };
+}
+
+/** Queries on `table` whose chain includes the write `method`. */
+function writeQueries(
+  harness: PushHarness,
+  table: string,
+  method: string,
+): AdminQueryRecord[] {
+  return harness.adminQueries.filter((query) =>
+    query.table === table && query.calls.some((call) => call.method === method)
+  );
+}
+
+function callArgs(query: AdminQueryRecord, method: string): unknown[] {
+  return query.calls.find((call) => call.method === method)?.args ?? [];
 }
 
 async function json(response: Response): Promise<Record<string, unknown>> {
@@ -2487,6 +2542,341 @@ Deno.test("external activity synced_at is server time, never the client's synced
       startedAt: "2020-01-01T00:00:00.000Z",
       durationSeconds: 600,
       syncedAt: "2020-01-01T00:05:00.000Z",
+// PR 22 (F-024): required sub-step failures fail the push with a retryable
+// 503 instead of a 200 that lets mobile advance lastSync and drop the work.
+const PARTIAL_WRITE_BODY = {
+  error: "Sync temporarily unavailable",
+  code: "partial_write_retry",
+};
+const INJECTED_DB_ERROR = { message: "injected database failure", code: "XX000" };
+
+async function assertPartialWriteRetry(
+  harness: PushHarness,
+  response: Response,
+): Promise<void> {
+  assertEquals(response.status, 503);
+  assertEquals(await json(response), PARTIAL_WRITE_BODY);
+  assertEquals(harness.channelCalls, []);
+  assertEquals(harness.broadcastPayloads, []);
+  assertEquals(harness.loggerCalls, [[{ name: "PartialWriteRetry" }]]);
+}
+
+Deno.test("routine delete failure returns retryable 503 and no sync_complete", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routines:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedRoutineIds: [ROUTINE_ID],
+  }));
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("cycle delete failure returns retryable 503 and no sync_complete", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "training_cycles:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedCycleIds: [CYCLE_ID],
+  }));
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("routine exercise orphan cleanup failure returns retryable 503", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(
+    requestFromBody(validNestedRelationshipBody()),
+  );
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("allProfiles upsert failure returns 503 before any session write", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "local_profiles:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(
+    requestFromBody(validNestedRelationshipBody()),
+  );
+  await assertPartialWriteRetry(harness, response);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table !== "local_profiles"),
+    [],
+  );
+});
+
+Deno.test("single-profile upsert failure returns 503 before any session write", async () => {
+  const body = validNestedRelationshipBody();
+  delete body.allProfiles;
+  const harness = makeHarness(undefined, {
+    writeErrors: { "local_profiles:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody(body));
+  await assertPartialWriteRetry(harness, response);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table !== "local_profiles"),
+    [],
+  );
+});
+
+const CATALOG_EXERCISE_ID = "00000000-0000-4000-8000-000000000050";
+const ASSESSMENT_ID = "00000000-0000-4000-8000-000000000051";
+
+function assessmentBody(): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    assessments: [{
+      id: ASSESSMENT_ID,
+      exerciseId: CATALOG_EXERCISE_ID,
+      estimatedOneRepMaxKg: 100,
+      loadVelocityData: "[]",
+      createdAt: "2026-07-11T12:00:00.000Z",
+    }],
+  };
+}
+
+const CATALOG_RESULT = {
+  data: [{
+    id: CATALOG_EXERCISE_ID,
+    name: "Bench Press",
+    is_custom: false,
+    archived: false,
+  }],
+  error: null,
+};
+
+Deno.test("VBT insert failure keeps 200 and reports failed.assessments", async () => {
+  const harness = makeHarness(undefined, {
+    tableResults: { exercise_catalog: CATALOG_RESULT },
+    writeErrors: { "vbt_assessments:insert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody(assessmentBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.assessmentsInserted, 0);
+  assertEquals(body.failed, {
+    phaseStatistics: [],
+    exerciseSignatures: [],
+    assessments: [ASSESSMENT_ID],
+    externalActivities: [],
+  });
+  assertEquals(harness.broadcastPayloads.length, 1);
+});
+
+Deno.test("successful push reports an empty failed map", async () => {
+  const harness = makeHarness(undefined, {
+    tableResults: { exercise_catalog: CATALOG_RESULT },
+  });
+  const response = await harness.handler(requestFromBody(assessmentBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.assessmentsInserted, 1);
+  assertEquals(body.failed, {
+    phaseStatistics: [],
+    exerciseSignatures: [],
+    assessments: [],
+    externalActivities: [],
+  });
+  // The client id used for failure reporting must never reach PostgREST.
+  const inserts = writeQueries(harness, "vbt_assessments", "insert");
+  assertEquals(inserts.length, 1);
+  const rows = callArgs(inserts[0]!, "insert")[0] as Array<
+    Record<string, unknown>
+  >;
+  assertEquals(rows.length, 1);
+  assert(!Object.hasOwn(rows[0]!, "clientId"));
+  assertEquals(rows[0]!.exercise_id, CATALOG_EXERCISE_ID);
+  assertEquals(rows[0]!.estimated_1rm_kg, 100);
+  assertEquals(rows[0]!.user_id, VALID_USER_ID);
+});
+
+function manyIds(prefix: string, count: number): string[] {
+  return Array.from(
+    { length: count },
+    (_, i) => `00000000-0000-4000-${prefix}-${i.toString().padStart(12, "0")}`,
+  );
+}
+
+Deno.test("routine and cycle tombstone deletes are chunked at 100 ids", async () => {
+  const routineIds = manyIds("8a00", 250);
+  const cycleIds = manyIds("8b00", 201);
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedRoutineIds: routineIds,
+    deletedCycleIds: cycleIds,
+  }));
+
+  assertEquals(response.status, 200);
+  const cases: Array<[string, string[], number[]]> = [
+    ["routines", routineIds, [100, 100, 50]],
+    ["training_cycles", cycleIds, [100, 100, 1]],
+  ];
+  for (const [table, ids, sizes] of cases) {
+    const deletes = writeQueries(harness, table, "delete");
+    const chunks = deletes.map((query) => callArgs(query, "in")[1] as string[]);
+    assertEquals(chunks.map((chunk) => chunk.length), sizes);
+    assertEquals(chunks.flat(), ids);
+    for (const query of deletes) {
+      assertEquals(callArgs(query, "eq"), ["user_id", VALID_USER_ID]);
+    }
+  }
+  assertEquals(harness.broadcastPayloads.length, 1);
+});
+
+Deno.test("a failed tombstone delete chunk stops at that chunk with a retryable 503", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routines:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedRoutineIds: manyIds("8a00", 250),
+  }));
+  await assertPartialWriteRetry(harness, response);
+  assertEquals(writeQueries(harness, "routines", "delete").length, 1);
+});
+
+Deno.test("orphan cleanup failure for a routine with no exercises returns retryable 503", async () => {
+  const body = validNestedRelationshipBody();
+  const routines = body.routines as Array<Record<string, unknown>>;
+  routines[0] = { ...routines[0], exerciseCount: 0, exercises: [] };
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody(body));
+  await assertPartialWriteRetry(harness, response);
+  const deletes = writeQueries(harness, "routine_exercises", "delete");
+  assertEquals(deletes.length, 1);
+  // The delete-all branch: no `not in` filter.
+  assert(!deletes[0]!.calls.some((call) => call.method === "not"));
+  assertEquals(callArgs(deletes[0]!, "eq"), ["routine_id", ROUTINE_ID]);
+});
+
+Deno.test("routine_exercises upsert failure returns the same retryable 503", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routine_exercises:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(
+    requestFromBody(validNestedRelationshipBody()),
+  );
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("retrying the identical payload after a 503 succeeds and replays the same writes", async () => {
+  const deletedRoutineId = "00000000-0000-4000-8000-000000000060";
+  const writeErrors: Record<string, unknown> = {
+    "routines:delete": INJECTED_DB_ERROR,
+  };
+  const harness = makeHarness(undefined, { writeErrors });
+  const body = {
+    ...validNestedRelationshipBody(),
+    deletedRoutineIds: [deletedRoutineId],
+  };
+
+  const first = await harness.handler(requestFromBody(body));
+  assertEquals(first.status, 503);
+  assertEquals(harness.broadcastPayloads, []);
+  const firstWrites = [...harness.adminWriteCalls];
+
+  delete writeErrors["routines:delete"];
+  const second = await harness.handler(requestFromBody(body));
+  const secondBody = await json(second);
+  assertEquals(second.status, 200, JSON.stringify(secondBody));
+  assertEquals(harness.broadcastPayloads.length, 1);
+
+  // The retry re-runs exactly the same writes up to and including the delete
+  // (upserts by id; deleting an already-absent row is a no-op), then goes on
+  // to the steps the first attempt never reached.
+  const secondWrites = harness.adminWriteCalls.slice(firstWrites.length);
+  assertEquals(secondWrites.slice(0, firstWrites.length), firstWrites);
+  assert(
+    secondWrites.slice(firstWrites.length).some((call) =>
+      call.table === "training_cycles" && call.method === "upsert"
+    ),
+  );
+  // Session-graph writes are id-keyed upserts, never blind inserts.
+  assertEquals(
+    secondWrites.filter((call) =>
+      call.method === "insert" &&
+      ["workout_sessions", "exercises", "sets", "rep_summaries"].includes(
+        call.table,
+      )
+    ),
+    [],
+  );
+});
+
+const PHASE_STATS_ID = "00000000-0000-4000-8000-000000000070";
+
+Deno.test("phase statistics upsert failure keeps 200 and reports failed.phaseStatistics", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "session_phase_statistics:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validNestedRelationshipBody(),
+    phaseStatistics: [{ id: PHASE_STATS_ID, sessionId: SESSION_ID }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.phaseStatisticsInserted, 0);
+  assertEquals(body.failed, {
+    phaseStatistics: [PHASE_STATS_ID],
+    exerciseSignatures: [],
+    assessments: [],
+    externalActivities: [],
+  });
+  assertEquals(harness.broadcastPayloads.length, 1);
+});
+
+const SIGNATURE_ID = "00000000-0000-4000-8000-000000000071";
+const UNRESOLVED_SIGNATURE_ID = "00000000-0000-4000-8000-000000000072";
+
+Deno.test("signature upsert failure reports only attempted signature ids", async () => {
+  const harness = makeHarness(undefined, {
+    tableResults: { exercise_catalog: CATALOG_RESULT },
+    writeErrors: { "exercise_signatures:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    exerciseSignatures: [
+      { id: SIGNATURE_ID, exerciseId: CATALOG_EXERCISE_ID },
+      // No catalog match: dropped before the write, so not a failure.
+      { id: UNRESOLVED_SIGNATURE_ID, exerciseId: "not-in-catalog" },
+    ],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.exerciseSignaturesUpserted, 0);
+  assertEquals(body.failed, {
+    phaseStatistics: [],
+    exerciseSignatures: [SIGNATURE_ID],
+    assessments: [],
+    externalActivities: [],
+  });
+});
+
+const EXTERNAL_ACTIVITY_ID = "00000000-0000-4000-8000-000000000073";
+
+Deno.test("external activity upsert failure reports failed.externalActivities with no ack", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "external_activities:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profileId: "default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    externalActivities: [{
+      id: EXTERNAL_ACTIVITY_ID,
+      externalId: "external-activity-a",
+      provider: "test-provider",
+      name: "Upsert fails",
+      startedAt: "2026-07-11T12:00:00.000Z",
     }],
   }));
   const body = await json(response);
@@ -2501,6 +2891,15 @@ Deno.test("external activity synced_at is server time, never the client's synced
   assertEquals(rows.length, 1);
   assertEquals(rows[0].synced_at, "2026-07-16T02:00:00.000Z");
   assertEquals(rows[0].started_at, "2020-01-01T00:00:00.000Z");
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.externalActivitiesUpserted, 0);
+  assertEquals(body.externalActivityKeys, []);
+  assertEquals(body.failed, {
+    phaseStatistics: [],
+    exerciseSignatures: [],
+    assessments: [],
+    externalActivities: [EXTERNAL_ACTIVITY_ID],
+  });
 });
 
 Deno.test("a newer active personal record cannot resurrect a stored tombstone", async () => {
@@ -2620,6 +3019,12 @@ Deno.test("present empty preference field is evaluated without an RPC", async ()
       externalActivities: [],
       rpgAttributes: [],
       gamificationStats: [],
+    },
+    failed: {
+      phaseStatistics: [],
+      exerciseSignatures: [],
+      assessments: [],
+      externalActivities: [],
     },
     profilePreferencesAccepted: true,
     canonicalProfilePreferenceSections: [],
