@@ -666,6 +666,8 @@ export interface MobileSyncPushHandlerDependencies {
   createAdminClient(): SupabaseClient;
   logOperationalFailure(value: { name: string }): void;
   now(): number;
+  /** Optional override for deterministic handler tests. Defaults to the cold-start flag. */
+  syncLwwEnabled?: boolean;
 }
 
 function defaultMobileSyncPushDependencies(): MobileSyncPushHandlerDependencies {
@@ -693,6 +695,7 @@ function defaultMobileSyncPushDependencies(): MobileSyncPushHandlerDependencies 
     now() {
       return Date.now();
     },
+    syncLwwEnabled: SYNC_LWW_ENABLED,
   };
 }
 
@@ -772,6 +775,7 @@ async function mobileSyncPushHandler(
   req: Request,
   dependencies: MobileSyncPushHandlerDependencies,
 ): Promise<Response> {
+  const syncLwwEnabled = dependencies.syncLwwEnabled ?? SYNC_LWW_ENABLED;
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -1954,7 +1958,7 @@ async function mobileSyncPushHandler(
         const { data: parentResults, error: replaceErr } = await supabase.rpc(
           'upsert_workout_sessions_with_components', {
           p_user_id: userId,
-          p_enforce_lww: SYNC_LWW_ENABLED,
+          p_enforce_lww: syncLwwEnabled,
           p_rows: sessionRowsWithUpdatedAt,
           p_component_ids: affectedComponentIds,
           p_exercises: dedupedExerciseRows,
@@ -2358,7 +2362,7 @@ async function mobileSyncPushHandler(
       );
       if (routineOwnershipResp) return routineOwnershipResp;
 
-      if (SYNC_LWW_ENABLED) {
+      if (syncLwwEnabled) {
         const rows = routineRows.map((r) => ({
           ...r,
           updated_at: r.updated_at ?? new Date().toISOString(),
@@ -2664,6 +2668,7 @@ async function mobileSyncPushHandler(
     // =========================================================================
     // 8. Upsert rpg_attributes
     // =========================================================================
+    let rpgAttributesAccepted = false;
     if (payload.rpgAttributes) {
       const rpg = payload.rpgAttributes;
       // fix(audit #8): defensively coerce to Int before DB write. Mobile sends
@@ -2685,20 +2690,22 @@ async function mobileSyncPushHandler(
         updated_at: new Date().toISOString(),
       };
 
-      if (SYNC_LWW_ENABLED) {
+      if (syncLwwEnabled) {
         const { data: lwwData, error: lwwErr } = await supabase.rpc(
           'upsert_rpg_attributes_lww',
           { p_rows: [rpgRow] },
         );
         if (lwwErr) throw new Error(`rpg_attributes LWW RPC failed: ${lwwErr.message}`);
         for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
-          if (!rr.accepted) rejections.rpgAttributes.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+          if (rr.accepted) rpgAttributesAccepted = true;
+          else rejections.rpgAttributes.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
         }
       } else {
         const { error: rpgErr } = await supabase
           .from('rpg_attributes')
           .upsert(rpgRow, { onConflict: 'user_id' });
         if (rpgErr) throw new Error(`rpg_attributes upsert failed: ${rpgErr.message}`);
+        rpgAttributesAccepted = true;
       }
     }
 
@@ -2725,6 +2732,7 @@ async function mobileSyncPushHandler(
     // =========================================================================
     // 10. Upsert gamification_stats
     // =========================================================================
+    let gamificationStatsAccepted = false;
     if (payload.gamificationStats) {
       const gs = payload.gamificationStats;
       const gsRow = {
@@ -2738,20 +2746,22 @@ async function mobileSyncPushHandler(
         updated_at: new Date().toISOString(),
       };
 
-      if (SYNC_LWW_ENABLED) {
+      if (syncLwwEnabled) {
         const { data: lwwData, error: lwwErr } = await supabase.rpc(
           'upsert_gamification_stats_lww',
           { p_rows: [gsRow] },
         );
         if (lwwErr) throw new Error(`gamification_stats LWW RPC failed: ${lwwErr.message}`);
         for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
-          if (!rr.accepted) rejections.gamificationStats.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+          if (rr.accepted) gamificationStatsAccepted = true;
+          else rejections.gamificationStats.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
         }
       } else {
         const { error: gsErr } = await supabase
           .from('gamification_stats')
           .upsert(gsRow, { onConflict: 'user_id' });
         if (gsErr) throw new Error(`gamification_stats upsert failed: ${gsErr.message}`);
+        gamificationStatsAccepted = true;
       }
     }
 
@@ -2896,7 +2906,7 @@ async function mobileSyncPushHandler(
         updated_at: new Date().toISOString(),
       }));
 
-      if (SYNC_LWW_ENABLED) {
+      if (syncLwwEnabled) {
         // Phase 3.2: route through LWW RPC so a stale webhook push does not
         // overwrite a newer mobile-captured row (or vice versa). The RPC
         // returns the canonical server id which we surface in the ack list.
@@ -3027,8 +3037,8 @@ async function mobileSyncPushHandler(
       payload.deletedCycles.length > 0 ||
       payload.ownershipTransfers.length > 0 ||
       payload.workoutDeletions.length > 0 ||
-      Boolean(payload.rpgAttributes) ||
-      Boolean(payload.gamificationStats) ||
+      rpgAttributesAccepted ||
+      gamificationStatsAccepted ||
       localProfilesChanged ||
       canonicalProfilePreferenceSections.length > 0;
     if (pushChangedPortalData) {

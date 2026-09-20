@@ -41,6 +41,23 @@ test("app shell boots offline; visited routes work, unvisited ones say offline",
 		page.getByRole("heading", { name: /Terms/i }).first(),
 	).toBeVisible();
 
+	const cachedRoutes = await page.evaluate(async () => {
+		const cache = await caches.open("phoenix-assets");
+		return (await cache.keys()).map((request) => new URL(request.url).pathname);
+	});
+	expect(
+		cachedRoutes.filter((path) => /\/(FAQ|PrivacyPolicy)-[^/]+\.js$/.test(path)),
+	).toEqual([]);
+
+	// Playwright's offline emulation can allow service-worker localhost fetches.
+	// Block only the never-visited route chunks: blocking every asset would also
+	// prevent Chromium from consuming the shell and Terms responses from cache.
+	const origin = new URL(page.url()).origin;
+	const session = await context.newCDPSession(page);
+	await session.send("Network.enable");
+	await session.send("Network.setBlockedURLs", {
+		urls: [`${origin}/assets/FAQ-*.js`, `${origin}/assets/PrivacyPolicy-*.js`],
+	});
 	await context.setOffline(true);
 	try {
 		// Visited route: shell from precache, route chunk from runtime cache.
@@ -60,6 +77,8 @@ test("app shell boots offline; visited routes work, unvisited ones say offline",
 		await expectOfflineRouteMessage(page);
 	} finally {
 		await context.setOffline(false);
+		await session.send("Network.setBlockedURLs", { urls: [] });
+		await session.detach();
 	}
 });
 

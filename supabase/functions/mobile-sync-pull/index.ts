@@ -57,7 +57,8 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  * Pagination:
  *   - When cursor is absent, starts from the beginning
  *   - When cursor is present, resumes from that position
- *   - Entity types are paged in order: sessions → routines → cycles → badges → stats → customExercises
+ *   - Entity order: sessions → routines → cycles → workoutDeletions → ownershipEvents
+ *     → badges → stats → externalActivities → personalRecords → customExercises
  *   - Response includes nextCursor and hasMore for client to loop
  *   - Client should loop until hasMore: false before updating lastSyncTimestamp
  *
@@ -183,8 +184,35 @@ const MAX_PAGE_SIZE = 300;
 const MAX_PARITY_IDS = 10_000;
 
 // Entity types in pagination order
-type EntityType = 'sessions' | 'routines' | 'cycles' | 'workoutDeletions' | 'ownershipEvents' | 'badges' | 'stats' | 'personalRecords' | 'customExercises';
-const ENTITY_ORDER: EntityType[] = ['sessions', 'routines', 'cycles', 'workoutDeletions', 'ownershipEvents', 'badges', 'stats', 'personalRecords', 'customExercises'];
+type EntityType =
+  | 'sessions'
+  | 'routines'
+  | 'cycles'
+  | 'workoutDeletions'
+  | 'ownershipEvents'
+  | 'badges'
+  | 'stats'
+  | 'externalActivities'
+  | 'personalRecords'
+  | 'customExercises';
+const ENTITY_ORDER: EntityType[] = [
+  'sessions',
+  'routines',
+  'cycles',
+  'workoutDeletions',
+  'ownershipEvents',
+  'badges',
+  'stats',
+  'externalActivities',
+  'personalRecords',
+  'customExercises',
+];
+
+// External activities can carry large raw_data documents. Keep their legacy
+// 500-row response page while using the shared cursor to make every page
+// reachable. Fetching one extra row detects continuation without unbounded
+// materialization.
+const EXTERNAL_ACTIVITY_PAGE_SIZE = 500;
 
 interface DecodedCursor {
   type: EntityType;
@@ -645,7 +673,8 @@ async function mobileSyncPullHandler(
 
     // =========================================================================
     // 4. Paginated fetch of entities in order: sessions → routines → cycles →
-    //    workout deletions → ownership events → badges → stats → customExercises
+    //    workout deletions → ownership events → badges → stats →
+    //    external activities → personal records → custom exercises.
     //    We fetch pageSize+1 to detect hasMore, then trim to pageSize.
     // =========================================================================
 
@@ -1409,21 +1438,44 @@ async function mobileSyncPullHandler(
         colorIndex: p.color_index,
       }));
 
-      // External activities (EMBER+ enforced at handler start)
-      // fix(M-25): cap at 500 rows to bound memory — external activities carry
-      // large rawData JSON payloads; without a limit a user importing years of
-      // Strava history could exhaust Edge Function memory in a single response.
-      const { data: externalActivitiesRaw, error: externalActivitiesError } = await supabase
+    }
+
+    // ─── EXTERNAL ACTIVITIES ─────────────────────────────────────────────────────
+    // EMBER+ is enforced at handler start. This collection intentionally keeps
+    // its historical 500-row page independently of the general entity page
+    // budget, but now participates in the opaque keyset cursor sequence.
+    if (!hasMore && startTypeIndex <= ENTITY_ORDER.indexOf('externalActivities')) {
+      const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'externalActivities');
+      let externalActivitiesQuery = supabase
         .from('external_activities')
         .select('*')
         .eq('user_id', userId)
         .gt('synced_at', lastSyncISO)
         .order('synced_at', { ascending: true })
-        .limit(500);
+        .order('id', { ascending: true })
+        .limit(EXTERNAL_ACTIVITY_PAGE_SIZE + 1);
+
+      if (cursorUpdatedAt && cursorId) {
+        externalActivitiesQuery = externalActivitiesQuery.or(
+          `synced_at.gt.${cursorUpdatedAt},and(synced_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`,
+        );
+      }
+
+      const { data, error: externalActivitiesError } = await externalActivitiesQuery;
       if (externalActivitiesError) return readFailure('external activities', externalActivitiesError, cors);
 
-      // Our 500-row cap (not silent max_rows). Signal when the page is full.
-      externalActivitiesHasMore = (externalActivitiesRaw ?? []).length === 500;
+      const externalActivitiesRaw = ((data ?? []) as Record<string, unknown>[]);
+      if (externalActivitiesRaw.length > EXTERNAL_ACTIVITY_PAGE_SIZE) {
+        hasMore = true;
+        externalActivitiesHasMore = true;
+        const lastActivity = externalActivitiesRaw[EXTERNAL_ACTIVITY_PAGE_SIZE - 1];
+        nextCursor = encodeCursor(
+          'externalActivities',
+          String(lastActivity.synced_at),
+          String(lastActivity.id),
+        );
+        externalActivitiesRaw.splice(EXTERNAL_ACTIVITY_PAGE_SIZE);
+      }
 
       // Mobile's ExternalActivitySyncDto (PortalSyncDtos.kt) requires a
       // non-null `syncedAt` and declares `activityType` / `durationSeconds`
@@ -1432,7 +1484,7 @@ async function mobileSyncPullHandler(
       // decoding of the WHOLE pull response. The DB columns are nullable
       // (synced_at has only DEFAULT NOW(); updated_at and started_at are
       // NOT NULL), so always emit concrete values here.
-      externalActivityDtos = (externalActivitiesRaw ?? []).map((a: Record<string, unknown>) => ({
+      externalActivityDtos = externalActivitiesRaw.map((a: Record<string, unknown>) => ({
         id: a.id,
         externalId: a.external_id,
         provider: a.provider,
