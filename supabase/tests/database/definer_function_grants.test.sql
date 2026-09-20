@@ -10,7 +10,8 @@
 -- in .github/workflows/prod-migration-drift.yml):
 --   authenticated: import_shared_routine, import_shared_cycle,
 --                  workout_current_streak, user_has_min_tier,
---                  user_subscription_tier
+--                  user_subscription_tier, request_account_deletion
+--                  (added by 20260920003200)
 --   anon:          none. Every policy that calls a tier helper is
 --                  INSERT/UPDATE/DELETE with an auth.uid() ownership
 --                  conjunct; asserted below. (The migration and the prod
@@ -49,6 +50,7 @@ SELECT set_eq(
         VALUES
             ('import_shared_cycle(uuid, text)'::text, 'authenticated'::text),
             ('import_shared_routine(uuid, text)', 'authenticated'),
+            ('request_account_deletion()', 'authenticated'),
             ('user_has_min_tier(text)', 'authenticated'),
             ('user_subscription_tier()', 'authenticated'),
             ('workout_current_streak(uuid)', 'authenticated')
@@ -414,14 +416,22 @@ SELECT pg_temp.assert_exception(
 );
 
 -- The nested definer path (import -> insert_routine_exercises_from_snapshot)
--- still works for an EMBER caller.
+-- still works for an entitled caller. Importing is FLAME since
+-- 20260920000900 (tier_matrix.test.sql covers the EMBER denial), so A is
+-- FLAME for these two calls and back to EMBER afterwards.
+RESET ROLE;
+UPDATE public.subscriptions
+SET tier = 'FLAME'
+WHERE user_id = 'a1a1a1a1-0000-4000-8000-000000000001'::uuid;
+SET LOCAL ROLE authenticated;
+
 SELECT lives_ok(
     $sql$
         SELECT public.import_shared_routine(
             'b2b2b2b2-2222-4000-8000-000000000002'::uuid
         )
     $sql$,
-    'EMBER user can still import_shared_routine'
+    'FLAME user can still import_shared_routine'
 );
 
 SELECT lives_ok(
@@ -430,8 +440,14 @@ SELECT lives_ok(
             'b2b2b2b2-4444-4000-8000-000000000002'::uuid
         )
     $sql$,
-    'EMBER user can still import_shared_cycle'
+    'FLAME user can still import_shared_cycle'
 );
+
+RESET ROLE;
+UPDATE public.subscriptions
+SET tier = 'EMBER'
+WHERE user_id = 'a1a1a1a1-0000-4000-8000-000000000001'::uuid;
+SET LOCAL ROLE authenticated;
 
 -- A tier helper evaluated inside an RLS policy as authenticated.
 SELECT lives_ok(

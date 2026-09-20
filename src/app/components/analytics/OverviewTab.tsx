@@ -41,6 +41,8 @@ export interface OverviewTabProps {
 	insightsFeedItems: InsightItem[];
 	insightsPending: boolean;
 	insightsError?: boolean;
+	/** Server batch or browser fallback — never a mix (KD-14). */
+	insightsSource?: "server" | "local";
 }
 
 export default function OverviewTab({
@@ -54,6 +56,7 @@ export default function OverviewTab({
 	insightsFeedItems,
 	insightsPending,
 	insightsError = false,
+	insightsSource = "server",
 }: OverviewTabProps) {
 	return (
 		<>
@@ -162,6 +165,7 @@ export default function OverviewTab({
 						insights={insightsFeedItems.slice(0, 3)}
 						loading={insightsPending}
 						isError={insightsError}
+						source={insightsSource}
 					/>
 				</Card>
 			</div>
