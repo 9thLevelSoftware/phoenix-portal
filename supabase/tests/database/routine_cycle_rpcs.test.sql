@@ -415,6 +415,19 @@ SELECT is(
     'the rejected payloads left the existing exercises in place'
 );
 
+-- 3e-bis. An explicit empty array is still the valid "clear all children"
+--        path (20260628180000).
+SELECT public.update_routine_with_exercises(
+    'bbbb0000-0000-4000-8000-000000000001', 'Emptied', '', 0, 0, '[]'::jsonb
+);
+
+SELECT is(
+    (SELECT count(*)::integer FROM public.routine_exercises
+      WHERE routine_id = 'bbbb0000-0000-4000-8000-000000000001'),
+    0,
+    'an explicit [] clears every exercise'
+);
+
 -- 3f. Cycles: the same id contract.
 SELECT is(
     public.update_cycle_with_days(
