@@ -38,6 +38,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
 import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { PHOENIX } from "@/lib/colors";
+import { FEATURE_MIN_TIER } from "@/lib/tierMatrix";
 import { repSummariesOptions, repTelemetryOptions } from "@/queries/telemetry";
 import { sessionDetailOptions, workoutListOptions } from "@/queries/workouts";
 
@@ -612,7 +613,7 @@ export function Biomechanics() {
 				</p>
 			</div>
 
-			<SubscriptionGate requiredTier="INFERNO">
+			<SubscriptionGate requiredTier={FEATURE_MIN_TIER.biomechanics}>
 				<BiomechanicsContent />
 			</SubscriptionGate>
 		</PageShell>
