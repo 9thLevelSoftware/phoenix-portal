@@ -31,9 +31,15 @@ interface PaddleCheckoutSettings {
 }
 
 interface PaddleCheckoutOpenConfig {
-	items: PaddleCheckoutItem[];
-	customData: PaddleCheckoutCustomData;
-	customer: PaddleCheckoutCustomer;
+	items?: PaddleCheckoutItem[];
+	customData?: PaddleCheckoutCustomData;
+	customer?: PaddleCheckoutCustomer;
+	/**
+	 * Opens an existing Paddle transaction instead of a new purchase — used
+	 * for the update-payment-method transaction of a past-due subscription.
+	 * Mutually exclusive with `items`.
+	 */
+	transactionId?: string;
 	settings?: PaddleCheckoutSettings;
 }
 
@@ -178,6 +184,47 @@ export interface OpenCheckoutOptions {
 	userEmail: string;
 	onSuccess?: (event: PaddleEvent) => void;
 	onClose?: () => void;
+}
+
+export interface OpenUpdatePaymentMethodOptions {
+	/** Transaction id from paddle-update-subscription's `update_payment` action. */
+	transactionId: string;
+	onSuccess?: (event: PaddleEvent) => void;
+	onClose?: () => void;
+}
+
+/**
+ * Opens the Paddle overlay for an existing transaction.
+ *
+ * This is the past-due "update your card" flow: it updates the payment method
+ * on the subscription the user already has, and never creates a second one
+ * (F-022). No custom_data signing is involved — the transaction already
+ * belongs to the subscription.
+ */
+export async function openUpdatePaymentMethodCheckout({
+	transactionId,
+	onSuccess,
+	onClose,
+}: OpenUpdatePaymentMethodOptions): Promise<void> {
+	activeCallbacks = { onSuccess, onClose };
+
+	if (!initialized) {
+		await initializePaddle();
+	}
+
+	if (!window.Paddle) {
+		throw new Error(
+			"Billing checkout is unavailable. Please try again.",
+		);
+	}
+
+	window.Paddle.Checkout.open({
+		transactionId,
+		settings: {
+			theme: "dark",
+			displayMode: "overlay",
+		},
+	});
 }
 
 /**

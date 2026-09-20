@@ -1,0 +1,255 @@
+import { assert, assertEquals } from 'jsr:@std/assert@1';
+import {
+  billingAction,
+  type BillingActionName,
+  classifySubscriptionEventTarget,
+  mayOpenNewCheckout,
+} from './billingAction.ts';
+
+// The shared entitlement fixture (PR 8). Every state the portal recognises is
+// driven through billingAction here, so the routing predicate cannot drift
+// from the entitlement predicate it is built on.
+interface EntitlementCase {
+  id: string;
+  status: string;
+  tier: string;
+  periodEndOffsetSeconds: number | null;
+  cancelAtPeriodEnd?: boolean;
+  expectedTier: string;
+}
+
+const fixtureUrl = new URL(
+  '../../../tests/fixtures/entitlement-cases.json',
+  import.meta.url,
+);
+const fixture = JSON.parse(await Deno.readTextFile(fixtureUrl)) as {
+  cases: EntitlementCase[];
+};
+
+const NOW = new Date('2026-05-17T12:00:00Z');
+const SUBSCRIPTION_ID = 'sub_01';
+
+function rowFor(testCase: EntitlementCase, paddleSubscriptionId: string | null) {
+  return {
+    paddle_subscription_id: paddleSubscriptionId,
+    status: testCase.status,
+    current_period_end: testCase.periodEndOffsetSeconds === null
+      ? null
+      : new Date(NOW.getTime() + testCase.periodEndOffsetSeconds * 1000).toISOString(),
+    cancel_at_period_end: Boolean(testCase.cancelAtPeriodEnd),
+  };
+}
+
+Deno.test('billingAction: every fixture state maps to exactly one action', () => {
+  const allowed: BillingActionName[] = ['manage', 'refresh', 'checkout'];
+
+  for (const testCase of fixture.cases) {
+    const withSubscription = billingAction(rowFor(testCase, SUBSCRIPTION_ID), NOW);
+    assert(
+      allowed.includes(withSubscription.action),
+      `${testCase.id}: unexpected action ${withSubscription.action}`,
+    );
+
+    // `manage` is exactly the entitled set, whatever the stored tier says: the
+    // tier only decides WHICH plan, never whether there is one to manage.
+    assertEquals(
+      withSubscription.action === 'manage',
+      withSubscription.entitled,
+      `${testCase.id}: manage must equal entitled`,
+    );
+    assertEquals(
+      withSubscription.needsPaymentUpdate,
+      testCase.status === 'past_due',
+      `${testCase.id}: needsPaymentUpdate is the past_due set`,
+    );
+
+    // Without a stored Paddle subscription id there is nothing to manage or
+    // refresh, so every state is a checkout.
+    assertEquals(
+      billingAction(rowFor(testCase, null), NOW).action,
+      'checkout',
+      `${testCase.id}: no subscription id must be checkout`,
+    );
+  }
+});
+
+Deno.test('billingAction: no state both demands a checkout and is refused one', () => {
+  for (const testCase of fixture.cases) {
+    for (const subscriptionId of [SUBSCRIPTION_ID, null]) {
+      const result = billingAction(rowFor(testCase, subscriptionId), NOW);
+
+      // paddle-update-subscription answers `checkout_required` exactly when
+      // the action is `checkout`; paddle-checkout-custom-data answers 409
+      // `existing_subscription` exactly when it is not.
+      const updateSaysCheckoutRequired = result.action === 'checkout';
+      const signingRefusesWith409 = !mayOpenNewCheckout(result);
+
+      assert(
+        !(updateSaysCheckoutRequired && signingRefusesWith409),
+        `${testCase.id} (${subscriptionId ?? 'no id'}): checkout_required AND 409`,
+      );
+      // ...and they are exact complements, so a user is never left with no
+      // route at all either.
+      assertEquals(
+        updateSaysCheckoutRequired,
+        !signingRefusesWith409,
+        `${testCase.id} (${subscriptionId ?? 'no id'}): routes disagree`,
+      );
+    }
+  }
+});
+
+Deno.test('billingAction: past_due keeps access and asks for a new card', () => {
+  const result = billingAction(
+    {
+      paddle_subscription_id: SUBSCRIPTION_ID,
+      status: 'past_due',
+      // 10 days past the period end: Paddle is still retrying.
+      current_period_end: '2026-05-07T12:00:00Z',
+      cancel_at_period_end: false,
+    },
+    NOW,
+  );
+
+  assertEquals(result.action, 'manage');
+  assertEquals(result.entitled, true);
+  assertEquals(result.needsPaymentUpdate, true);
+  assertEquals(result.reason, 'payment_past_due');
+  assertEquals(mayOpenNewCheckout(result), false);
+});
+
+Deno.test('billingAction: active with the period ended refreshes, never checks out', () => {
+  const result = billingAction(
+    {
+      paddle_subscription_id: SUBSCRIPTION_ID,
+      status: 'active',
+      // Past the 48h renewal grace: the renewal webhook is very late.
+      current_period_end: '2026-05-01T00:00:00Z',
+      cancel_at_period_end: false,
+    },
+    NOW,
+  );
+
+  assertEquals(result.action, 'refresh');
+  assertEquals(result.entitled, false);
+  assertEquals(result.paddleSubscriptionId, SUBSCRIPTION_ID);
+  assertEquals(mayOpenNewCheckout(result), false);
+});
+
+Deno.test('billingAction: a canceled subscription is the only stored state that may check out', () => {
+  for (const status of ['canceled', 'active', 'trialing', 'past_due', 'incomplete', 'none']) {
+    const result = billingAction(
+      {
+        paddle_subscription_id: SUBSCRIPTION_ID,
+        status,
+        current_period_end: '2026-06-01T00:00:00Z',
+        cancel_at_period_end: false,
+      },
+      NOW,
+    );
+    assertEquals(
+      result.action === 'checkout',
+      status === 'canceled',
+      `${status}: only canceled may open a new checkout`,
+    );
+  }
+});
+
+Deno.test('classifySubscriptionEventTarget: an untracked subscription cannot revoke access', () => {
+  const trackedActive = {
+    paddle_subscription_id: 'sub_new',
+    status: 'active',
+    current_period_end: '2026-06-01T00:00:00Z',
+    cancel_at_period_end: false,
+  };
+
+  // The old subscription's cancellation must not touch the row.
+  assertEquals(
+    classifySubscriptionEventTarget({
+      incomingSubscriptionId: 'sub_old',
+      incomingStatus: 'canceled',
+      storedRow: trackedActive,
+      now: NOW,
+    }),
+    'ignore_untracked_subscription',
+  );
+
+  // Nor may a second live subscription steal an entitled row.
+  assertEquals(
+    classifySubscriptionEventTarget({
+      incomingSubscriptionId: 'sub_other',
+      incomingStatus: 'active',
+      storedRow: trackedActive,
+      now: NOW,
+    }),
+    'ignore_untracked_subscription',
+  );
+
+  // The tracked subscription always writes its own row.
+  assertEquals(
+    classifySubscriptionEventTarget({
+      incomingSubscriptionId: 'sub_new',
+      incomingStatus: 'canceled',
+      storedRow: trackedActive,
+      now: NOW,
+    }),
+    'apply',
+  );
+});
+
+Deno.test('classifySubscriptionEventTarget: a resubscribe is adopted when the stored row is dead', () => {
+  for (const storedStatus of ['canceled', 'incomplete', 'none']) {
+    assertEquals(
+      classifySubscriptionEventTarget({
+        incomingSubscriptionId: 'sub_new',
+        incomingStatus: 'active',
+        storedRow: {
+          paddle_subscription_id: 'sub_old',
+          status: storedStatus,
+          current_period_end: '2026-06-01T00:00:00Z',
+          cancel_at_period_end: false,
+        },
+        now: NOW,
+      }),
+      'apply',
+      `${storedStatus}: a live subscription must be adopted`,
+    );
+  }
+
+  // past_due stays entitled, so an untracked subscription may not replace it.
+  assertEquals(
+    classifySubscriptionEventTarget({
+      incomingSubscriptionId: 'sub_new',
+      incomingStatus: 'active',
+      storedRow: {
+        paddle_subscription_id: 'sub_old',
+        status: 'past_due',
+        current_period_end: '2026-04-01T00:00:00Z',
+        cancel_at_period_end: false,
+      },
+      now: NOW,
+    }),
+    'ignore_untracked_subscription',
+  );
+});
+
+Deno.test('classifySubscriptionEventTarget: a first event with no stored id is applied', () => {
+  assertEquals(
+    classifySubscriptionEventTarget({
+      incomingSubscriptionId: 'sub_new',
+      incomingStatus: 'active',
+      storedRow: null,
+      now: NOW,
+    }),
+    'apply',
+  );
+  assertEquals(
+    classifySubscriptionEventTarget({
+      incomingSubscriptionId: 'sub_new',
+      incomingStatus: 'canceled',
+      storedRow: { paddle_subscription_id: null, status: 'none' },
+      now: NOW,
+    }),
+    'apply',
+  );
+});

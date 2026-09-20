@@ -3,6 +3,8 @@ import { hmacSha256Hex } from "../_shared/hmac.ts";
 import {
   createPaddleWebhooksHandler,
   type PaddleWebhooksDbClient,
+  type SubscriptionEventsTableQuery,
+  type SubscriptionsTableQuery,
 } from "./index.ts";
 
 // Handler tests with an in-process database double. Secrets are generated per
@@ -33,6 +35,9 @@ interface StoredRow {
   last_event_occurred_at: string | null;
   tier: string | null;
   paddle_subscription_id: string | null;
+  status?: string | null;
+  current_period_end?: string | null;
+  cancel_at_period_end?: boolean | null;
 }
 
 /**
@@ -44,6 +49,7 @@ class FakeDb implements PaddleWebhooksDbClient {
   row: StoredRow | null;
   fromCalls = 0;
   rpcCalls: Array<Record<string, unknown>> = [];
+  subscriptionEventInserts: Array<Record<string, unknown>> = [];
   /** Error returned by the subscriptions lookup. */
   selectError: unknown = null;
   /** Error returned by apply_subscription_event. */
@@ -55,7 +61,19 @@ class FakeDb implements PaddleWebhooksDbClient {
     this.row = row;
   }
 
-  from(_table: "subscriptions") {
+  from(table: "subscriptions"): SubscriptionsTableQuery;
+  from(table: "subscription_events"): SubscriptionEventsTableQuery;
+  from(
+    table: "subscriptions" | "subscription_events",
+  ): SubscriptionsTableQuery | SubscriptionEventsTableQuery {
+    if (table === "subscription_events") {
+      return {
+        insert: (values: Record<string, unknown>) => {
+          this.subscriptionEventInserts.push(values);
+          return Promise.resolve({ error: null });
+        },
+      };
+    }
     this.fromCalls += 1;
     return {
       select: (_columns: string) => ({
@@ -85,24 +103,52 @@ class FakeDb implements PaddleWebhooksDbClient {
       last_event_occurred_at: String(args.p_last_event_occurred_at),
       tier: String(args.p_tier),
       paddle_subscription_id: (args.p_paddle_subscription_id as string | null) ?? null,
+      status: (args.p_status as string | null) ?? null,
+      current_period_end: (args.p_current_period_end as string | null) ?? null,
+      cancel_at_period_end: Boolean(args.p_cancel_at_period_end),
     };
     return Promise.resolve({ data: true, error: null });
   }
 }
 
-function makeHandler(db: FakeDb, envOverrides: Record<string, string> = {}) {
+interface PaddleCall {
+  url: string;
+  method: string;
+}
+
+function makeHandler(
+  db: FakeDb,
+  envOverrides: Record<string, string> = {},
+  paddle: {
+    calls?: PaddleCall[];
+    listResponse?: () => Response;
+  } = {},
+) {
   const env = new Map(Object.entries({ ...BASE_ENV, ...envOverrides }));
   return createPaddleWebhooksHandler({
     env: { get: (key) => env.get(key) },
     createAdminClient: () => db,
     now: () => NOW_MS,
+    fetch: (input: URL | Request | string, init?: RequestInit) => {
+      paddle.calls?.push({
+        url: typeof input === "string" ? input : input.toString(),
+        method: init?.method ?? "GET",
+      });
+      return Promise.resolve(
+        paddle.listResponse?.() ??
+          new Response(JSON.stringify({ data: [] }), { status: 200 }),
+      );
+    },
   });
 }
 
 async function subscriptionEvent(overrides: {
   eventId?: string;
+  eventType?: string;
   occurredAt?: string;
   priceId?: string;
+  subscriptionId?: string;
+  status?: string;
   /** `null` omits cd_sig; a string replaces the valid signature. */
   cdSig?: string | null;
 } = {}): Promise<string> {
@@ -111,12 +157,12 @@ async function subscriptionEvent(overrides: {
     : overrides.cdSig;
   return JSON.stringify({
     event_id: overrides.eventId ?? "evt_01",
-    event_type: "subscription.updated",
+    event_type: overrides.eventType ?? "subscription.updated",
     occurred_at: overrides.occurredAt ?? "2026-09-18T11:59:00.000Z",
     data: {
-      id: "sub_01",
+      id: overrides.subscriptionId ?? "sub_01",
       customer_id: "ctm_01",
-      status: "active",
+      status: overrides.status ?? "active",
       items: [{ price: { id: overrides.priceId ?? EMBER_PRICE }, quantity: 1 }],
       custom_data: {
         user_id: USER_ID,
@@ -469,4 +515,238 @@ Deno.test("paddle-webhooks: an unknown price keeps the stored paid tier", async 
   assertEquals(response.status, 200);
   assertEquals(db.rpcCalls.length, 1);
   assertEquals(db.rpcCalls[0]!.p_tier, "FLAME");
+});
+
+// ─── Untracked subscriptions (F-022, R-34) ──────────────────────────────────
+
+/** A row tracking `sub_new`, entitled until 2026-10-01. */
+function trackingNewSubscription(): FakeDb {
+  return new FakeDb({
+    last_event_id: "evt_new_active",
+    last_event_occurred_at: "2026-09-18T11:00:00.000Z",
+    tier: "EMBER",
+    paddle_subscription_id: "sub_new",
+    status: "active",
+    current_period_end: "2026-10-01T00:00:00.000Z",
+    cancel_at_period_end: false,
+  });
+}
+
+Deno.test("paddle-webhooks: an old subscription's cancellation leaves the new one active", async () => {
+  const db = trackingNewSubscription();
+  const request = await signedRequest(
+    await subscriptionEvent({
+      eventId: "evt_old_canceled",
+      eventType: "subscription.canceled",
+      subscriptionId: "sub_old",
+      status: "canceled",
+      occurredAt: "2026-09-18T11:58:00.000Z",
+    }),
+  );
+  const { result: response, lines } = await captureConsoleError(() =>
+    makeHandler(db)(request)
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), {
+    received: true,
+    ignored: "untracked_subscription",
+  });
+  // The row is untouched: still the new subscription, still entitled.
+  assertEquals(db.rpcCalls.length, 0);
+  assertEquals(db.row?.paddle_subscription_id, "sub_new");
+  assertEquals(db.row?.status, "active");
+  assert(
+    lines.some((line) => line.includes("foreign_subscription_event_ignored")),
+    "expected a [BILLING_ALERT] foreign_subscription_event_ignored line",
+  );
+  // Audited for PR 68's manual double-subscription resolution.
+  assertEquals(db.subscriptionEventInserts.length, 1);
+  assertEquals(db.subscriptionEventInserts[0]!.note, "untracked_subscription");
+  assertEquals(
+    db.subscriptionEventInserts[0]!.paddle_subscription_id,
+    "sub_old",
+  );
+  assertEquals(db.subscriptionEventInserts[0]!.status, "canceled");
+});
+
+Deno.test("paddle-webhooks: a second live subscription cannot steal an entitled row", async () => {
+  const db = trackingNewSubscription();
+  const request = await signedRequest(
+    await subscriptionEvent({
+      eventId: "evt_other_active",
+      subscriptionId: "sub_other",
+      status: "active",
+    }),
+  );
+  const { result: response } = await captureConsoleError(() => makeHandler(db)(request));
+
+  assertEquals(response.status, 200);
+  assertEquals(db.rpcCalls.length, 0);
+  assertEquals(db.row?.paddle_subscription_id, "sub_new");
+});
+
+Deno.test("paddle-webhooks: a resubscribe under a new id is adopted when the stored row is dead", async () => {
+  const db = new FakeDb({
+    last_event_id: "evt_old_canceled",
+    last_event_occurred_at: "2026-09-18T11:00:00.000Z",
+    tier: "EMBER",
+    paddle_subscription_id: "sub_old",
+    status: "canceled",
+    current_period_end: "2026-10-01T00:00:00.000Z",
+    cancel_at_period_end: false,
+  });
+  const response = await makeHandler(db)(
+    await signedRequest(
+      await subscriptionEvent({
+        eventId: "evt_new_active",
+        subscriptionId: "sub_new",
+        status: "active",
+      }),
+    ),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { received: true });
+  assertEquals(db.rpcCalls.length, 1);
+  assertEquals(db.row?.paddle_subscription_id, "sub_new");
+  assertEquals(db.subscriptionEventInserts.length, 0);
+});
+
+Deno.test("paddle-webhooks: two tabs — A then B active, then A canceled, the row follows B", async () => {
+  // Tab A subscribes first and is tracked.
+  const db = new FakeDb();
+  await makeHandler(db)(
+    await signedRequest(
+      await subscriptionEvent({
+        eventId: "evt_a_active",
+        subscriptionId: "sub_a",
+        status: "active",
+        occurredAt: "2026-09-18T11:50:00.000Z",
+      }),
+    ),
+  );
+  assertEquals(db.row?.paddle_subscription_id, "sub_a");
+
+  // Tab B's checkout completes: an untracked subscription, so it is ignored
+  // while A is still entitled.
+  const { result: bResponse } = await captureConsoleError(async () =>
+    await makeHandler(db)(
+      await signedRequest(
+        await subscriptionEvent({
+          eventId: "evt_b_active",
+          subscriptionId: "sub_b",
+          status: "active",
+          occurredAt: "2026-09-18T11:55:00.000Z",
+        }),
+      ),
+    )
+  );
+  assertEquals(bResponse.status, 200);
+  assertEquals(db.row?.paddle_subscription_id, "sub_a");
+
+  // A is cancelled. B is still live in Paddle, so the row follows B instead
+  // of downgrading the user (R-34).
+  const calls: PaddleCall[] = [];
+  const { result: cancelResponse, lines } = await captureConsoleError(async () =>
+    await makeHandler(db, {
+      PADDLE_API_KEY: "pdl_test_key",
+      PADDLE_ENVIRONMENT: "sandbox",
+    }, {
+      calls,
+      listResponse: () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: "sub_b",
+                customer_id: "ctm_01",
+                status: "active",
+                updated_at: "2026-09-18T11:55:00.000Z",
+                items: [{ price: { id: EMBER_PRICE }, quantity: 1 }],
+                current_billing_period: {
+                  starts_at: "2026-09-18T00:00:00.000Z",
+                  ends_at: "2026-10-18T00:00:00.000Z",
+                },
+                scheduled_change: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    })(
+      await signedRequest(
+        await subscriptionEvent({
+          eventId: "evt_a_canceled",
+          eventType: "subscription.canceled",
+          subscriptionId: "sub_a",
+          status: "canceled",
+          occurredAt: "2026-09-18T11:58:00.000Z",
+        }),
+      ),
+    )
+  );
+
+  assertEquals(cancelResponse.status, 200);
+  assertEquals(await cancelResponse.json(), {
+    received: true,
+    switchedToUntrackedSubscription: true,
+  });
+  assertEquals(
+    calls[0]?.url,
+    "https://sandbox-api.paddle.com/subscriptions?customer_id=ctm_01&status=active,trialing,past_due",
+  );
+  // Three writes in all: A active, then the cancellation and the adoption.
+  // (B's own event wrote nothing — it was ignored.)
+  assertEquals(db.rpcCalls.length, 3);
+  assertEquals(db.rpcCalls[1]!.p_paddle_subscription_id, "sub_a");
+  assertEquals(db.rpcCalls[1]!.p_status, "canceled");
+  // The cancellation is recorded under a synthetic id so a redelivery after a
+  // failed adoption is not dismissed as a duplicate.
+  assertEquals(
+    db.rpcCalls[1]!.p_last_event_id,
+    "cancel:sub_a:2026-09-18T11:58:00.000Z",
+  );
+  assertEquals(db.rpcCalls[2]!.p_paddle_subscription_id, "sub_b");
+  assertEquals(db.rpcCalls[2]!.p_status, "active");
+  assertEquals(db.rpcCalls[2]!.p_last_event_id, "evt_a_canceled");
+  // The user is left entitled on B.
+  assertEquals(db.row?.paddle_subscription_id, "sub_b");
+  assertEquals(db.row?.status, "active");
+  assert(
+    lines.some((line) => line.includes("switched_to_untracked_subscription")),
+    "expected a [BILLING_ALERT] switched_to_untracked_subscription line",
+  );
+});
+
+Deno.test("paddle-webhooks: a cancellation with no other live subscription still downgrades", async () => {
+  const db = new FakeDb({
+    last_event_id: "evt_prev",
+    last_event_occurred_at: "2026-09-18T11:00:00.000Z",
+    tier: "EMBER",
+    paddle_subscription_id: "sub_01",
+    status: "active",
+    current_period_end: "2026-10-01T00:00:00.000Z",
+    cancel_at_period_end: false,
+  });
+  const calls: PaddleCall[] = [];
+  const response = await makeHandler(db, { PADDLE_API_KEY: "pdl_test_key" }, {
+    calls,
+  })(
+    await signedRequest(
+      await subscriptionEvent({
+        eventId: "evt_canceled",
+        eventType: "subscription.canceled",
+        status: "canceled",
+        occurredAt: "2026-09-18T11:58:00.000Z",
+      }),
+    ),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), { received: true });
+  assertEquals(calls.length, 1);
+  assertEquals(db.rpcCalls.length, 1);
+  assertEquals(db.rpcCalls[0]!.p_last_event_id, "evt_canceled");
+  assertEquals(db.row?.status, "canceled");
 });

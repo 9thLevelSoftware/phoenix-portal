@@ -132,28 +132,90 @@ const activeRow: SubscriptionRow = {
   cancel_at_period_end: false,
 };
 
-Deno.test("paddle-update-subscription: past_due is refused with 409 payment_past_due and never calls Paddle", async () => {
+Deno.test("paddle-update-subscription: past_due gets an update-payment transaction, not a checkout", async () => {
   const calls: PaddleCall[] = [];
   const upserts: unknown[] = [];
   const handler = buildHandler(
     {
       ...activeRow,
       status: "past_due",
-      // 10 days past the period end: still entitled, still cannot change plan.
+      // 10 days past the period end: still entitled (R-33), still cannot
+      // change plan while Paddle is retrying the charge.
       current_period_end: "2026-05-07T12:00:00Z",
     },
-    { calls, upserts },
+    {
+      calls,
+      upserts,
+      getResponse: () =>
+        new Response(JSON.stringify({ data: { id: "txn_update_card" } }), {
+          status: 200,
+        }),
+    },
   );
 
   const response = await handler(planChangeRequest());
 
-  assertEquals(response.status, 409);
-  assertEquals(await response.json(), {
-    error: "payment_past_due",
-    code: "payment_past_due",
-    message:
-      "Your last payment failed. Update your payment method before changing your plan.",
-  });
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.action, "update_payment");
+  assertEquals(body.transactionId, "txn_update_card");
+  // Exactly one Paddle call, and it is the update-payment transaction — no
+  // PATCH, and above all no second subscription.
+  assertEquals(calls.length, 1);
+  assertEquals(
+    calls[0]?.url,
+    "https://sandbox-api.paddle.com/subscriptions/sub_1/update-payment-method-transaction",
+  );
+  assertEquals(calls[0]?.method, "GET");
+  assertEquals(upserts.length, 0);
+});
+
+Deno.test("paddle-update-subscription: past_due needs no plan selection in the body", async () => {
+  const calls: PaddleCall[] = [];
+  const upserts: unknown[] = [];
+  const handler = buildHandler(
+    { ...activeRow, status: "past_due", current_period_end: "2026-05-07T12:00:00Z" },
+    {
+      calls,
+      upserts,
+      getResponse: () =>
+        new Response(JSON.stringify({ data: { id: "txn_update_card" } }), {
+          status: 200,
+        }),
+    },
+  );
+
+  // The "Update payment" CTA sends no body at all.
+  const response = await handler(
+    new Request("https://edge.test/paddle-update-subscription", {
+      method: "POST",
+      headers: { Authorization: "Bearer jwt" },
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).action, "update_payment");
+});
+
+Deno.test("paddle-update-subscription: an active row past its period refreshes instead of checking out", async () => {
+  const calls: PaddleCall[] = [];
+  const upserts: unknown[] = [];
+  // active, past the 48h renewal grace: the renewal webhook is very late.
+  const handler = buildHandler(
+    { ...activeRow, current_period_end: "2026-05-01T00:00:00Z" },
+    { calls, upserts },
+  );
+
+  const response = await handler(planChangeRequest());
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(body.action, "refresh");
+  assertEquals(body.code, "refresh_required");
+  // Never `checkout_required`: paddle-checkout-custom-data would refuse to
+  // sign this user's checkout with 409, so telling them to check out would
+  // deadlock them (F-022).
+  assertEquals(body.code === "checkout_required", false);
   assertEquals(calls.length, 0);
   assertEquals(upserts.length, 0);
 });
@@ -226,33 +288,45 @@ Deno.test("paddle-update-subscription: uncancel keeps the plan and prevents an u
   });
 });
 
-Deno.test("paddle-update-subscription: a canceled or expired row gets the checkout-required path", async () => {
-  for (
-    const row of [
-      { ...activeRow, status: "canceled" },
-      // active, but past the 48h renewal grace.
-      { ...activeRow, current_period_end: "2026-05-01T00:00:00Z" },
-      // active, scheduled to cancel, period ended: no grace.
-      {
-        ...activeRow,
-        cancel_at_period_end: true,
-        current_period_end: "2026-05-17T11:59:59Z",
-      },
-    ]
-  ) {
-    const calls: PaddleCall[] = [];
-    const upserts: unknown[] = [];
-    const handler = buildHandler(row, { calls, upserts });
+Deno.test("paddle-update-subscription: a canceled row gets the checkout-required path", async () => {
+  const calls: PaddleCall[] = [];
+  const upserts: unknown[] = [];
+  const handler = buildHandler({ ...activeRow, status: "canceled" }, {
+    calls,
+    upserts,
+  });
 
-    const response = await handler(planChangeRequest());
-    const body = await response.json();
+  const response = await handler(planChangeRequest());
+  const body = await response.json();
 
-    assertEquals(response.status, 200);
-    assertEquals(body.code, "checkout_required");
-    assertEquals(body.reason, "inactive_or_expired_subscription");
-    assertEquals(calls.length, 0);
-    assertEquals(upserts.length, 0);
-  }
+  assertEquals(response.status, 200);
+  assertEquals(body.code, "checkout_required");
+  assertEquals(body.reason, "canceled_subscription");
+  assertEquals(calls.length, 0);
+  assertEquals(upserts.length, 0);
+});
+
+Deno.test("paddle-update-subscription: a lapsed scheduled cancellation refreshes, it does not check out", async () => {
+  const calls: PaddleCall[] = [];
+  const upserts: unknown[] = [];
+  // active, scheduled to cancel, period ended: no grace, but the Paddle
+  // subscription id is still live until Paddle says otherwise.
+  const handler = buildHandler(
+    {
+      ...activeRow,
+      cancel_at_period_end: true,
+      current_period_end: "2026-05-17T11:59:59Z",
+    },
+    { calls, upserts },
+  );
+
+  const response = await handler(planChangeRequest());
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(body.action, "refresh");
+  assertEquals(calls.length, 0);
+  assertEquals(upserts.length, 0);
 });
 
 Deno.test("paddle-update-subscription: a missing row or missing Paddle id gets checkout_required", async () => {
@@ -266,7 +340,7 @@ Deno.test("paddle-update-subscription: a missing row or missing Paddle id gets c
 
     assertEquals(response.status, 200);
     assertEquals(body.code, "checkout_required");
-    assertEquals(body.reason, "missing_subscription");
+    assertEquals(body.reason, "no_subscription");
     assertEquals(calls.length, 0);
   }
 });

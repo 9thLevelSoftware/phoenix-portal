@@ -10,6 +10,8 @@ export interface PaddleSubscriptionState {
   id: string;
   customer_id: string;
   status: string;
+  /** Paddle's own last-modified clock; used to order writes it did not push. */
+  updated_at?: string | null;
   items?: Array<{
     price?: {
       id?: string;
