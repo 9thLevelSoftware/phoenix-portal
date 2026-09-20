@@ -3964,9 +3964,6 @@ function tombstoneRpcBehavior(
         error: null,
       };
     }
-    if (
-      name === "upsert_routine_lww" || name === "upsert_training_cycle_lww"
-    ) {
     if (name === "upsert_routine_lww") {
       // LWW on: accept every row so children are written.
       return {
@@ -4005,14 +4002,6 @@ function parentWriteIds(
   harness: PushHarness,
   table: "routines" | "training_cycles",
 ): string[] {
-  const rpcName = table === "routines"
-    ? "upsert_routine_lww"
-    : "upsert_training_cycle_lww";
-  const viaUpsert = harness.adminWriteArgs
-    .filter((call) => call.table === table && call.method === "upsert")
-    .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id));
-  const viaRpc = harness.adminRpcCalls
-    .filter((call) => call.name === rpcName)
   const viaUpsert = harness.adminWriteArgs
     .filter((call) => call.table === table && call.method === "upsert")
     .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id));
@@ -4305,12 +4294,6 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a deleted cycle beside a live o
     upsertedRows(harness, "cycle_days").map((row) => row.cycle_id),
     [LIVE_CYCLE_ID],
   );
-  // Orphan-day cleanup only touches the live cycle.
-  assertEquals(
-    harness.adminWriteArgs.filter((call) =>
-      call.table === "cycle_days" && call.method === "delete"
-    ).length,
-    1,
   // Orphan-day cleanup runs inside the merge, which only received the live
   // cycle; nothing touches cycle_days directly.
   assertEquals(
@@ -4541,6 +4524,12 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): an older build's cycle is sent
   assertEquals(response.status, 200, JSON.stringify(await json(response)));
   const [sent] = mergedCycles(harness);
   assertEquals(sent.base_updated_at, null);
+  // LWW compares updated_at; without LWW the merge inserts now().
+  if (SYNC_LWW_ENABLED) {
+    assertEquals(typeof sent.updated_at, "string");
+  } else {
+    assertEquals(sent.updated_at, null);
+  }
   // Undated-push rule (R-1/R-7, NF-15): an omitted updatedAt is dated at
   // receipt under BOTH flag values, so the merge never sees null and a NOT
   // NULL updated_at column can never be handed one.
@@ -4564,6 +4553,8 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycle
         accepted: true,
         server_updated_at: "2026-07-16T02:00:01+00:00",
         structure_applied: false,
+      },
+      {
         client_updated_at: "2026-07-16T01:50:01+00:00",
       },
       {
@@ -4592,6 +4583,7 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycle
   assertEquals(body.cyclesUpserted, 2);
   assertEquals((body.rejections as Record<string, unknown>).cycles, [{
     id: MERGE_CYCLE_3_ID,
+    serverUpdatedAt: "2026-07-16T02:00:02+00:00",
     serverUpdatedAt: "2026-07-16T01:50:02+00:00",
   }]);
 });
@@ -8029,6 +8021,7 @@ Deno.test({
         progression_settings: stored.progression_settings,
         deload_settings: stored.deload_settings,
         template_id: stored.template_id,
+        updated_at: new Date(String(stored.updated_at)).toISOString(),
         // PR 21: the pushed updatedAt is the LWW key; updated_at (pull
         // cursor) is the server clock (NF-12).
         client_updated_at: new Date(String(stored.client_updated_at)).toISOString(),
@@ -8048,6 +8041,9 @@ Deno.test({
         progression_settings: { frequencyCycles: "2" },
         deload_settings: null,
         template_id: "template_18",
+        updated_at: "2026-07-02T09:30:00.000Z",
+        portal_edited_at: null,
+      });
         client_updated_at: "2026-07-02T09:30:00.000Z",
         portal_edited_at: null,
       });

@@ -3120,10 +3120,12 @@ async function mobileSyncPushHandler(
           if (row.structure_applied && row.server_updated_at) {
             cycleVersions[row.id] = row.server_updated_at;
           }
+        } else {
           // R-3/R-6: report the stored LWW key, like sessions and routines.
           // `server_updated_at` (the pull cursor) is reserved for
           // cycleVersions above, which mobile compares with portal_edited_at.
           rejections.cycles.push({ id: row.id, serverUpdatedAt: row.client_updated_at ?? null });
+        }
       }
       cyclesUpserted = acceptedIds.size;
       // R-4 race guard: undo a re-create of a cycle deleted meanwhile.
@@ -3202,6 +3204,7 @@ async function mobileSyncPushHandler(
       if (racedCycleIds.length > 0) {
         skippedDeleted.cycles.push(...racedCycleIds);
         cyclesUpserted = Math.max(0, cyclesUpserted - racedCycleIds.length);
+        for (const racedId of racedCycleIds) delete cycleVersions[racedId];
       }
       // The parent clock decision and full day replacement hold the same
       // per-cycle transaction lock, preventing an older concurrent request
