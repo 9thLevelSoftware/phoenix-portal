@@ -310,6 +310,20 @@ const cycleDaySchema = z.object({
 	restOverride: nullableField(nonNegInt),
 	restType: nullableField(z.string()),
 	notes: nullableField(z.string()),
+	echoLevelPresent: z.boolean().optional(),
+	echoLevel: z.string().nullable().optional(),
+	eccentricLoadPercentPresent: z.boolean().optional(),
+	eccentricLoadPercent: z.number().int().nonnegative().nullable().optional(),
+});
+
+const cycleProgressStateSchema = z.object({
+	currentDayNumber: nonNegInt,
+	lastCompletedDate: z.number().int().nonnegative().nullable().optional(),
+	cycleStartDate: z.number().int().nonnegative(),
+	lastAdvancedAt: z.number().int().nonnegative().nullable().optional(),
+	completedDays: z.array(nonNegInt),
+	missedDays: z.array(nonNegInt),
+	rotationCount: nonNegInt,
 });
 
 const cycleSchema = z.object({
@@ -326,8 +340,11 @@ const cycleSchema = z.object({
 	lastUsedAt: nullableDatetime(),
 	updatedAt: nullableDatetime(),
 	progressionSettings: nullableField(z.string()),
+	progressionSettingsPresent: z.boolean().optional(),
 	deloadSettings: nullableField(z.string()),
 	templateId: nullableField(z.string()),
+	progressStatePresent: z.boolean().optional(),
+	progressState: cycleProgressStateSchema.nullable().optional(),
 	days: arrayOf(cycleDaySchema).default([]),
 });
 
@@ -464,6 +481,70 @@ const personalRecordSchema = z.object({
 	workoutMode: nullableField(z.string()),
 });
 
+const workoutDeletionSchema = z
+	.object({
+		mutationId: uuid,
+		scope: z.enum(["COMPONENT", "WORKOUT"]),
+		portalSessionId: uuid,
+		componentSessionId: uuid.nullable().optional(),
+		deletedAt: isoDatetime,
+	})
+	.superRefine((deletion, ctx) => {
+		if (deletion.scope === "COMPONENT" && deletion.componentSessionId == null) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["componentSessionId"],
+				message: "componentSessionId is required for COMPONENT scope",
+			});
+		}
+		if (deletion.scope === "WORKOUT" && deletion.componentSessionId != null) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["componentSessionId"],
+				message: "componentSessionId must be null for WORKOUT scope",
+			});
+		}
+	});
+
+const ownershipTransferSchema = z
+	.object({
+		mutationId: uuid,
+		sourceProfileId: localProfileIdSchema.nullable(),
+		targetProfileId: localProfileIdSchema,
+		workoutSessionIds: arrayOf(uuid).default([]),
+		routineIds: arrayOf(uuid).default([]),
+		cycleIds: arrayOf(uuid).default([]),
+		personalRecordIds: arrayOf(uuid).default([]),
+	})
+	.superRefine((transfer, ctx) => {
+		const lists = [
+			transfer.workoutSessionIds,
+			transfer.routineIds,
+			transfer.cycleIds,
+			transfer.personalRecordIds,
+		];
+		if (lists.every((ids) => ids.length === 0)) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: "ownership transfer requires at least one exact entity id",
+			});
+		}
+		for (const [index, ids] of lists.entries()) {
+			if (new Set(ids.map((id) => id.toLowerCase())).size !== ids.length) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: [["workoutSessionIds", "routineIds", "cycleIds", "personalRecordIds"][index]],
+					message: "duplicate entity id",
+				});
+			}
+		}
+	});
+
+const deletedCycleSchema = z.object({
+	id: uuid,
+	updatedAt: isoDatetime,
+});
+
 // ─── Top-level ───────────────────────────────────────────────────────────
 
 export const pushPayloadSchema = z.object({
@@ -474,8 +555,11 @@ export const pushPayloadSchema = z.object({
 	telemetry: arrayOf(repTelemetrySchema).default([]),
 	routines: arrayOf(routineSchema).default([]),
 	deletedRoutineIds: arrayOf(uuid).default([]),
+	workoutDeletions: arrayOf(workoutDeletionSchema).default([]),
+	ownershipTransfers: arrayOf(ownershipTransferSchema).default([]),
 	cycles: arrayOf(cycleSchema).default([]),
 	deletedCycleIds: arrayOf(uuid).default([]),
+	deletedCycles: arrayOf(deletedCycleSchema).default([]),
 	rpgAttributes: rpgAttributesSchema.nullable().optional(),
 	badges: arrayOf(badgeSchema).default([]),
 	gamificationStats: gamificationStatsSchema.nullable().optional(),
@@ -530,6 +614,8 @@ interface PushPayloadForDuplicateCheck {
 	}> | null;
 	customExercises?: Array<{ clientId: string }>;
 	allProfiles?: Array<{ id: string }> | null;
+	workoutDeletions?: Array<{ mutationId: string }>;
+	ownershipTransfers?: Array<{ mutationId: string }>;
 }
 
 function duplicateValues(values: string[]): string[] {
@@ -681,6 +767,16 @@ export function findPushPayloadDuplicateConflictKeys(
 		reports,
 		"local_profiles",
 		(payload.allProfiles ?? []).map((profile) => profile.id),
+	);
+	reportDuplicate(
+		reports,
+		"workout_deletion_tombstones",
+		(payload.workoutDeletions ?? []).map((deletion) => deletion.mutationId),
+	);
+	reportDuplicate(
+		reports,
+		"profile_ownership_transfers",
+		(payload.ownershipTransfers ?? []).map((transfer) => transfer.mutationId),
 	);
 
 	return reports;
