@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { redirectToValidatedOAuthUrl } from "./oauthRedirect";
+import {
+	oauthInitiateError,
+	redirectToValidatedOAuthUrl,
+} from "./oauthRedirect";
 import type { NormalizedActivity } from "./types";
 
 // =============================================================================
@@ -109,9 +112,7 @@ export async function initiateGarminConnect(
 	});
 
 	if (!response.ok) {
-		throw new Error(
-			`Failed to initiate Garmin OAuth: ${await response.text()}`,
-		);
+		throw await oauthInitiateError("Garmin", response);
 	}
 
 	const { url } = await response.json();

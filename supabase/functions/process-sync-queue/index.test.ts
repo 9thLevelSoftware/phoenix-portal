@@ -269,6 +269,8 @@ Deno.test("process-sync-queue: a pending row is not claimed while the pair has a
         status: "processing",
         // Heartbeat well inside Strava's 5-minute lease.
         started_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+        // Well inside the 30-minute lease.
+        started_at: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
       }),
       pendingRow(TASK_ID, "manual", "2026-09-19T00:00:00.000Z"),
     ],

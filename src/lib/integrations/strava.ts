@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { redirectToValidatedOAuthUrl } from "./oauthRedirect";
+import {
+	oauthInitiateError,
+	redirectToValidatedOAuthUrl,
+} from "./oauthRedirect";
 import type { NormalizedActivity } from "./types";
 
 // =============================================================================
@@ -101,9 +104,7 @@ export async function initiateStravaConnect(
 	});
 
 	if (!response.ok) {
-		throw new Error(
-			`Failed to initiate Strava OAuth: ${await response.text()}`,
-		);
+		throw await oauthInitiateError("Strava", response);
 	}
 
 	const { url } = await response.json();

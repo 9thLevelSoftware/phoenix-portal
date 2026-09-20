@@ -10,6 +10,10 @@ import {
 const SERVICE_ROLE_KEY = "test-service-role-key";
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_USER_ID = "00000000-0000-4000-8000-000000000002";
+import { FakeDb, fakeClient, type Row } from "../_shared/testing/fakeSupabase.ts";
+
+const SERVICE_ROLE_KEY = "test-service-role-key";
+const USER_ID = "00000000-0000-4000-8000-000000000001";
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.parse("2026-09-19T12:00:00.000Z");
 const at = (daysAgo: number) => new Date(NOW - daysAgo * DAY).toISOString();
