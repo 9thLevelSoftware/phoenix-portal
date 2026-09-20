@@ -41,6 +41,7 @@ code-review/
 e2e/.env
 e2e/fixtures/.session-cache.json
 playwright-report/
+playwright-report-pwa/
 test-results/
 
 # Git worktrees
