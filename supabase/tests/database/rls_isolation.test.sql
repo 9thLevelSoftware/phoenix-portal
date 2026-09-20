@@ -898,6 +898,9 @@ INSERT INTO spoof_cases VALUES
     ('cycle_days: INSERT under A''s cycle', NULL,
      $q$INSERT INTO public.cycle_days (cycle_id, day_number) VALUES ('a1a1a1a1-0008-4000-8000-00000000000a', 2)$q$),
     -- Re-parent B's own row to A.
+    -- Clients cannot INSERT sessions (server-written only) and may UPDATE
+    -- only `notes`, so the user_id rewrite is refused by the column grant
+    -- before any row is matched; no setup row is needed.
     ('workout_sessions: UPDATE own row to user_id = A',
      $q$INSERT INTO public.workout_sessions (id, user_id) VALUES ('b2b2b2b2-0001-4000-8000-00000000000b', 'b2b2b2b2-0000-4000-8000-00000000000b')$q$,
     -- Clients cannot INSERT sessions (server-written only) and may UPDATE

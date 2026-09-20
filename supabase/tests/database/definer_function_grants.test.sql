@@ -471,7 +471,7 @@ WHERE user_id = 'a1a1a1a1-0000-4000-8000-000000000001'::uuid;
 SET LOCAL ROLE authenticated;
 
 -- A tier helper evaluated inside an RLS policy as authenticated.
-SELECT lives_ok(
+SELECT throws_ok(
     $sql$
         INSERT INTO public.routines (user_id, name)
         INSERT INTO public.workout_sessions (user_id, name)
@@ -480,6 +480,9 @@ SELECT lives_ok(
             'ember write through user_has_min_tier policy'
         )
     $sql$,
+    '42501',
+    NULL,
+    'EMBER JWT cannot INSERT routines (browser authoring is FLAME-only since 20260920000900)'
     'EMBER JWT can INSERT routines (policy calls user_has_min_tier)'
     'EMBER JWT can INSERT workout_sessions (policy calls user_has_min_tier)'
 );
