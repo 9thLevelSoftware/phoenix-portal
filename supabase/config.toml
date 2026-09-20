@@ -93,8 +93,14 @@ verify_jwt = false
 [functions.strava-oauth]
 verify_jwt = false
 
+# Gateway verification is intentionally disabled (KD-14 / R-18): pg_cron calls
+# this through private.invoke_edge_function with no JWT. Auth: the handler
+# accepts EITHER the `x-cron-secret` header (constant-time compare against
+# CRON_SECRET) for `{mode:'batch'}`, OR a user JWT it verifies itself with
+# auth.getUser() and then gates at FLAME. Neither credential can reach the
+# other path; anything else is 401.
 [functions.generate-insights]
-verify_jwt = true
+verify_jwt = false
 
 [functions.strava-sync]
 verify_jwt = true
