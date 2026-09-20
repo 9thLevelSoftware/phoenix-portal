@@ -75,7 +75,9 @@ Important commands:
 - Install dependencies: `npm ci`
 - Standard validation: `npm run verify`
 - Full validation with E2E: `npm run verify:full`
-- Typecheck: `npm run typecheck`
+- Typecheck: `npm run typecheck` (runs `tsc -p` over every tsconfig project and
+  fails on any error not recorded in `typecheck-baseline.json`; shrink the
+  baseline with `npm run typecheck:baseline` after fixing errors)
 - Unit and integration tests: `npm test`
 - Sync tests: `npm run test:sync`
 - E2E tests: `npm run test:e2e`
