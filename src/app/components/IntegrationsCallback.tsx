@@ -13,10 +13,21 @@ import { isTierDenied } from "@/lib/tierErrors";
 import { PhoenixLogo } from "./PhoenixLogo";
 
 /**
- * Session-bound OAuth completion landing page (KD-13, part 1 — DORMANT).
+ * Session-bound OAuth completion landing page (KD-13).
  *
- * Nothing redirects here yet: the provider callbacks still finish the exchange
- * themselves. PR 48 points them at this route.
+ * Live since PR 48: `strava-oauth` relays the provider's response here instead
+ * of exchanging it, so the exchange happens inside the signed-in session that
+ * started the flow.
+ *
+ * A signed-out browser never reaches this component: `ProtectedRoute` sends it
+ * to `/` with `replace`, so the `code` and `state` are dropped — not stashed,
+ * and not left in history either. That is the deliberate choice (PR 48). The
+ * only way to land here signed out is for the session to lapse between pressing
+ * Connect and approving on the provider; the user reconnects with one click,
+ * the unusable `code` expires on the provider's side, and the state row expires
+ * within ten minutes. Preserving the return path would mean writing the `code`
+ * and `state` into `sessionStorage` or a login URL to survive the round trip —
+ * a strictly worse place for them than nowhere.
  *
  * The page never keeps `code` or `state` in the URL. It reads them once and
  * immediately rewrites the address with `history.replaceState`, so they stay
