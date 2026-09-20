@@ -1262,6 +1262,9 @@ async function mobileSyncPullHandler(
             characterClass: rpgAttributes.character_class,
             level: Math.round(Number(rpgAttributes.level ?? 1)),
             experiencePoints: Math.round(Number(rpgAttributes.experience_points ?? 0)),
+            // The conflict key a rejected device must beat. Additive response
+            // key; old builds ignore it (R-8).
+            lastWorkoutAt: rpgAttributes.last_workout_at,
             updatedAt: rpgAttributes.updated_at,
           }
         : null;
@@ -1275,19 +1278,71 @@ async function mobileSyncPullHandler(
         .maybeSingle();
       if (gamificationError) return readFailure('gamification stats', gamificationError, cors);
 
-      gamificationDto = gamificationStats
+      // The device gets back the DEVICE-REPORTED shadow columns, never the
+      // server-derived ones (20260920002500, review round 1 R-10). The
+      // installed app merges this row with an unconditional server-wins
+      // INSERT OR REPLACE — no max(), no gate — and the server's definitions
+      // differ from the phone's (grouped portal sessions vs the phone's own
+      // profile-scoped count; per-cable volume vs the machine total), so
+      // serving derived values here would rewrite lifetime stats and badge
+      // progress on every installed build. The derived columns are for the
+      // portal's Profile screen and the leaderboards.
+      //
+      // Three states, and the difference between the last two is what lets
+      // this function be deployed BEFORE the migration (see the deploy-order
+      // note in exec/operator-notes.md):
+      //   * key ABSENT (undefined) — the columns do not exist yet, i.e. this
+      //     build is running against a pre-20260920002500 database. The
+      //     canonical columns ARE the device-reported values there, because
+      //     nothing derives them yet, so fall back to them.
+      //   * key NULL — the columns exist and nothing was ever device-reported
+      //     for this account. Emit null; mobile's `?.let` then leaves the
+      //     local row alone, exactly as it did when no stats row existed.
+      //   * key present — serve the shadow value.
+      const deviceStatsMissing =
+        gamificationStats !== null &&
+        (gamificationStats as Record<string, unknown>).device_total_workouts ===
+          undefined;
+      const deviceStats = deviceStatsMissing
         ? {
-            id: gamificationStats.id,
-            userId: gamificationStats.user_id,
-            totalWorkouts: gamificationStats.total_workouts,
-            totalReps: gamificationStats.total_reps,
-            totalVolumeKg: gamificationStats.total_volume_kg,
-            longestStreak: gamificationStats.longest_streak,
-            currentStreak: gamificationStats.current_streak,
-            totalTimeSeconds: gamificationStats.total_time_seconds,
-            updatedAt: gamificationStats.updated_at,
-          }
-        : null;
+          device_total_workouts: gamificationStats.total_workouts,
+          device_total_reps: gamificationStats.total_reps,
+          device_total_volume_kg: gamificationStats.total_volume_kg,
+          device_total_time_seconds: gamificationStats.total_time_seconds,
+          device_current_streak: gamificationStats.current_streak,
+          device_longest_streak: gamificationStats.longest_streak,
+          // No last_workout_at column exists pre-migration, so the key is
+          // simply absent from the response rather than a fabricated null.
+          last_workout_at: undefined,
+        }
+        : gamificationStats;
+
+      gamificationDto =
+        gamificationStats && deviceStats &&
+          deviceStats.device_total_workouts !== null
+          ? {
+              id: gamificationStats.id,
+              userId: gamificationStats.user_id,
+              // Served verbatim. mobile-sync-push always sends all six
+              // shadow keys together, so they are non-null as a group; a
+              // partially-populated row is only reachable from a
+              // hand-written service-role call. Deliberately NOT `?? 0`: a
+              // fabricated zero here would be indistinguishable from a real
+              // reported zero, which is the confusion the whole shadow-column
+              // design exists to avoid.
+              totalWorkouts: deviceStats.device_total_workouts,
+              totalReps: deviceStats.device_total_reps,
+              totalVolumeKg: deviceStats.device_total_volume_kg,
+              longestStreak: deviceStats.device_longest_streak,
+              currentStreak: deviceStats.device_current_streak,
+              totalTimeSeconds: deviceStats.device_total_time_seconds,
+              // The conflict key the device must beat to have a write
+              // accepted. Additive response key; mobile's PortalWireJson sets
+              // ignoreUnknownKeys, so old builds drop it (R-8).
+              lastWorkoutAt: deviceStats.last_workout_at,
+              updatedAt: gamificationStats.updated_at,
+            }
+          : null;
 
       // Local profiles (always included on final page)
       const { data: profilesData, error: profilesError } = await supabase

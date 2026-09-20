@@ -22,6 +22,8 @@ export function useSaveSessionNotes() {
 			if (!user) throw new Error("Must be logged in to save notes");
 			// Scope by user_id (defense-in-depth beyond RLS) and confirm the
 			// update actually matched a row owned by the current user.
+			// `notes` is the only workout_sessions column authenticated may
+			// UPDATE (20260920001000); sending any other column fails with 42501.
 			const { data: updated, error } = await supabase
 				.from("workout_sessions")
 				.update({ notes: notes || null })

@@ -7,11 +7,6 @@ export type Json =
 	| Json[];
 
 export type Database = {
-	// Allows to automatically instantiate createClient with right options
-	// instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-	__InternalSupabase: {
-		PostgrestVersion: "14.1";
-	};
 	public: {
 		Tables: {
 			challenge_participants: {
@@ -162,6 +157,13 @@ export type Database = {
 						columns: ["user_id"];
 						isOneToOne: false;
 						referencedRelation: "profiles";
+						referencedColumns: ["id"];
+					},
+					{
+						foreignKeyName: "community_comments_user_id_profiles_fkey";
+						columns: ["user_id"];
+						isOneToOne: false;
+						referencedRelation: "public_profiles";
 						referencedColumns: ["id"];
 					},
 				];
@@ -355,9 +357,100 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			exercise_catalog: {
+				Row: {
+					aliases: string[] | null;
+					archived: boolean;
+					created_at: string;
+					default_cable_config: string;
+					description: string | null;
+					display_name: string;
+					equipment: string[];
+					grip: string | null;
+					grip_width: string | null;
+					id: string;
+					is_custom: boolean;
+					license: string | null;
+					license_author: string | null;
+					license_url: string | null;
+					min_rep_range: number | null;
+					movement: string | null;
+					muscle_group: string;
+					muscle_groups: string[];
+					muscles: string[] | null;
+					name: string;
+					popularity: number;
+					sidedness: string | null;
+					source: string | null;
+					source_id: string | null;
+					thumbnail_url: string | null;
+					updated_at: string;
+					user_id: string | null;
+				};
+				Insert: {
+					aliases?: string[] | null;
+					archived?: boolean;
+					created_at?: string;
+					default_cable_config?: string;
+					description?: string | null;
+					display_name: string;
+					equipment?: string[];
+					grip?: string | null;
+					grip_width?: string | null;
+					id: string;
+					is_custom?: boolean;
+					license?: string | null;
+					license_author?: string | null;
+					license_url?: string | null;
+					min_rep_range?: number | null;
+					movement?: string | null;
+					muscle_group: string;
+					muscle_groups?: string[];
+					muscles?: string[] | null;
+					name: string;
+					popularity?: number;
+					sidedness?: string | null;
+					source?: string | null;
+					source_id?: string | null;
+					thumbnail_url?: string | null;
+					updated_at?: string;
+					user_id?: string | null;
+				};
+				Update: {
+					aliases?: string[] | null;
+					archived?: boolean;
+					created_at?: string;
+					default_cable_config?: string;
+					description?: string | null;
+					display_name?: string;
+					equipment?: string[];
+					grip?: string | null;
+					grip_width?: string | null;
+					id?: string;
+					is_custom?: boolean;
+					license?: string | null;
+					license_author?: string | null;
+					license_url?: string | null;
+					min_rep_range?: number | null;
+					movement?: string | null;
+					muscle_group?: string;
+					muscle_groups?: string[];
+					muscles?: string[] | null;
+					name?: string;
+					popularity?: number;
+					sidedness?: string | null;
+					source?: string | null;
+					source_id?: string | null;
+					thumbnail_url?: string | null;
+					updated_at?: string;
+					user_id?: string | null;
+				};
+				Relationships: [];
+			};
 			exercise_progress: {
 				Row: {
 					estimated_1rm_kg: number;
+					exercise_id: string | null;
 					exercise_name: string;
 					id: string;
 					local_profile_id: string | null;
@@ -372,6 +465,7 @@ export type Database = {
 				};
 				Insert: {
 					estimated_1rm_kg?: number;
+					exercise_id?: string | null;
 					exercise_name: string;
 					id?: string;
 					local_profile_id?: string | null;
@@ -386,6 +480,7 @@ export type Database = {
 				};
 				Update: {
 					estimated_1rm_kg?: number;
+					exercise_id?: string | null;
 					exercise_name?: string;
 					id?: string;
 					local_profile_id?: string | null;
@@ -399,6 +494,13 @@ export type Database = {
 					velocity_estimated_1rm_kg?: number | null;
 				};
 				Relationships: [
+					{
+						foreignKeyName: "exercise_progress_exercise_id_fkey";
+						columns: ["exercise_id"];
+						isOneToOne: false;
+						referencedRelation: "exercise_catalog";
+						referencedColumns: ["id"];
+					},
 					{
 						foreignKeyName: "exercise_progress_session_id_fkey";
 						columns: ["session_id"];
@@ -462,6 +564,7 @@ export type Database = {
 			};
 			exercises: {
 				Row: {
+					exercise_id: string | null;
 					id: string;
 					muscle_group: string;
 					name: string;
@@ -470,6 +573,7 @@ export type Database = {
 					user_id: string;
 				};
 				Insert: {
+					exercise_id?: string | null;
 					id?: string;
 					muscle_group?: string;
 					name: string;
@@ -478,6 +582,7 @@ export type Database = {
 					user_id: string;
 				};
 				Update: {
+					exercise_id?: string | null;
 					id?: string;
 					muscle_group?: string;
 					name?: string;
@@ -486,6 +591,13 @@ export type Database = {
 					user_id?: string;
 				};
 				Relationships: [
+					{
+						foreignKeyName: "exercises_exercise_id_fkey";
+						columns: ["exercise_id"];
+						isOneToOne: false;
+						referencedRelation: "exercise_catalog";
+						referencedColumns: ["id"];
+					},
 					{
 						foreignKeyName: "exercises_session_id_fkey";
 						columns: ["session_id"];
@@ -556,7 +668,14 @@ export type Database = {
 				Row: {
 					best_streak: number;
 					current_streak: number;
+					device_current_streak: number | null;
+					device_longest_streak: number | null;
+					device_total_reps: number | null;
+					device_total_time_seconds: number | null;
+					device_total_volume_kg: number | null;
+					device_total_workouts: number | null;
 					id: string;
+					last_workout_at: string | null;
 					longest_streak: number;
 					pr_count: number;
 					total_reps: number;
@@ -569,7 +688,14 @@ export type Database = {
 				Insert: {
 					best_streak?: number;
 					current_streak?: number;
+					device_current_streak?: number | null;
+					device_longest_streak?: number | null;
+					device_total_reps?: number | null;
+					device_total_time_seconds?: number | null;
+					device_total_volume_kg?: number | null;
+					device_total_workouts?: number | null;
 					id?: string;
+					last_workout_at?: string | null;
 					longest_streak?: number;
 					pr_count?: number;
 					total_reps?: number;
@@ -582,7 +708,14 @@ export type Database = {
 				Update: {
 					best_streak?: number;
 					current_streak?: number;
+					device_current_streak?: number | null;
+					device_longest_streak?: number | null;
+					device_total_reps?: number | null;
+					device_total_time_seconds?: number | null;
+					device_total_volume_kg?: number | null;
+					device_total_workouts?: number | null;
 					id?: string;
+					last_workout_at?: string | null;
 					longest_streak?: number;
 					pr_count?: number;
 					total_reps?: number;
@@ -673,6 +806,92 @@ export type Database = {
 					updated_at?: string | null;
 				};
 				Relationships: [];
+			};
+			local_profile_preferences: {
+				Row: {
+					body_weight_kg: number;
+					core_revision: number;
+					core_updated_at: string;
+					equipment_rack: Json;
+					led_color_scheme_id: number;
+					led_preferences: Json;
+					led_revision: number;
+					led_updated_at: string;
+					local_profile_id: string;
+					rack_revision: number;
+					rack_updated_at: string;
+					schema_version: number;
+					updated_at: string | null;
+					user_id: string;
+					vbt_enabled: boolean;
+					vbt_preferences: Json;
+					vbt_revision: number;
+					vbt_updated_at: string;
+					weight_increment: number;
+					weight_unit: string;
+					workout_preferences: Json;
+					workout_revision: number;
+					workout_updated_at: string;
+				};
+				Insert: {
+					body_weight_kg?: number;
+					core_revision?: number;
+					core_updated_at?: string;
+					equipment_rack?: Json;
+					led_color_scheme_id?: number;
+					led_preferences?: Json;
+					led_revision?: number;
+					led_updated_at?: string;
+					local_profile_id: string;
+					rack_revision?: number;
+					rack_updated_at?: string;
+					schema_version?: number;
+					updated_at?: string | null;
+					user_id: string;
+					vbt_enabled?: boolean;
+					vbt_preferences?: Json;
+					vbt_revision?: number;
+					vbt_updated_at?: string;
+					weight_increment?: number;
+					weight_unit?: string;
+					workout_preferences?: Json;
+					workout_revision?: number;
+					workout_updated_at?: string;
+				};
+				Update: {
+					body_weight_kg?: number;
+					core_revision?: number;
+					core_updated_at?: string;
+					equipment_rack?: Json;
+					led_color_scheme_id?: number;
+					led_preferences?: Json;
+					led_revision?: number;
+					led_updated_at?: string;
+					local_profile_id?: string;
+					rack_revision?: number;
+					rack_updated_at?: string;
+					schema_version?: number;
+					updated_at?: string | null;
+					user_id?: string;
+					vbt_enabled?: boolean;
+					vbt_preferences?: Json;
+					vbt_revision?: number;
+					vbt_updated_at?: string;
+					weight_increment?: number;
+					weight_unit?: string;
+					workout_preferences?: Json;
+					workout_revision?: number;
+					workout_updated_at?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "local_profile_preferences_parent_fkey";
+						columns: ["user_id", "local_profile_id"];
+						isOneToOne: true;
+						referencedRelation: "local_profiles";
+						referencedColumns: ["user_id", "id"];
+					},
+				];
 			};
 			local_profiles: {
 				Row: {
@@ -772,6 +991,7 @@ export type Database = {
 					confidence: number;
 					created_at: string;
 					current_value: number;
+					exercise_id: string | null;
 					exercise_name: string;
 					expires_at: string;
 					id: string;
@@ -784,6 +1004,7 @@ export type Database = {
 					confidence: number;
 					created_at?: string;
 					current_value: number;
+					exercise_id?: string | null;
 					exercise_name: string;
 					expires_at?: string;
 					id?: string;
@@ -796,6 +1017,7 @@ export type Database = {
 					confidence?: number;
 					created_at?: string;
 					current_value?: number;
+					exercise_id?: string | null;
 					exercise_name?: string;
 					expires_at?: string;
 					id?: string;
@@ -803,6 +1025,56 @@ export type Database = {
 					suggested_value?: number;
 					suggestion_type?: string;
 					user_id?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "overload_suggestions_exercise_id_fkey";
+						columns: ["exercise_id"];
+						isOneToOne: false;
+						referencedRelation: "exercise_catalog";
+						referencedColumns: ["id"];
+					},
+				];
+			};
+			paddle_webhook_events: {
+				Row: {
+					environment: string | null;
+					event_id: string | null;
+					event_occurred_at: string | null;
+					event_type: string | null;
+					id: string;
+					notification_id: string | null;
+					paddle_customer_id: string | null;
+					paddle_subscription_id: string | null;
+					payload: Json;
+					received_at: string;
+					user_id: string | null;
+				};
+				Insert: {
+					environment?: string | null;
+					event_id?: string | null;
+					event_occurred_at?: string | null;
+					event_type?: string | null;
+					id?: string;
+					notification_id?: string | null;
+					paddle_customer_id?: string | null;
+					paddle_subscription_id?: string | null;
+					payload: Json;
+					received_at?: string;
+					user_id?: string | null;
+				};
+				Update: {
+					environment?: string | null;
+					event_id?: string | null;
+					event_occurred_at?: string | null;
+					event_type?: string | null;
+					id?: string;
+					notification_id?: string | null;
+					paddle_customer_id?: string | null;
+					paddle_subscription_id?: string | null;
+					payload?: Json;
+					received_at?: string;
+					user_id?: string | null;
 				};
 				Relationships: [];
 			};
@@ -873,6 +1145,13 @@ export type Database = {
 						referencedColumns: ["user_id", "id"];
 					},
 					{
+						foreignKeyName: "personal_records_exercise_id_fkey";
+						columns: ["exercise_id"];
+						isOneToOne: false;
+						referencedRelation: "exercise_catalog";
+						referencedColumns: ["id"];
+					},
+					{
 						foreignKeyName: "personal_records_session_id_fkey";
 						columns: ["session_id"];
 						isOneToOne: false;
@@ -886,11 +1165,8 @@ export type Database = {
 					avatar_url: string | null;
 					challenge_updates: boolean;
 					created_at: string | null;
-					digest_frequency: string | null;
-					digest_last_sent_at: string | null;
 					display_name: string | null;
 					email_digests: boolean;
-					feature_flags: Json | null;
 					id: string;
 					leaderboard_participation: boolean;
 					profile_visible: boolean;
@@ -905,11 +1181,8 @@ export type Database = {
 					avatar_url?: string | null;
 					challenge_updates?: boolean;
 					created_at?: string | null;
-					digest_frequency?: string | null;
-					digest_last_sent_at?: string | null;
 					display_name?: string | null;
 					email_digests?: boolean;
-					feature_flags?: Json | null;
 					id: string;
 					leaderboard_participation?: boolean;
 					profile_visible?: boolean;
@@ -924,11 +1197,8 @@ export type Database = {
 					avatar_url?: string | null;
 					challenge_updates?: boolean;
 					created_at?: string | null;
-					digest_frequency?: string | null;
-					digest_last_sent_at?: string | null;
 					display_name?: string | null;
 					email_digests?: boolean;
-					feature_flags?: Json | null;
 					id?: string;
 					leaderboard_participation?: boolean;
 					profile_visible?: boolean;
@@ -1085,6 +1355,7 @@ export type Database = {
 					duration_seconds: number | null;
 					eccentric_load: string | null;
 					echo_level: string | null;
+					exercise_id: string | null;
 					id: string;
 					is_amrap: boolean | null;
 					is_bodyweight: boolean;
@@ -1092,7 +1363,7 @@ export type Database = {
 					muscle_group: string;
 					name: string;
 					order_index: number;
-					per_set_echo_levels: Json | null;
+					per_set_echo_levels: string | null;
 					per_set_reps: Json | null;
 					per_set_rest: Json | null;
 					per_set_weights: Json | null;
@@ -1117,6 +1388,7 @@ export type Database = {
 					duration_seconds?: number | null;
 					eccentric_load?: string | null;
 					echo_level?: string | null;
+					exercise_id?: string | null;
 					id?: string;
 					is_amrap?: boolean | null;
 					is_bodyweight?: boolean;
@@ -1124,7 +1396,7 @@ export type Database = {
 					muscle_group?: string;
 					name: string;
 					order_index?: number;
-					per_set_echo_levels?: Json | null;
+					per_set_echo_levels?: string | null;
 					per_set_reps?: Json | null;
 					per_set_rest?: Json | null;
 					per_set_weights?: Json | null;
@@ -1149,6 +1421,7 @@ export type Database = {
 					duration_seconds?: number | null;
 					eccentric_load?: string | null;
 					echo_level?: string | null;
+					exercise_id?: string | null;
 					id?: string;
 					is_amrap?: boolean | null;
 					is_bodyweight?: boolean;
@@ -1156,7 +1429,7 @@ export type Database = {
 					muscle_group?: string;
 					name?: string;
 					order_index?: number;
-					per_set_echo_levels?: Json | null;
+					per_set_echo_levels?: string | null;
 					per_set_reps?: Json | null;
 					per_set_rest?: Json | null;
 					per_set_weights?: Json | null;
@@ -1176,6 +1449,13 @@ export type Database = {
 				};
 				Relationships: [
 					{
+						foreignKeyName: "routine_exercises_exercise_id_fkey";
+						columns: ["exercise_id"];
+						isOneToOne: false;
+						referencedRelation: "exercise_catalog";
+						referencedColumns: ["id"];
+					},
+					{
 						foreignKeyName: "routine_exercises_routine_id_fkey";
 						columns: ["routine_id"];
 						isOneToOne: false;
@@ -1186,7 +1466,7 @@ export type Database = {
 			};
 			routines: {
 				Row: {
-					created_at: string;
+					created_at: string | null;
 					description: string;
 					estimated_duration: number;
 					exercise_count: number;
@@ -1197,11 +1477,11 @@ export type Database = {
 					name: string;
 					tags: string[] | null;
 					times_completed: number;
-					updated_at: string;
+					updated_at: string | null;
 					user_id: string;
 				};
 				Insert: {
-					created_at?: string;
+					created_at?: string | null;
 					description?: string;
 					estimated_duration?: number;
 					exercise_count?: number;
@@ -1212,11 +1492,11 @@ export type Database = {
 					name: string;
 					tags?: string[] | null;
 					times_completed?: number;
-					updated_at?: string;
+					updated_at?: string | null;
 					user_id: string;
 				};
 				Update: {
-					created_at?: string;
+					created_at?: string | null;
 					description?: string;
 					estimated_duration?: number;
 					exercise_count?: number;
@@ -1227,7 +1507,7 @@ export type Database = {
 					name?: string;
 					tags?: string[] | null;
 					times_completed?: number;
-					updated_at?: string;
+					updated_at?: string | null;
 					user_id?: string;
 				};
 				Relationships: [
@@ -1246,6 +1526,7 @@ export type Database = {
 					consistency: number;
 					experience_points: number;
 					id: string;
+					last_workout_at: string | null;
 					level: number;
 					mastery: number;
 					power: number;
@@ -1259,6 +1540,7 @@ export type Database = {
 					consistency?: number;
 					experience_points?: number;
 					id?: string;
+					last_workout_at?: string | null;
 					level?: number;
 					mastery?: number;
 					power?: number;
@@ -1272,6 +1554,7 @@ export type Database = {
 					consistency?: number;
 					experience_points?: number;
 					id?: string;
+					last_workout_at?: string | null;
 					level?: number;
 					mastery?: number;
 					power?: number;
@@ -1310,7 +1593,22 @@ export type Database = {
 					shared_item_id?: string;
 					user_id?: string;
 				};
-				Relationships: [];
+				Relationships: [
+					{
+						foreignKeyName: "saved_community_items_imported_cycle_id_fkey";
+						columns: ["imported_cycle_id"];
+						isOneToOne: false;
+						referencedRelation: "training_cycles";
+						referencedColumns: ["id"];
+					},
+					{
+						foreignKeyName: "saved_community_items_imported_routine_id_fkey";
+						columns: ["imported_routine_id"];
+						isOneToOne: false;
+						referencedRelation: "routines";
+						referencedColumns: ["id"];
+					},
+				];
 			};
 			session_phase_statistics: {
 				Row: {
@@ -1430,8 +1728,8 @@ export type Database = {
 			shared_cycles: {
 				Row: {
 					comment_count: number;
-					cycle_snapshot: Json | null;
 					cycle_id: string;
+					cycle_snapshot: Json | null;
 					description: string;
 					difficulty: string;
 					duration_weeks: number;
@@ -1447,8 +1745,8 @@ export type Database = {
 				};
 				Insert: {
 					comment_count?: number;
-					cycle_snapshot?: Json | null;
 					cycle_id: string;
+					cycle_snapshot?: Json | null;
 					description?: string;
 					difficulty?: string;
 					duration_weeks?: number;
@@ -1464,8 +1762,8 @@ export type Database = {
 				};
 				Update: {
 					comment_count?: number;
-					cycle_snapshot?: Json | null;
 					cycle_id?: string;
+					cycle_snapshot?: Json | null;
 					description?: string;
 					difficulty?: string;
 					duration_weeks?: number;
@@ -1499,6 +1797,13 @@ export type Database = {
 						columns: ["user_id"];
 						isOneToOne: false;
 						referencedRelation: "profiles";
+						referencedColumns: ["id"];
+					},
+					{
+						foreignKeyName: "shared_cycles_user_id_profiles_fkey";
+						columns: ["user_id"];
+						isOneToOne: false;
+						referencedRelation: "public_profiles";
 						referencedColumns: ["id"];
 					},
 				];
@@ -1580,7 +1885,80 @@ export type Database = {
 						referencedRelation: "profiles";
 						referencedColumns: ["id"];
 					},
+					{
+						foreignKeyName: "shared_routines_user_id_profiles_fkey";
+						columns: ["user_id"];
+						isOneToOne: false;
+						referencedRelation: "public_profiles";
+						referencedColumns: ["id"];
+					},
 				];
+			};
+			subscription_events: {
+				Row: {
+					cancel_at_period_end: boolean | null;
+					current_period_end: string | null;
+					current_period_start: string | null;
+					environment: string | null;
+					event_recorded_at: string;
+					id: string;
+					last_event_id: string | null;
+					last_event_occurred_at: string | null;
+					operation: string;
+					paddle_customer_id: string | null;
+					paddle_subscription_id: string | null;
+					price_id: string | null;
+					row_snapshot: Json;
+					status: string | null;
+					subscription_created_at: string | null;
+					subscription_row_id: string | null;
+					subscription_updated_at: string | null;
+					tier: string | null;
+					user_id: string | null;
+				};
+				Insert: {
+					cancel_at_period_end?: boolean | null;
+					current_period_end?: string | null;
+					current_period_start?: string | null;
+					environment?: string | null;
+					event_recorded_at?: string;
+					id?: string;
+					last_event_id?: string | null;
+					last_event_occurred_at?: string | null;
+					operation: string;
+					paddle_customer_id?: string | null;
+					paddle_subscription_id?: string | null;
+					price_id?: string | null;
+					row_snapshot: Json;
+					status?: string | null;
+					subscription_created_at?: string | null;
+					subscription_row_id?: string | null;
+					subscription_updated_at?: string | null;
+					tier?: string | null;
+					user_id?: string | null;
+				};
+				Update: {
+					cancel_at_period_end?: boolean | null;
+					current_period_end?: string | null;
+					current_period_start?: string | null;
+					environment?: string | null;
+					event_recorded_at?: string;
+					id?: string;
+					last_event_id?: string | null;
+					last_event_occurred_at?: string | null;
+					operation?: string;
+					paddle_customer_id?: string | null;
+					paddle_subscription_id?: string | null;
+					price_id?: string | null;
+					row_snapshot?: Json;
+					status?: string | null;
+					subscription_created_at?: string | null;
+					subscription_row_id?: string | null;
+					subscription_updated_at?: string | null;
+					tier?: string | null;
+					user_id?: string | null;
+				};
+				Relationships: [];
 			};
 			subscriptions: {
 				Row: {
@@ -1720,7 +2098,7 @@ export type Database = {
 					started_at: string | null;
 					status: string;
 					template_id: string | null;
-					updated_at: string;
+					updated_at: string | null;
 					user_id: string;
 					workout_days: number;
 				};
@@ -1738,7 +2116,7 @@ export type Database = {
 					started_at?: string | null;
 					status?: string;
 					template_id?: string | null;
-					updated_at?: string;
+					updated_at?: string | null;
 					user_id: string;
 					workout_days?: number;
 				};
@@ -1756,7 +2134,7 @@ export type Database = {
 					started_at?: string | null;
 					status?: string;
 					template_id?: string | null;
-					updated_at?: string;
+					updated_at?: string | null;
 					user_id?: string;
 					workout_days?: number;
 				};
@@ -1800,7 +2178,6 @@ export type Database = {
 					exercise_name: string | null;
 					goal_type: string;
 					id: string;
-					last_snapshot_at: string | null;
 					period: string;
 					predicted_completion_date: string | null;
 					status: string;
@@ -1817,7 +2194,6 @@ export type Database = {
 					exercise_name?: string | null;
 					goal_type: string;
 					id?: string;
-					last_snapshot_at?: string | null;
 					period?: string;
 					predicted_completion_date?: string | null;
 					status?: string;
@@ -1834,7 +2210,6 @@ export type Database = {
 					exercise_name?: string | null;
 					goal_type?: string;
 					id?: string;
-					last_snapshot_at?: string | null;
 					period?: string;
 					predicted_completion_date?: string | null;
 					status?: string;
@@ -1843,7 +2218,15 @@ export type Database = {
 					updated_at?: string;
 					user_id?: string;
 				};
-				Relationships: [];
+				Relationships: [
+					{
+						foreignKeyName: "user_goals_exercise_id_fkey";
+						columns: ["exercise_id"];
+						isOneToOne: false;
+						referencedRelation: "exercise_catalog";
+						referencedColumns: ["id"];
+					},
+				];
 			};
 			user_insights: {
 				Row: {
@@ -2176,6 +2559,18 @@ export type Database = {
 					id: string | null;
 					user_id: string | null;
 				};
+				Insert: {
+					avatar_url?: string | null;
+					display_name?: string | null;
+					id?: string | null;
+					user_id?: string | null;
+				};
+				Update: {
+					avatar_url?: string | null;
+					display_name?: string | null;
+					id?: string | null;
+					user_id?: string | null;
+				};
 				Relationships: [];
 			};
 			telemetry_points: {
@@ -2221,31 +2616,21 @@ export type Database = {
 			};
 		};
 		Functions: {
-			update_routine_with_exercises: {
+			apply_subscription_event: {
 				Args: {
-					p_routine_id: string;
-					p_name: string;
-					p_description: string;
-					p_exercise_count: number;
-					p_estimated_duration: number;
-					p_exercises: Json;
+					p_cancel_at_period_end: boolean;
+					p_current_period_end: string;
+					p_current_period_start: string;
+					p_last_event_id: string;
+					p_last_event_occurred_at: string;
+					p_paddle_customer_id: string;
+					p_paddle_subscription_id: string;
+					p_price_id: string;
+					p_status: string;
+					p_tier: string;
+					p_user_id: string;
 				};
-				Returns: string;
-			};
-			update_cycle_with_days: {
-				Args: {
-					p_cycle_id: string;
-					p_name: string;
-					p_description: string;
-					p_duration_weeks: number;
-					p_workout_days: number;
-					p_rest_days: number;
-					p_started_at: string | null;
-					p_progression_settings: Json | null;
-					p_deload_settings: Json | null;
-					p_days: Json;
-				};
-				Returns: string;
+				Returns: boolean;
 			};
 			check_rate_limit: {
 				Args: {
@@ -2258,6 +2643,18 @@ export type Database = {
 					allowed: boolean;
 					remaining: number;
 					retry_after_seconds: number;
+				}[];
+			};
+			derive_gamification_stats: {
+				Args: { p_user_id: string };
+				Returns: {
+					current_streak: number;
+					longest_streak: number;
+					pr_count: number;
+					total_reps: number;
+					total_time_seconds: number;
+					total_volume_kg: number;
+					total_workouts: number;
 				}[];
 			};
 			detect_plateaus: {
@@ -2276,6 +2673,10 @@ export type Database = {
 					session_count: number;
 				}[];
 			};
+			disconnect_integration: {
+				Args: { p_provider: string; p_timestamp: string; p_user_id: string };
+				Returns: undefined;
+			};
 			get_acwr: {
 				Args: {
 					p_acute_days?: number;
@@ -2293,8 +2694,8 @@ export type Database = {
 			get_badges_excluding_ids: {
 				Args: {
 					p_cursor_earned_at?: string;
-					p_cursor_id?: number;
-					p_known_ids?: number[];
+					p_cursor_id?: string;
+					p_known_ids?: string[];
 					p_limit?: number;
 					p_user_id: string;
 				};
@@ -2304,7 +2705,7 @@ export type Database = {
 					badge_name: string;
 					badge_tier: string;
 					earned_at: string;
-					id: number;
+					id: string;
 					user_id: string;
 				}[];
 			};
@@ -2331,7 +2732,7 @@ export type Database = {
 					rest_days: number;
 					started_at: string;
 					status: string;
-					template_id: string | null;
+					template_id: string;
 					updated_at: string;
 					user_id: string;
 					workout_days: number;
@@ -2424,6 +2825,12 @@ export type Database = {
 					weight_kg: number | null;
 					workout_phase: string | null;
 				}[];
+				SetofOptions: {
+					from: "*";
+					to: "personal_records";
+					isOneToOne: false;
+					isSetofReturn: true;
+				};
 			};
 			get_personal_records_excluding_ids: {
 				Args: {
@@ -2453,6 +2860,12 @@ export type Database = {
 					weight_kg: number | null;
 					workout_phase: string | null;
 				}[];
+				SetofOptions: {
+					from: "*";
+					to: "personal_records";
+					isOneToOne: false;
+					isSetofReturn: true;
+				};
 			};
 			get_pr_count_rankings: {
 				Args: { result_limit?: number };
@@ -2478,6 +2891,7 @@ export type Database = {
 					p_cursor_id?: string;
 					p_cursor_updated_at?: string;
 					p_known_ids?: string[];
+					p_last_sync_at?: string;
 					p_limit?: number;
 					p_profile_id?: string;
 					p_user_id: string;
@@ -2558,10 +2972,6 @@ export type Database = {
 					total_volume: number;
 				}[];
 			};
-			workout_current_streak: {
-				Args: { p_user_id: string };
-				Returns: number;
-			};
 			get_volume_rolling_avg: {
 				Args: {
 					p_lookback_days?: number;
@@ -2592,21 +3002,98 @@ export type Database = {
 				Returns: number;
 			};
 			import_shared_cycle: {
-				Args: {
-					p_local_profile_id?: string | null;
-					p_shared_cycle_id: string;
-				};
+				Args: { p_local_profile_id?: string; p_shared_cycle_id: string };
 				Returns: string;
 			};
 			import_shared_routine: {
-				Args: {
-					p_local_profile_id?: string | null;
-					p_shared_routine_id: string;
-				};
+				Args: { p_local_profile_id?: string; p_shared_routine_id: string };
 				Returns: string;
+			};
+			insert_routine_exercises_from_snapshot: {
+				Args: { p_routine_id: string; p_snapshot: Json };
+				Returns: undefined;
+			};
+			jsonb_redact_token_keys: { Args: { data: Json }; Returns: Json };
+			local_profile_preference_section_canonical: {
+				Args: {
+					p_row: Database["public"]["Tables"]["local_profile_preferences"]["Row"];
+					p_section: string;
+				};
+				Returns: Json;
+			};
+			mutate_local_profile_preference_section: {
+				Args: {
+					p_base_revision: number;
+					p_document_version: number;
+					p_local_profile_id: string;
+					p_payload: Json;
+					p_section: string;
+					p_user_id: string;
+				};
+				Returns: {
+					accepted: boolean;
+					canonical_section: Json;
+					rejection_reason: string;
+					server_revision: number;
+				}[];
+			};
+			recompute_all_gamification_stats: { Args: never; Returns: number };
+			recompute_gamification_stats: {
+				Args: { p_user_id: string };
+				Returns: undefined;
 			};
 			refresh_community_benchmarks: { Args: never; Returns: undefined };
 			refresh_hot_scores: { Args: never; Returns: undefined };
+			replace_session_children: {
+				Args: {
+					p_exercises: Json;
+					p_rep_summaries: Json;
+					p_rep_telemetry: Json;
+					p_session_ids: string[];
+					p_sets: Json;
+					p_user_id: string;
+				};
+				Returns: Json;
+			};
+			replace_user_insights: {
+				Args: { p_period: string; p_rows: Json; p_user_id: string };
+				Returns: number;
+			};
+			safe_jsonb_int: {
+				Args: { p_default: number; p_key: string; p_obj: Json };
+				Returns: number;
+			};
+			safe_jsonb_numeric: {
+				Args: { p_default: number; p_key: string; p_obj: Json };
+				Returns: number;
+			};
+			seed_device_gamification_stats: { Args: never; Returns: number };
+			update_cycle_with_days: {
+				Args: {
+					p_cycle_id: string;
+					p_days: Json;
+					p_deload_settings: Json;
+					p_description: string;
+					p_duration_weeks: number;
+					p_name: string;
+					p_progression_settings: Json;
+					p_rest_days: number;
+					p_started_at: string;
+					p_workout_days: number;
+				};
+				Returns: string;
+			};
+			update_routine_with_exercises: {
+				Args: {
+					p_description: string;
+					p_estimated_duration: number;
+					p_exercise_count: number;
+					p_exercises: Json;
+					p_name: string;
+					p_routine_id: string;
+				};
+				Returns: string;
+			};
 			upsert_external_activity_lww: {
 				Args: { p_rows: Json };
 				Returns: {
@@ -2655,7 +3142,9 @@ export type Database = {
 					server_updated_at: string;
 				}[];
 			};
+			user_has_min_tier: { Args: { min_tier: string }; Returns: boolean };
 			user_subscription_tier: { Args: never; Returns: string };
+			workout_current_streak: { Args: { p_user_id: string }; Returns: number };
 		};
 		Enums: {
 			[_ in never]: never;

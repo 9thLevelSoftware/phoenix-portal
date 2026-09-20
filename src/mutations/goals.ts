@@ -104,7 +104,14 @@ export function useUpdateGoal() {
 				.eq("user_id", user.id)
 				.select()
 				.single();
-			if (error) throw error;
+			if (error) {
+				// check_goal_limit also fires when a goal becomes active again
+				// (e.g. Restore of an archived goal at the tier cap).
+				if (error.code === "P0001") {
+					throw new Error("Goal limit reached for your subscription tier");
+				}
+				throw error;
+			}
 			return data;
 		},
 
@@ -116,7 +123,11 @@ export function useUpdateGoal() {
 
 		onError: (error: Error) => {
 			console.error("[useUpdateGoal] failed:", error);
-			toast.error("Failed to update goal. Please try again.");
+			if (error.message === "Goal limit reached for your subscription tier") {
+				toast.error("Goal limit reached for your subscription tier.");
+			} else {
+				toast.error("Failed to update goal. Please try again.");
+			}
 		},
 	});
 }
