@@ -34,6 +34,10 @@
     "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run assert:no-sourcemaps && npm run assert:bundle-budget && npm run assert:supabase-config",
     "verify:full": "npm run verify && npm run test:e2e && npm run test:e2e:pwa",
     "gen:types": "node scripts/gen-types.mjs",
+    "gen:types:local": "node scripts/gen-types.mjs --local",
+    "gen:types:check": "node scripts/gen-types.mjs --local --check",
+    "supabase": "node scripts/supabase-cli.mjs",
+    "test:db": "node scripts/supabase-cli.mjs test db",
     "catalog:build": "node scripts/build-open-exercise-catalog.mjs --write-migration",
     "catalog:check": "node scripts/build-open-exercise-catalog.mjs --check",
     "catalog:mirror": "node scripts/mirror-exercise-images.mjs"

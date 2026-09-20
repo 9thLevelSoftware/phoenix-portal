@@ -2,8 +2,8 @@
 -- grace floor, profile opt-in defaults.
 --
 -- Follows supabase/tests/database/profile_preferences.test.sql.
--- CI gap: no workflow currently runs `supabase test db`; this file is the
--- assertion source for local `supabase test db` / `supabase db test`.
+-- Runs in CI with the rest of the suite (`supabase test db` in
+-- .github/workflows/migrations.yml); locally: `npm run test:db`.
 
 BEGIN;
 
