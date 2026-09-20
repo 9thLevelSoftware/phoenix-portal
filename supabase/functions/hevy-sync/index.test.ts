@@ -122,10 +122,10 @@ Deno.test("hevy-sync: the queue lease is renewed while a backfill runs", async (
     return query;
   };
 
-  // 250 workouts: 25 pages (2 page heartbeats) and 3 upsert chunks.
+  // 250 workouts at 10 per page: 1 entry + 25 page + 3 chunk heartbeats.
   const res = await harness(db, 250)({ sync_type: "initial", queue_id: QUEUE_ID });
   assertEquals(res.status, 200, await res.clone().text());
-  assertEquals(heartbeats, 2 + 3);
+  assertEquals(heartbeats, 1 + 25 + 3);
   assertEquals(db.rows("external_activities").length, 250);
   assertEquals(db.rows("sync_queue")[0].status, "completed");
   // The lease landed on this row, at the injected clock (completion keeps it).

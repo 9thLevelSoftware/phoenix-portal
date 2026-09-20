@@ -27,9 +27,10 @@ const UPSERT_CHUNK_SIZE = 100;
  *
  * process-sync-queue reclaims a strava task whose `started_at` is older than
  * HEARTBEAT_LEASE_MS (5 minutes). This run heartbeats on entry and after each
- * fetched page and each upsert chunk, so the longest possible silence is one
- * request plus the 350 ms inter-page delay plus the surrounding writes —
- * comfortably under the lease. Without a timeout a single hung request could
+ * fetched page and each upsert chunk, so the longest possible silence is the
+ * token refresh plus the first page (two capped requests, ~60 s worst case)
+ * and, after that, one request plus the 350 ms inter-page delay — comfortably
+ * under the lease. Without a timeout a single hung request could
  * outlast it, and the row would be reclaimed and re-dispatched while this run
  * was still alive.
  */

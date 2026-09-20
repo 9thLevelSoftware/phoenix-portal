@@ -39,13 +39,10 @@ import {
  * When dispatched by process-sync-queue the body also carries `queue_id`: the
  * run completes that row only, and renews its lease (heartbeat) while it runs.
  * process-sync-queue reclaims a hevy task after HEARTBEAT_LEASE_MS (5 minutes)
- * without a heartbeat, so the longest silent window here is
- * HEARTBEAT_EVERY_PAGES requests, each capped by PROVIDER_REQUEST_TIMEOUT_MS
- * (10 × 30 s worst case, under the lease), or one upsert chunk.
+ * without a heartbeat. The lease is renewed on entry, after every fetched page
+ * and after every upsert chunk, so the longest silent window is one request
+ * (capped by PROVIDER_REQUEST_TIMEOUT_MS) or one upsert chunk.
  */
-
-/** Renew the queue lease after this many fetched Hevy pages. */
-const HEARTBEAT_EVERY_PAGES = 10;
 
 /** Per-request ceiling for Hevy calls, so a hung request cannot outlast the lease. */
 const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
@@ -139,6 +136,10 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
       deps.env('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
+    // Renew the lease immediately: the processor claimed this row before it
+    // called us, so the work below must not run on that claim's clock.
+    await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
+
     // Subscription gate — FLAME or higher required for integrations
     const gate = await requireSubscription(supabase, userId, 'FLAME', cors);
     if (!gate.allowed) return gate.response;
@@ -226,18 +227,14 @@ async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Respo
     let truncated = false;
     let latestEventAt: string | null = null;
     try {
-      // Renew the queue lease every few pages: a 100-page backfill can
+      // Renew the queue lease after every page: a 100-page backfill can
       // outlast process-sync-queue's heartbeat lease before any upsert runs.
-      let pagesFetched = 0;
       const fetchWithHeartbeat: typeof fetch = async (input, init) => {
         const response = await deps.fetch(input, {
           ...init,
           signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
         });
-        pagesFetched++;
-        if (pagesFetched % HEARTBEAT_EVERY_PAGES === 0) {
-          await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
-        }
+        await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
         return response;
       };
       const fetchPage = createHevyPageFetcher(storedApiKey, fetchWithHeartbeat);
