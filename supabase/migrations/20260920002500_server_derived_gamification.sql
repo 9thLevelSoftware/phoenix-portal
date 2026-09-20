@@ -3,13 +3,24 @@
 -- WHAT THIS BUYS, STATED ACCURATELY (review round 1, R-7/R-25):
 --   The counters below always equal the rows the server stores, and they are
 --   never taken from the gamification_stats payload. A delete lowers them.
---   They are NOT bounded: `workout_sessions.total_volume` and
---   `duration_seconds` are still copied verbatim from the pushed session
---   (mobile-sync-push/index.ts), and `personal_records` rows are device
---   authored, so a crafted push CAN still inflate total_volume_kg /
---   total_time_seconds / pr_count one layer down. Bounding the ingress rows
---   is a recorded follow-up (see exec/new-findings.md NF-20); do not read the
---   header below as saying otherwise.
+--   They are NOT bounded. The ROWS are still entirely device-authored and
+--   unbounded, so every derived value inherits that:
+--     * total_volume_kg / total_time_seconds — `workout_sessions.total_volume`
+--       and `duration_seconds` are copied verbatim from the pushed session
+--       (mobile-sync-push/index.ts); a fabricated session inflates them.
+--     * pr_count — `personal_records` rows are device-authored.
+--     * current_streak / longest_streak / best_streak — these are derived, but
+--       from `workout_sessions.started_at`, and `sessionSchema.startedAt` has
+--       no upper bound either (it is only checked for parseability). Sessions
+--       on fabricated consecutive dates, including FUTURE ones, raise
+--       longest_streak and best_streak directly: the gaps-and-islands pass
+--       below has no upper-date filter. Becoming server-derived removed the
+--       self-report hole, NOT the fabrication hole — do not read "derived" as
+--       "trustworthy", and do not let the PR 67 contract imply it.
+--   The same unbounded `started_at` is also the compute-rankings
+--   window-filter residual. Bounding the ingress rows is a recorded,
+--   currently unowned follow-up: exec/new-findings.md **NF-37** (filed as
+--   NF-20, renumbered — NF-20 is an unrelated PR 41 timezone nit).
 --
 -- SCOPE: gamification_stats and rpg_attributes are ACCOUNT-WIDE. They have no
 --   local_profile_id, while workout_sessions and personal_records do, so every
