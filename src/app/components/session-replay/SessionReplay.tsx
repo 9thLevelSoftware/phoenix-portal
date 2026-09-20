@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { DataFreshnessStrip } from "@/app/components/analytics/DataFreshnessStrip";
 import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { Button } from "@/app/components/ui/button";
@@ -16,6 +16,7 @@ import { buildFreshnessState } from "@/lib/freshness";
 import { calculateRepQualityScore } from "@/lib/rep-quality";
 import { buildReplayIntelligence } from "@/lib/replay-intelligence";
 import { buildReplayPhaseAnalytics } from "@/lib/replay-phase-analytics";
+import { FEATURE_MIN_TIER } from "@/lib/tierMatrix";
 import { replaySessionOptions, replayTelemetryOptions } from "@/queries/replay";
 import type { RepSummary, TelemetryPointRow } from "@/schemas/telemetry";
 import { useReplayStore } from "@/stores/useReplayStore";
@@ -39,7 +40,7 @@ export function SessionReplay() {
 	const { sessionId } = useParams<{ sessionId: string }>();
 	const navigate = useNavigate();
 	const isMobile = useIsMobile();
-	const { isFlame } = useSubscription();
+	const { isFlame, isInferno } = useSubscription();
 
 	const {
 		currentSetIndex,
@@ -211,7 +212,7 @@ export function SessionReplay() {
 	}
 
 	return (
-		<SubscriptionGate requiredTier="FLAME">
+		<SubscriptionGate requiredTier={FEATURE_MIN_TIER.sessionReplay}>
 			<div className="min-h-screen p-4 space-y-4">
 				{/* Header */}
 				<div className="flex items-center gap-3">
@@ -347,7 +348,16 @@ export function SessionReplay() {
 					</>
 				)}
 
-				{/* Rep-summary fallback for sets that synced summaries before dense telemetry */}
+				{/* Why there is no force curve. Per-sample telemetry is INFERNO and
+				    is gated in RLS (20260920003800_inferno_read_policies.sql), so a
+				    FLAME user reads zero rows and gets the same empty array as a set
+				    whose dense telemetry has not synced yet. The page says which. */}
+				{telemetryData && telemetryData.telemetry.length === 0 && (
+					<ForceCurveNotice isInferno={isInferno} />
+				)}
+
+				{/* Rep-summary replay: what FLAME pays for, and the fallback for sets
+				    that synced summaries before dense telemetry */}
 				{telemetryData &&
 					telemetryData.telemetry.length === 0 &&
 					telemetryData.repSummaries.length > 0 && (
@@ -360,10 +370,6 @@ export function SessionReplay() {
 							<ReplayPhaseAnalyticsPanel
 								analytics={telemetryData.phaseAnalytics}
 							/>
-							<div className="rounded-lg border border-secondary bg-surface-2 p-4 text-sm text-muted-foreground">
-								Dense telemetry is not available for this set yet. Showing
-								rep-summary intelligence until the next sync completes.
-							</div>
 							<SetNavigation
 								currentSetIndex={currentSetIndex}
 								totalSets={allSets.length}
@@ -399,6 +405,39 @@ export function SessionReplay() {
 					)}
 			</div>
 		</SubscriptionGate>
+	);
+}
+
+/**
+ * Explicit degrade notice for a set with no per-sample telemetry.
+ *
+ * Force curves are an INFERNO feature and the data is gated server-side, so
+ * the browser cannot tell "you have not paid for this" apart from "this set
+ * has not synced" by looking at the rows — both are an empty array. The tier
+ * is the only thing the browser does know, so it says the true thing for each
+ * case instead of leaving a blank panel.
+ */
+function ForceCurveNotice({ isInferno }: { isInferno: boolean }) {
+	if (isInferno) {
+		return (
+			<div className="rounded-lg border border-secondary bg-surface-2 p-4 text-sm text-muted-foreground">
+				Dense telemetry is not available for this set yet. Showing rep-summary
+				intelligence until the next sync completes.
+			</div>
+		);
+	}
+
+	return (
+		<div className="rounded-lg border border-secondary bg-surface-2 p-4 text-sm space-y-1">
+			<p className="font-medium text-white">Force curves require Inferno</p>
+			<p className="text-muted-foreground">
+				Your plan includes rep-by-rep replay. Upgrade to Inferno for per-sample
+				force and velocity curves.{" "}
+				<Link to="/pricing" className="text-primary underline">
+					See plans
+				</Link>
+			</p>
+		</div>
 	);
 }
 

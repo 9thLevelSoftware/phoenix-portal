@@ -96,6 +96,10 @@ describe("KD-24 route × TIER_PRICING matrix", () => {
 		expect(flame).toContain("hevy");
 		expect(flame).toContain("liftosaur");
 		expect(flame).toContain("session replay");
+		// PR 38 / KD-12: force curves are INFERNO, so the FLAME line must say
+		// which half of replay it sells.
+		expect(flame).toContain("rep-by-rep");
+		expect(flame).not.toContain("force curve");
 		expect(flame).not.toContain("biomechanics");
 		expect(flame).not.toContain("garmin");
 		expect(flame).not.toContain("fitbit");
@@ -151,12 +155,27 @@ describe("KD-24 route × TIER_PRICING matrix", () => {
 
 		expect(routes).not.toMatch(/requiredTier="INFERNO"/);
 		expect(nearestRequiredTier(routes, "/replay/:sessionId")).toBe("FLAME");
-		expect(sessionReplay).toMatch(/requiredTier="FLAME"/);
+		// The page gate reads the same matrix entry as the route gate — no
+		// second source of truth for the replay tier.
+		expect(sessionReplay).toMatch(
+			/requiredTier=\{FEATURE_MIN_TIER\.sessionReplay\}/,
+		);
+		expect(sessionReplay).not.toMatch(/requiredTier="/);
+		expect(FEATURE_MIN_TIER.sessionReplay).toBe("FLAME");
 		// Force curves / VBT / ROM / SRA are INFERNO; session replay without
 		// them stays FLAME.
 		expect(performanceTab).toMatch(
 			/requiredTier=\{FEATURE_MIN_TIER\.biomechanics\}/,
 		);
+	});
+
+	it("tells a FLAME user in the replay page why the force curves are missing", () => {
+		// PR 38 / KD-12: rep_telemetry is INFERNO-gated in RLS, so a FLAME
+		// user's telemetry query returns zero rows and the page must name the
+		// reason instead of showing a blank chart. The wording is pinned
+		// because the pricing copy promises exactly this split.
+		expect(sessionReplay).toContain("Force curves require Inferno");
+		expect(featureBlob("INFERNO")).toContain("force curves");
 	});
 
 	it("wires every INFERNO biomechanics gate to FEATURE_MIN_TIER.biomechanics", () => {

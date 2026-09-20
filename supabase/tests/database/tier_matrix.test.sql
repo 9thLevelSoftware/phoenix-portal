@@ -712,6 +712,273 @@ SELECT is(
 RESET ROLE;
 SELECT set_config('request.jwt.claims', '', true);
 
+-- ---------------------------------------------------------------------------
+-- 6. INFERNO reads (PR 38, 20260920003800_inferno_read_policies.sql).
+--
+--     User decision: force curves are INFERNO and paid capability is enforced
+--     server-side, so the rows must not leave the database for a FLAME user.
+--     This section proves the boundary itself, not a component notice:
+--       * the policy shape (exactly one permissive SELECT path per table,
+--         carrying the INFERNO initPlan conjunct);
+--       * EMBER and FLAME read ZERO rows from rep_telemetry, the
+--         telemetry_points view the replay page actually queries,
+--         vbt_assessments, session_phase_statistics and exercise_signatures —
+--         even though the rows are theirs;
+--       * INFERNO reads them all;
+--       * FLAME still reads its session / exercise / set / rep_summaries, so
+--         session replay degrades to rep-by-rep instead of disappearing;
+--       * the service role still reads a FLAME user's telemetry, which is what
+--         keeps the GDPR export (export-user-data) whole after the gate.
+-- ---------------------------------------------------------------------------
+
+CREATE FUNCTION pg_temp.visible_rows(p_relation text) RETURNS integer
+LANGUAGE plpgsql
+AS $vis$
+DECLARE
+    n integer;
+BEGIN
+    EXECUTE format('SELECT count(*)::integer FROM public.%I', p_relation) INTO n;
+    RETURN n;
+END
+$vis$;
+
+CREATE TEMP TABLE inferno_tables (table_name text PRIMARY KEY) ON COMMIT DROP;
+INSERT INTO inferno_tables VALUES
+    ('rep_telemetry'),
+    ('vbt_assessments'),
+    ('session_phase_statistics'),
+    ('exercise_signatures');
+
+-- Permissive SELECT policies OR together, so an ungated leftover would make
+-- the gate a no-op. Each table must expose exactly one permissive read path
+-- to authenticated.
+SELECT is(
+    (
+        SELECT count(*)::integer
+        FROM inferno_tables t
+        WHERE (
+            SELECT count(*)
+            FROM pg_policies p
+            WHERE p.schemaname = 'public'
+              AND p.tablename = t.table_name
+              AND p.cmd IN ('SELECT', 'ALL')
+              AND p.permissive = 'PERMISSIVE'
+              AND p.roles && ARRAY['authenticated', 'public']::name[]
+        ) <> 1
+    ),
+    0,
+    'each INFERNO table exposes exactly one permissive SELECT path to authenticated'
+);
+
+-- Row-driven shape assertions cannot notice a policy that vanished, so pin
+-- the count too (same guard as R-10 in section 1).
+SELECT is(
+    (
+        SELECT count(*)::integer
+        FROM pg_policies p
+        JOIN inferno_tables t ON t.table_name = p.tablename
+        WHERE p.schemaname = 'public'
+          AND p.cmd IN ('SELECT', 'ALL')
+          AND p.roles && ARRAY['authenticated', 'public']::name[]
+    ),
+    (SELECT count(*)::integer FROM inferno_tables),
+    'every INFERNO table still carries its authenticated SELECT policy'
+);
+
+SELECT ok(
+    p.qual LIKE '%( SELECT user_has_min_tier(''INFERNO''::text) AS user_has_min_tier)%'
+        AND p.qual LIKE '%( SELECT auth.uid() AS uid)%',
+    format('%s SELECT policy "%s" checks INFERNO and auth.uid() as initPlans', p.tablename, p.policyname)
+)
+FROM pg_policies p
+JOIN inferno_tables t ON t.table_name = p.tablename
+WHERE p.schemaname = 'public'
+  AND p.cmd IN ('SELECT', 'ALL')
+  AND p.roles && ARRAY['authenticated', 'public']::name[]
+ORDER BY p.tablename, p.policyname;
+
+-- rep_summaries is the rep-by-rep replay source and must stay untouched by
+-- the INFERNO gate, or FLAME replay dies with the force curves.
+SELECT is(
+    (
+        SELECT count(*)::integer
+        FROM pg_policies p
+        WHERE p.schemaname = 'public'
+          AND p.tablename = 'rep_summaries'
+          AND coalesce(p.qual, '') LIKE '%INFERNO%'
+    ),
+    0,
+    'rep_summaries reads are not gated at INFERNO'
+);
+
+-- The replay page reads telemetry_points, not rep_telemetry. The view only
+-- inherits the gate while it is security_invoker.
+SELECT ok(
+    EXISTS (
+        SELECT 1 FROM pg_class c
+        WHERE c.oid = 'public.telemetry_points'::regclass
+          AND array_to_string(c.reloptions, ',') ~* 'security_invoker=(true|on)'
+    ),
+    'telemetry_points is security_invoker, so it inherits the rep_telemetry gate'
+);
+
+-- Fixtures: one owned row in every gated table for an EMBER, a FLAME and an
+-- INFERNO user, plus the session / exercise / set / rep_summary chain.
+INSERT INTO auth.users (id, email)
+VALUES ('a1a1a1a1-0000-4000-8000-00000000000a'::uuid, 'tier-inferno@example.test')
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
+
+INSERT INTO public.profiles (id)
+VALUES ('a1a1a1a1-0000-4000-8000-00000000000a')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
+VALUES ('a1a1a1a1-0000-4000-8000-00000000000a'::uuid, 'INFERNO', 'active', now() + INTERVAL '30 days')
+ON CONFLICT (user_id) DO UPDATE
+SET tier = EXCLUDED.tier,
+    status = EXCLUDED.status,
+    current_period_end = EXCLUDED.current_period_end;
+
+INSERT INTO public.workout_sessions (id, user_id, name) VALUES
+    ('e1e1e1e1-0020-4000-8000-00000000000e', 'e1e1e1e1-0000-4000-8000-00000000000e', 'E session'),
+    ('f1f1f1f1-0020-4000-8000-00000000000f', 'f1f1f1f1-0000-4000-8000-00000000000f', 'F session'),
+    ('a1a1a1a1-0020-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a', 'I session');
+
+INSERT INTO public.exercises (id, session_id, user_id, name) VALUES
+    ('e1e1e1e1-0021-4000-8000-00000000000e', 'e1e1e1e1-0020-4000-8000-00000000000e', 'e1e1e1e1-0000-4000-8000-00000000000e', 'Squat'),
+    ('f1f1f1f1-0021-4000-8000-00000000000f', 'f1f1f1f1-0020-4000-8000-00000000000f', 'f1f1f1f1-0000-4000-8000-00000000000f', 'Squat'),
+    ('a1a1a1a1-0021-4000-8000-00000000000a', 'a1a1a1a1-0020-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a', 'Squat');
+
+INSERT INTO public.sets (id, exercise_id, user_id, set_number) VALUES
+    ('e1e1e1e1-0022-4000-8000-00000000000e', 'e1e1e1e1-0021-4000-8000-00000000000e', 'e1e1e1e1-0000-4000-8000-00000000000e', 1),
+    ('f1f1f1f1-0022-4000-8000-00000000000f', 'f1f1f1f1-0021-4000-8000-00000000000f', 'f1f1f1f1-0000-4000-8000-00000000000f', 1),
+    ('a1a1a1a1-0022-4000-8000-00000000000a', 'a1a1a1a1-0021-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a', 1);
+
+INSERT INTO public.rep_summaries (id, set_id, user_id, rep_number, tut_ms) VALUES
+    ('e1e1e1e1-0023-4000-8000-00000000000e', 'e1e1e1e1-0022-4000-8000-00000000000e', 'e1e1e1e1-0000-4000-8000-00000000000e', 1, 2000),
+    ('f1f1f1f1-0023-4000-8000-00000000000f', 'f1f1f1f1-0022-4000-8000-00000000000f', 'f1f1f1f1-0000-4000-8000-00000000000f', 1, 2000),
+    ('a1a1a1a1-0023-4000-8000-00000000000a', 'a1a1a1a1-0022-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 2000);
+
+INSERT INTO public.rep_telemetry (id, set_id, user_id, timestamp_ms, force_n) VALUES
+    ('e1e1e1e1-0024-4000-8000-00000000000e', 'e1e1e1e1-0022-4000-8000-00000000000e', 'e1e1e1e1-0000-4000-8000-00000000000e', 10, 400),
+    ('f1f1f1f1-0024-4000-8000-00000000000f', 'f1f1f1f1-0022-4000-8000-00000000000f', 'f1f1f1f1-0000-4000-8000-00000000000f', 10, 400),
+    ('a1a1a1a1-0024-4000-8000-00000000000a', 'a1a1a1a1-0022-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a', 10, 400);
+
+INSERT INTO public.session_phase_statistics (id, session_id, user_id, concentric_kg_avg) VALUES
+    ('e1e1e1e1-0025-4000-8000-00000000000e', 'e1e1e1e1-0020-4000-8000-00000000000e', 'e1e1e1e1-0000-4000-8000-00000000000e', 50),
+    ('f1f1f1f1-0025-4000-8000-00000000000f', 'f1f1f1f1-0020-4000-8000-00000000000f', 'f1f1f1f1-0000-4000-8000-00000000000f', 50),
+    ('a1a1a1a1-0025-4000-8000-00000000000a', 'a1a1a1a1-0020-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a', 50);
+
+INSERT INTO public.vbt_assessments (id, user_id, exercise_id, estimated_1rm_kg) VALUES
+    ('e1e1e1e1-0026-4000-8000-00000000000e', 'e1e1e1e1-0000-4000-8000-00000000000e', 'squat', 100),
+    ('f1f1f1f1-0026-4000-8000-00000000000f', 'f1f1f1f1-0000-4000-8000-00000000000f', 'squat', 100),
+    ('a1a1a1a1-0026-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a', 'squat', 100);
+
+INSERT INTO public.exercise_signatures (id, user_id, exercise_id, rom_mm) VALUES
+    ('e1e1e1e1-0027-4000-8000-00000000000e', 'e1e1e1e1-0000-4000-8000-00000000000e', 'squat', 500),
+    ('f1f1f1f1-0027-4000-8000-00000000000f', 'f1f1f1f1-0000-4000-8000-00000000000f', 'squat', 500),
+    ('a1a1a1a1-0027-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a', 'squat', 500);
+
+SET LOCAL ROLE authenticated;
+
+-- EMBER E: below both gates.
+SELECT pg_temp.act_as('e1e1e1e1-0000-4000-8000-00000000000e');
+
+SELECT is(
+    pg_temp.visible_rows(c.rel),
+    0,
+    'EMBER reads no rows from ' || c.rel
+)
+FROM (VALUES
+    ('rep_telemetry'),
+    ('telemetry_points'),
+    ('vbt_assessments'),
+    ('session_phase_statistics'),
+    ('exercise_signatures')
+) AS c(rel);
+
+-- FLAME F: pays for session replay, not for force curves. The rows are F's
+-- own and F is authenticated as their owner — the tier is the only thing
+-- standing between F and the data.
+SELECT pg_temp.act_as('f1f1f1f1-0000-4000-8000-00000000000f');
+
+SELECT is(public.user_has_min_tier('FLAME'), true, 'F is FLAME');
+SELECT is(public.user_has_min_tier('INFERNO'), false, 'F is below INFERNO');
+
+SELECT is(
+    pg_temp.visible_rows(c.rel),
+    0,
+    'FLAME reads no rows from ' || c.rel
+)
+FROM (VALUES
+    ('rep_telemetry'),
+    ('telemetry_points'),
+    ('vbt_assessments'),
+    ('session_phase_statistics'),
+    ('exercise_signatures')
+) AS c(rel);
+
+SELECT is(
+    (SELECT count(*)::integer FROM public.rep_telemetry WHERE user_id = 'f1f1f1f1-0000-4000-8000-00000000000f'),
+    0,
+    'FLAME cannot read even its own telemetry by explicit user_id'
+);
+
+-- …and still reads everything rep-by-rep replay is built from.
+SELECT is(
+    (SELECT count(*)::integer FROM public.workout_sessions WHERE id = 'f1f1f1f1-0020-4000-8000-00000000000f'),
+    1,
+    'FLAME still reads its own session (replay navigation)'
+);
+SELECT is(
+    (SELECT count(*)::integer FROM public.exercises WHERE id = 'f1f1f1f1-0021-4000-8000-00000000000f'),
+    1,
+    'FLAME still reads its own exercises (replay navigation)'
+);
+SELECT is(
+    (SELECT count(*)::integer FROM public.sets WHERE id = 'f1f1f1f1-0022-4000-8000-00000000000f'),
+    1,
+    'FLAME still reads its own sets (replay navigation)'
+);
+SELECT is(
+    (SELECT count(*)::integer FROM public.rep_summaries WHERE set_id = 'f1f1f1f1-0022-4000-8000-00000000000f'),
+    1,
+    'FLAME still reads its own rep summaries, so replay degrades to rep-by-rep'
+);
+
+-- INFERNO I: paid for the force curves, gets them.
+SELECT pg_temp.act_as('a1a1a1a1-0000-4000-8000-00000000000a');
+
+SELECT is(public.user_has_min_tier('INFERNO'), true, 'I is INFERNO');
+
+SELECT is(
+    pg_temp.visible_rows(c.rel),
+    1,
+    'INFERNO reads its row from ' || c.rel
+)
+FROM (VALUES
+    ('rep_telemetry'),
+    ('telemetry_points'),
+    ('vbt_assessments'),
+    ('session_phase_statistics'),
+    ('exercise_signatures')
+) AS c(rel);
+
+RESET ROLE;
+
+-- The GDPR export reads with the service role (export-user-data), which
+-- bypasses RLS. Gating reads must never gate Article 15.
+SET LOCAL ROLE service_role;
+
+SELECT is(
+    (SELECT count(*)::integer FROM public.rep_telemetry WHERE user_id = 'f1f1f1f1-0000-4000-8000-00000000000f'),
+    1,
+    'the service role still reads a FLAME user telemetry, so the export stays whole'
+);
+
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '', true);
+
 SELECT * FROM finish();
 
 ROLLBACK;

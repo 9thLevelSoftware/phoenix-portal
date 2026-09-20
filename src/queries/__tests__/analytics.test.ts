@@ -302,6 +302,37 @@ describe("phaseStatisticsTrendOptions", () => {
 	});
 });
 
+describe("vbtAssessmentsOptions", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		fromFn.mockImplementation(() => chain);
+	});
+
+	// PR 38: vbt_assessments is INFERNO-gated in RLS
+	// (20260920003800_inferno_read_policies.sql). A FLAME user's request
+	// succeeds and comes back with zero rows — PostgREST reports no error for
+	// a row-filtered SELECT — so the VBT reader must yield an empty result the
+	// UI can render as an empty state, never a rejected query.
+	it("returns an empty list, not an error, when RLS filters every row away", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { vbtAssessmentsOptions } = await import("../analytics");
+		const opts = vbtAssessmentsOptions("user-1", "squat");
+		await expect(opts.queryFn?.({} as never)).resolves.toEqual([]);
+		expect(fromFn).toHaveBeenCalledWith("vbt_assessments");
+	});
+
+	it("returns the rows an INFERNO subscriber can read", async () => {
+		chain = buildChain({
+			data: [{ id: "v1", exercise_id: "squat", estimated_1rm_kg: 100 }],
+			error: null,
+		});
+		const { vbtAssessmentsOptions } = await import("../analytics");
+		const opts = vbtAssessmentsOptions("user-1", "squat");
+		const result = await opts.queryFn?.({} as never);
+		expect(result).toHaveLength(1);
+	});
+});
+
 describe("volumeComparisonOptions", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
