@@ -736,8 +736,8 @@ describe("SPA -> Edge _shared import boundary", () => {
 	// relative path so the CTA and the server cannot disagree (R-11). The
 	// directory it opens onto is full of modules that read secrets, and one
 	// careless re-export would put a service-role code path or a secret name
-	// into dist/. Pin the boundary: only these modules are reachable from
-	// src/, and neither may contain a server-only token.
+	// into dist/. Pin the boundary to the reviewed shared modules, none of which
+	// may contain a server-only token.
 	const SPA_REACHABLE_SHARED_MODULES = [
 		"billingAction.ts",
 		"subscriptionEntitlement.ts",
@@ -751,7 +751,7 @@ describe("SPA -> Edge _shared import boundary", () => {
 		);
 	}
 
-	it("only billingAction and subscriptionEntitlement are imported from src/", () => {
+	it("only reviewed Edge shared modules are imported from src/", () => {
 		const sources = globSync("src/**/*.{ts,tsx}", { cwd: process.cwd() });
 		const sharedImports = new Set<string>();
 		for (const file of sources) {

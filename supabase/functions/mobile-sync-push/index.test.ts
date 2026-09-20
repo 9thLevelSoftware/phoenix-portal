@@ -426,9 +426,12 @@ function permissiveQuery(
     error: null,
     count: 0,
   },
+  writeError?: (method: string) => unknown,
+  onCall?: (method: string, args: unknown[]) => void,
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
+  let injectedWriteError: unknown = null;
   const chainMethods = [
     "select",
     "eq",
@@ -451,11 +454,13 @@ function permissiveQuery(
   const operations = [] as unknown as QueryContext;
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
+      onCall?.(method, args);
       operations.push({ name: method, args });
       if (method === "neq") ownershipProbe = true;
       if (method === "eq") operations[String(args[0])] = args[1];
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method, args);
+        injectedWriteError = writeError?.(method) ?? injectedWriteError;
       }
       return query;
     };
@@ -479,7 +484,9 @@ function permissiveQuery(
     reject?: (reason: unknown) => unknown,
   ) =>
     Promise.resolve(
-      ownershipProbe
+      injectedWriteError
+        ? { data: null, error: injectedWriteError }
+        : ownershipProbe
         ? { data: [], error: null, count: 0 }
         : typeof terminalResult === "function"
         ? terminalResult(operations)
@@ -501,6 +508,13 @@ interface PushHarness {
   operationEvents: string[];
   channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
   broadcastPayloads: unknown[];
+  /** Every admin query builder with its chained calls and arguments. */
+  adminQueries: AdminQueryRecord[];
+}
+
+interface AdminQueryRecord {
+  table: string;
+  calls: Array<{ method: string; args: unknown[] }>;
 }
 
 function makeHarness(
@@ -509,6 +523,10 @@ function makeHarness(
     channelError?: unknown;
     rpcBehavior?: RpcBehavior;
     personalRecordsResult?: { data: unknown; error: unknown };
+    /** Error injected into a write, keyed `table:method` (e.g. `routines:delete`). */
+    writeErrors?: Record<string, unknown>;
+    /** Real clients for chosen tables (real-SQL tests); others stay mocked. */
+    tableClients?: Record<string, { from(table: string): unknown }>;
     /**
      * Terminal result for reads/writes on these tables (e.g. probes); a
      * function receives the chained operations (select/in/... with args).
@@ -530,10 +548,15 @@ function makeHarness(
   const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
     [];
   const broadcastPayloads: unknown[] = [];
+  const adminQueries: AdminQueryRecord[] = [];
 
   const admin = {
     from(table: string) {
       adminFromCalls.push(table);
+      const realClient = options.tableClients?.[table];
+      if (realClient) return realClient.from(table);
+      const record: AdminQueryRecord = { table, calls: [] };
+      adminQueries.push(record);
       return permissiveQuery(
         table,
         (method, args) => {
@@ -544,6 +567,8 @@ function makeHarness(
         table === "personal_records"
           ? options.personalRecordsResult
           : options.tableResults?.[table],
+        (method) => options.writeErrors?.[`${table}:${method}`],
+        (method, args) => record.calls.push({ method, args }),
       );
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
@@ -629,7 +654,23 @@ function makeHarness(
     operationEvents,
     channelCalls,
     broadcastPayloads,
+    adminQueries,
   };
+}
+
+/** Queries on `table` whose chain includes the write `method`. */
+function writeQueries(
+  harness: PushHarness,
+  table: string,
+  method: string,
+): AdminQueryRecord[] {
+  return harness.adminQueries.filter((query) =>
+    query.table === table && query.calls.some((call) => call.method === method)
+  );
+}
+
+function callArgs(query: AdminQueryRecord, method: string): unknown[] {
+  return query.calls.find((call) => call.method === method)?.args ?? [];
 }
 
 async function json(response: Response): Promise<Record<string, unknown>> {
@@ -2003,6 +2044,510 @@ Deno.test("legacy push response keeps ordinary fields and adds empty preference 
   );
 });
 
+// PR 22 (F-024): required sub-step failures fail the push with a retryable
+// 503 instead of a 200 that lets mobile advance lastSync and drop the work.
+const PARTIAL_WRITE_BODY = {
+  error: "Sync temporarily unavailable",
+  code: "partial_write_retry",
+};
+const INJECTED_DB_ERROR = { message: "injected database failure", code: "XX000" };
+
+async function assertPartialWriteRetry(
+  harness: PushHarness,
+  response: Response,
+): Promise<void> {
+  assertEquals(response.status, 503);
+  assertEquals(await json(response), PARTIAL_WRITE_BODY);
+  assertEquals(harness.channelCalls, []);
+  assertEquals(harness.broadcastPayloads, []);
+  assertEquals(harness.loggerCalls, [[{ name: "PartialWriteRetry" }]]);
+}
+
+Deno.test("routine delete failure returns retryable 503 and no sync_complete", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routines:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedRoutineIds: [ROUTINE_ID],
+  }));
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("cycle delete failure returns retryable 503 and no sync_complete", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "training_cycles:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedCycleIds: [CYCLE_ID],
+  }));
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("routine exercise orphan cleanup failure returns retryable 503", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(
+    requestFromBody(validNestedRelationshipBody()),
+  );
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("allProfiles upsert failure returns 503 before any session write", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "local_profiles:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(
+    requestFromBody(validNestedRelationshipBody()),
+  );
+  await assertPartialWriteRetry(harness, response);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table !== "local_profiles"),
+    [],
+  );
+});
+
+Deno.test("single-profile upsert failure returns 503 before any session write", async () => {
+  const body = validNestedRelationshipBody();
+  delete body.allProfiles;
+  const harness = makeHarness(undefined, {
+    writeErrors: { "local_profiles:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody(body));
+  await assertPartialWriteRetry(harness, response);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) => call.table !== "local_profiles"),
+    [],
+  );
+});
+
+const CATALOG_EXERCISE_ID = "00000000-0000-4000-8000-000000000050";
+const ASSESSMENT_ID = "00000000-0000-4000-8000-000000000051";
+
+function assessmentBody(): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    assessments: [{
+      id: ASSESSMENT_ID,
+      exerciseId: CATALOG_EXERCISE_ID,
+      estimatedOneRepMaxKg: 100,
+      loadVelocityData: "[]",
+      createdAt: "2026-07-11T12:00:00.000Z",
+    }],
+  };
+}
+
+const CATALOG_RESULT = {
+  data: [{
+    id: CATALOG_EXERCISE_ID,
+    name: "Bench Press",
+    is_custom: false,
+    archived: false,
+  }],
+  error: null,
+};
+
+Deno.test("VBT upsert failure keeps 200 and reports failed.assessments", async () => {
+  const harness = makeHarness(undefined, {
+    tableResults: { exercise_catalog: CATALOG_RESULT },
+    writeErrors: { "vbt_assessments:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody(assessmentBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.assessmentsInserted, 0);
+  assertEquals(body.failed, {
+    phaseStatistics: [],
+    exerciseSignatures: [],
+    assessments: [ASSESSMENT_ID],
+    externalActivities: [],
+  });
+  assertEquals(harness.broadcastPayloads.length, 1);
+});
+
+Deno.test("successful push reports an empty failed map", async () => {
+  const harness = makeHarness(undefined, {
+    tableResults: {
+      exercise_catalog: CATALOG_RESULT,
+      // What `.upsert(...).select('id')` returns: the rows actually inserted.
+      vbt_assessments: { data: [{ id: "inserted-row" }], error: null },
+    },
+  });
+  const response = await harness.handler(requestFromBody(assessmentBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.assessmentsInserted, 1);
+  assertEquals(body.failed, {
+    phaseStatistics: [],
+    exerciseSignatures: [],
+    assessments: [],
+    externalActivities: [],
+  });
+  // The client id used for failure reporting must never reach PostgREST.
+  const upserts = writeQueries(harness, "vbt_assessments", "upsert");
+  assertEquals(upserts.length, 1);
+  const rows = callArgs(upserts[0]!, "upsert")[0] as Array<
+    Record<string, unknown>
+  >;
+  assertEquals(rows.length, 1);
+  assert(!Object.hasOwn(rows[0]!, "clientId"));
+  assertEquals(rows[0]!.exercise_id, CATALOG_EXERCISE_ID);
+  assertEquals(rows[0]!.estimated_1rm_kg, 100);
+  assertEquals(rows[0]!.user_id, VALID_USER_ID);
+});
+
+/**
+ * In-memory stand-in for vbt_assessments with the PR 23 unique index
+ * semantics: rows are keyed by (user_id, exercise_id, timestamptz VALUE of
+ * created_at), so "...Z" and "...+00:00" forms of one instant collide.
+ * - select: returns the stored rows (the pre-fix handler's existence re-page).
+ * - insert: appends blindly (the pre-fix handler relied on its own string
+ *   dedupe, so this lets a pre-fix duplicate show up in `rows`).
+ * - upsert: only ON CONFLICT (user_id,exercise_id,created_at) DO NOTHING is
+ *   modelled; any other options return an error. Same-key rows inside one
+ *   batch are skipped like Postgres does. With `.select()` it returns only
+ *   the inserted rows, as PostgREST does.
+ */
+function fakeVbtAssessmentsTable(stored: Array<Record<string, unknown>>) {
+  const rows = stored.map((row) => ({ ...row }));
+  const key = (row: Record<string, unknown>) =>
+    `${row.user_id}|${row.exercise_id}|${Date.parse(String(row.created_at))}`;
+  const client = {
+    from(_table: string) {
+      let op: "select" | "insert" | "upsert" = "select";
+      let values: Array<Record<string, unknown>> = [];
+      let options: Record<string, unknown> | undefined;
+      let returning = false;
+      const run = () => {
+        if (op === "select") {
+          return { data: rows.map((row) => ({ ...row })), error: null };
+        }
+        if (op === "insert") {
+          rows.push(...values.map((value) => ({ id: crypto.randomUUID(), ...value })));
+          return { data: null, error: null };
+        }
+        if (
+          options?.onConflict !== "user_id,exercise_id,created_at" ||
+          options?.ignoreDuplicates !== true
+        ) {
+          return {
+            data: null,
+            error: { message: "fake models only DO NOTHING on vbt_assessments_identity" },
+          };
+        }
+        const seen = new Set(rows.map(key));
+        const inserted: Array<Record<string, unknown>> = [];
+        for (const value of values) {
+          if (seen.has(key(value))) continue;
+          seen.add(key(value));
+          const row = { id: crypto.randomUUID(), ...value };
+          rows.push(row);
+          inserted.push(row);
+        }
+        return {
+          data: returning ? inserted.map((row) => ({ id: row.id })) : null,
+          error: null,
+        };
+      };
+      const query: Record<string, unknown> = {};
+      for (const method of ["eq", "in", "order", "range", "limit", "gt", "neq", "is"]) {
+        query[method] = () => query;
+      }
+      query.select = () => {
+        if (op !== "select") returning = true;
+        return query;
+      };
+      query.insert = (next: Array<Record<string, unknown>>) => {
+        op = "insert";
+        values = next;
+        return query;
+      };
+      query.upsert = (
+        next: Array<Record<string, unknown>>,
+        nextOptions?: Record<string, unknown>,
+      ) => {
+        op = "upsert";
+        values = next;
+        options = nextOptions;
+        return query;
+      };
+      query.then = (
+        resolve: (value: unknown) => unknown,
+        reject?: (reason: unknown) => unknown,
+      ) => Promise.resolve(run()).then(resolve, reject);
+      return query;
+    },
+  };
+  return { rows, client };
+}
+
+Deno.test("VBT push of a Z timestamp against a stored +00:00 row writes no duplicate", async () => {
+  // The stored row reads back from PostgREST as "+00:00"; mobile sends the
+  // same instant as "Z". The pre-fix handler re-paged this table and
+  // compared strings, missed the match and inserted a copy on every push:
+  // the stored row below is what that old select-then-insert path read, and
+  // it is why this test fails against the pre-fix handler. The fixed handler
+  // never reads it; it hands the row to ON CONFLICT DO NOTHING, which the
+  // fake models on the timestamptz value. The real-SQL test below proves the
+  // same against Postgres.
+  const table = fakeVbtAssessmentsTable([{
+    id: "stored-row",
+    user_id: VALID_USER_ID,
+    exercise_id: CATALOG_EXERCISE_ID,
+    estimated_1rm_kg: 100,
+    created_at: "2026-07-11T12:00:00+00:00",
+  }]);
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const harness = makeHarness(undefined, {
+      tableResults: { exercise_catalog: CATALOG_RESULT },
+      tableClients: { vbt_assessments: table.client },
+    });
+    const response = await harness.handler(requestFromBody(assessmentBody()));
+    const body = await json(response);
+
+    assertEquals(response.status, 200, JSON.stringify(body));
+    assertEquals((body.failed as Record<string, unknown>).assessments, []);
+    assertEquals(body.assessmentsInserted, 0, `push ${attempt}`);
+    assertEquals(table.rows.length, 1, `push ${attempt}`);
+    assertEquals(table.rows[0]!.id, "stored-row");
+  }
+});
+
+Deno.test("VBT push with two same-instant rows in one payload stores one row", async () => {
+  // "...Z" and "...+00:00" of one instant pass the string-keyed payload
+  // duplicate check but hit one conflict key. DO NOTHING keeps the first;
+  // DO UPDATE would have failed the whole statement.
+  const table = fakeVbtAssessmentsTable([]);
+  const base = assessmentBody();
+  const [first] = base.assessments as Array<Record<string, unknown>>;
+  const body = {
+    ...base,
+    assessments: [
+      first,
+      {
+        ...first,
+        id: "00000000-0000-4000-8000-000000000053",
+        createdAt: "2026-07-11T12:00:00+00:00",
+      },
+    ],
+  };
+  const harness = makeHarness(undefined, {
+    tableResults: { exercise_catalog: CATALOG_RESULT },
+    tableClients: { vbt_assessments: table.client },
+  });
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals((responseBody.failed as Record<string, unknown>).assessments, []);
+  assertEquals(responseBody.assessmentsInserted, 1);
+  assertEquals(table.rows.length, 1);
+  assert(!Object.hasOwn(table.rows[0]!, "clientId"));
+  assertEquals(table.rows[0]!.user_id, VALID_USER_ID);
+});
+
+function manyIds(prefix: string, count: number): string[] {
+  return Array.from(
+    { length: count },
+    (_, i) => `00000000-0000-4000-${prefix}-${i.toString().padStart(12, "0")}`,
+  );
+}
+
+Deno.test("routine and cycle tombstone deletes are chunked at 100 ids", async () => {
+  const routineIds = manyIds("8a00", 250);
+  const cycleIds = manyIds("8b00", 201);
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedRoutineIds: routineIds,
+    deletedCycleIds: cycleIds,
+  }));
+
+  assertEquals(response.status, 200);
+  const cases: Array<[string, string[], number[]]> = [
+    ["routines", routineIds, [100, 100, 50]],
+    ["training_cycles", cycleIds, [100, 100, 1]],
+  ];
+  for (const [table, ids, sizes] of cases) {
+    const deletes = writeQueries(harness, table, "delete");
+    const chunks = deletes.map((query) => callArgs(query, "in")[1] as string[]);
+    assertEquals(chunks.map((chunk) => chunk.length), sizes);
+    assertEquals(chunks.flat(), ids);
+    for (const query of deletes) {
+      assertEquals(callArgs(query, "eq"), ["user_id", VALID_USER_ID]);
+    }
+  }
+  assertEquals(harness.broadcastPayloads.length, 1);
+});
+
+Deno.test("a failed tombstone delete chunk stops at that chunk with a retryable 503", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routines:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedRoutineIds: manyIds("8a00", 250),
+  }));
+  await assertPartialWriteRetry(harness, response);
+  assertEquals(writeQueries(harness, "routines", "delete").length, 1);
+});
+
+Deno.test("orphan cleanup failure for a routine with no exercises returns retryable 503", async () => {
+  const body = validNestedRelationshipBody();
+  const routines = body.routines as Array<Record<string, unknown>>;
+  routines[0] = { ...routines[0], exerciseCount: 0, exercises: [] };
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody(body));
+  await assertPartialWriteRetry(harness, response);
+  const deletes = writeQueries(harness, "routine_exercises", "delete");
+  assertEquals(deletes.length, 1);
+  // The delete-all branch: no `not in` filter.
+  assert(!deletes[0]!.calls.some((call) => call.method === "not"));
+  assertEquals(callArgs(deletes[0]!, "eq"), ["routine_id", ROUTINE_ID]);
+});
+
+Deno.test("routine_exercises upsert failure returns the same retryable 503", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "routine_exercises:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(
+    requestFromBody(validNestedRelationshipBody()),
+  );
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("retrying the identical payload after a 503 succeeds and replays the same writes", async () => {
+  const deletedRoutineId = "00000000-0000-4000-8000-000000000060";
+  const writeErrors: Record<string, unknown> = {
+    "routines:delete": INJECTED_DB_ERROR,
+  };
+  const harness = makeHarness(undefined, { writeErrors });
+  const body = {
+    ...validNestedRelationshipBody(),
+    deletedRoutineIds: [deletedRoutineId],
+  };
+
+  const first = await harness.handler(requestFromBody(body));
+  assertEquals(first.status, 503);
+  assertEquals(harness.broadcastPayloads, []);
+  const firstWrites = [...harness.adminWriteCalls];
+
+  delete writeErrors["routines:delete"];
+  const second = await harness.handler(requestFromBody(body));
+  const secondBody = await json(second);
+  assertEquals(second.status, 200, JSON.stringify(secondBody));
+  assertEquals(harness.broadcastPayloads.length, 1);
+
+  // The retry re-runs exactly the same writes up to and including the delete
+  // (upserts by id; deleting an already-absent row is a no-op), then goes on
+  // to the steps the first attempt never reached.
+  const secondWrites = harness.adminWriteCalls.slice(firstWrites.length);
+  assertEquals(secondWrites.slice(0, firstWrites.length), firstWrites);
+  assert(
+    secondWrites.slice(firstWrites.length).some((call) =>
+      call.table === "training_cycles" && call.method === "upsert"
+    ),
+  );
+  // Session-graph writes are id-keyed upserts, never blind inserts.
+  assertEquals(
+    secondWrites.filter((call) =>
+      call.method === "insert" &&
+      ["workout_sessions", "exercises", "sets", "rep_summaries"].includes(
+        call.table,
+      )
+    ),
+    [],
+  );
+});
+
+const PHASE_STATS_ID = "00000000-0000-4000-8000-000000000070";
+
+Deno.test("phase statistics upsert failure keeps 200 and reports failed.phaseStatistics", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "session_phase_statistics:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validNestedRelationshipBody(),
+    phaseStatistics: [{ id: PHASE_STATS_ID, sessionId: SESSION_ID }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.phaseStatisticsInserted, 0);
+  assertEquals(body.failed, {
+    phaseStatistics: [PHASE_STATS_ID],
+    exerciseSignatures: [],
+    assessments: [],
+    externalActivities: [],
+  });
+  assertEquals(harness.broadcastPayloads.length, 1);
+});
+
+const SIGNATURE_ID = "00000000-0000-4000-8000-000000000071";
+const UNRESOLVED_SIGNATURE_ID = "00000000-0000-4000-8000-000000000072";
+
+Deno.test("signature upsert failure reports only attempted signature ids", async () => {
+  const harness = makeHarness(undefined, {
+    tableResults: { exercise_catalog: CATALOG_RESULT },
+    writeErrors: { "exercise_signatures:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    exerciseSignatures: [
+      { id: SIGNATURE_ID, exerciseId: CATALOG_EXERCISE_ID },
+      // No catalog match: dropped before the write, so not a failure.
+      { id: UNRESOLVED_SIGNATURE_ID, exerciseId: "not-in-catalog" },
+    ],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.exerciseSignaturesUpserted, 0);
+  assertEquals(body.failed, {
+    phaseStatistics: [],
+    exerciseSignatures: [SIGNATURE_ID],
+    assessments: [],
+    externalActivities: [],
+  });
+});
+
+const EXTERNAL_ACTIVITY_ID = "00000000-0000-4000-8000-000000000073";
+
+Deno.test("external activity upsert failure reports failed.externalActivities with no ack", async () => {
+  const harness = makeHarness(undefined, {
+    writeErrors: { "external_activities:upsert": INJECTED_DB_ERROR },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profileId: "default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    externalActivities: [{
+      id: EXTERNAL_ACTIVITY_ID,
+      externalId: "external-activity-a",
+      provider: "test-provider",
+      name: "Upsert fails",
+      startedAt: "2026-07-11T12:00:00.000Z",
+    }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.externalActivitiesUpserted, 0);
+  assertEquals(body.externalActivityKeys, []);
+  assertEquals(body.failed, {
+    phaseStatistics: [],
+    exerciseSignatures: [],
+    assessments: [],
+    externalActivities: [EXTERNAL_ACTIVITY_ID],
+  });
+});
+
 Deno.test("a newer active personal record cannot resurrect a stored tombstone", async () => {
   const personalRecordId = "00000000-0000-4000-8000-000000000040";
   const harness = makeHarness(undefined, {
@@ -2852,6 +3397,12 @@ Deno.test("present empty preference field is evaluated without an RPC", async ()
     },
     skippedDeleted: { routines: [], cycles: [] },
     cycleVersions: {},
+    failed: {
+      phaseStatistics: [],
+      exerciseSignatures: [],
+      assessments: [],
+      externalActivities: [],
+    },
     profilePreferencesAccepted: true,
     canonicalProfilePreferenceSections: [],
     profilePreferenceRejections: [],
@@ -5242,6 +5793,119 @@ function lwwClockPush(
   };
 }
 
+Deno.test({
+  name:
+    "integration: VBT push is idempotent on the timestamptz value and the unique index exists",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
+      const authBehavior: AuthBehavior = async () => ({
+        data: { user: { id: fixture.ownerId } },
+        error: null,
+      });
+      const vbtCount = async (): Promise<number> => {
+        const result = await fixture.admin.from("vbt_assessments")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", fixture.ownerId);
+        if (result.error) throw new Error("vbt count query failed");
+        return result.count ?? -1;
+      };
+      const push = async (
+        body: Record<string, unknown>,
+        expectedInserted: number,
+      ) => {
+        const harness = makeHarness(authBehavior, {
+          tableResults: { exercise_catalog: CATALOG_RESULT },
+          tableClients: { vbt_assessments: fixture.admin },
+        });
+        const response = await harness.handler(requestFromBody(body));
+        const responseBody = await json(response);
+        assertEquals(response.status, 200, JSON.stringify(responseBody));
+        assertEquals(
+          (responseBody.failed as Record<string, unknown>).assessments,
+          [],
+        );
+        assertEquals(responseBody.assessmentsInserted, expectedInserted);
+      };
+
+      // A row stored earlier with a numeric offset. PostgREST reads it back
+      // as "+00:00"; the wire value is the same instant written with "Z".
+      const stored = await fixture.admin.from("vbt_assessments").insert({
+        user_id: fixture.ownerId,
+        exercise_id: CATALOG_EXERCISE_ID,
+        estimated_1rm_kg: 100,
+        load_velocity_data: [],
+        created_at: "2026-07-11T12:00:00+00:00",
+      });
+      if (stored.error) throw new Error("vbt fixture insert failed");
+      assertEquals(await vbtCount(), 1);
+
+      // "Z" payload against the stored "+00:00" row: no new row.
+      await push(assessmentBody(), 0);
+      assertEquals(await vbtCount(), 1);
+      // Second identical push: still a no-op.
+      await push(assessmentBody(), 0);
+      assertEquals(await vbtCount(), 1);
+
+      // A new assessment (different instant) is inserted exactly once.
+      const withNew = {
+        ...assessmentBody(),
+        assessments: [
+          ...(assessmentBody().assessments as unknown[]),
+          {
+            id: "00000000-0000-4000-8000-000000000052",
+            exerciseId: CATALOG_EXERCISE_ID,
+            estimatedOneRepMaxKg: 105,
+            loadVelocityData: "[]",
+            createdAt: "2026-07-12T12:00:00.000Z",
+          },
+        ],
+      };
+      await push(withNew, 1);
+      await push(withNew, 0);
+      assertEquals(await vbtCount(), 2);
+
+      // One payload carrying the same instant twice ("Z" and "+00:00"): it
+      // passes the string-keyed payload check, and DO NOTHING stores one row
+      // instead of failing the statement.
+      const sameKeyTwice = {
+        ...assessmentBody(),
+        assessments: [
+          {
+            id: "00000000-0000-4000-8000-000000000054",
+            exerciseId: CATALOG_EXERCISE_ID,
+            estimatedOneRepMaxKg: 110,
+            loadVelocityData: "[]",
+            createdAt: "2026-07-13T12:00:00.000Z",
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000055",
+            exerciseId: CATALOG_EXERCISE_ID,
+            estimatedOneRepMaxKg: 110,
+            loadVelocityData: "[]",
+            createdAt: "2026-07-13T12:00:00+00:00",
+          },
+        ],
+      };
+      await push(sameKeyTwice, 1);
+      assertEquals(await vbtCount(), 3);
+
+      // The unique index exists: a plain duplicate insert (same instant,
+      // different text form) is rejected with unique_violation.
+      const duplicate = await fixture.admin.from("vbt_assessments").insert({
+        user_id: fixture.ownerId,
+        exercise_id: CATALOG_EXERCISE_ID,
+        estimated_1rm_kg: 100,
+        created_at: "2026-07-11T12:00:00.000Z",
+      });
+      assertEquals(duplicate.error?.code, "23505");
+      assertEquals(await vbtCount(), 3);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
 // ─── routine exercise durationSeconds (KD-2: nested, optional) ───────────────
 
 const TIMED_ROUTINE_EXERCISE_ID = "00000000-0000-4000-8000-000000000022";

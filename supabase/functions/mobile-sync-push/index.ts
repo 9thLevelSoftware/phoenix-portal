@@ -122,6 +122,49 @@ function deduplicateByKey<T>(rows: T[], keyFn: (row: T) => string): T[] {
 }
 
 /**
+ * A required push sub-step (profile upsert, routine/cycle delete, routine
+ * exercise upsert or orphan cleanup) failed after earlier steps may already have
+ * written. The whole push is idempotent (upserts by id, deletes of absent
+ * rows are no-ops), so the handler answers a retryable 503 instead of a 200:
+ * mobile then keeps its dirty rows and does not advance lastSync, and the
+ * next sync re-sends the same batch (F-024).
+ */
+class PartialWriteRetryError extends Error {
+  constructor(step: string, cause: { message?: string } | null) {
+    // The DB message goes to the function log only, never to the response.
+    super(`${step} failed: ${cause?.message ?? 'unknown error'}`);
+    this.name = 'PartialWriteRetry';
+  }
+}
+
+/**
+ * Hard-delete the caller's rows by id in chunks of 100, like the ownership
+ * probe. One `.in()` with every tombstone id (up to 10,000 by schema) can
+ * exceed the PostgREST URL limit, which would fail identically on every
+ * retry and wedge sync behind a permanent 503. Deletes are idempotent, so a
+ * failure after some chunks committed is still safe to retry.
+ */
+async function deleteOwnedRowsInChunks(
+  supabase: SupabaseClient,
+  table: string,
+  ids: string[],
+  userId: string,
+  step: string,
+): Promise<void> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  const chunkSize = 100;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .in('id', chunk)
+      .eq('user_id', userId);
+    if (error) throw new PartialWriteRetryError(step, error);
+  }
+}
+
+/**
  * Prevent cross-user takeover when upserting by primary key only.
  *
  * For tables with a direct `user_id` column, this checks that any existing
@@ -1247,10 +1290,10 @@ async function mobileSyncPushHandler(
     // IMPORTANT: local_profile_id on workout_sessions/routines/cycles has a
     // composite FK → local_profiles(user_id, id).  The profile row MUST exist
     // before any session insert, otherwise the FK fires.  If the upsert fails
-    // for any reason we null out localProfileId so downstream inserts store
-    // rows as profile-unscoped (NULL) rather than crashing with a FK violation.
+    // the push answers a retryable 503 before any session write (PR 22); it
+    // never stores this push's rows profile-unscoped (NULL).
     // =========================================================================
-    // Use `let` so we can clear it to null if the profile upsert fails.
+    // `let`: cleared to null when the id is absent from allProfiles.
     let localProfileId: string | null = payload.profileId ?? null;
     const allProfiles: LocalProfileDto[] | null = payload.allProfiles ?? null;
     const dedicatedRecordLocalProfileIds = collectDedicatedRecordLocalProfileIds(
@@ -1286,13 +1329,10 @@ async function mobileSyncPushHandler(
         .upsert(profileRows, { onConflict: 'user_id,id' });
 
       if (upsertError) {
-        // Null out localProfileId so subsequent session/routine/cycle inserts
-        // store rows as profile-unscoped (NULL) instead of hitting the FK.
-        console.warn('Failed to upsert local profiles:', upsertError.message);
-        if (localProfileId) {
-          console.warn('Clearing localProfileId to avoid FK violation on session insert');
-          localProfileId = null;
-        }
+        // Fail the push before any session write rather than storing rows
+        // profile-unscoped (NULL): unscoped rows leak across local profiles
+        // and are never re-scoped. Mobile retries the idempotent push.
+        throw new PartialWriteRetryError('local_profiles upsert', upsertError);
       } else {
         const activeIds = allProfiles.map((p) => p.id);
         for (const id of activeIds) validLocalProfileIdsForPush.add(id);
@@ -1339,10 +1379,8 @@ async function mobileSyncPushHandler(
         );
 
       if (profileError) {
-        // Null out so sessions are stored unscoped rather than failing the FK.
-        console.warn('Failed to upsert local profile:', profileError.message);
-        console.warn('Clearing localProfileId to avoid FK violation on session insert');
-        localProfileId = null;
+        // Same as above: never write this push's sessions unscoped.
+        throw new PartialWriteRetryError('local_profiles upsert', profileError);
       } else if (localProfileId) {
         validLocalProfileIdsForPush.add(localProfileId);
       }
@@ -1587,6 +1625,16 @@ async function mobileSyncPushHandler(
       externalActivities: [] as EntityRejection[],
       rpgAttributes: [] as EntityRejection[],
       gamificationStats: [] as EntityRejection[],
+    };
+    // Optional GAP tables whose write failed. The push still answers 200
+    // (these rows are non-critical and old mobile would otherwise retry the
+    // whole batch forever); the ids are the mobile DTO ids so a mobile
+    // follow-up can keep exactly those rows dirty. Old mobile ignores the key.
+    const failed = {
+      phaseStatistics: [] as string[],
+      exerciseSignatures: [] as string[],
+      assessments: [] as string[],
+      externalActivities: [] as string[],
     };
     // null = flag OFF (accept-all semantics). Set = flag ON (only listed IDs
     // cleared the LWW gate).
@@ -2480,7 +2528,8 @@ async function mobileSyncPushHandler(
         const { error: reErr } = await supabase
           .from('routine_exercises')
           .upsert(reRows, { onConflict: 'id' });
-        if (reErr) throw new Error(`routine_exercises upsert failed: ${reErr.message}`);
+        // Same retryable contract as the orphan cleanup that follows (R-5).
+        if (reErr) throw new PartialWriteRetryError('routine_exercises upsert', reErr);
       }
 
       // Remove orphan exercises: rows belonging to synced routines whose IDs
@@ -2501,14 +2550,14 @@ async function mobileSyncPushHandler(
             .delete()
             .eq('routine_id', routineId)
             .not('id', 'in', `(${idsForRoutine.join(',')})`);
-          if (orphanErr) console.warn(`routine_exercises orphan cleanup warning for ${routineId}:`, orphanErr.message);
+          if (orphanErr) throw new PartialWriteRetryError('routine_exercises orphan cleanup', orphanErr);
         } else {
           // Routine has zero exercises now -- delete all
           const { error: orphanErr } = await supabase
             .from('routine_exercises')
             .delete()
             .eq('routine_id', routineId);
-          if (orphanErr) console.warn(`routine_exercises orphan cleanup warning for ${routineId}:`, orphanErr.message);
+          if (orphanErr) throw new PartialWriteRetryError('routine_exercises orphan cleanup', orphanErr);
         }
       }
 
@@ -2541,16 +2590,14 @@ async function mobileSyncPushHandler(
       );
       if (ownershipResp) return ownershipResp;
 
-      const { error: delErr } = await supabase
-        .from('routines')
-        .delete()
-        .in('id', payload.deletedRoutineIds)
-        .eq('user_id', userId);
-      if (delErr) {
-        console.warn('routine deletion warning:', delErr.message);
-      } else {
-        console.log(`Deleted ${payload.deletedRoutineIds.length} routine(s) from server`);
-      }
+      await deleteOwnedRowsInChunks(
+        supabase,
+        'routines',
+        payload.deletedRoutineIds,
+        userId,
+        'routine delete',
+      );
+      console.log(`Deleted ${payload.deletedRoutineIds.length} routine(s) from server`);
     }
 
     // =========================================================================
@@ -2568,16 +2615,14 @@ async function mobileSyncPushHandler(
       );
       if (cycleDelOwnershipResp) return cycleDelOwnershipResp;
 
-      const { error: cycleDelErr } = await supabase
-        .from('training_cycles')
-        .delete()
-        .in('id', payload.deletedCycleIds)
-        .eq('user_id', userId);
-      if (cycleDelErr) {
-        console.warn('cycle deletion warning:', cycleDelErr.message);
-      } else {
-        console.log(`Deleted ${payload.deletedCycleIds.length} cycle(s) from server`);
-      }
+      await deleteOwnedRowsInChunks(
+        supabase,
+        'training_cycles',
+        payload.deletedCycleIds,
+        userId,
+        'cycle delete',
+      );
+      console.log(`Deleted ${payload.deletedCycleIds.length} cycle(s) from server`);
     }
 
     // =========================================================================
@@ -2834,17 +2879,21 @@ async function mobileSyncPushHandler(
       const { error: psErr } = await supabase
         .from('session_phase_statistics')
         .upsert(phaseRows, { onConflict: 'session_id' });
-      if (psErr) console.warn('phase_statistics upsert warning:', psErr.message);
-      else phaseStatisticsInserted = phaseRows.length;
+      if (psErr) {
+        console.warn('phase_statistics upsert warning:', psErr.message);
+        failed.phaseStatistics.push(...payload.phaseStatistics.map((ps) => ps.id));
+      } else phaseStatisticsInserted = phaseRows.length;
     }
 
     // =========================================================================
     // 12. Exercise signatures (GAP 8)
     // =========================================================================
     if (payload.exerciseSignatures && payload.exerciseSignatures.length > 0) {
+      const sigIds: string[] = [];
       const sigRows = payload.exerciseSignatures.flatMap((es) => {
         const exerciseId = catalogId(es.exerciseId);
         if (!exerciseId) return [];
+        sigIds.push(es.id);
         return [{
         user_id: userId,
         exercise_id: exerciseId,
@@ -2862,8 +2911,10 @@ async function mobileSyncPushHandler(
       const { error: sigErr } = await supabase
         .from('exercise_signatures')
         .upsert(sigRows, { onConflict: 'user_id,exercise_id' });
-      if (sigErr) console.warn('exercise_signatures upsert warning:', sigErr.message);
-      else exerciseSignaturesUpserted = sigRows.length;
+      if (sigErr) {
+        console.warn('exercise_signatures upsert warning:', sigErr.message);
+        failed.exerciseSignatures.push(...sigIds);
+      } else exerciseSignaturesUpserted = sigRows.length;
     }
 
     // =========================================================================
@@ -2874,6 +2925,7 @@ async function mobileSyncPushHandler(
         const exerciseId = catalogId(a.exerciseId);
         if (!exerciseId) return [];
         return [{
+        clientId: a.id,
         user_id: userId,
         exercise_id: exerciseId,
         estimated_1rm_kg: a.estimatedOneRepMaxKg,
@@ -2884,36 +2936,31 @@ async function mobileSyncPushHandler(
         }];
       });
 
-      // Dedup by exercise_id + created_at. Page the existence lookup (no unique index).
-      const existingAssessResult = await fetchAllByParentIds(supabase, {
-        table: 'vbt_assessments',
-        parentColumn: 'user_id',
-        parentIds: [userId],
-        entity: 'vbt assessments',
-        select: 'exercise_id, created_at',
-      });
-      if (!existingAssessResult.ok) {
-        const detail = existingAssessResult.kind === 'overflow'
-          ? `child overflow for parent ${existingAssessResult.parentId}`
-          : (existingAssessResult.error.message ?? 'lookup failed');
-        throw new Error(`vbt_assessments lookup failed: ${detail}`);
-      }
-      const existingAssess = existingAssessResult.rows;
-
-      const existingKeys = new Set(
-        existingAssess.map((r: Record<string, unknown>) => `${r.exercise_id}:${r.created_at}`)
-      );
-      const newAssess = assessRows.filter((r) => {
-        const key = `${r.exercise_id}:${r.created_at}`;
-        return !existingKeys.has(key);
-      });
-
-      if (newAssess.length > 0) {
-        const { error: aErr } = await supabase
+      // Idempotent on the natural key (PR 23). ON CONFLICT compares the
+      // timestamptz VALUE, so mobile's "...Z" and a stored row that reads
+      // back as "...+00:00" are the same assessment (the old string compare
+      // missed this and duplicated every assessment on every push). DO
+      // NOTHING (ignoreDuplicates) also tolerates two payload rows that hit
+      // one key, e.g. different mobile exercise ids resolving to one catalog
+      // id, which DO UPDATE would reject. Assessments are immutable on
+      // mobile, so there is nothing to update. Needs the
+      // vbt_assessments_identity unique index (migration 20260920002300).
+      // `.select('id')` returns only the rows actually inserted (PostgREST
+      // omits rows skipped by DO NOTHING), so assessmentsInserted stays a
+      // true new-row count. clientId is stripped before the write and kept
+      // for `failed` reporting (PR 22).
+      if (assessRows.length > 0) {
+        const { data: insertedAssess, error: aErr } = await supabase
           .from('vbt_assessments')
-          .insert(newAssess);
-        if (aErr) console.warn('vbt_assessments insert warning:', aErr.message);
-        else assessmentsInserted = newAssess.length;
+          .upsert(
+            assessRows.map(({ clientId: _clientId, ...row }) => row),
+            { onConflict: 'user_id,exercise_id,created_at', ignoreDuplicates: true },
+          )
+          .select('id');
+        if (aErr) {
+          console.warn('vbt_assessments upsert warning:', aErr.message);
+          failed.assessments.push(...assessRows.map((r) => r.clientId));
+        } else assessmentsInserted = insertedAssess?.length ?? 0;
       }
     }
 
@@ -2954,6 +3001,7 @@ async function mobileSyncPushHandler(
         );
         if (lwwErr) {
           console.warn('external_activities LWW RPC warning:', lwwErr.message);
+          failed.externalActivities.push(...activityRows.map((r) => r.id));
           externalActivityIds = [];
           externalActivityKeys = [];
         } else {
@@ -2995,6 +3043,7 @@ async function mobileSyncPushHandler(
           .select('id, external_id, provider, updated_at');
         if (extErr) {
           console.warn('external_activities upsert warning:', extErr.message);
+          failed.externalActivities.push(...activityRows.map((r) => r.id));
           externalActivityIds = [];
           externalActivityKeys = [];
         } else {
@@ -3134,6 +3183,8 @@ async function mobileSyncPushHandler(
         // LWW-rejected, deleted) must be pulled before its base advances.
         // New response key; older builds ignore it.
         cycleVersions,
+        // PR 22: optional-table writes that failed (push still 200).
+        failed,
         ...(preferenceEnvelope.present ? { profilePreferencesAccepted: true } : {}),
         canonicalProfilePreferenceSections,
         profilePreferenceRejections,
@@ -3141,6 +3192,17 @@ async function mobileSyncPushHandler(
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
+    if (err instanceof PartialWriteRetryError) {
+      console.warn('mobile-sync-push partial write, answering 503:', err.message);
+      dependencies.logOperationalFailure({ name: err.name });
+      return new Response(
+        JSON.stringify({
+          error: 'Sync temporarily unavailable',
+          code: 'partial_write_retry',
+        }),
+        { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
     dependencies.logOperationalFailure({
       name: safeErrorName(err, 'MobileSyncPushFailure'),
     });
