@@ -138,7 +138,7 @@ describe("profileStatsOptions", () => {
 		expect(opts.queryKey).toEqual(queryKeys.profile.stats("user-1"));
 	});
 
-	it("computes stats with doubled volume and streak", async () => {
+	it("computes stats with per-cable volume and streak", async () => {
 		const sessions = [
 			{ started_at: "2026-03-15T08:00:00Z", total_volume: 500 },
 			{ started_at: "2026-03-16T08:00:00Z", total_volume: 600 },
@@ -164,8 +164,8 @@ describe("profileStatsOptions", () => {
 		const result = await opts.queryFn?.({} as never);
 
 		expect(result.totalWorkouts).toBe(3);
-		// total_volume is per-cable, doubled: (500+600+400)*2 = 3000
-		expect(result.totalVolume).toBe(3000);
+		// total_volume is per cable, summed as stored (KD-8): 500+600+400
+		expect(result.totalVolume).toBe(1500);
 		// 3 consecutive days = streak of 3
 		expect(result.bestStreak).toBe(3);
 		expect(result.prCount).toBe(5);

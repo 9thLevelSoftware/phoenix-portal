@@ -579,6 +579,7 @@ export type Database = {
 			};
 			exercises: {
 				Row: {
+					cable_count: number | null;
 					exercise_id: string | null;
 					id: string;
 					muscle_group: string;
@@ -588,6 +589,7 @@ export type Database = {
 					user_id: string;
 				};
 				Insert: {
+					cable_count?: number | null;
 					exercise_id?: string | null;
 					id?: string;
 					muscle_group?: string;
@@ -597,6 +599,7 @@ export type Database = {
 					user_id: string;
 				};
 				Update: {
+					cable_count?: number | null;
 					exercise_id?: string | null;
 					id?: string;
 					muscle_group?: string;
@@ -2190,6 +2193,7 @@ export type Database = {
 					id: string;
 					period: string;
 					status: string;
+					target_basis: string;
 					target_unit: string;
 					target_value: number;
 					updated_at: string;
@@ -2205,6 +2209,7 @@ export type Database = {
 					id?: string;
 					period?: string;
 					status?: string;
+					target_basis: string;
 					target_unit: string;
 					target_value: number;
 					updated_at?: string;
@@ -2220,6 +2225,7 @@ export type Database = {
 					id?: string;
 					period?: string;
 					status?: string;
+					target_basis?: string;
 					target_unit?: string;
 					target_value?: number;
 					updated_at?: string;
@@ -2624,6 +2630,17 @@ export type Database = {
 					p_user_id: string;
 				};
 				Returns: boolean;
+			};
+			bind_integration_tokens: {
+				Args: {
+					p_access_token: string;
+					p_provider: string;
+					p_provider_user_id: string;
+					p_refresh_token: string;
+					p_token_expires_at: string;
+					p_user_id: string;
+				};
+				Returns: undefined;
 			};
 			backfill_client_updated_at: { Args: never; Returns: undefined };
 			check_rate_limit: {

@@ -453,6 +453,7 @@ SET tier = 'EMBER'
 WHERE user_id = 'a1a1a1a1-0000-4000-8000-000000000001'::uuid;
 SET LOCAL ROLE authenticated;
 
+-- A tier helper evaluated inside an RLS policy as authenticated.
 SELECT lives_ok(
     $sql$
     'EMBER user can still import_shared_cycle'

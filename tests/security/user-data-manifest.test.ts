@@ -7,6 +7,12 @@
  *      a `user_id` column, a `REFERENCES auth.users` FK, or (transitively) an
  *      FK to such a table. Limitation: DDL built dynamically in `EXECUTE`
  *      strings or inside function bodies is not parsed.
+ *   2. src/lib/database.types.ts: tables whose Row has `user_id`. This used to
+ *      catch prod tables whose migration is only a stub. Since PR 4 the file is
+ *      generated from the MIGRATED local schema (`npm run gen:types:local`), so
+ *      it no longer records prod's shape and this source adds nothing that
+ *      source 1 misses. Prod's own shape is evidenced outside the repo
+ *      (prod-evidence.md, as cited throughout userDataManifest.ts).
  *   2. src/lib/database.types.ts (generated from the clean migrated schema):
  *      tables whose Row has `user_id`. This catches migration DDL shapes the
  *      lightweight SQL parser does not understand.
@@ -58,6 +64,13 @@ const typeUserIdTables = [...typeColumns]
  * migrations".
  */
 const TABLES_WITHOUT_MIGRATION_DDL: Record<string, string> = {
+	// Empty on this branch: PR 2 (20260920000200) captured subscription_events,
+	// paddle_webhook_events, goal_snapshots, overload_suggestions,
+	// telemetry_analysis and wearable_daily_summaries, and PR 16
+	// (20260920001600) creates sync_tombstones, so every manifest and EXCLUDED
+	// table is now parseable from the migrations and the column checks apply to
+	// all of them. Add an entry here only for a table that genuinely has no
+	// DDL on the branch.
 	subscription_events: "prod table; captured into migrations by PR 2",
 	sync_tombstones: "created by PR 16",
 	paddle_webhook_events: "prod table; no migration",
@@ -124,11 +137,16 @@ describe("user data manifest (R-31)", () => {
 			expect(owned.has(table), table).toBe(true);
 		}
 		expect(owned.get("routine_exercises")).toBe("FK to routines");
+		// Was "user_id in database.types.ts": PR 2 captured this table's DDL, so
+		// migration discovery now finds it first. The types-only discovery path
+		// is still exercised by any prod table whose migration is a stub.
+		expect(owned.has("wearable_daily_summaries")).toBe(true);
+		expect(owned.has("challenges")).toBe(false);
+		expect(owned.has("community_benchmarks")).toBe(false);
+		expect(owned.size).toBeGreaterThanOrEqual(45);
 		// Prod-only tables are declared explicitly below and are intentionally
 		// absent from the canonical clean-migration type snapshot.
 		expect(owned.has("wearable_daily_summaries")).toBe(false);
-		expect(owned.has("challenges")).toBe(false);
-		expect(owned.has("community_benchmarks")).toBe(false);
 		expect(owned.size).toBeGreaterThanOrEqual(40);
 		expect(schema.get("routines")?.uniques.get("routines_pkey")).toEqual([
 			"id",
@@ -247,6 +265,13 @@ describe("user data manifest (R-31)", () => {
 		}
 	});
 
+	// PR 4 (7f87b880) regenerated src/lib/database.types.ts from the MIGRATED
+	// local schema, so it is no longer a record of prod's shape: the two rules
+	// this test used to run against it ("optional but not in prod types" and
+	// "exists in prod types only; add to optionalColumns") now only report the
+	// migration/prod drift that optionalColumns exists to tolerate. The prod
+	// oracle is the operator's own read (prod-evidence.md) — not this file.
+	it("exports exactly the migrated columns, plus prod-only drift columns as optional", () => {
 	it("exports exactly the migrated columns and keeps prod-only drift columns optional", () => {
 		const problems: string[] = [];
 		for (const entry of USER_DATA_MANIFEST) {

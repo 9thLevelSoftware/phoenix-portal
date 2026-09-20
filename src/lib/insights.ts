@@ -8,6 +8,7 @@
  */
 export {
 	convertWeight,
+	formatPerCableWeight,
 	formatPersonalRecordName,
 	formatRecordType,
 	formatVolume,

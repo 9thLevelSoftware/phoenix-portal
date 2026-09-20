@@ -75,8 +75,11 @@ describe("generateInsights", () => {
 		const pr = insights.find(
 			(i) => i.type === "achievement" && i.title.includes("PR"),
 		);
-		expect(pr?.description).toContain("225 kg");
-		expect(pr?.description).toContain("up 10 kg from 215 kg");
+		// Personal records are per cable (KD-8); no doubling, labelled.
+		expect(pr?.description).toContain("225 kg per cable");
+		expect(pr?.description).toContain(
+			"up 10 kg per cable from 215 kg per cable",
+		);
 		expect(pr?.description).not.toContain("lbs");
 		expect(pr?.metric).toMatchObject({
 			name: "Bench Press Max Weight",
@@ -91,8 +94,10 @@ describe("generateInsights", () => {
 		const pr = insights.find(
 			(i) => i.type === "achievement" && i.title.includes("PR"),
 		);
-		expect(pr?.description).toContain("496.0 lbs");
-		expect(pr?.description).toContain("up 22.0 lbs from 474.0 lbs");
+		expect(pr?.description).toContain("496.0 lbs per cable");
+		expect(pr?.description).toContain(
+			"up 22.0 lbs per cable from 474.0 lbs per cable",
+		);
 		expect(pr?.metric).toMatchObject({
 			name: "Bench Press Max Weight",
 			value: 496,

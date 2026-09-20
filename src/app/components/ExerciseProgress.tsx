@@ -29,7 +29,8 @@ import {
 	Tooltip as UiTooltip,
 } from "@/app/components/ui/tooltip";
 import { PHOENIX } from "@/lib/colors";
-import { convertWeight, getUnitLabel } from "@/lib/units";
+import { convertWeight } from "@/lib/units";
+import { perCableUnitLabel } from "@/lib/units/loadDisplay";
 import { profileOptions } from "@/queries/profile";
 import {
 	exerciseListOptions,
@@ -257,7 +258,8 @@ export function ExerciseProgress({
 		[progressRaw, days],
 	);
 
-	// Chart data. Stored estimated_1rm_kg (including 0) is never replaced with
+	// Chart data. All loads are per cable (exercise_progress carries no cable
+	// count, so no total is shown; KD-8). Stored estimated_1rm_kg (including 0) is never replaced with
 	// a portal formula. Legacy rows that omit the column show as a gap / "—".
 	const chartData = useMemo(
 		() =>
@@ -293,7 +295,7 @@ export function ExerciseProgress({
 	// Velocity-based (VBT) 1RM is a rolling CURRENT value (not as-of-session), so
 	// we surface the most-recent non-null reading as a single current-value stat
 	// rather than a trend series. Hidden entirely when there is no VBT data.
-	// Already x2 (per-cable → total) via the schema; convertWeight only does kg↔lbs.
+	// Per cable, as stored (KD-8); convertWeight only does kg↔lbs.
 	const velocity1RM = useMemo(() => {
 		for (let i = filteredData.length - 1; i >= 0; i--) {
 			const v = filteredData[i].velocity_estimated_1rm_kg;
@@ -415,23 +417,26 @@ export function ExerciseProgress({
 							label="Overall Max Weight"
 							stat={weightTrend}
 							color={PHOENIX.ember}
-							unit={getUnitLabel(unit)}
+							unit={perCableUnitLabel(unit)}
 						/>
 						<StatCard
 							label="Overall Volume"
 							stat={volumeTrend}
 							color={PHOENIX.gold}
-							unit={getUnitLabel(unit)}
+							unit={perCableUnitLabel(unit)}
 						/>
 						<StatCard
 							label="Estimated 1RM (mobile)"
 							stat={oneRmTrend}
 							color={PHOENIX.forgeGreen}
-							unit={getUnitLabel(unit)}
+							unit={perCableUnitLabel(unit)}
 							info="Stored from the mobile app (hybrid Brzycki ≤10 / Epley >10). Not recomputed here."
 						/>
 						{velocity1RM != null && (
-							<VelocityStatCard value={velocity1RM} unit={getUnitLabel(unit)} />
+							<VelocityStatCard
+								value={velocity1RM}
+								unit={perCableUnitLabel(unit)}
+							/>
 						)}
 					</motion.div>
 
@@ -488,7 +493,7 @@ export function ExerciseProgress({
 											<Area
 												type="monotone"
 												dataKey="maxWeight"
-												name={`Max Weight (${getUnitLabel(unit)})`}
+												name={`Max Weight (${perCableUnitLabel(unit)})`}
 												stroke={PHOENIX.ember}
 												strokeWidth={2}
 												fill="url(#weightGradient)"
@@ -557,7 +562,7 @@ export function ExerciseProgress({
 											<Area
 												type="monotone"
 												dataKey="totalVolume"
-												name={`Volume (${getUnitLabel(unit)})`}
+												name={`Volume (${perCableUnitLabel(unit)})`}
 												stroke={PHOENIX.gold}
 												strokeWidth={2}
 												fill="url(#volumeGradientProgress)"
@@ -626,7 +631,7 @@ export function ExerciseProgress({
 											<Area
 												type="monotone"
 												dataKey="estimated1RM"
-												name={`Est. 1RM, mobile (${getUnitLabel(unit)})`}
+												name={`Est. 1RM, mobile (${perCableUnitLabel(unit)})`}
 												stroke={PHOENIX.forgeGreen}
 												strokeWidth={2}
 												fill="url(#oneRmGradient)"
