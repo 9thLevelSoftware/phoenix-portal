@@ -83,6 +83,9 @@ interface LwwUpsertRow {
   server_updated_at: string | null;
 }
 
+/** Look-back for the post-write tombstone race check (Edge/DB clock skew). */
+const TOMBSTONE_RACE_MARGIN_MS = 5_000;
+
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -1591,12 +1594,19 @@ async function mobileSyncPushHandler(
     const dayRoutineIdsToVerify = (payload.cycles ?? [])
       .flatMap((c) => c.days.map((d) => d.routineId))
       .filter((rid): rid is string => typeof rid === 'string' && rid.length > 0 && !routineIdSet.has(rid));
+    // KD-4 / R-24: a missing routine is one that was deleted (on the portal or
+    // another device). Mobile pushes every cycle on every sync but routines
+    // only as a delta, so an old build keeps sending a day that points at the
+    // deleted routine. Rejecting that with 400 would stall its sync forever;
+    // the reference is written as NULL instead (the FK's ON DELETE SET NULL
+    // semantics), see step 7c. Another user's routine is still refused.
     const dayRoutineProbe = await assertParentRowsExistAndOwnedByUser(
       supabase,
       'routines',
       dayRoutineIdsToVerify,
       userId,
       cors,
+      { allowMissing: true },
     );
     if (dayRoutineProbe.response) return dayRoutineProbe.response;
 
@@ -1668,6 +1678,97 @@ async function mobileSyncPushHandler(
 
     const childAllowed = <T>(parentSet: Set<string> | null, parentId: string): boolean =>
       parentSet === null || parentSet.has(parentId);
+
+    // =========================================================================
+    // KD-4: refuse to resurrect deleted routines and cycles.
+    //
+    // A routine or cycle deleted on the portal (or by another device) has a
+    // row in sync_tombstones. Older builds never learn of the delete and keep
+    // pushing it; re-creating it would undo the user's delete. Tombstoned ids
+    // are dropped here together with their nested routine_exercises /
+    // cycle_days and reported under `skippedDeleted`. The push still succeeds,
+    // so those builds never get stuck in a failing retry loop.
+    // Runs for both SYNC_LWW_ENABLED values, before any routine/cycle write.
+    // =========================================================================
+    const skippedDeleted = { routines: [] as string[], cycles: [] as string[] };
+    // Race guard (R-4): a portal delete that lands between this lookup and
+    // the upsert below would be undone by the upsert, and
+    // get_sync_tombstones hides tombstones of rows that are live again, so
+    // the delete would be lost for good. After the writes, any written id
+    // that gained a tombstone since just before the lookup is deleted again
+    // (the trigger refreshes its tombstone). The margin absorbs Edge/DB clock
+    // skew; it could only misfire for a same-user delete + re-create of the
+    // same id inside that margin.
+    const tombstoneRaceSince = new Date(Date.now() - TOMBSTONE_RACE_MARGIN_MS).toISOString();
+    const reDeleteRacedTombstones = async (
+      entity: 'routine' | 'cycle',
+      table: 'routines' | 'training_cycles',
+      ids: string[],
+    ): Promise<string[]> => {
+      const unique = [...new Set(ids)];
+      const raced = new Set<string>();
+      const chunkSize = 100;
+      for (let i = 0; i < unique.length; i += chunkSize) {
+        const chunk = unique.slice(i, i + chunkSize);
+        const { data, error } = await supabase
+          .from('sync_tombstones')
+          .select('entity_id')
+          .eq('user_id', userId)
+          .eq('entity', entity)
+          .gte('deleted_at', tombstoneRaceSince)
+          .in('entity_id', chunk);
+        if (error) throw new Error(`sync tombstone race check failed: ${error.message}`);
+        for (const row of (data ?? []) as Array<{ entity_id?: unknown }>) {
+          if (typeof row.entity_id === 'string') raced.add(row.entity_id);
+        }
+      }
+      if (raced.size === 0) return [];
+      const racedIds = [...raced];
+      const { error: delErr } = await supabase
+        .from(table)
+        .delete()
+        .eq('user_id', userId)
+        .in('id', racedIds);
+      if (delErr) throw new Error(`${table} race re-delete failed: ${delErr.message}`);
+      console.warn(
+        `Re-deleted ${racedIds.length} ${table} row(s) deleted concurrently with this push`,
+      );
+      return racedIds;
+    };
+    let liveRoutines = payload.routines ?? [];
+    let liveCycles = payload.cycles ?? [];
+    if (allRoutineIds.length > 0 || allCycleIds.length > 0) {
+      const { data: tombstoneRows, error: tombstoneErr } = await supabase.rpc(
+        'get_sync_tombstones',
+        {
+          p_user_id: userId,
+          p_entity: null,
+          p_ids: [...new Set([...allRoutineIds, ...allCycleIds])],
+          p_since: null,
+        },
+      );
+      if (tombstoneErr) throw new Error(`sync tombstone lookup failed: ${tombstoneErr.message}`);
+      const tombstonedRoutineIds = new Set<string>();
+      const tombstonedCycleIds = new Set<string>();
+      for (const row of (Array.isArray(tombstoneRows) ? tombstoneRows : []) as Array<{
+        entity?: unknown;
+        entity_id?: unknown;
+      }>) {
+        if (typeof row.entity_id !== 'string') continue;
+        if (row.entity === 'routine') tombstonedRoutineIds.add(row.entity_id);
+        else if (row.entity === 'cycle') tombstonedCycleIds.add(row.entity_id);
+      }
+      liveRoutines = liveRoutines.filter((r) => !tombstonedRoutineIds.has(r.id));
+      liveCycles = liveCycles.filter((c) => !tombstonedCycleIds.has(c.id));
+      skippedDeleted.routines = [...new Set(allRoutineIds.filter((id) => tombstonedRoutineIds.has(id)))];
+      skippedDeleted.cycles = [...new Set(allCycleIds.filter((id) => tombstonedCycleIds.has(id)))];
+      if (skippedDeleted.routines.length > 0 || skippedDeleted.cycles.length > 0) {
+        console.log(
+          `Skipped ${skippedDeleted.routines.length} deleted routine(s) and ` +
+            `${skippedDeleted.cycles.length} deleted cycle(s) from push`,
+        );
+      }
+    }
 
     // =========================================================================
     // 4. Insert workout hierarchy in FK order
@@ -2246,8 +2347,8 @@ async function mobileSyncPushHandler(
     //    the insert step fails after a successful delete. Orphan exercises
     //    (removed from routine on mobile) are cleaned up after upsert succeeds.
     // =========================================================================
-    if (payload.routines && payload.routines.length > 0) {
-      const routineRows = payload.routines.map((r) => ({
+    if (liveRoutines.length > 0) {
+      const routineRows = liveRoutines.map((r) => ({
         id: r.id,
         user_id: userId,
         local_profile_id: localProfileId,
@@ -2290,7 +2391,7 @@ async function mobileSyncPushHandler(
       // generated on mobile, so onConflict: 'id' safely updates existing rows.
       // When LWW is enabled, skip children of routines whose parent was
       // rejected to avoid orphan FK rows.
-      const reSource = payload.routines
+      const reSource = liveRoutines
         .filter((r) => childAllowed(acceptedRoutineIds, r.id))
         .flatMap((r) => r.exercises);
 
@@ -2401,7 +2502,7 @@ async function mobileSyncPushHandler(
       // Remove orphan exercises: rows belonging to synced routines whose IDs
       // are not in the current payload. This handles exercises deleted on mobile.
       const syncedExerciseIds = reRows.map((r) => r.id);
-      const routineIds = payload.routines
+      const routineIds = liveRoutines
         .filter((r) => childAllowed(acceptedRoutineIds, r.id))
         .map((r) => r.id);
       for (const routineId of routineIds) {
@@ -2425,6 +2526,19 @@ async function mobileSyncPushHandler(
             .eq('routine_id', routineId);
           if (orphanErr) throw new PartialWriteRetryError('routine_exercises orphan cleanup', orphanErr);
         }
+      }
+
+      // R-4 race guard: undo a re-create of a routine deleted meanwhile.
+      const racedRoutineIds = await reDeleteRacedTombstones(
+        'routine',
+        'routines',
+        liveRoutines.map((r) => r.id),
+      );
+      if (racedRoutineIds.length > 0) {
+        const raced = new Set(racedRoutineIds);
+        liveRoutines = liveRoutines.filter((r) => !raced.has(r.id));
+        skippedDeleted.routines.push(...racedRoutineIds);
+        routinesUpserted = Math.max(0, routinesUpserted - racedRoutineIds.length);
       }
     }
 
@@ -2483,8 +2597,8 @@ async function mobileSyncPushHandler(
     //     cycle_days has UNIQUE(cycle_id, day_number), so upsert on that
     //     constraint instead of delete+insert.
     // =========================================================================
-    if (payload.cycles && payload.cycles.length > 0) {
-      const cycleRows = payload.cycles.map((c) => ({
+    if (liveCycles.length > 0) {
+      const cycleRows = liveCycles.map((c) => ({
         id: c.id,
         user_id: userId,
         local_profile_id: localProfileId,
@@ -2560,9 +2674,40 @@ async function mobileSyncPushHandler(
         cyclesUpserted = cycleRows.length;
       }
 
+      // KD-4 / R-24: decided here, after this push's own routine writes (7)
+      // and deletes (7a). A day keeps its routine only when that routine
+      // exists now: it was in this push and not tombstoned (a routine
+      // created earlier in the same push counts; an LWW-rejected one still
+      // exists on the server), or it already existed for this user at the 3b
+      // probe. A tombstoned, missing or just-deleted routine becomes NULL,
+      // matching the FK's ON DELETE SET NULL, so the write cannot fail.
+      const deletedInThisPush = new Set(payload.deletedRoutineIds ?? []);
+      const keepableDayRoutineIds = new Set<string>([
+        ...liveRoutines.map((r) => r.id),
+        ...dayRoutineProbe.validIds,
+      ]);
+      const skippedRoutineIds = new Set(skippedDeleted.routines);
+      // Cleared references are logged, never dropped silently (R-3).
+      const clearedDeletedRefs = new Set<string>();
+      const clearedMissingRefs = new Set<string>();
+      const dayRoutineId = (routineId: string | null | undefined): string | null => {
+        if (!routineId) return null;
+        if (keepableDayRoutineIds.has(routineId) && !deletedInThisPush.has(routineId)) {
+          return routineId;
+        }
+        if (skippedRoutineIds.has(routineId) || deletedInThisPush.has(routineId)) {
+          clearedDeletedRefs.add(routineId);
+        } else {
+          // Not in this push and not on the server for this user (deleted
+          // before tombstones existed, or never pushed from the device).
+          clearedMissingRefs.add(routineId);
+        }
+        return null;
+      };
+
       // Upsert days using the UNIQUE(cycle_id, day_number) constraint.
       // When LWW is enabled, skip days whose parent cycle was rejected.
-      const dayRows = payload.cycles
+      const dayRows = liveCycles
         .filter((c) => childAllowed(acceptedCycleIds, c.id))
         .flatMap((c) =>
           c.days.map((d) => ({
@@ -2573,7 +2718,7 @@ async function mobileSyncPushHandler(
             cycle_id: d.cycleId,
             day_number: d.dayNumber,
             day_type: d.dayType ?? 'workout',
-            routine_id: d.routineId,
+            routine_id: dayRoutineId(d.routineId),
             weight_adjustment: d.weightAdjustment ?? 0,
             rep_modifier: d.repModifier ?? 0,
             rest_override: d.restOverride,
@@ -2581,6 +2726,15 @@ async function mobileSyncPushHandler(
             notes: d.notes,
           })),
         );
+      if (clearedDeletedRefs.size > 0 || clearedMissingRefs.size > 0) {
+        console.warn(
+          `cycle_days routine references set to NULL: ${clearedDeletedRefs.size} deleted ` +
+            `routine(s), ${clearedMissingRefs.size} missing routine(s)` +
+            (clearedMissingRefs.size > 0
+              ? ` (missing: ${[...clearedMissingRefs].slice(0, 5).join(', ')})`
+              : ''),
+        );
+      }
 
       if (dayRows.length > 0) {
         const { error: dayErr } = await supabase
@@ -2590,7 +2744,7 @@ async function mobileSyncPushHandler(
       }
 
       // Remove orphan days: day_numbers beyond the cycle's current day count
-      for (const cycle of payload.cycles.filter(c => childAllowed(acceptedCycleIds, c.id))) {
+      for (const cycle of liveCycles.filter(c => childAllowed(acceptedCycleIds, c.id))) {
         const maxDayNumber = cycle.days.length > 0
           ? Math.max(...cycle.days.map((d) => d.dayNumber))
           : -1;
@@ -2600,6 +2754,17 @@ async function mobileSyncPushHandler(
           .eq('cycle_id', cycle.id)
           .gt('day_number', maxDayNumber);
         if (orphanErr) console.warn(`cycle_days orphan cleanup warning for ${cycle.id}:`, orphanErr.message);
+      }
+
+      // R-4 race guard: undo a re-create of a cycle deleted meanwhile.
+      const racedCycleIds = await reDeleteRacedTombstones(
+        'cycle',
+        'training_cycles',
+        liveCycles.map((c) => c.id),
+      );
+      if (racedCycleIds.length > 0) {
+        skippedDeleted.cycles.push(...racedCycleIds);
+        cyclesUpserted = Math.max(0, cyclesUpserted - racedCycleIds.length);
       }
     }
 
@@ -3007,6 +3172,10 @@ async function mobileSyncPushHandler(
         rejections,
         // PR 22: optional-table writes that failed (push still 200).
         failed,
+        // KD-4: routine/cycle ids in this push that were deleted on the
+        // server (tombstoned) and therefore not re-created. New response key;
+        // older builds ignore it.
+        skippedDeleted,
         ...(preferenceEnvelope.present ? { profilePreferencesAccepted: true } : {}),
         canonicalProfilePreferenceSections,
         profilePreferenceRejections,
