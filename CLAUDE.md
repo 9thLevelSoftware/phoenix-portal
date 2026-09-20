@@ -34,6 +34,15 @@ npm run gen:types:check  # Fail if database.types.ts drifts from the migrations 
 npm run verify           # lint + typecheck + test + build + sourcemap/config asserts
 ```
 
+### Generated types
+
+Regenerating types after a migration change: `npm run supabase -- start`, then
+`npm run supabase -- db reset --no-seed`, then `npm run gen:types:local`, and
+commit the file. Never hand-edit `database.types.ts`; put refinements the
+generator cannot express (nullable RPC args, PostgREST version) in
+`src/lib/database.ts`. `npm run gen:types` (hosted project via
+`SUPABASE_PROJECT_REF`) produces prod-shaped types that CI will reject.
+
 ### Typecheck
 
 The root `tsconfig.json` is a solution file (`"files": []` plus three project
@@ -43,8 +52,10 @@ command: a green `typecheck` is not evidence. Check for real with
 `npx tsc -b --force`, which compiles `tsconfig.app.json`,
 `tsconfig.node.json` and `tsconfig.test.json`. That currently reports a large
 pre-existing backlog (290 errors at the time of writing, `tests/` and `src/`
-alike); a separate PR replaces the script with a baseline-comparing checker so
-the gate fails on *new* errors only. Until then, compare `npx tsc -b --force`
+alike). A separate PR is in flight to replace the script with a
+baseline-comparing checker so the gate fails on *new* errors only; if
+`npm run typecheck` ever takes noticeably longer than an instant, that landed
+and this paragraph is out of date. Until then, compare `npx tsc -b --force`
 before and after your change rather than assuming zero.
 
 ### Edge Function tests
@@ -56,13 +67,6 @@ is skipped by `test:edge` and selected by `test:edge:integration`, which needs a
 local stack (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`)
 and fails unless every selected test actually executed. A gated test *without*
 the `integration: ` prefix silently never runs anywhere.
-
-Regenerating types after a migration change: `npm run supabase -- start`, then
-`npm run supabase -- db reset --no-seed`, then `npm run gen:types:local`, and
-commit the file. Never hand-edit `database.types.ts`; put refinements the
-generator cannot express (nullable RPC args, PostgREST version) in
-`src/lib/database.ts`. `npm run gen:types` (hosted project via
-`SUPABASE_PROJECT_REF`) produces prod-shaped types that CI will reject.
 
 ## Environment Variables
 
@@ -189,17 +193,23 @@ a map, not a count.
 - **Analytics:** generate-insights
 - **Rankings:** compute-rankings
 
-`complete-oauth` is the session-bound OAuth completion endpoint (KD-13): it is
-the one OAuth function with `verify_jwt = true`, because binding the provider
-grant to the completing user's JWT is its entire purpose.
+`initiate-oauth` and `complete-oauth` are `verify_jwt = true`; the three
+provider callbacks (`strava-oauth`, `fitbit-oauth`, `garmin-oauth`) are
+`false` because the provider redirects a browser to them with no JWT.
+`complete-oauth` is the session-bound completion endpoint (KD-13): binding the
+provider grant to the completing user's own JWT is its entire purpose.
 
-`generate-insights` and `compute-rankings` are `verify_jwt = false` because
-pg_cron reaches them through `private.invoke_edge_function` with no JWT
-(KD-10/KD-14). They authenticate themselves: `generate-insights` accepts
-*either* a constant-time `x-cron-secret` match (for `{mode:'batch'}`) *or* a
-user JWT it verifies itself and gates at FLAME — neither credential can reach
-the other path. Its schedule is created by
+`generate-insights` is `verify_jwt = false` because pg_cron reaches it through
+`private.invoke_edge_function` with no JWT (KD-10/KD-14). It authenticates
+itself, accepting *either* a constant-time `x-cron-secret` match (for
+`{mode:'batch'}`) *or* a user JWT it verifies with `auth.getUser()` and then
+gates at FLAME — neither credential can reach the other path, and anything
+else is a 401. Its schedule is created by
 `supabase/migrations/20260920006400_schedule_generate_insights.sql`.
+`compute-rankings` is also `verify_jwt = false` but takes the other route: it
+requires an `Authorization` header and verifies the caller itself, 401ing
+without one. **A gateway `verify_jwt = false` never means "unauthenticated" —
+read the handler.**
 
 ### The mobile sync contract
 
@@ -263,8 +273,16 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
 - Cursor pagination, 75 entities per page (max 300), composite cursor
   `(updated_at, id)`. `ENTITY_ORDER` is
   `sessions → routines → cycles → badges → stats → personalRecords → customExercises`.
-- Routine and cycle tombstones (`deletedRoutineIds` / `deletedCycleIds`) ride
-  on the **first page only**.
+- Deletes come back in two different shapes, so do not generalise:
+  - routines and cycles are hard-deleted and reported as id lists
+    (`deletedRoutineIds` / `deletedCycleIds`) on the **first page only**
+    (`cursor === null`), over the same 2-minute overlap. A reported id may be
+    one the device never held (a portal create-rollback), so clients treat the
+    lists as "delete if present";
+  - personal records are soft-deleted, so a tombstoned row the device already
+    knows is re-sent **inside** `personalRecords` via
+    `get_personal_record_tombstones` — the parity RPC alone would exclude it
+    forever because the device already has the id.
 - Children are fetched from parent presence, not their own timestamps.
 - `rep_telemetry` and the `exercise_progress` snapshots session replay uses are
   **portal-only**. The pull does not return telemetry; do not add a telemetry
