@@ -36,6 +36,23 @@ SELECT is(
     4,
     'exactly one overload of each LWW function'
 );
+-- R-4: the sessions pull RPC has to hand the LWW key to the Edge so the
+-- device's own just-pushed rows are compared device-clock to device-clock.
+SELECT ok(
+    pg_get_function_result(
+        'public.get_sessions_excluding_ids(uuid,uuid[],text,timestamptz,uuid,int,timestamptz)'::regprocedure
+    ) LIKE '%client_updated_at timestamp with time zone%',
+    'get_sessions_excluding_ids returns client_updated_at beside updated_at (R-4)'
+);
+-- R-3/R-6: the merge reports both clocks, so the push response's
+-- rejections[].serverUpdatedAt can be the LWW key for every entity while
+-- cycleVersions stays on the server-clock updated_at.
+SELECT ok(
+    pg_get_function_result(
+        'public.merge_training_cycles_from_push(uuid,jsonb,boolean)'::regprocedure
+    ) LIKE '%client_updated_at timestamp with time zone%',
+    'merge_training_cycles_from_push returns the stored LWW key separately (R-3/R-6)'
+);
 
 SELECT diag('database:lww-clock-privileges');
 
@@ -215,6 +232,64 @@ SELECT is(
     'phoenix.skip_updated_at = on suppresses the stamp'
 );
 
+-- The INSERT arm of the stamp trigger (R-8). Rewriting the three triggers as
+-- BEFORE UPDATE left the whole suite green: nothing exercised an INSERT.
+-- Combined with R-14: a writer that supplies its own client_updated_at (the
+-- forging attempt the trigger exists to stop) must not keep it.
+
+-- postgres / no JWT first: an operator fix or a migration keeps its value.
+SELECT set_config('request.jwt.claims', '', true);
+INSERT INTO public.routines (id, user_id, name, updated_at, client_updated_at)
+VALUES ('21212121-0000-4000-8000-0000000000b7'::uuid, '21212121-0000-4000-8000-000000000001'::uuid,
+        'R operator insert', '2026-01-04+00', '2026-01-04+00');
+SELECT is(
+    (SELECT client_updated_at FROM public.routines WHERE id = '21212121-0000-4000-8000-0000000000b7'),
+    '2026-01-04+00'::timestamptz,
+    'a postgres INSERT with no JWT keeps the supplied client_updated_at'
+);
+
+-- authenticated (portal) INSERT: stamped now(), whatever was supplied.
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"21212121-0000-4000-8000-000000000001","role":"authenticated"}',
+    true
+);
+SET LOCAL ROLE authenticated;
+INSERT INTO public.workout_sessions (id, user_id, name, started_at, updated_at, client_updated_at)
+VALUES ('21212121-0000-4000-8000-0000000000a8'::uuid, '21212121-0000-4000-8000-000000000001'::uuid,
+        'S portal insert', '2026-01-01+00', now() - interval '1 day', '9999-01-01+00');
+INSERT INTO public.routines (id, user_id, name, updated_at, client_updated_at)
+VALUES ('21212121-0000-4000-8000-0000000000b8'::uuid, '21212121-0000-4000-8000-000000000001'::uuid,
+        'R portal insert', now() - interval '1 day', '9999-01-01+00');
+INSERT INTO public.training_cycles (id, user_id, name, updated_at, client_updated_at)
+VALUES ('21212121-0000-4000-8000-0000000000c8'::uuid, '21212121-0000-4000-8000-000000000001'::uuid,
+        'C portal insert', now() - interval '1 day', '9999-01-01+00');
+-- An authenticated UPDATE that forges the key (R-14). Only the key column is
+-- touched, so R1's name stays 'R1 portal' for the routine RPC block below.
+UPDATE public.routines SET client_updated_at = '9999-01-01+00'
+WHERE id = '21212121-0000-4000-8000-0000000000b1';
+RESET ROLE;
+SELECT is(
+    (SELECT client_updated_at FROM public.workout_sessions WHERE id = '21212121-0000-4000-8000-0000000000a8'),
+    now(),
+    'session: an authenticated INSERT stamps client_updated_at over a forged far-future value (R-8/R-14)'
+);
+SELECT is(
+    (SELECT client_updated_at FROM public.routines WHERE id = '21212121-0000-4000-8000-0000000000b8'),
+    now(),
+    'routine: an authenticated INSERT stamps client_updated_at over a forged far-future value (R-8/R-14)'
+);
+SELECT is(
+    (SELECT client_updated_at FROM public.training_cycles WHERE id = '21212121-0000-4000-8000-0000000000c8'),
+    now(),
+    'cycle: an authenticated INSERT stamps client_updated_at over a forged far-future value (R-8/R-14)'
+);
+SELECT is(
+    (SELECT client_updated_at FROM public.routines WHERE id = '21212121-0000-4000-8000-0000000000b1'),
+    now(),
+    'routine: an authenticated UPDATE cannot forge client_updated_at (R-14)'
+);
+
 SELECT diag('database:lww-clock-pull-116');
 
 -- The portal notes edit moved the pull cursor, so an incremental pull that
@@ -283,6 +358,44 @@ SELECT is(
     (SELECT name FROM public.workout_sessions WHERE id = '21212121-0000-4000-8000-0000000000a1'),
     'device v2',
     'session: the rejected write changed nothing'
+);
+
+-- The idempotent equal-key re-push (spec: "including an unchanged re-push";
+-- summary decision 2). Tightening the guard to `<` left the suite green
+-- because every other session stamp here is strictly ordered; with `<` a
+-- device re-pushing its own unchanged row would get a spurious rejection and
+-- treat its own data as stale.
+SELECT results_eq(
+    format(
+        $sql$ SELECT accepted, server_updated_at FROM public.upsert_workout_session_lww(%L::jsonb) $sql$,
+        jsonb_build_array(jsonb_build_object(
+            'id', '21212121-0000-4000-8000-0000000000a1',
+            'user_id', '21212121-0000-4000-8000-000000000001',
+            'name', 'device v2', 'started_at', '2026-01-01T00:00:00Z',
+            'updated_at', now() - interval '10 minutes'))
+    ),
+    format($v$ VALUES (true, %L::timestamptz) $v$, now() - interval '10 minutes'),
+    'session: an equal key is accepted (idempotent re-push)'
+);
+SELECT results_eq(
+    $sql$ SELECT name, updated_at, client_updated_at FROM public.workout_sessions
+          WHERE id = '21212121-0000-4000-8000-0000000000a1' $sql$,
+    format($v$ VALUES ('device v2'::text, now(), %L::timestamptz) $v$, now() - interval '10 minutes'),
+    'session: the equal-key re-push leaves both clocks where they were'
+);
+
+-- R-4: the pull RPC hands the Edge both clocks. The Edge reports
+-- client_updated_at to the device as the session's updatedAt (so the device
+-- compares its own clock with its own clock and never overwrites its
+-- freshly pushed row with the lossy pull projection), while updated_at
+-- stays the cursor and the ordering key.
+SELECT results_eq(
+    $sql$ SELECT updated_at, client_updated_at FROM public.get_sessions_excluding_ids(
+              '21212121-0000-4000-8000-000000000001'::uuid,
+              ARRAY[]::uuid[], NULL, NULL, NULL, 76, NULL)
+          WHERE id = '21212121-0000-4000-8000-0000000000a1' $sql$,
+    format($v$ VALUES (now(), %L::timestamptz) $v$, now() - interval '10 minutes'),
+    'sessions pull RPC (R-4): the server cursor and the device LWW key are reported separately'
 );
 
 -- The portal notes edit (key = now()) beats a device stamped earlier,
@@ -382,6 +495,101 @@ SELECT is(
     'routine (NF-12): a new row''s pull cursor is the server clock'
 );
 
+-- R-10: the routine RPC must compare the LWW key, not the server write
+-- clock. Reverting its guard to `r.updated_at <= EXCLUDED.client_updated_at`
+-- (the HEAD bug) left pgTAP green because no routine case updated twice
+-- from a slow device clock. This mirrors the session sequence above.
+SELECT results_eq(
+    format(
+        $sql$ SELECT accepted, server_updated_at FROM public.upsert_routine_lww(%L::jsonb) $sql$,
+        jsonb_build_array(jsonb_build_object(
+            'id', '21212121-0000-4000-8000-0000000000b3',
+            'user_id', '21212121-0000-4000-8000-000000000001',
+            'name', 'b3 v1', 'updated_at', now() - interval '20 minutes'))
+    ),
+    format($v$ VALUES (true, %L::timestamptz) $v$, now() - interval '20 minutes'),
+    'routine: first write from a device 20 minutes behind is accepted'
+);
+SELECT is(
+    (SELECT updated_at FROM public.routines WHERE id = '21212121-0000-4000-8000-0000000000b3'),
+    now(),
+    'routine: the accepted write moved the server clock to now()'
+);
+SELECT results_eq(
+    format(
+        $sql$ SELECT accepted, server_updated_at FROM public.upsert_routine_lww(%L::jsonb) $sql$,
+        jsonb_build_array(jsonb_build_object(
+            'id', '21212121-0000-4000-8000-0000000000b3',
+            'user_id', '21212121-0000-4000-8000-000000000001',
+            'name', 'b3 v2', 'updated_at', now() - interval '10 minutes'))
+    ),
+    format($v$ VALUES (true, %L::timestamptz) $v$, now() - interval '10 minutes'),
+    'routine: a device 10 minutes behind the server can update after an accepted write'
+);
+SELECT results_eq(
+    format(
+        $sql$ SELECT accepted, server_updated_at FROM public.upsert_routine_lww(%L::jsonb) $sql$,
+        jsonb_build_array(jsonb_build_object(
+            'id', '21212121-0000-4000-8000-0000000000b3',
+            'user_id', '21212121-0000-4000-8000-000000000001',
+            'name', 'b3 older', 'updated_at', now() - interval '15 minutes'))
+    ),
+    format($v$ VALUES (false, %L::timestamptz) $v$, now() - interval '10 minutes'),
+    'routine: an older write is rejected and reports the stored key'
+);
+SELECT is(
+    (SELECT name FROM public.routines WHERE id = '21212121-0000-4000-8000-0000000000b3'),
+    'b3 v2',
+    'routine: the rejected write changed nothing'
+);
+
+SELECT diag('database:lww-clock-cross-user');
+
+-- R-13: the ON CONFLICT guard must re-check ownership. The Edge's
+-- assertRowsOwnedByUser pre-check runs in a separate round trip, so a row
+-- created by another user between the check and the RPC would otherwise be
+-- overwritten while user_id stayed the victim's. The RPCs run as
+-- service_role, so RLS does not cover this.
+INSERT INTO auth.users (id, email)
+VALUES ('21212121-0000-4000-8000-000000000002'::uuid, 'lww-clock-other@example.test')
+ON CONFLICT (id) DO NOTHING;
+
+SELECT results_eq(
+    format(
+        $sql$ SELECT accepted, server_updated_at FROM public.upsert_workout_session_lww(%L::jsonb) $sql$,
+        jsonb_build_array(jsonb_build_object(
+            'id', '21212121-0000-4000-8000-0000000000a1',
+            'user_id', '21212121-0000-4000-8000-000000000002',
+            'name', 'takeover', 'started_at', '2026-01-01T00:00:00Z',
+            'updated_at', now() + interval '1 day'))
+    ),
+    $v$ VALUES (false, NULL::timestamptz) $v$,
+    'session: an upsert of another user''s id is rejected and leaks no key (R-13)'
+);
+SELECT results_eq(
+    $sql$ SELECT name, user_id FROM public.workout_sessions
+          WHERE id = '21212121-0000-4000-8000-0000000000a1' $sql$,
+    $v$ VALUES ('device v2'::text, '21212121-0000-4000-8000-000000000001'::uuid) $v$,
+    'session: the victim''s row is untouched by the cross-user upsert (R-13)'
+);
+SELECT results_eq(
+    format(
+        $sql$ SELECT accepted, server_updated_at FROM public.upsert_routine_lww(%L::jsonb) $sql$,
+        jsonb_build_array(jsonb_build_object(
+            'id', '21212121-0000-4000-8000-0000000000b3',
+            'user_id', '21212121-0000-4000-8000-000000000002',
+            'name', 'takeover', 'updated_at', now() + interval '1 day'))
+    ),
+    $v$ VALUES (false, NULL::timestamptz) $v$,
+    'routine: an upsert of another user''s id is rejected and leaks no key (R-13)'
+);
+SELECT results_eq(
+    $sql$ SELECT name, user_id FROM public.routines
+          WHERE id = '21212121-0000-4000-8000-0000000000b3' $sql$,
+    $v$ VALUES ('b3 v2'::text, '21212121-0000-4000-8000-000000000001'::uuid) $v$,
+    'routine: the victim''s row is untouched by the cross-user upsert (R-13)'
+);
+
 SELECT diag('database:lww-clock-cycle-merge');
 
 -- LWW on: compared against the key (portal edit = now()), not updated_at.
@@ -434,16 +642,21 @@ SELECT results_eq(
     $v$ VALUES (true) $v$,
     'cycle (LWW on): a device 10 minutes behind the server can update after an accepted write'
 );
+-- R-3/R-6: the rejection reports BOTH clocks. server_updated_at stays the
+-- stored server-clock updated_at (cycleVersions / baseUpdatedAt, KD-6) and
+-- client_updated_at is the stored LWW key, which is what the Edge puts in
+-- rejections[].serverUpdatedAt for every entity.
 SELECT results_eq(
     format(
-        $sql$ SELECT accepted FROM public.merge_training_cycles_from_push(
+        $sql$ SELECT accepted, server_updated_at, client_updated_at
+                FROM public.merge_training_cycles_from_push(
                 '21212121-0000-4000-8000-000000000001', %L::jsonb, true) $sql$,
         jsonb_build_array(jsonb_build_object(
             'id', '21212121-0000-4000-8000-0000000000c2', 'name', 'C2 older',
             'updated_at', now() - interval '15 minutes'))
     ),
-    $v$ VALUES (false) $v$,
-    'cycle (LWW on): an older write is rejected'
+    format($v$ VALUES (false, now(), %L::timestamptz) $v$, now() - interval '10 minutes'),
+    'cycle (LWW on): an older write is rejected, reporting the server cursor and the stored LWW key'
 );
 SELECT is(
     (SELECT name FROM public.training_cycles WHERE id = '21212121-0000-4000-8000-0000000000c2'),
@@ -489,6 +702,75 @@ SELECT is(
     (SELECT updated_at FROM public.training_cycles WHERE id = '21212121-0000-4000-8000-0000000000c9'),
     now(),
     'cycle (NF-12): a new cycle''s pull cursor is the server clock'
+);
+
+SELECT diag('database:lww-clock-skew-window');
+
+-- R-2: a device whose clock trails the server, that has ALREADY pulled the
+-- portal edit, must not lose its genuinely newer edit to the skew window.
+-- Cycles carry base_updated_at, so the case is distinguishable: the stored
+-- key IS the portal stamp (client_updated_at = portal_edited_at) and the
+-- push's base is at or after it. Sessions and routines have no base and
+-- keep the window (documented on the RPCs).
+INSERT INTO public.training_cycles (id, user_id, name, updated_at, client_updated_at)
+VALUES
+    ('21212121-0000-4000-8000-0000000000c3'::uuid, '21212121-0000-4000-8000-000000000001'::uuid,
+     'C3', now() - interval '2 hours', now() - interval '2 hours'),
+    ('21212121-0000-4000-8000-0000000000c4'::uuid, '21212121-0000-4000-8000-000000000001'::uuid,
+     'C4', now() - interval '2 hours', now() - interval '2 hours');
+
+SELECT set_config(
+    'request.jwt.claims',
+    '{"sub":"21212121-0000-4000-8000-000000000001","role":"authenticated"}',
+    true
+);
+SET LOCAL ROLE authenticated;
+UPDATE public.training_cycles SET name = 'C3 portal'
+WHERE id = '21212121-0000-4000-8000-0000000000c3';
+UPDATE public.training_cycles SET name = 'C4 portal'
+WHERE id = '21212121-0000-4000-8000-0000000000c4';
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+SELECT results_eq(
+    $sql$ SELECT client_updated_at = portal_edited_at FROM public.training_cycles
+          WHERE id = '21212121-0000-4000-8000-0000000000c3' $sql$,
+    $v$ VALUES (true) $v$,
+    'cycle: a portal edit stamps the LWW key and portal_edited_at with the same now()'
+);
+SELECT results_eq(
+    format(
+        $sql$ SELECT accepted, structure_applied FROM public.merge_training_cycles_from_push(
+                '21212121-0000-4000-8000-000000000001', %L::jsonb, true) $sql$,
+        jsonb_build_array(jsonb_build_object(
+            'id', '21212121-0000-4000-8000-0000000000c3', 'name', 'C3 phone',
+            'updated_at', now() - interval '9 minutes',
+            'base_updated_at', now()))
+    ),
+    $v$ VALUES (true, true) $v$,
+    'cycle (R-2): a slow-clock push whose base already includes the portal edit is accepted'
+);
+SELECT is(
+    (SELECT name FROM public.training_cycles WHERE id = '21212121-0000-4000-8000-0000000000c3'),
+    'C3 phone',
+    'cycle (R-2): the device''s newer edit is applied'
+);
+SELECT results_eq(
+    format(
+        $sql$ SELECT accepted FROM public.merge_training_cycles_from_push(
+                '21212121-0000-4000-8000-000000000001', %L::jsonb, true) $sql$,
+        jsonb_build_array(jsonb_build_object(
+            'id', '21212121-0000-4000-8000-0000000000c4', 'name', 'C4 phone',
+            'updated_at', now() - interval '9 minutes',
+            'base_updated_at', now() - interval '1 hour'))
+    ),
+    $v$ VALUES (false) $v$,
+    'cycle (R-2): a push whose base predates the portal edit is still rejected'
+);
+SELECT is(
+    (SELECT name FROM public.training_cycles WHERE id = '21212121-0000-4000-8000-0000000000c4'),
+    'C4 portal',
+    'cycle (R-2): the portal edit survives a genuinely stale push'
 );
 
 SELECT * FROM finish();

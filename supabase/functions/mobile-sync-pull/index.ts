@@ -851,11 +851,23 @@ async function mobileSyncPullHandler(
           workoutMode: ws.workout_mode,
           routineSessionId: ws.routine_session_id,
           notes: ws.notes ?? null,
-          // Phase 3.3 (audit item #1): server-canonical updatedAt for the
+          // Phase 3.3 (audit item #1): the canonical LWW key for the
           // mobile-side LWW pull merge gate. Mobile parses this via
           // kotlin.time.Instant in PortalPullAdapter and feeds it to
           // SyncRepository.mergeSessionsLww as the per-session timestamp.
-          updatedAt: ws.updated_at ?? null,
+          //
+          // KD-5 / review R-4: this is `client_updated_at` — the device
+          // clock for a mobile-authored version, now() for a portal edit —
+          // NOT the server write clock `updated_at`. Mobile stamps each
+          // session it pushes with its own currentTimeMillis() and then
+          // accepts a pulled row when incomingTs >= existingTs, so reporting
+          // the server clock made a device whose clock trails the DB
+          // overwrite its own just-pushed session with this lossy
+          // projection. The pull CURSOR and the ordering stay on
+          // `updated_at` (see the cursor built from `sessionsRaw` above), so
+          // delta pulls remain server-clock ordered. The fallback covers
+          // rows written before 20260920002100's backfill.
+          updatedAt: ws.client_updated_at ?? ws.updated_at ?? null,
           avgVelocityMps: ws.avg_velocity_mps,
           avgAsymmetryPct: ws.avg_asymmetry_pct,
           velocityLossPct: ws.velocity_loss_pct,

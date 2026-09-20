@@ -69,13 +69,25 @@ import {
  * declines an incoming row because the server already has a newer copy.
  * Mobile logs these and repairs convergence on the next pull. See audit
  * item #1 resolution in phoenix-portal/docs/dto-drift-matrix.md.
+ *
+ * KD-5 (review R-3/R-6): `serverUpdatedAt` means ONE thing for every entity —
+ * the stored LWW key (`client_updated_at`) of the row that beat the push,
+ * i.e. the pushing device's own clock for a mobile-authored version and the
+ * server's now() for a portal edit. It is NOT the pull cursor and NOT
+ * comparable with `cycleVersions` / `baseUpdatedAt`, which stay on the
+ * server-owned `updated_at` (KD-6). It is null when the server has no row to
+ * report (deleted concurrently, or owned by somebody else).
  */
 interface EntityRejection {
   id: string;
   serverUpdatedAt: string | null;
 }
 
-/** Row shape returned by every `upsert_<entity>_lww` function (Phase 3.1). */
+/**
+ * Row shape returned by every `upsert_<entity>_lww` function (Phase 3.1).
+ * Since 20260920002100, `server_updated_at` from the session/routine RPCs is
+ * the stored LWW key, not the server write clock.
+ */
 interface LwwUpsertRow {
   id: string;
   accepted: boolean;
@@ -599,6 +611,14 @@ interface CycleDto {
 /** One row of merge_training_cycles_from_push. */
 interface CycleMergeRow extends LwwUpsertRow {
   structure_applied: boolean;
+  /**
+   * KD-5 (R-3/R-6): the stored LWW key. `server_updated_at` stays the stored
+   * server-clock `updated_at` because it feeds `cycleVersions`, which the
+   * device sends back as `baseUpdatedAt` and the merge compares with
+   * `portal_edited_at`. Rejections report this column instead, so
+   * `rejections[].serverUpdatedAt` is the LWW key for every entity.
+   */
+  client_updated_at: string | null;
 }
 
 interface CycleDayDto {
@@ -1599,6 +1619,11 @@ async function mobileSyncPushHandler(
     // skew; it could only misfire for a same-user delete + re-create of the
     // same id inside that margin.
     const tombstoneRaceSince = new Date(Date.now() - TOMBSTONE_RACE_MARGIN_MS).toISOString();
+    // KD-5 undated-push rule (review R-1/R-7): one receipt timestamp for the
+    // whole request, substituted for any session/routine/cycle DTO that
+    // carries no `updatedAt`. Used under BOTH SYNC_LWW_ENABLED values so the
+    // stored LWW key is identical whichever way the flag is set.
+    const pushReceivedAt = new Date(dependencies.now()).toISOString();
     const reDeleteRacedTombstones = async (
       entity: 'routine' | 'cycle',
       table: 'routines' | 'training_cycles',
@@ -1713,7 +1738,17 @@ async function mobileSyncPushHandler(
         // updated_at (the pull cursor) is never sent: the server sets it to
         // now() on INSERT (column default) and UPDATE (trigger), so a slow
         // device clock cannot hide the row from delta pulls (NF-12).
-        client_updated_at: s.updatedAt ?? null,
+        //
+        // Undated-push rule (review R-1/R-7), identical under both flag
+        // values and for all three entities: a DTO without `updatedAt` is
+        // dated at the moment this request is served. It therefore never
+        // erases a stored key (a NULL here would wipe a portal edit's stamp
+        // on the LWW-off UPDATE path), and it wins against a portal edit
+        // made earlier, because arrival time is the only date the server
+        // has. "A portal edit beats an earlier mobile version" consequently
+        // holds only for builds that send `updatedAt`; rejecting undated
+        // pushes instead would strand such a build's edits entirely.
+        client_updated_at: s.updatedAt ?? pushReceivedAt,
       }));
 
       // Cross-user takeover defense (from main beta audit hardening): always
@@ -1732,15 +1767,11 @@ async function mobileSyncPushHandler(
         // Phase 3.2: route through the LWW RPC so the server rejects stale
         // rows instead of overwriting with older data. Accepted ids are used
         // to filter the exercises/sets/rep_summaries child upserts below.
-        // Fallback to NOW() when the client DTO omits updatedAt (older
-        // mobile builds pre-Phase-3.2).
-        const sessionRowsWithUpdatedAt = sessionRows.map((r) => ({
-          ...r,
-          client_updated_at: r.client_updated_at ?? new Date().toISOString(),
-        }));
+        // The rows already carry the LWW key (`pushReceivedAt` when the DTO
+        // omitted `updatedAt`), identically to the LWW-off branch.
         const { data: lwwData, error: lwwErr } = await supabase.rpc(
           'upsert_workout_session_lww',
-          { p_rows: sessionRowsWithUpdatedAt },
+          { p_rows: sessionRows },
         );
         if (lwwErr) throw new Error(`workout_sessions LWW RPC failed: ${lwwErr.message}`);
         acceptedSessionIds = new Set<string>();
@@ -2300,8 +2331,9 @@ async function mobileSyncPushHandler(
         times_completed: r.timesCompleted ?? 0,
         is_favorite: r.isFavorite ?? false,
         // KD-5: the LWW key, written under both SYNC_LWW_ENABLED values.
-        // updated_at (pull cursor) is server-owned (NF-12).
-        client_updated_at: r.updatedAt ?? null,
+        // updated_at (pull cursor) is server-owned (NF-12). An undated DTO
+        // is dated at receipt — see the session mapping above (R-1/R-7).
+        client_updated_at: r.updatedAt ?? pushReceivedAt,
       }));
 
       const routineOwnershipResp = await assertRowsOwnedByUser(
@@ -2314,13 +2346,9 @@ async function mobileSyncPushHandler(
       if (routineOwnershipResp) return routineOwnershipResp;
 
       if (SYNC_LWW_ENABLED) {
-        const rows = routineRows.map((r) => ({
-          ...r,
-          client_updated_at: r.client_updated_at ?? new Date().toISOString(),
-        }));
         const { data: lwwData, error: lwwErr } = await supabase.rpc(
           'upsert_routine_lww',
-          { p_rows: rows },
+          { p_rows: routineRows },
         );
         if (lwwErr) throw new Error(`routines LWW RPC failed: ${lwwErr.message}`);
         acceptedRoutineIds = new Set<string>();
@@ -2588,9 +2616,12 @@ async function mobileSyncPushHandler(
         progression_settings: safeJsonParse(c.progressionSettings),
         deload_settings: safeJsonParse(c.deloadSettings),
         template_id: c.templateId ?? null,
-        // LWW compares this. Older builds may omit it: LWW falls back to
-        // now() as before; without LWW the merge inserts now().
-        updated_at: c.updatedAt ?? (SYNC_LWW_ENABLED ? new Date().toISOString() : null),
+        // The cycle merge reads this as the incoming LWW key (and compares
+        // it under LWW-on). Undated-push rule (R-1/R-7, NF-15): an omitted
+        // `updatedAt` is dated at receipt under BOTH flag values, so the
+        // stored key never depends on the flag and a NOT NULL `updated_at`
+        // can never be handed a null.
+        updated_at: c.updatedAt ?? pushReceivedAt,
         base_updated_at: c.baseUpdatedAt ?? null,
         days: c.days.map((d) => ({
           // No id: the conflict target is (cycle_id, day_number). A client
@@ -2633,7 +2664,10 @@ async function mobileSyncPushHandler(
             cycleVersions[row.id] = row.server_updated_at;
           }
         } else {
-          rejections.cycles.push({ id: row.id, serverUpdatedAt: row.server_updated_at });
+          // R-3/R-6: report the stored LWW key, like sessions and routines.
+          // `server_updated_at` (the pull cursor) is reserved for
+          // cycleVersions above, which mobile compares with portal_edited_at.
+          rejections.cycles.push({ id: row.id, serverUpdatedAt: row.client_updated_at ?? null });
         }
       }
       cyclesUpserted = acceptedIds.size;

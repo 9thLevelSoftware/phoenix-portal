@@ -2716,12 +2716,10 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): an older build's cycle is sent
   assertEquals(response.status, 200, JSON.stringify(await json(response)));
   const [sent] = mergedCycles(harness);
   assertEquals(sent.base_updated_at, null);
-  // LWW compares updated_at; without LWW the merge inserts now().
-  if (SYNC_LWW_ENABLED) {
-    assertEquals(typeof sent.updated_at, "string");
-  } else {
-    assertEquals(sent.updated_at, null);
-  }
+  // Undated-push rule (R-1/R-7, NF-15): an omitted updatedAt is dated at
+  // receipt under BOTH flag values, so the merge never sees null and a NOT
+  // NULL updated_at column can never be handed one.
+  assertEquals(typeof sent.updated_at, "string");
 });
 
 Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycles whose structure was applied`, async () => {
@@ -2732,6 +2730,7 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycle
         accepted: true,
         server_updated_at: "2026-07-16T02:00:00.5+00:00",
         structure_applied: true,
+        client_updated_at: "2026-07-16T01:50:00+00:00",
       },
       {
         // Portal edited after the device's base: config merged, structure
@@ -2740,12 +2739,16 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycle
         accepted: true,
         server_updated_at: "2026-07-16T02:00:01+00:00",
         structure_applied: false,
+        client_updated_at: "2026-07-16T01:50:01+00:00",
       },
       {
+        // R-3/R-6: the rejection reports the stored LWW key, never the
+        // server-clock cursor that feeds cycleVersions.
         id: MERGE_CYCLE_3_ID,
         accepted: false,
         server_updated_at: "2026-07-16T02:00:02+00:00",
         structure_applied: false,
+        client_updated_at: "2026-07-16T01:50:02+00:00",
       },
     ]),
   });
@@ -2764,7 +2767,7 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycle
   assertEquals(body.cyclesUpserted, 2);
   assertEquals((body.rejections as Record<string, unknown>).cycles, [{
     id: MERGE_CYCLE_3_ID,
-    serverUpdatedAt: "2026-07-16T02:00:02+00:00",
+    serverUpdatedAt: "2026-07-16T01:50:02+00:00",
   }]);
 });
 
@@ -4826,7 +4829,10 @@ Deno.test({
         );
       }
 
-      // A concurrent older write (another device, stamped before v3).
+      // A second device's older write, stamped before v3. This pins the
+      // `RETURNING ... / FOUND` decision (the pre-check SELECT is gone), but
+      // it is a sequential call, not two interleaved transactions — the
+      // acceptance wording deliberately no longer says "concurrent" (R-11).
       const olderStamp = deviceClock(15);
       const older = await pushOk(handler, lwwClockPush(ids, "older", olderStamp));
       const rejections = older.rejections as RejectionLists;
@@ -4997,6 +5003,235 @@ Deno.test({
       const routines = body.routines as Array<Record<string, unknown>>;
       assertEquals(sessions.map((s) => s.id), [ids.sessionId]);
       assertEquals(routines.map((r) => r.id), [ids.routineId]);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+/** A push whose session/routine/cycle DTOs carry no `updatedAt` at all. */
+function undatedPush(
+  ids: { sessionId: string; routineId: string; cycleId: string },
+): Record<string, unknown> {
+  return {
+    ...validPushBody(),
+    lastSync: Date.now() - 60_000,
+    profileId: "default",
+    profileName: "Default",
+    allProfiles: [{ id: "default", name: "Default", colorIndex: 0 }],
+    sessions: [{
+      id: ids.sessionId,
+      userId: "mobile-local-user",
+      name: "Undated session",
+      startedAt: "2026-07-01T08:00:00.000Z",
+      notes: null,
+      exercises: [],
+    }],
+    routines: [{
+      id: ids.routineId,
+      userId: "mobile-local-user",
+      name: "Undated routine",
+      description: "",
+      exerciseCount: 0,
+      estimatedDuration: 0,
+      timesCompleted: 0,
+      isFavorite: false,
+      exercises: [],
+    }],
+    cycles: [{
+      id: ids.cycleId,
+      userId: "mobile-local-user",
+      name: "Undated cycle",
+      durationWeeks: 1,
+      workoutDays: 1,
+      restDays: 0,
+      currentWeek: 1,
+      status: "active",
+      days: [],
+    }],
+  };
+}
+
+async function storedClocks(
+  fixture: TombstonePushFixture,
+  table: "workout_sessions" | "routines" | "training_cycles",
+  id: string,
+): Promise<{ updated_at: unknown; client_updated_at: unknown }> {
+  const row = await fixture.admin
+    .from(table)
+    .select("updated_at, client_updated_at")
+    .eq("id", id)
+    .single();
+  if (row.error) throw new Error(`${table} clock lookup failed: ${row.error.message}`);
+  return row.data as unknown as { updated_at: unknown; client_updated_at: unknown };
+}
+
+Deno.test({
+  name:
+    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) a push that omits updatedAt is dated at receipt and never stores a null clock (NF-15 / R-1)`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = {
+        sessionId: crypto.randomUUID(),
+        routineId: crypto.randomUUID(),
+        cycleId: crypto.randomUUID(),
+      };
+      const tables = [
+        ["workout_sessions", ids.sessionId],
+        ["routines", ids.routineId],
+        ["training_cycles", ids.cycleId],
+      ] as const;
+
+      const beforeFirst = Date.now() - 2_000;
+      await pushOk(handler, undatedPush(ids));
+      for (const [table, id] of tables) {
+        const row = await storedClocks(fixture, table, id);
+        // routines.updated_at / training_cycles.updated_at are NOT NULL in
+        // production; a row built as `updatedAt ?? null` fails 23502 there,
+        // and a BEFORE UPDATE trigger cannot rescue it (PostgreSQL checks
+        // NOT NULL against the proposed tuple).
+        assert(row.updated_at !== null, `${table}.updated_at must never be written null`);
+        assert(
+          row.client_updated_at !== null,
+          `${table}.client_updated_at must never be written null`,
+        );
+        assert(
+          epochMs(row.client_updated_at) >= beforeFirst,
+          `${table}: an undated push is dated at receipt`,
+        );
+      }
+
+      // A portal edit now owns the LWW key. The LWW-off PostgREST upsert used
+      // to overwrite it with NULL on the next undated push (R-1), which would
+      // silently hand the row back to the server write clock the day the flag
+      // flips.
+      await asPortalUser(fixture, async (browser) => {
+        const notes = await browser.from("workout_sessions")
+          .update({ notes: "Portal note" }, { count: "exact" })
+          .eq("id", ids.sessionId);
+        if (notes.error) throw new Error(`portal notes edit failed: ${notes.error.message}`);
+        const routine = await browser.from("routines")
+          .update({ description: "Portal description" }, { count: "exact" })
+          .eq("id", ids.routineId);
+        if (routine.error) throw new Error(`portal routine edit failed: ${routine.error.message}`);
+        const cycle = await browser.from("training_cycles")
+          .update({ description: "Portal description" }, { count: "exact" })
+          .eq("id", ids.cycleId);
+        if (cycle.error) throw new Error(`portal cycle edit failed: ${cycle.error.message}`);
+      });
+      const portalKeys = new Map<string, number>();
+      for (const [table, id] of tables) {
+        const row = await storedClocks(fixture, table, id);
+        portalKeys.set(table, epochMs(row.client_updated_at));
+      }
+
+      const beforeSecond = Date.now() - 2_000;
+      await pushOk(handler, undatedPush(ids));
+      for (const [table, id] of tables) {
+        const row = await storedClocks(fixture, table, id);
+        assert(row.updated_at !== null, `${table}.updated_at must never be written null`);
+        assert(
+          row.client_updated_at !== null,
+          `${table}: an undated push must not erase the stored portal stamp`,
+        );
+        // Documented consequence (R-7): with no device date to go on the
+        // server dates the push at receipt, so it beats the earlier portal
+        // edit under both flag values.
+        assert(
+          epochMs(row.client_updated_at) >= beforeSecond,
+          `${table}: the undated push is re-dated at receipt`,
+        );
+        assert(
+          epochMs(row.client_updated_at) >= (portalKeys.get(table) ?? 0),
+          `${table}: the LWW key never moves backwards`,
+        );
+      }
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) the same-sync pull reports a just-pushed session's device stamp while the cursor stays server-clock (R-4)`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const push = realTombstonePushHandler(fixture);
+      const pull = realPullHandlerFor(fixture);
+      const first = { sessionId: crypto.randomUUID(), routineId: crypto.randomUUID() };
+      const second = { sessionId: crypto.randomUUID(), routineId: crypto.randomUUID() };
+
+      // The device's clock trails the DB by 10 minutes - more than the
+      // push-to-stamp latency mobile relies on. SyncManager stamps each
+      // pushed session with its own currentTimeMillis() and mergeSessionsLww
+      // then accepts an incoming row when incomingTs >= existingTs, so
+      // reporting the server write clock here made the device overwrite its
+      // own freshly recorded session with the lossy pull projection
+      // (warmupReps 0, averaged duration, lossy mode map, constructor
+      // defaults for progressionKg / isJustLift / routineId, ...).
+      const firstStamp = new Date(Date.now() - 10 * 60_000).toISOString();
+      const secondStamp = new Date(Date.now() - 9 * 60_000).toISOString();
+      await pushOk(push, lwwClockPush(first, "slow one", firstStamp));
+      await pushOk(push, lwwClockPush(second, "slow two", secondStamp));
+
+      const storedFirst = await storedLwwRow(fixture, "workout_sessions", first.sessionId);
+      assert(
+        epochMs(storedFirst.updated_at) > epochMs(firstStamp),
+        "the server write clock is ahead of the slow device",
+      );
+
+      const response = await pull(requestFromBody({
+        deviceId: "device-a",
+        lastSync: 0,
+        pageSize: 75,
+      }));
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+      const sessions = body.sessions as Array<Record<string, unknown>>;
+      const byId = new Map(sessions.map((s) => [s.id as string, s]));
+      assertEquals(
+        epochMs(byId.get(first.sessionId)?.updatedAt),
+        epochMs(firstStamp),
+        "the pull reports the device's own stamp for its just-pushed session",
+      );
+      assertEquals(
+        epochMs(byId.get(second.sessionId)?.updatedAt),
+        epochMs(secondStamp),
+        "...for every session in the page",
+      );
+      assert(
+        epochMs(byId.get(first.sessionId)?.updatedAt) <= epochMs(storedFirst.updated_at),
+        "the reported stamp never exceeds what the device pushed",
+      );
+
+      // The pagination cursor must stay on the server write clock, otherwise
+      // pages would be ordered by one clock and filtered by another.
+      const paged = await pull(requestFromBody({
+        deviceId: "device-a",
+        lastSync: 0,
+        pageSize: 1,
+      }));
+      const pagedBody = await json(paged);
+      assertEquals(paged.status, 200, JSON.stringify(pagedBody));
+      assertEquals(pagedBody.hasMore, true);
+      const cursor = JSON.parse(atob(String(pagedBody.nextCursor))) as {
+        type: string;
+        updatedAt: string;
+        id: string;
+      };
+      assertEquals(cursor.type, "sessions");
+      assertEquals(cursor.id, first.sessionId);
+      assertEquals(
+        epochMs(cursor.updatedAt),
+        epochMs(storedFirst.updated_at),
+        "the next-page cursor is the server write clock, not the device stamp",
+      );
     } finally {
       await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
     }
