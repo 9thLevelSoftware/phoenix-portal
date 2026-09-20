@@ -106,6 +106,10 @@ verify_jwt = true
 # 5-minute timestamp window (constant-time compare).
 verify_jwt = false
 
+# Gateway verification is intentionally disabled (KD-10 / R-18): pg_cron calls
+# this through private.invoke_edge_function with no JWT. The handler accepts
+# either the `x-cron-secret` header (constant-time compare against CRON_SECRET)
+# or an exact service-role bearer key, and returns 401 otherwise.
 [functions.process-sync-queue]
 # Auth: cron secret. The handler requires x-cron-secret to equal
 # PROCESS_SYNC_QUEUE_SECRET (or CRON_SYNC_QUEUE_SECRET), or
