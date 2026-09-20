@@ -396,6 +396,18 @@ SELECT is_empty(
 
 -- The derivation that replaced them (see gamification_stats.test.sql for the
 -- full contract) produces the same totals the add-only triggers used to.
+-- recompute_gamification_stats is UPDATE-only by design (it must never
+-- create an all-zero row, or mobile-sync-pull would serve zeroes where it
+-- used to serve null), so the row is created the way production creates it:
+-- by the LWW RPC on the first push that carries gamificationStats.
+SELECT public.upsert_gamification_stats_lww(
+    jsonb_build_array(jsonb_build_object(
+        'user_id', 'c3c3c3c3-0000-4000-8000-000000000003',
+        'device_total_workouts', 2,
+        'last_workout_at', now()
+    ))
+);
+
 SELECT lives_ok(
     $sql$ SELECT public.recompute_gamification_stats('c3c3c3c3-0000-4000-8000-000000000003'::uuid) $sql$,
     'recompute_gamification_stats runs'

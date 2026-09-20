@@ -1472,3 +1472,133 @@ Deno.test("external_activities hasMore is true when the 500-row cap is hit", asy
   assertEquals((body.externalActivities as unknown[]).length, 500);
 });
 
+
+// ---------------------------------------------------------------------------
+// PR 25 review round 1, R-10 (critical). The pull must keep serving the
+// DEVICE-REPORTED shadow columns, never the server-derived ones: the
+// installed app merges this row with an unconditional server-wins
+// `INSERT OR REPLACE` (no max(), no gate) and the two sides do not mean the
+// same thing by these words, so serving derived values would rewrite
+// lifetime stats and badge progress on every build in the field.
+// ---------------------------------------------------------------------------
+Deno.test({
+  name:
+    "integration: the pull serves the device-reported shadow stats, not the derived ones",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      // One stored session: the DERIVED figures are 1 workout / 42 kg.
+      const session = await fixture.admin.from("workout_sessions").insert({
+        id: crypto.randomUUID(),
+        user_id: fixture.ownerId,
+        local_profile_id: fixture.ownerProfileId,
+        name: "derived session",
+        total_volume: 42,
+        duration_seconds: 120,
+        started_at: "2026-07-10T10:00:00.000Z",
+      });
+      if (session.error) throw new Error("session fixture insert failed");
+
+      // The phone reports something else entirely (its own profile-scoped
+      // count, and the machine total rather than the per-cable figure).
+      const pushed = await fixture.admin.rpc("upsert_gamification_stats_lww", {
+        p_rows: [{
+          user_id: fixture.ownerId,
+          device_total_workouts: 317,
+          device_total_reps: 1000,
+          device_total_volume_kg: 5000,
+          device_total_time_seconds: 6000,
+          device_current_streak: 9,
+          device_longest_streak: 30,
+          last_workout_at: "2026-07-10T10:00:00.000Z",
+        }],
+      });
+      if (pushed.error) throw new Error("stats LWW RPC failed");
+
+      const recomputed = await fixture.admin.rpc(
+        "recompute_gamification_stats",
+        { p_user_id: fixture.ownerId },
+      );
+      if (recomputed.error) throw new Error("recompute failed");
+
+      const logs: unknown[][] = [];
+      const handler = realPullHandler(fixture, fixture.ownerId, logs);
+      const response = await handler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.ownerProfileId,
+      }));
+      const body = await json(response);
+
+      assertEquals(response.status, 200);
+      assertEquals(logs, []);
+      // The device gets its OWN numbers back, byte for byte.
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).totalWorkouts,
+        317,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).totalVolumeKg,
+        5000,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).totalReps,
+        1000,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).totalTimeSeconds,
+        6000,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).currentStreak,
+        9,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).longestStreak,
+        30,
+      );
+
+      // …while the columns the PORTAL and the leaderboards read — exactly the
+      // select list in compute-rankings/index.ts and PR 56's snapshot — hold
+      // the derived values.
+      const stored = await fixture.admin.from("gamification_stats")
+        .select(
+          "user_id, total_volume_kg, total_workouts, longest_streak, current_streak",
+        )
+        .eq("user_id", fixture.ownerId)
+        .maybeSingle();
+      if (stored.error || !stored.data) throw new Error("stats read failed");
+      assertEquals(stored.data.total_workouts, 1);
+      assertEquals(stored.data.total_volume_kg, 42);
+      assertEquals(stored.data.longest_streak, 1);
+      assertEquals(stored.data.current_streak, 0);
+
+      // A row that was never device-reported must pull as null, not zeroes:
+      // mobile's `?.let` then leaves the phone's own lifetime stats alone.
+      const cleared = await fixture.admin.from("gamification_stats")
+        .update({
+          device_total_workouts: null,
+          device_total_reps: null,
+          device_total_volume_kg: null,
+          device_total_time_seconds: null,
+          device_current_streak: null,
+          device_longest_streak: null,
+        })
+        .eq("user_id", fixture.ownerId);
+      if (cleared.error) throw new Error("shadow column clear failed");
+
+      const secondResponse = await handler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.ownerProfileId,
+      }));
+      const secondBody = await json(secondResponse);
+      assertEquals(secondResponse.status, 200);
+      assertEquals(secondBody.gamificationStats, null);
+    } finally {
+      await deleteLocalPullFixtureRows(fixture.admin, [
+        fixture.ownerId,
+        fixture.otherId,
+      ]);
+    }
+  },
+});
