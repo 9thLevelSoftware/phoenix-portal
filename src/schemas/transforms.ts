@@ -1,4 +1,21 @@
 import { z } from "zod";
+import {
+	normalizeEccentricLoad,
+	toEchoLevel,
+	toRepCountTiming,
+	toStopAtPosition,
+	toSupersetColorName,
+	toWireMode,
+} from "../../supabase/functions/_shared/workoutModes.ts";
+
+// Routine-exercise settings read in mobile's vocabulary. A value outside it
+// (legacy portal "light"/"low"/free text) is what the phone parsed to its
+// default, so it reads as null; legacy hex colours read as their name.
+const nullableSetting = <T>(normalize: (value: unknown) => T | null) =>
+	z
+		.string()
+		.nullish()
+		.transform((value) => normalize(value));
 
 // Loads are stored and returned per cable, exactly as the phone shows them.
 // Schemas never convert them: the display adapter (src/lib/units/loadDisplay.ts)
@@ -255,10 +272,12 @@ export const routineExerciseSchema = z.object({
 	weight: perCableWeight,
 	rest_seconds: z.number(),
 	duration_seconds: z.number().nullable().optional(),
-	mode: z.string(),
+	// Stored as wire names; legacy display names / aliases normalize to wire.
+	// Unknown values pass through so one odd row can't blank the routine list.
+	mode: z.string().transform((mode) => toWireMode(mode) ?? mode),
 	order_index: z.number(),
 	superset_id: z.string().nullable().optional(),
-	superset_color: z.string().nullable().optional(),
+	superset_color: nullableSetting(toSupersetColorName),
 	superset_order: z.number().nullable().optional(),
 	// Per cable, like the single `weight` column.
 	per_set_weights: z.unknown().nullable().optional(),
@@ -275,14 +294,14 @@ export const routineExerciseSchema = z.object({
 		.nullish()
 		.transform((v) => v ?? false),
 	pr_percentage: z.number().nullable().optional(),
-	rep_count_timing: z.string().nullable().optional(),
-	stop_at_position: z.string().nullable().optional(),
+	rep_count_timing: nullableSetting(toRepCountTiming),
+	stop_at_position: nullableSetting(toStopAtPosition),
 	stall_detection: z
 		.boolean()
 		.nullish()
 		.transform((v) => v ?? true),
-	eccentric_load: z.string().nullable().optional(),
-	echo_level: z.string().nullable().optional(),
+	eccentric_load: nullableSetting(normalizeEccentricLoad),
+	echo_level: nullableSetting(toEchoLevel),
 	drop_set_enabled: z
 		.boolean()
 		.nullish()

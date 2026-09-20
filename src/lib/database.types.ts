@@ -1448,6 +1448,7 @@ export type Database = {
 			};
 			routines: {
 				Row: {
+					client_updated_at: string | null;
 					created_at: string | null;
 					description: string;
 					estimated_duration: number;
@@ -1463,6 +1464,7 @@ export type Database = {
 					user_id: string;
 				};
 				Insert: {
+					client_updated_at?: string | null;
 					created_at?: string | null;
 					description?: string;
 					estimated_duration?: number;
@@ -1478,6 +1480,7 @@ export type Database = {
 					user_id: string;
 				};
 				Update: {
+					client_updated_at?: string | null;
 					created_at?: string | null;
 					description?: string;
 					estimated_duration?: number;
@@ -1883,6 +1886,7 @@ export type Database = {
 					id: string;
 					last_event_id: string | null;
 					last_event_occurred_at: string | null;
+					note: string | null;
 					operation: string;
 					paddle_customer_id: string | null;
 					paddle_subscription_id: string | null;
@@ -1904,11 +1908,12 @@ export type Database = {
 					id?: string;
 					last_event_id?: string | null;
 					last_event_occurred_at?: string | null;
+					note?: string | null;
 					operation: string;
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
 					price_id?: string | null;
-					row_snapshot: Json;
+					row_snapshot?: Json;
 					status?: string | null;
 					subscription_created_at?: string | null;
 					subscription_row_id?: string | null;
@@ -1925,6 +1930,7 @@ export type Database = {
 					id?: string;
 					last_event_id?: string | null;
 					last_event_occurred_at?: string | null;
+					note?: string | null;
 					operation?: string;
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
@@ -2085,6 +2091,7 @@ export type Database = {
 			};
 			training_cycles: {
 				Row: {
+					client_updated_at: string | null;
 					current_week: number;
 					deload_settings: Json | null;
 					description: string | null;
@@ -2093,6 +2100,8 @@ export type Database = {
 					last_used_at: string | null;
 					local_profile_id: string | null;
 					name: string;
+					portal_duration_set_at: string | null;
+					portal_edited_at: string | null;
 					progression_settings: Json | null;
 					rest_days: number;
 					started_at: string | null;
@@ -2103,6 +2112,7 @@ export type Database = {
 					workout_days: number;
 				};
 				Insert: {
+					client_updated_at?: string | null;
 					current_week?: number;
 					deload_settings?: Json | null;
 					description?: string | null;
@@ -2111,6 +2121,8 @@ export type Database = {
 					last_used_at?: string | null;
 					local_profile_id?: string | null;
 					name: string;
+					portal_duration_set_at?: string | null;
+					portal_edited_at?: string | null;
 					progression_settings?: Json | null;
 					rest_days?: number;
 					started_at?: string | null;
@@ -2121,6 +2133,7 @@ export type Database = {
 					workout_days?: number;
 				};
 				Update: {
+					client_updated_at?: string | null;
 					current_week?: number;
 					deload_settings?: Json | null;
 					description?: string | null;
@@ -2129,6 +2142,8 @@ export type Database = {
 					last_used_at?: string | null;
 					local_profile_id?: string | null;
 					name?: string;
+					portal_duration_set_at?: string | null;
+					portal_edited_at?: string | null;
 					progression_settings?: Json | null;
 					rest_days?: number;
 					started_at?: string | null;
@@ -2436,6 +2451,7 @@ export type Database = {
 				Row: {
 					avg_asymmetry_pct: number | null;
 					avg_velocity_mps: number | null;
+					client_updated_at: string | null;
 					deload_warnings: number | null;
 					dominant_side: string | null;
 					duration_seconds: number;
@@ -2469,6 +2485,7 @@ export type Database = {
 				Insert: {
 					avg_asymmetry_pct?: number | null;
 					avg_velocity_mps?: number | null;
+					client_updated_at?: string | null;
 					deload_warnings?: number | null;
 					dominant_side?: string | null;
 					duration_seconds?: number;
@@ -2502,6 +2519,7 @@ export type Database = {
 				Update: {
 					avg_asymmetry_pct?: number | null;
 					avg_velocity_mps?: number | null;
+					client_updated_at?: string | null;
 					deload_warnings?: number | null;
 					dominant_side?: string | null;
 					duration_seconds?: number;
@@ -2646,6 +2664,7 @@ export type Database = {
 				};
 				Returns: undefined;
 			};
+			backfill_client_updated_at: { Args: never; Returns: undefined };
 			check_rate_limit: {
 				Args: {
 					p_key: string;
@@ -2924,6 +2943,7 @@ export type Database = {
 				Returns: {
 					avg_asymmetry_pct: number;
 					avg_velocity_mps: number;
+					client_updated_at: string;
 					deload_warnings: number;
 					dominant_side: string;
 					duration_seconds: number;
@@ -3028,19 +3048,24 @@ export type Database = {
 				Args: { p_routine_id: string; p_snapshot: Json };
 				Returns: undefined;
 			};
-			insights_batch_candidates: {
-				Args: { p_cursor?: string; p_limit?: number };
-				Returns: {
-					user_id: string;
-				}[];
-			};
 			jsonb_redact_token_keys: { Args: { data: Json }; Returns: Json };
+			kotlin_to_long_or_null: { Args: { p_value: string }; Returns: number };
 			local_profile_preference_section_canonical: {
 				Args: {
 					p_row: Database["public"]["Tables"]["local_profile_preferences"]["Row"];
 					p_section: string;
 				};
 				Returns: Json;
+			};
+			merge_training_cycles_from_push: {
+				Args: { p_cycles: Json; p_use_lww: boolean; p_user_id: string };
+				Returns: {
+					accepted: boolean;
+					client_updated_at: string;
+					id: string;
+					server_updated_at: string;
+					structure_applied: boolean;
+				}[];
 			};
 			mutate_local_profile_preference_section: {
 				Args: {
@@ -3058,6 +3083,22 @@ export type Database = {
 					server_revision: number;
 				}[];
 			};
+			normalize_cycle_progression_settings: {
+				Args: { p_settings: Json };
+				Returns: Json;
+			};
+			normalize_eccentric_load: { Args: { p_value: string }; Returns: string };
+			normalize_echo_level: { Args: { p_value: string }; Returns: string };
+			normalize_rep_count_timing: {
+				Args: { p_value: string };
+				Returns: string;
+			};
+			normalize_stop_at_position: {
+				Args: { p_value: string };
+				Returns: string;
+			};
+			normalize_superset_color: { Args: { p_value: string }; Returns: string };
+			normalize_workout_mode: { Args: { p_mode: string }; Returns: string };
 			refresh_community_benchmarks: { Args: never; Returns: undefined };
 			refresh_hot_scores: { Args: never; Returns: undefined };
 			replace_session_children: {
@@ -3082,10 +3123,6 @@ export type Database = {
 			safe_jsonb_numeric: {
 				Args: { p_default: number; p_key: string; p_obj: Json };
 				Returns: number;
-			};
-			set_insights_batch_cursor: {
-				Args: { p_cursor: string };
-				Returns: undefined;
 			};
 			subscription_tier_for: { Args: { p_user_id: string }; Returns: string };
 			update_cycle_with_days: {

@@ -93,6 +93,9 @@ ON CONFLICT (id) DO NOTHING;
 -- Portal writes need EMBER (RLS).
 INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
 VALUES ('21212121-0000-4000-8000-000000000001'::uuid, 'EMBER', 'active', '2099-01-01+00');
+-- Portal writes need FLAME (RLS).
+INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
+VALUES ('21212121-0000-4000-8000-000000000001'::uuid, 'FLAME', 'active', '2099-01-01+00');
 
 INSERT INTO public.workout_sessions (id, user_id, name, started_at, updated_at)
 VALUES

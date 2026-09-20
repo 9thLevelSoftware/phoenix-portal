@@ -27,6 +27,9 @@ npm run test:sync:live  # tests/sync/live/ against a preview project (dispatch-o
 npm run check:edge-functions  # deno check over every Edge Function
 npm run test:edge             # Deno handler tests (in-process doubles, no stack)
 npm run test:edge:integration # Only the "integration: " tests, against a local stack
+npm test           # Run Vitest unit tests
+npm run typecheck  # TypeScript type checking
+npm run test:e2e   # Run Playwright E2E tests
 npm run supabase -- <args>  # Pinned Supabase CLI (version in .supabase-cli-version)
 npm run test:db          # Full pgTAP suite against the local stack (CI: migrations.yml)
 npm run gen:types:local  # Regenerate src/lib/database.types.ts from the migrated local DB
@@ -35,6 +38,8 @@ npm run verify           # lint + typecheck + test + build + sourcemap/config as
 ```
 
 ### Generated types
+
+```
 
 Regenerating types after a migration change: `npm run supabase -- start`, then
 `npm run supabase -- db reset --no-seed`, then `npm run gen:types:local`, and
@@ -472,3 +477,5 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
 
 The Supabase CLI version is pinned in `.supabase-cli-version` and reached
 through `npm run supabase -- <args>`; the workflows install that exact version.
+- `.github/workflows/migrations.yml` — clean-applies every migration into a fresh Supabase stack on any PR that touches `supabase/migrations/` (or the tests, types or tooling it depends on). Fails on file-vs-applied count mismatch, on any pgTAP failure (`supabase test db`, all files), and when `src/lib/database.types.ts` differs from the migrated schema.
+- `.github/workflows/prod-migration-drift.yml` — daily `supabase migration list --linked` drift detector against the prod Supabase project. Fails its own run (and emits a remediation recipe) when any local migration is not applied to prod. Required `production` environment secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROD_PROJECT_REF`, `SUPABASE_PROD_DB_PASSWORD`; protect that environment with main-only branch restrictions/reviewers. The workflow also has an in-repo `refs/heads/main` guard before any production secret-consuming step. **Detector only — does not itself gate any deploy path.** (`.github/workflows/deploy-edge-functions.yml` runs the same check as its own pre-deploy gate, plus `check:edge-functions` and `test:edge` in a `verify` job the deploy needs.) The drift class this would surface is the one demonstrated by `9thLevelSoftware/Project-Phoenix-MP#602`, but pushing the missing migration and verifying the reporter path are separate operational steps owned by the human operator with prod DB credentials.

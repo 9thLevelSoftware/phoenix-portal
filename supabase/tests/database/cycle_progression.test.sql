@@ -84,6 +84,7 @@ VALUES ('19191919-0000-4000-8000-000000000001'::uuid, 'cycle-progression@example
 ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
 VALUES ('19191919-0000-4000-8000-000000000001'::uuid, 'EMBER', 'active', '2099-01-01+00');
+VALUES ('19191919-0000-4000-8000-000000000001'::uuid, 'FLAME', 'active', '2099-01-01+00');
 
 SELECT diag('database:cycle-progression-trigger');
 

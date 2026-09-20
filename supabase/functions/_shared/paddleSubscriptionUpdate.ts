@@ -1,5 +1,3 @@
-import { isSubscriptionEntitled } from './subscriptionEntitlement.ts';
-
 export type PaddleSubscriptionPatchDecision =
   | { action: 'already_current' }
   | {
@@ -107,65 +105,6 @@ export function checkoutRequiredResponseBody(reason: string): {
     code: 'checkout_required',
     message: 'Open checkout to start a new subscription.',
     reason,
-  };
-}
-
-export interface LocalSubscriptionGateRow {
-  paddle_subscription_id?: string | null;
-  status?: string | null;
-  current_period_end?: string | null;
-  cancel_at_period_end?: boolean | null;
-}
-
-export type PlanChangeGate =
-  | {
-    action: 'checkout_required';
-    reason: 'missing_subscription' | 'inactive_or_expired_subscription';
-  }
-  | { action: 'payment_past_due' }
-  | { action: 'proceed'; paddleSubscriptionId: string };
-
-/**
- * Decide whether paddle-update-subscription may send a plan change to Paddle.
- *
- * `past_due` keeps access (shared entitlement predicate), but Paddle rejects
- * item changes on a past-due subscription (`subscription_update_when_past_due`)
- * and a second checkout would risk a duplicate subscription. So a past_due
- * row is refused explicitly and the user is asked to update their payment
- * method.
- */
-export function decidePlanChangeGate(
-  sub: LocalSubscriptionGateRow | null | undefined,
-  now: Date = new Date(),
-): PlanChangeGate {
-  if (!sub || !sub.paddle_subscription_id) {
-    return { action: 'checkout_required', reason: 'missing_subscription' };
-  }
-  if (sub.status === 'past_due') {
-    return { action: 'payment_past_due' };
-  }
-  if (
-    !isSubscriptionEntitled(sub.status ?? 'none', sub.current_period_end ?? null, {
-      cancelAtPeriodEnd: Boolean(sub.cancel_at_period_end),
-      now,
-    })
-  ) {
-    return { action: 'checkout_required', reason: 'inactive_or_expired_subscription' };
-  }
-  return { action: 'proceed', paddleSubscriptionId: sub.paddle_subscription_id };
-}
-
-export const PAYMENT_PAST_DUE_HTTP_STATUS = 409;
-
-export function paymentPastDueResponseBody(): {
-  error: 'payment_past_due';
-  code: 'payment_past_due';
-  message: string;
-} {
-  return {
-    error: 'payment_past_due',
-    code: 'payment_past_due',
-    message: 'Your last payment failed. Update your payment method before changing your plan.',
   };
 }
 

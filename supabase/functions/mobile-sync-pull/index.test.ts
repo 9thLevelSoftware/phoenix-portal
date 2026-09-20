@@ -2,6 +2,7 @@ import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { CHILD_PAGE_SIZE } from "../_shared/pagedByParent.ts";
 import { createMobileSyncPullHandler, STALE_OVERLAP_MS } from "./index.ts";
+import { createMobileSyncPullHandler } from "./index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 
 type AuthBehavior = (jwt: string) => Promise<unknown>;
@@ -2424,5 +2425,208 @@ Deno.test("external_activities hasMore is true when the 500-row cap is hit", asy
   const body = await json(response);
   assertEquals(body.externalActivitiesHasMore, true);
   assertEquals((body.externalActivities as unknown[]).length, 500);
+});
+
+const PULL_ROUTINE_ID = "00000000-0000-4000-8000-000000000040";
+
+function routineExerciseRow(
+  id: string,
+  durationSeconds: number | null,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...routineExerciseBase(id, durationSeconds),
+    ...overrides,
+  };
+}
+
+function routineExerciseBase(
+  id: string,
+  durationSeconds: number | null,
+): Record<string, unknown> {
+  return {
+    id,
+    routine_id: PULL_ROUTINE_ID,
+    exercise_id: null,
+    catalog: null,
+    name: "Plank",
+    muscle_group: "Core",
+    sets: 3,
+    reps: 10,
+    weight: 0,
+    rest_seconds: 60,
+    duration_seconds: durationSeconds,
+    mode: "OLD_SCHOOL",
+    order_index: 0,
+    superset_id: null,
+    superset_color: null,
+    superset_order: null,
+    per_set_weights: null,
+    per_set_rest: null,
+    per_set_reps: null,
+    is_amrap: false,
+    is_bodyweight: true,
+    pr_percentage: null,
+    rep_count_timing: null,
+    stop_at_position: null,
+    stall_detection: true,
+    eccentric_load: null,
+    echo_level: null,
+    per_set_echo_levels: null,
+    warmup_sets: null,
+    drop_set_enabled: false,
+    drop_set_min_weight_kg: null,
+  };
+}
+
+Deno.test("routine exercise DTO carries durationSeconds (timed and rep-based)", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) => {
+      if (name === "get_routines_excluding_ids") {
+        return {
+          data: [{
+            id: PULL_ROUTINE_ID,
+            user_id: VALID_USER_ID,
+            name: "Timed routine",
+            description: "",
+            exercise_count: 2,
+            estimated_duration: 10,
+            times_completed: 0,
+            is_favorite: false,
+            updated_at: "2026-09-01T00:00:00.000Z",
+          }],
+          error: null,
+        };
+      }
+      return undefined;
+    },
+    fromPages: {
+      routine_exercises: [{
+        data: [
+          routineExerciseRow("00000000-0000-4000-8000-000000000041", 45),
+          routineExerciseRow("00000000-0000-4000-8000-000000000042", null),
+        ],
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  const routines = body.routines as Array<{
+    exercises: Array<Record<string, unknown>>;
+  }>;
+  assertEquals(routines.length, 1);
+  assertEquals(routines[0].exercises[0].durationSeconds, 45);
+  assertEquals(routines[0].exercises[1].durationSeconds, null);
+});
+
+Deno.test("routine exercise DTO passes the stored settings through in mobile's keys", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    rpcImpl: (name) =>
+      name === "get_routines_excluding_ids"
+        ? {
+          data: [{
+            id: PULL_ROUTINE_ID,
+            user_id: VALID_USER_ID,
+            name: "Echo routine",
+            description: "",
+            exercise_count: 1,
+            estimated_duration: 10,
+            times_completed: 0,
+            is_favorite: false,
+            updated_at: "2026-09-01T00:00:00.000Z",
+          }],
+          error: null,
+        }
+        : undefined,
+    fromPages: {
+      routine_exercises: [{
+        data: [
+          routineExerciseRow("00000000-0000-4000-8000-000000000041", null, {
+            mode: "ECHO",
+            eccentric_load: "LOAD_120",
+            echo_level: "EPIC",
+            rep_count_timing: "BOTTOM",
+            stop_at_position: "TOP",
+            superset_id: "00000000-0000-4000-8000-000000000049",
+            superset_color: "amber",
+            superset_order: 0,
+          }),
+        ],
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  assertEquals(response.status, 200);
+  const body = await json(response);
+  const [exercise] = (body.routines as Array<{
+    exercises: Array<Record<string, unknown>>;
+  }>)[0].exercises;
+  assertEquals(
+    {
+      mode: exercise.mode,
+      eccentricLoad: exercise.eccentricLoad,
+      echoLevel: exercise.echoLevel,
+      repCountTiming: exercise.repCountTiming,
+      stopAtPosition: exercise.stopAtPosition,
+      supersetColor: exercise.supersetColor,
+      supersetOrder: exercise.supersetOrder,
+      durationSeconds: exercise.durationSeconds,
+    },
+    {
+      mode: "ECHO",
+      eccentricLoad: "LOAD_120",
+      echoLevel: "EPIC",
+      repCountTiming: "BOTTOM",
+      stopAtPosition: "TOP",
+      supersetColor: "amber",
+      supersetOrder: 0,
+      durationSeconds: null,
+    },
+  );
+});
+
+Deno.test("routine exercise durationSeconds on the real-lastSync (non-RPC) routines path", async () => {
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    fromPages: {
+      routines: [{
+        data: [{
+          id: PULL_ROUTINE_ID,
+          user_id: VALID_USER_ID,
+          name: "Timed routine",
+          description: "",
+          exercise_count: 1,
+          estimated_duration: 10,
+          times_completed: 0,
+          is_favorite: false,
+          updated_at: "2026-09-01T00:00:00.000Z",
+        }],
+        error: null,
+      }],
+      routine_exercises: [{
+        data: [routineExerciseRow("00000000-0000-4000-8000-000000000041", 45)],
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    lastSync: 1_700_000_000_000,
+  }));
+  assertEquals(response.status, 200);
+  assert(
+    !harness.adminCalls.some((call) => call.name === "get_routines_excluding_ids"),
+    "expected the timestamp (non-RPC) routines path",
+  );
+  const body = await json(response);
+  const routines = body.routines as Array<{
+    exercises: Array<Record<string, unknown>>;
+  }>;
+  assertEquals(routines[0].exercises[0].durationSeconds, 45);
 });
 

@@ -280,6 +280,11 @@ const routineExerciseSchema = z.object({
 	// value written by the portal or a newer device (SYNC_LWW_ENABLED is off).
 	dropSetEnabled: nullableField(z.boolean()),
 	dropSetMinWeightKg: nullableField(z.number()),
+	// Timed exercise length. Shipping mobile builds don't send it; absent
+	// (undefined) keeps the stored value, so they can't erase a duration set in
+	// the portal. Nested field only (KD-2): an older server strips it.
+	// Bounded to the INT column (and Kotlin Int) so it can't fail the upsert.
+	durationSeconds: nullableField(nonNegInt.max(2_147_483_647)),
 });
 
 const customExerciseSchema = z.object({
