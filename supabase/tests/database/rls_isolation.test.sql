@@ -519,6 +519,7 @@ INSERT INTO rls_cases VALUES
     ('exercise_signatures',       'id', 'a1a1a1a1-0019-4000-8000-00000000000a', 1, NULL, NULL, $s$exercise_id = 'rls-probe'$s$),
     ('external_activities',       'id', 'a1a1a1a1-0020-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
     ('gamification_stats',        'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$pr_count = 99$s$),
+    ('gamification_stats',        'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, NULL, NULL, $s$pr_count = 99$s$),
     ('goal_snapshots',            'id', 'a1a1a1a1-0021-4000-8000-00000000000a', 1, NULL, NULL, $s$progress_pct = 99$s$),
     -- Client DML is revoked; access goes through definer RPCs
     -- (profile_preferences.test.sql), so even the owner reads nothing here.
@@ -530,6 +531,7 @@ INSERT INTO rls_cases VALUES
     ('profiles',                  'id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1,    NULL, $s$display_name = 'rls-probe'$s$),
     ('rate_limit_tracking',       'id', 'a1a1a1a1-0025-4000-8000-00000000000a', NULL, NULL, NULL, $s$provider = 'rls-probe'$s$),
     ('rpg_attributes',            'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$level = 99$s$),
+    ('rpg_attributes',            'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, NULL, NULL, $s$level = 99$s$),
     ('saved_community_items',     'id', 'a1a1a1a1-0026-4000-8000-00000000000a', 1, NULL, 1,    $s$item_type = 'cycle'$s$),
     ('session_phase_statistics',  'id', 'a1a1a1a1-0028-4000-8000-00000000000a', 1, NULL, NULL, $s$concentric_kg_avg = 99$s$),
     ('subscription_events',       'id', 'a1a1a1a1-0029-4000-8000-00000000000a', NULL, NULL, NULL, $s$operation = 'UPDATE'$s$),
@@ -890,6 +892,11 @@ INSERT INTO spoof_cases VALUES
     -- Re-parent B's own row to A.
     ('workout_sessions: UPDATE own row to user_id = A',
      $q$INSERT INTO public.workout_sessions (id, user_id) VALUES ('b2b2b2b2-0001-4000-8000-00000000000b', 'b2b2b2b2-0000-4000-8000-00000000000b')$q$,
+    -- Clients cannot INSERT sessions (server-written only) and may UPDATE
+    -- only `notes`, so the user_id rewrite is refused by the column grant
+    -- before any row is matched; no setup row is needed.
+    ('workout_sessions: UPDATE own row to user_id = A',
+     NULL,
      $q$UPDATE public.workout_sessions SET user_id = 'a1a1a1a1-0000-4000-8000-00000000000a'$q$),
     ('routines: UPDATE own row to user_id = A',
      $q$INSERT INTO public.routines (id, user_id, name) VALUES ('b2b2b2b2-0006-4000-8000-00000000000b', 'b2b2b2b2-0000-4000-8000-00000000000b', 'b')$q$,
