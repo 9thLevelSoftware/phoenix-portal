@@ -680,7 +680,14 @@ export type Database = {
 				Row: {
 					best_streak: number;
 					current_streak: number;
+					device_current_streak: number | null;
+					device_longest_streak: number | null;
+					device_total_reps: number | null;
+					device_total_time_seconds: number | null;
+					device_total_volume_kg: number | null;
+					device_total_workouts: number | null;
 					id: string;
+					last_workout_at: string | null;
 					longest_streak: number;
 					pr_count: number;
 					total_reps: number;
@@ -693,7 +700,14 @@ export type Database = {
 				Insert: {
 					best_streak?: number;
 					current_streak?: number;
+					device_current_streak?: number | null;
+					device_longest_streak?: number | null;
+					device_total_reps?: number | null;
+					device_total_time_seconds?: number | null;
+					device_total_volume_kg?: number | null;
+					device_total_workouts?: number | null;
 					id?: string;
+					last_workout_at?: string | null;
 					longest_streak?: number;
 					pr_count?: number;
 					total_reps?: number;
@@ -706,7 +720,14 @@ export type Database = {
 				Update: {
 					best_streak?: number;
 					current_streak?: number;
+					device_current_streak?: number | null;
+					device_longest_streak?: number | null;
+					device_total_reps?: number | null;
+					device_total_time_seconds?: number | null;
+					device_total_volume_kg?: number | null;
+					device_total_workouts?: number | null;
 					id?: string;
+					last_workout_at?: string | null;
 					longest_streak?: number;
 					pr_count?: number;
 					total_reps?: number;
@@ -1529,6 +1550,7 @@ export type Database = {
 					consistency: number;
 					experience_points: number;
 					id: string;
+					last_workout_at: string | null;
 					level: number;
 					mastery: number;
 					power: number;
@@ -1542,6 +1564,7 @@ export type Database = {
 					consistency?: number;
 					experience_points?: number;
 					id?: string;
+					last_workout_at?: string | null;
 					level?: number;
 					mastery?: number;
 					power?: number;
@@ -1555,6 +1578,7 @@ export type Database = {
 					consistency?: number;
 					experience_points?: number;
 					id?: string;
+					last_workout_at?: string | null;
 					level?: number;
 					mastery?: number;
 					power?: number;
@@ -2657,6 +2681,18 @@ export type Database = {
 					retry_after_seconds: number;
 				}[];
 			};
+			derive_gamification_stats: {
+				Args: { p_user_id: string };
+				Returns: {
+					current_streak: number;
+					longest_streak: number;
+					pr_count: number;
+					total_reps: number;
+					total_time_seconds: number;
+					total_volume_kg: number;
+					total_workouts: number;
+				}[];
+			};
 			detect_plateaus: {
 				Args: {
 					p_profile_id?: string;
@@ -3150,6 +3186,10 @@ export type Database = {
 					total_volume: number;
 					total_workouts: number;
 				}[];
+			recompute_all_gamification_stats: { Args: never; Returns: number };
+			recompute_gamification_stats: {
+				Args: { p_user_id: string };
+				Returns: undefined;
 			};
 			refresh_community_benchmarks: { Args: never; Returns: undefined };
 			refresh_hot_scores: { Args: never; Returns: undefined };
@@ -3197,6 +3237,7 @@ export type Database = {
 				Args: { p_default: number; p_key: string; p_obj: Json };
 				Returns: number;
 			};
+			seed_device_gamification_stats: { Args: never; Returns: number };
 			session_volume_buckets: {
 				Args: { p_period?: string; p_profile_id?: string; p_tz?: string };
 				Returns: {

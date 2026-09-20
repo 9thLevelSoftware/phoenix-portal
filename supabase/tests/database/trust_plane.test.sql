@@ -883,13 +883,18 @@ SELECT lives_ok(
     'service_role can call upsert_workout_session_lww'
 );
 
+-- total_workouts and current_streak are server-derived from 20260920002500
+-- on: the RPC accepts the call but takes neither, while the device-reported
+-- shadow column does land.
 SELECT lives_ok(
     $sql$
         SELECT public.upsert_gamification_stats_lww(
             jsonb_build_array(jsonb_build_object(
                 'user_id', '44444444-4444-4444-8444-444444444444',
                 'total_workouts', 7,
-                'updated_at', now() + INTERVAL '1 minute'
+                'current_streak', 4,
+                'device_total_workouts', 7,
+                'last_workout_at', now() + INTERVAL '1 minute'
             ))
         )
     $sql$,
@@ -902,7 +907,7 @@ SELECT lives_ok(
             jsonb_build_array(jsonb_build_object(
                 'user_id', '44444444-4444-4444-8444-444444444444',
                 'level', 3,
-                'updated_at', now() + INTERVAL '1 minute'
+                'last_workout_at', now() + INTERVAL '1 minute'
             ))
         )
     $sql$,
@@ -921,8 +926,15 @@ SELECT results_eq(
             (SELECT level FROM public.rpg_attributes
               WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid)::integer
     $sql$,
-    $values$ VALUES (30::numeric, 7, 3) $values$,
-    'service_role LWW writes landed'
+    $values$ VALUES (30::numeric, 5, 3) $values$,
+    'service_role LWW writes landed; the RPC leaves total_workouts at the stored 5 (it is not a device-writable column)'
+);
+
+SELECT is(
+    (SELECT device_total_workouts FROM public.gamification_stats
+      WHERE user_id = '44444444-4444-4444-8444-444444444444'::uuid),
+    7,
+    'the device-reported shadow column from the same LWW call landed'
 );
 
 SELECT diag('database:trust-plane-session-children');

@@ -2841,6 +2841,32 @@ async function mobileSyncPushHandler(
     // =========================================================================
     // 8. Upsert rpg_attributes
     // =========================================================================
+    // Conflict key for the device-reported stats columns (F-070). The server
+    // stamp used to decide this, which made every push win against itself, so
+    // the write now carries the last workout it knows about: the newest
+    // session in this push.
+    //
+    // CLAMPED to the server's clock (review round 1, R-2/R-11/R-24):
+    // `sessionSchema.startedAt` is only checked for parseability, so a skewed
+    // phone clock or a crafted payload could otherwise park the key in 2099
+    // and freeze every device-owned column against all later honest pushes,
+    // with no path back down. The RPCs clamp again (LEAST(key, now())) for any
+    // other service-role caller.
+    //
+    // A push without sessions (older app versions, a stats-only push, a
+    // non-final history batch) carries null. Null is NOT consent: the RPCs
+    // accept it only when no key is stored yet, because a stale device sends
+    // exactly that shape (R-3/R-11).
+    const deviceLastWorkoutAt = ((): string | null => {
+      let newest = Number.NEGATIVE_INFINITY;
+      for (const session of payload.sessions) {
+        const startedAt = Date.parse(session.startedAt);
+        if (Number.isFinite(startedAt) && startedAt > newest) newest = startedAt;
+      }
+      if (!Number.isFinite(newest)) return null;
+      return new Date(Math.min(newest, dependencies.now())).toISOString();
+    })();
+
     if (payload.rpgAttributes) {
       const rpg = payload.rpgAttributes;
       // fix(audit #8): defensively coerce to Int before DB write. Mobile sends
@@ -2859,23 +2885,25 @@ async function mobileSyncPushHandler(
         character_class: rpg.characterClass,
         level: rpgInt(rpg.level, 1),
         experience_points: rpgInt(rpg.experiencePoints, 0),
-        updated_at: new Date().toISOString(),
+        // No `updated_at`: the RPC stamps the server clock, and the conflict
+        // compare runs on last_workout_at instead (F-070).
+        last_workout_at: deviceLastWorkoutAt,
       };
 
-      if (syncLwwEnabled) {
-        const { data: lwwData, error: lwwErr } = await supabase.rpc(
-          'upsert_rpg_attributes_lww',
-          { p_rows: [rpgRow] },
-        );
-        if (lwwErr) throw new Error(`rpg_attributes LWW RPC failed: ${lwwErr.message}`);
-        for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
-          if (!rr.accepted) rejections.rpgAttributes.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+      // Both flag paths go through the RPC: it is the only writer that knows
+      // which columns are device-owned.
+      const { data: lwwData, error: lwwErr } = await supabase.rpc(
+        'upsert_rpg_attributes_lww',
+        { p_rows: [rpgRow] },
+      );
+      if (lwwErr) throw new Error(`rpg_attributes LWW RPC failed: ${lwwErr.message}`);
+      for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
+        if (rr.accepted) continue;
+        if (syncLwwEnabled) {
+          rejections.rpgAttributes.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+        } else {
+          console.warn('rpg_attributes write rejected (SYNC_LWW_ENABLED off, not reported)');
         }
-      } else {
-        const { error: rpgErr } = await supabase
-          .from('rpg_attributes')
-          .upsert(rpgRow, { onConflict: 'user_id' });
-        if (rpgErr) throw new Error(`rpg_attributes upsert failed: ${rpgErr.message}`);
       }
     }
 
@@ -2904,31 +2932,46 @@ async function mobileSyncPushHandler(
     // =========================================================================
     if (payload.gamificationStats) {
       const gs = payload.gamificationStats;
+      // The device's own numbers go into the device_* SHADOW columns, which
+      // mobile-sync-pull serves straight back to the phone. They are NOT what
+      // the portal or the leaderboards read: total_workouts, total_reps,
+      // total_volume_kg, total_time_seconds, pr_count and all three streaks
+      // are server-derived (recompute_gamification_stats below), so a device
+      // claiming 10,000 workouts changes nothing anyone else sees.
+      //
+      // Why a shadow copy rather than serving the derived value (R-10): the
+      // installed app merges a pulled stats row with an unconditional
+      // server-wins INSERT OR REPLACE, and the two sides do not mean the same
+      // thing — the server counts grouped portal sessions, stored volume is
+      // per cable — so handing it derived numbers would halve lifetime volume
+      // for dual-cable users and shift badge progress on every phone in the
+      // fleet. There is no app-version field in the payload to gate on.
       const gsRow = {
         user_id: userId,
-        total_workouts: gs.totalWorkouts ?? 0,
-        total_reps: gs.totalReps ?? 0,
-        total_volume_kg: gs.totalVolumeKg ?? 0,
-        longest_streak: gs.longestStreak ?? 0,
-        current_streak: gs.currentStreak ?? 0,
-        total_time_seconds: gs.totalTimeSeconds ?? 0,
-        updated_at: new Date().toISOString(),
+        device_total_workouts: gs.totalWorkouts ?? 0,
+        device_total_reps: gs.totalReps ?? 0,
+        device_total_volume_kg: gs.totalVolumeKg ?? 0,
+        device_total_time_seconds: gs.totalTimeSeconds ?? 0,
+        device_longest_streak: gs.longestStreak ?? 0,
+        device_current_streak: gs.currentStreak ?? 0,
+        last_workout_at: deviceLastWorkoutAt,
       };
 
-      if (syncLwwEnabled) {
-        const { data: lwwData, error: lwwErr } = await supabase.rpc(
-          'upsert_gamification_stats_lww',
-          { p_rows: [gsRow] },
-        );
-        if (lwwErr) throw new Error(`gamification_stats LWW RPC failed: ${lwwErr.message}`);
-        for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
-          if (!rr.accepted) rejections.gamificationStats.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+      const { data: lwwData, error: lwwErr } = await supabase.rpc(
+        'upsert_gamification_stats_lww',
+        { p_rows: [gsRow] },
+      );
+      if (lwwErr) throw new Error(`gamification_stats LWW RPC failed: ${lwwErr.message}`);
+      for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
+        if (rr.accepted) continue;
+        if (syncLwwEnabled) {
+          rejections.gamificationStats.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+        } else {
+          // Flag-off keeps the pre-LWW response contract (rejections stay
+          // empty), but both flag paths now run the same compare, so a
+          // discarded write would otherwise be invisible (R-15).
+          console.warn('gamification_stats write rejected (SYNC_LWW_ENABLED off, not reported)');
         }
-      } else {
-        const { error: gsErr } = await supabase
-          .from('gamification_stats')
-          .upsert(gsRow, { onConflict: 'user_id' });
-        if (gsErr) throw new Error(`gamification_stats upsert failed: ${gsErr.message}`);
       }
     }
 
@@ -3184,6 +3227,36 @@ async function mobileSyncPushHandler(
         JSON.stringify({ error: 'Sync temporarily unavailable' }),
         { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
+    }
+
+    // =========================================================================
+    // 14a. Recompute the server-derived gamification counters
+    // =========================================================================
+    // Runs on every push (both flag paths) whether or not this payload carried
+    // gamificationStats: sessions and personal_records that landed above are
+    // the source of the counters, so the totals follow the stored rows and
+    // never a device claim. Deletes are covered by the triggers in
+    // 20260920002500.
+    //
+    // FAIL OPEN (review round 1, R-1 — this deliberately reverses the first
+    // draft, which threw). This runs in its own transaction AFTER every
+    // session/exercise/set/PR/preference write has committed, so throwing
+    // would return 500 for a push whose data all landed, skip the
+    // `sync_complete` broadcast, and make the device retry the whole payload
+    // — re-running the same recompute, which re-scans the user's entire
+    // session and set history on every batch of a multi-batch import. On a
+    // large history that meets a statement_timeout the failure is
+    // deterministic, i.e. a permanent sync-failure loop for that account.
+    // The counters are self-healing (the next push and the delete triggers
+    // reconcile them), so a stale counter is strictly better than a wedged
+    // sync. index.test.ts pins this direction.
+    const { error: recomputeErr } = await supabase.rpc(
+      'recompute_gamification_stats',
+      { p_user_id: userId },
+    );
+    if (recomputeErr) {
+      console.warn('gamification_stats recompute failed (counters stale until next push)');
+      dependencies.logOperationalFailure({ name: 'GamificationRecomputeFailure' });
     }
 
     // =========================================================================

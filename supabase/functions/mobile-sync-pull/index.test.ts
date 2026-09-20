@@ -2987,6 +2987,55 @@ Deno.test({
         );
       }
 
+// ---------------------------------------------------------------------------
+// PR 25 review round 1, R-10 (critical). The pull must keep serving the
+// DEVICE-REPORTED shadow columns, never the server-derived ones: the
+// installed app merges this row with an unconditional server-wins
+// `INSERT OR REPLACE` (no max(), no gate) and the two sides do not mean the
+// same thing by these words, so serving derived values would rewrite
+// lifetime stats and badge progress on every build in the field.
+// ---------------------------------------------------------------------------
+Deno.test({
+  name:
+    "integration: the pull serves the device-reported shadow stats, not the derived ones",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalPullFixture();
+    try {
+      // One stored session: the DERIVED figures are 1 workout / 42 kg.
+      const session = await fixture.admin.from("workout_sessions").insert({
+        id: crypto.randomUUID(),
+        user_id: fixture.ownerId,
+        local_profile_id: fixture.ownerProfileId,
+        name: "derived session",
+        total_volume: 42,
+        duration_seconds: 120,
+        started_at: "2026-07-10T10:00:00.000Z",
+      });
+      if (session.error) throw new Error("session fixture insert failed");
+
+      // The phone reports something else entirely (its own profile-scoped
+      // count, and the machine total rather than the per-cable figure).
+      const pushed = await fixture.admin.rpc("upsert_gamification_stats_lww", {
+        p_rows: [{
+          user_id: fixture.ownerId,
+          device_total_workouts: 317,
+          device_total_reps: 1000,
+          device_total_volume_kg: 5000,
+          device_total_time_seconds: 6000,
+          device_current_streak: 9,
+          device_longest_streak: 30,
+          last_workout_at: "2026-07-10T10:00:00.000Z",
+        }],
+      });
+      if (pushed.error) throw new Error("stats LWW RPC failed");
+
+      const recomputed = await fixture.admin.rpc(
+        "recompute_gamification_stats",
+        { p_user_id: fixture.ownerId },
+      );
+      if (recomputed.error) throw new Error("recompute failed");
+
       const logs: unknown[][] = [];
       const handler = realPullHandler(fixture, fixture.ownerId, logs);
       const response = await handler(requestFromBody({
@@ -3005,6 +3054,72 @@ Deno.test({
     } finally {
       const deleted = await fixture.admin.from("external_activities").delete()
         .eq("id", activityId);
+
+      assertEquals(response.status, 200);
+      assertEquals(logs, []);
+      // The device gets its OWN numbers back, byte for byte.
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).totalWorkouts,
+        317,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).totalVolumeKg,
+        5000,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).totalReps,
+        1000,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).totalTimeSeconds,
+        6000,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).currentStreak,
+        9,
+      );
+      assertEquals(
+        (body.gamificationStats as Record<string, unknown>).longestStreak,
+        30,
+      );
+
+      // …while the columns the PORTAL and the leaderboards read — exactly the
+      // select list in compute-rankings/index.ts and PR 56's snapshot — hold
+      // the derived values.
+      const stored = await fixture.admin.from("gamification_stats")
+        .select(
+          "user_id, total_volume_kg, total_workouts, longest_streak, current_streak",
+        )
+        .eq("user_id", fixture.ownerId)
+        .maybeSingle();
+      if (stored.error || !stored.data) throw new Error("stats read failed");
+      assertEquals(stored.data.total_workouts, 1);
+      assertEquals(stored.data.total_volume_kg, 42);
+      assertEquals(stored.data.longest_streak, 1);
+      assertEquals(stored.data.current_streak, 0);
+
+      // A row that was never device-reported must pull as null, not zeroes:
+      // mobile's `?.let` then leaves the phone's own lifetime stats alone.
+      const cleared = await fixture.admin.from("gamification_stats")
+        .update({
+          device_total_workouts: null,
+          device_total_reps: null,
+          device_total_volume_kg: null,
+          device_total_time_seconds: null,
+          device_current_streak: null,
+          device_longest_streak: null,
+        })
+        .eq("user_id", fixture.ownerId);
+      if (cleared.error) throw new Error("shadow column clear failed");
+
+      const secondResponse = await handler(requestFromBody({
+        ...validPullBody(),
+        profileId: fixture.ownerProfileId,
+      }));
+      const secondBody = await json(secondResponse);
+      assertEquals(secondResponse.status, 200);
+      assertEquals(secondBody.gamificationStats, null);
+    } finally {
       await deleteLocalPullFixtureRows(fixture.admin, [
         fixture.ownerId,
         fixture.otherId,
@@ -3062,6 +3177,77 @@ Deno.test("routine exercise DTO passes the stored settings through in mobile's k
             superset_order: 0,
           }),
         ],
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Deploy-order tolerance. This handler must be safe to deploy BEFORE
+// 20260920002500 is applied, so the pull side of the migration window is
+// closed: with the device_* columns absent, `select('*')` returns a row
+// without those keys, and on a pre-migration database the canonical columns
+// ARE the device-reported values (nothing derives them yet).
+// ---------------------------------------------------------------------------
+Deno.test("pull falls back to the canonical columns when device_* do not exist yet", async () => {
+  const harness = makeHarness(undefined, {
+    fromPages: {
+      gamification_stats: [{
+        data: {
+          id: "gs-1",
+          user_id: VALID_USER_ID,
+          total_workouts: 42,
+          total_reps: 400,
+          total_volume_kg: 1234,
+          total_time_seconds: 5000,
+          longest_streak: 12,
+          current_streak: 3,
+          updated_at: "2026-07-10T00:00:00.000Z",
+        },
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.gamificationStats, {
+    id: "gs-1",
+    userId: VALID_USER_ID,
+    totalWorkouts: 42,
+    totalReps: 400,
+    totalVolumeKg: 1234,
+    longestStreak: 12,
+    currentStreak: 3,
+    totalTimeSeconds: 5000,
+    // No lastWorkoutAt key: the column does not exist on this database.
+    updatedAt: "2026-07-10T00:00:00.000Z",
+  });
+});
+
+Deno.test("pull emits null when the columns exist but nothing was device-reported", async () => {
+  const harness = makeHarness(undefined, {
+    fromPages: {
+      gamification_stats: [{
+        data: {
+          id: "gs-1",
+          user_id: VALID_USER_ID,
+          total_workouts: 42,
+          total_reps: 400,
+          total_volume_kg: 1234,
+          total_time_seconds: 5000,
+          longest_streak: 12,
+          current_streak: 3,
+          device_total_workouts: null,
+          device_total_reps: null,
+          device_total_volume_kg: null,
+          device_total_time_seconds: null,
+          device_current_streak: null,
+          device_longest_streak: null,
+          last_workout_at: null,
+          updated_at: "2026-07-10T00:00:00.000Z",
+        },
         error: null,
       }],
     },
@@ -3116,6 +3302,43 @@ Deno.test("routine exercise durationSeconds on the real-lastSync (non-RPC) routi
       }],
       routine_exercises: [{
         data: [routineExerciseRow("00000000-0000-4000-8000-000000000041", 45)],
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.gamificationStats, null);
+});
+
+// ---------------------------------------------------------------------------
+// R-10 (critical) guard that runs in the DEFAULT job. The real-SQL
+// "integration:" test above is gated on the local stack, and this branch has
+// no test:edge:integration script and no edge-integration.yml — PR 5's prefix
+// selector only picks it up at the verify merge — so without this the run's
+// most important fix is unguarded in the job CI actually runs today.
+// ---------------------------------------------------------------------------
+Deno.test("pull serves the device shadow stats, never the derived columns", async () => {
+  const harness = makeHarness(undefined, {
+    fromPages: {
+      gamification_stats: [{
+        data: {
+          id: "gs-1",
+          user_id: VALID_USER_ID,
+          // What the server derived from the rows it stores.
+          total_workouts: 1,
+          total_reps: 10,
+          total_volume_kg: 42,
+          total_time_seconds: 120,
+          longest_streak: 1,
+          current_streak: 0,
+          // What the phone reported. These are what it must get back.
+          device_total_workouts: 317,
+          device_total_reps: 1000,
+          device_total_volume_kg: 5000,
+          device_total_time_seconds: 6000,
+          device_current_streak: 9,
+          device_longest_streak: 30,
+          last_workout_at: "2026-07-10T10:00:00.000Z",
+          updated_at: "2026-07-10T00:00:00.000Z",
+        },
         error: null,
       }],
     },
@@ -3137,3 +3360,20 @@ Deno.test("routine exercise durationSeconds on the real-lastSync (non-RPC) routi
   assertEquals(routines[0].exercises[0].durationSeconds, 45);
 });
 
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.gamificationStats, {
+    id: "gs-1",
+    userId: VALID_USER_ID,
+    totalWorkouts: 317,
+    totalReps: 1000,
+    totalVolumeKg: 5000,
+    longestStreak: 30,
+    currentStreak: 9,
+    totalTimeSeconds: 6000,
+    lastWorkoutAt: "2026-07-10T10:00:00.000Z",
+    updatedAt: "2026-07-10T00:00:00.000Z",
+  });
+});
