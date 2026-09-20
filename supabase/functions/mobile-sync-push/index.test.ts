@@ -3566,7 +3566,7 @@ async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
       current_period_end: "2099-01-01T00:00:00.000Z",
     });
     if (subscription.error) throw new Error("subscription fixture failed");
-    return { admin, ownerId, email, password };
+    return { admin, ownerId, email, password: tempUserPass };
   } catch (error) {
     await deleteTombstonePushFixture(admin, [ownerId]);
     throw error;
