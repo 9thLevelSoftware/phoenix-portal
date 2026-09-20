@@ -68,6 +68,7 @@ interface AdminOptions {
     args: Record<string, unknown>,
   ) => { data: unknown; error: unknown } | undefined;
   fromPages?: Record<string, Array<{ data: unknown; error: unknown }>>;
+  subscriptionResult?: { data: unknown; error: unknown };
 }
 
 function createAdminDouble(
@@ -120,6 +121,7 @@ function createAdminDouble(
     calls.push({ kind: "from", name, operations });
     const result = async () => {
       if (name === "subscriptions") {
+        if (options.subscriptionResult) return options.subscriptionResult;
         return {
           data: {
             tier: "EMBER",
@@ -625,6 +627,74 @@ Deno.test("strict pull parser rejects every oversize parity list before privileg
     assertEquals(harness.adminConstructionCount.value, 0, field);
     assertEquals(harness.adminCalls, [], field);
   }
+});
+
+// Subscription gate (F-047): a denied or failed lookup must stop the pull
+// after the rate limiter and the subscriptions read, before any data query.
+function assertStoppedAtSubscriptionGate(harness: PullHarness): void {
+  assertEquals(harness.adminConstructionCount.value, 1);
+  assertEquals(
+    harness.adminCalls.map((call) => `${call.kind}:${call.name}`),
+    ["rpc:check_rate_limit", "from:subscriptions"],
+  );
+}
+
+for (
+  const [label, subscriptionResult] of [
+    ["no subscriptions row", { data: null, error: null }],
+    ["an active FREE row", {
+      data: {
+        tier: "FREE",
+        status: "active",
+        current_period_end: "2099-01-01T00:00:00.000Z",
+      },
+      error: null,
+    }],
+  ] as const
+) {
+  Deno.test(`subscription gate: ${label} is denied with 402 before any data query`, async () => {
+    const harness = makeHarness(undefined, { subscriptionResult });
+    const response = await harness.handler(requestFromBody(validPullBody()));
+    const body = await json(response);
+    assertEquals(response.status, 402, JSON.stringify(body));
+    assertEquals(body.error, "subscription_required");
+    assertEquals(body.requiredTier, "EMBER");
+    assertEquals(body.currentTier, "FREE");
+    assertStoppedAtSubscriptionGate(harness);
+  });
+}
+
+Deno.test("subscription gate: a lookup error fails closed with 503 before any data query", async () => {
+  const harness = makeHarness(undefined, {
+    subscriptionResult: {
+      data: null,
+      error: { message: "connection refused", code: "08006" },
+    },
+  });
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  let response: Response;
+  try {
+    response = await harness.handler(requestFromBody(validPullBody()));
+  } finally {
+    console.error = originalConsoleError;
+  }
+  const body = await json(response);
+  assertEquals(response.status, 503, JSON.stringify(body));
+  assertEquals(body.error, "subscription_unavailable");
+  assertEquals(response.headers.get("Retry-After"), "30");
+  assertStoppedAtSubscriptionGate(harness);
+});
+
+Deno.test("subscription gate: the same body from an EMBER user reaches the data queries with 200", async () => {
+  // Positive control for the deny tests above.
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const calls = harness.adminCalls.map((call) => `${call.kind}:${call.name}`);
+  assertEquals(calls.slice(0, 2), ["rpc:check_rate_limit", "from:subscriptions"]);
+  assert(calls.includes("rpc:get_sessions_excluding_ids"), JSON.stringify(calls));
 });
 
 Deno.test("known personal record tombstones use the bounded RPC and remain tombstones", async () => {
@@ -1499,6 +1569,12 @@ Deno.test({
 Deno.test({
   name:
     "integration: tombstones deleted routine and cycle reach the device that knows them, first page only",
+// Real-SQL subscription gate (replaces the deleted live FREE-user sync tests):
+// the real `subscriptions` table, service-role grants and RLS decide 402 vs
+// the data path. The fixture seeds both users with an active EMBER row.
+Deno.test({
+  name:
+    "integration: pull subscription gate denies no row and FREE with 402 and allows EMBER",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
     const fixture = await createLocalPullFixture();
@@ -1596,6 +1672,56 @@ Deno.test({
         .in("user_id", userIds);
       if (audit.error) throw new Error("tombstone cleanup audit failed");
       assertEquals(audit.count, 0);
+      const ownerLogs: unknown[][] = [];
+      const ownerRequest = () =>
+        requestFromBody({
+          ...validPullBody(),
+          profileId: fixture.ownerProfileId,
+        });
+
+      const allowed = await realPullHandler(fixture, fixture.ownerId, ownerLogs)(
+        ownerRequest(),
+      );
+      const allowedBody = await json(allowed);
+      assertEquals(allowed.status, 200, JSON.stringify(allowedBody));
+      assert(Array.isArray(allowedBody.sessions));
+
+      const removed = await fixture.admin.from("subscriptions").delete().eq(
+        "user_id",
+        fixture.ownerId,
+      );
+      if (removed.error) throw new Error("subscription row removal failed");
+      const noRow = await realPullHandler(fixture, fixture.ownerId, ownerLogs)(
+        ownerRequest(),
+      );
+      const noRowBody = await json(noRow);
+      assertEquals(noRow.status, 402, JSON.stringify(noRowBody));
+      assertEquals(noRowBody.error, "subscription_required");
+      assertEquals(noRowBody.currentTier, "FREE");
+
+      const downgraded = await fixture.admin.from("subscriptions")
+        .update({ tier: "FREE" })
+        .eq("user_id", fixture.otherId);
+      if (downgraded.error) throw new Error("subscription downgrade failed");
+      const otherLogs: unknown[][] = [];
+      const free = await realPullHandler(fixture, fixture.otherId, otherLogs)(
+        requestFromBody({
+          ...validPullBody(),
+          profileId: fixture.otherProfileId,
+        }),
+      );
+      const freeBody = await json(free);
+      assertEquals(free.status, 402, JSON.stringify(freeBody));
+      assertEquals(freeBody.error, "subscription_required");
+      assertEquals(freeBody.currentTier, "FREE");
+      assertEquals(ownerLogs, []);
+      assertEquals(otherLogs, []);
+    } finally {
+      await deleteLocalPullFixtureRows(
+        fixture.admin,
+        [fixture.ownerId, fixture.otherId],
+      );
+      await assertLocalPullFixtureClean(fixture);
     }
   },
 });
