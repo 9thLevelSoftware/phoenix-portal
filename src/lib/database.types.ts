@@ -573,6 +573,7 @@ export type Database = {
 			};
 			exercises: {
 				Row: {
+					cable_count: number | null;
 					exercise_id: string | null;
 					id: string;
 					muscle_group: string;
@@ -582,6 +583,7 @@ export type Database = {
 					user_id: string;
 				};
 				Insert: {
+					cable_count?: number | null;
 					exercise_id?: string | null;
 					id?: string;
 					muscle_group?: string;
@@ -591,6 +593,7 @@ export type Database = {
 					user_id: string;
 				};
 				Update: {
+					cable_count?: number | null;
 					exercise_id?: string | null;
 					id?: string;
 					muscle_group?: string;

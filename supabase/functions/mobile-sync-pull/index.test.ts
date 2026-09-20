@@ -2500,6 +2500,12 @@ function exerciseRows(count: number): Record<string, unknown>[] {
 }
 
 Deno.test("child paging: exact PAGE for one parent is HTTP 200", async () => {
+Deno.test("PR 28: each pulled exercise carries cableCount (1, 2, or null when unknown)", async () => {
+  const rows = exerciseRows(4);
+  rows[0].cable_count = 1;
+  rows[1].cable_count = 2;
+  rows[2].cable_count = null;
+  // rows[3]: column absent (defensive; the stored column is NULL for unknown).
   const harness = makeHarness(async () => VALID_AUTH_RESULT, {
     rpcImpl: (name) => {
       if (name === "get_sessions_excluding_ids") {
@@ -2509,6 +2515,7 @@ Deno.test("child paging: exact PAGE for one parent is HTTP 200", async () => {
     },
     fromPages: {
       exercises: [{ data: exerciseRows(CHILD_PAGE_SIZE), error: null }],
+      exercises: [{ data: rows, error: null }],
     },
   });
   const response = await harness.handler(requestFromBody(validPullBody()));
@@ -2519,6 +2526,11 @@ Deno.test("child paging: exact PAGE for one parent is HTTP 200", async () => {
     ((body.sessions as Array<{ exercises: unknown[] }>)[0].exercises).length,
     CHILD_PAGE_SIZE,
   );
+  const exercises =
+    (body.sessions as Array<{ exercises: Array<Record<string, unknown>> }>)[0]
+      .exercises;
+  assertEquals(exercises.map((exercise) => exercise.cableCount), [1, 2, null, null]);
+  assert(exercises.every((exercise) => Object.hasOwn(exercise, "cableCount")));
 });
 
 Deno.test("child paging: one parent PAGE+1 then Range refused is HTTP 503", async () => {

@@ -191,6 +191,13 @@ const exerciseSchema = z.object({
 	// stored verbatim alongside estimatedOneRepMaxKg (never recomputed). Absent
 	// on legacy payloads → null column. Issue #517 Phase 6.
 	velocityEstimatedOneRepMaxKg: nullableField(nonNegNumber),
+	// Cables used for this exercise (1 or 2). Optional and nested (KD-2):
+	// builds that don't send it store NULL = unknown, never 2. Validated here so
+	// a bad value fails the whole push up front with the handler's generic
+	// validation 400 (field "body"; no per-field path is returned), before any
+	// write, instead of the exercises.cable_count CHECK failing inside the
+	// replace_session_children transaction as a 500.
+	cableCount: nullableField(z.number().int().min(1).max(2)),
 	sets: arrayOf(setSchema).default([]),
 });
 
