@@ -5003,6 +5003,14 @@ Deno.test({
       const routines = body.routines as Array<Record<string, unknown>>;
       assertEquals(sessions.map((s) => s.id), [ids.sessionId]);
       assertEquals(routines.map((r) => r.id), [ids.routineId]);
+      // R-4, legacy timestamp-mode branch (lastSync > 0, no parity lists, so
+      // the pull uses `select('*')` rather than get_sessions_excluding_ids):
+      // the reported updatedAt is the device's own LWW key here too.
+      assertEquals(
+        epochMs(sessions[0].updatedAt),
+        epochMs(slowStamp),
+        "timestamp-mode pull reports the device stamp, not the server write clock",
+      );
     } finally {
       await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
     }

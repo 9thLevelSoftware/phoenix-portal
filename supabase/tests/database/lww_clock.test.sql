@@ -773,5 +773,30 @@ SELECT is(
     'cycle (R-2): the portal edit survives a genuinely stale push'
 );
 
+-- A row the backfill never reached: portal_edited_at set, client_updated_at
+-- still NULL. Without the COALESCE around v_knows_portal_edit the `=`
+-- comparison yields NULL, the whole IF condition becomes NULL, plpgsql
+-- treats it as false and the LWW gate is skipped for every such row.
+INSERT INTO public.training_cycles (id, user_id, name, updated_at, client_updated_at, portal_edited_at)
+VALUES ('21212121-0000-4000-8000-0000000000c5'::uuid, '21212121-0000-4000-8000-000000000001'::uuid,
+        'C5 portal', now(), NULL, now());
+SELECT results_eq(
+    format(
+        $sql$ SELECT accepted FROM public.merge_training_cycles_from_push(
+                '21212121-0000-4000-8000-000000000001', %L::jsonb, true) $sql$,
+        jsonb_build_array(jsonb_build_object(
+            'id', '21212121-0000-4000-8000-0000000000c5', 'name', 'C5 phone',
+            'updated_at', now() - interval '9 minutes',
+            'base_updated_at', now()))
+    ),
+    $v$ VALUES (false) $v$,
+    'cycle (R-2): a NULL LWW key falls back to updated_at and the gate still rejects'
+);
+SELECT is(
+    (SELECT name FROM public.training_cycles WHERE id = '21212121-0000-4000-8000-0000000000c5'),
+    'C5 portal',
+    'cycle (R-2): the NULL-key row is unchanged'
+);
+
 SELECT * FROM finish();
 ROLLBACK;

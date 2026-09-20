@@ -589,11 +589,17 @@ BEGIN
       -- R-2: the stored key is a portal stamp this push already knows about
       -- (its base is at or after that edit), so a device clock behind the
       -- server must not lose its genuinely newer edit.
-      v_knows_portal_edit := v_has_base
-        AND v_existing.portal_edited_at IS NOT NULL
-        AND v_existing.client_updated_at = v_existing.portal_edited_at
-        AND date_trunc('milliseconds', v_base)
-            >= date_trunc('milliseconds', v_existing.portal_edited_at);
+      -- COALESCE is load-bearing: with client_updated_at NULL (a row the
+      -- backfill never reached) the `=` yields NULL, and `IF p_use_lww AND
+      -- NOT NULL AND ...` is NULL, which plpgsql treats as false — the
+      -- rejection branch would be skipped and every stale push accepted.
+      v_knows_portal_edit := COALESCE(
+        v_has_base
+          AND v_existing.portal_edited_at IS NOT NULL
+          AND v_existing.client_updated_at = v_existing.portal_edited_at
+          AND date_trunc('milliseconds', v_base)
+              >= date_trunc('milliseconds', v_existing.portal_edited_at),
+        FALSE);
 
       IF p_use_lww
          AND NOT v_knows_portal_edit
