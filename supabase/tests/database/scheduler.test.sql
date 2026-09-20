@@ -318,6 +318,19 @@ INSERT INTO auth.users (id, email)
 VALUES ('31313131-0000-4000-8000-0000000000f0'::uuid, 'scheduler-guard@example.test')
 ON CONFLICT (id) DO NOTHING;
 
+INSERT INTO public.subscriptions (id, user_id, tier, status, current_period_end)
+VALUES (
+    '31313131-5555-4000-8000-0000000000f0'::uuid,
+    '31313131-0000-4000-8000-0000000000f0'::uuid,
+    'FLAME',
+    'active',
+    now() + interval '30 days'
+)
+ON CONFLICT (user_id) DO UPDATE
+SET tier = EXCLUDED.tier,
+    status = EXCLUDED.status,
+    current_period_end = EXCLUDED.current_period_end;
+
 SET LOCAL ROLE authenticated;
 SELECT set_config(
     'request.jwt.claims',
