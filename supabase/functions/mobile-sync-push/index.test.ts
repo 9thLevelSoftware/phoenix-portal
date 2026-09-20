@@ -2164,7 +2164,10 @@ Deno.test("cycle delete failure returns retryable 503 and no sync_complete", asy
 
 Deno.test("routine exercise orphan cleanup failure returns retryable 503", async () => {
   const harness = makeHarness(undefined, {
-    writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
+    rpcBehavior: (name) =>
+      name === "cleanup_routine_exercise_orphans"
+        ? Promise.resolve({ data: null, error: INJECTED_DB_ERROR })
+        : Promise.resolve({ data: [], error: null }),
   });
   const response = await harness.handler(
     requestFromBody(validNestedRelationshipBody()),
@@ -2324,15 +2327,48 @@ Deno.test("orphan cleanup failure for a routine with no exercises returns retrya
   const routines = body.routines as Array<Record<string, unknown>>;
   routines[0] = { ...routines[0], exerciseCount: 0, exercises: [] };
   const harness = makeHarness(undefined, {
-    writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
+    rpcBehavior: (name) =>
+      name === "cleanup_routine_exercise_orphans"
+        ? Promise.resolve({ data: null, error: INJECTED_DB_ERROR })
+        : Promise.resolve({ data: [], error: null }),
   });
   const response = await harness.handler(requestFromBody(body));
   await assertPartialWriteRetry(harness, response);
-  const deletes = writeQueries(harness, "routine_exercises", "delete");
-  assertEquals(deletes.length, 1);
-  // The delete-all branch: no `not in` filter.
-  assert(!deletes[0]!.calls.some((call) => call.method === "not"));
-  assertEquals(callArgs(deletes[0]!, "eq"), ["routine_id", ROUTINE_ID]);
+  const cleanup = harness.adminRpcCalls.find((call) =>
+    call.name === "cleanup_routine_exercise_orphans"
+  );
+  assert(cleanup);
+  assertEquals(cleanup.args, {
+    p_user_id: VALID_USER_ID,
+    p_routine_id: ROUTINE_ID,
+    p_keep_ids: [],
+  });
+});
+
+Deno.test("orphan cleanup keeps hundreds of exercise ids in the RPC body", async () => {
+  const body = validNestedRelationshipBody();
+  const routines = body.routines as Array<Record<string, unknown>>;
+  const routine = routines[0]!;
+  const template = (routine.exercises as Array<Record<string, unknown>>)[0]!;
+  const exerciseIds = manyIds("8b00", 500);
+  routine.exerciseCount = exerciseIds.length;
+  routine.exercises = exerciseIds.map((id) => ({ ...template, id }));
+
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+
+  const cleanup = harness.adminRpcCalls.find((call) =>
+    call.name === "cleanup_routine_exercise_orphans"
+  );
+  assert(cleanup);
+  assertEquals(cleanup.args.p_routine_id, ROUTINE_ID);
+  assertEquals(cleanup.args.p_keep_ids, exerciseIds);
+  assertEquals(
+    writeQueries(harness, "routine_exercises", "delete").length,
+    0,
+  );
 });
 
 Deno.test("routine_exercises upsert failure returns the same retryable 503", async () => {

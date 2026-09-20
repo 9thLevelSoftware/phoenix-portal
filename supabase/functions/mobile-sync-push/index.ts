@@ -2361,22 +2361,18 @@ async function mobileSyncPushHandler(
           ? reRows.filter((r) => r.routine_id === routineId).map((r) => r.id)
           : [];
 
-        if (idsForRoutine.length > 0) {
-          // Delete exercises in this routine that are NOT in the payload
-          const { error: orphanErr } = await supabase
-            .from('routine_exercises')
-            .delete()
-            .eq('routine_id', routineId)
-            .not('id', 'in', `(${idsForRoutine.join(',')})`);
-          if (orphanErr) throw new PartialWriteRetryError('routine_exercises orphan cleanup', orphanErr);
-        } else {
-          // Routine has zero exercises now -- delete all
-          const { error: orphanErr } = await supabase
-            .from('routine_exercises')
-            .delete()
-            .eq('routine_id', routineId);
-          if (orphanErr) throw new PartialWriteRetryError('routine_exercises orphan cleanup', orphanErr);
-        }
+        // Keep IDs in the RPC POST body. A PostgREST `.not('id', 'in', ...)`
+        // query puts every UUID in the URL and deterministically fails for
+        // large routines. An empty array intentionally deletes every child.
+        const { error: orphanErr } = await supabase.rpc(
+          'cleanup_routine_exercise_orphans',
+          {
+            p_user_id: userId,
+            p_routine_id: routineId,
+            p_keep_ids: idsForRoutine,
+          },
+        );
+        if (orphanErr) throw new PartialWriteRetryError('routine_exercises orphan cleanup', orphanErr);
       }
     }
 
