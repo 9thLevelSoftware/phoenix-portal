@@ -1,0 +1,133 @@
+name: Edge Integration (real SQL)
+
+# Runs the Deno Edge tests named "integration: ..." against a fresh local
+# Supabase stack with every migration applied. These tests are `ignore:`d in
+# `npm run test:edge` (no stack there); this job is where they execute.
+# Contract for new real-SQL tests:
+#   supabase/functions/_shared/localIntegrationEnvironment.ts
+#
+# Only the local stack's public demo keys (from `supabase status`) are used.
+# No production secrets are read by this workflow.
+#
+# Required-check safe: pull_request has no `paths:` filter, so the workflow
+# always reports. The `changes` job decides whether the real-SQL job runs; a
+# job skipped via `if:` reports as skipped, which satisfies a required status
+# check. "Edge integration tests against local Supabase" can therefore be made
+# a required check without blocking unrelated PRs.
+#
+# The tests run twice on the same stack, once per SYNC_LWW_ENABLED value (the
+# flag's prod value is unknown and the push handler has a separate write path
+# for each). Two steps in one job rather than a matrix keep a single check
+# name, which a job skipped via `if:` reports reliably.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/**"
+      - "scripts/test-edge-functions.mjs"
+      - "package.json"
+      - ".github/workflows/edge-integration.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: edge-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect Edge integration relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.diff.outputs.run }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE_SHA" HEAD)
+          echo "$changed"
+          if grep -Eq '^(supabase/|scripts/test-edge-functions\.mjs$|package\.json$|\.github/workflows/edge-integration\.yml$)' <<<"$changed"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  real-sql:
+    name: Edge integration tests against local Supabase
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: 2.2.15
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
+        with:
+          version: 2.76.9
+
+      # Same as migrations.yml: the committed seed.sql expects an existing
+      # auth user and must not run in CI. The checkout is ephemeral.
+      - name: Disable seed.sql
+        run: echo "-- seed disabled for edge-integration CI; see .github/workflows/edge-integration.yml" > supabase/seed.sql
+
+      - name: Start local Supabase stack
+        run: supabase start --ignore-health-check
+
+      - name: Reset DB and apply all migrations
+        run: supabase db reset --no-seed
+
+      - name: Export local stack credentials
+        shell: bash
+        run: |
+          status_json=$(supabase status -o json)
+          api_url=$(jq -r '.API_URL // empty' <<<"$status_json")
+          anon_key=$(jq -r '.ANON_KEY // .PUBLISHABLE_KEY // empty' <<<"$status_json")
+          service_key=$(jq -r '.SERVICE_ROLE_KEY // .SECRET_KEY // empty' <<<"$status_json")
+          if [ -z "$api_url" ] || [ -z "$anon_key" ] || [ -z "$service_key" ]; then
+            echo "::error::supabase status did not report API_URL / ANON_KEY / SERVICE_ROLE_KEY"
+            jq 'keys' <<<"$status_json"
+            exit 1
+          fi
+          # Local demo keys, not secrets; mask anyway to keep logs clean.
+          echo "::add-mask::$anon_key"
+          echo "::add-mask::$service_key"
+          {
+            echo "SUPABASE_URL=$api_url"
+            echo "SUPABASE_ANON_KEY=$anon_key"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$service_key"
+          } >> "$GITHUB_ENV"
+
+      - name: Run real-SQL Edge integration tests (SYNC_LWW_ENABLED=false)
+        env:
+          SYNC_LWW_ENABLED: "false"
+        run: npm run test:edge:integration
+
+      - name: Run real-SQL Edge integration tests (SYNC_LWW_ENABLED=true)
+        if: ${{ !cancelled() }}
+        env:
+          SYNC_LWW_ENABLED: "true"
+      - name: Run real-SQL Edge integration tests
+        run: npm run test:edge:integration
+
+      - name: Stop stack
+        if: always()
+        run: supabase stop --no-backup || true

@@ -16,7 +16,7 @@ Phoenix Portal is a React web companion dashboard for Project Phoenix, a communi
 npm run dev        # Start Vite dev server at http://localhost:5173
 npm run build      # Production build to /dist
 npm test           # Run Vitest unit tests
-npm run typecheck  # TypeScript type checking
+npm run typecheck  # tsc -p over every tsconfig project; fails on errors not in typecheck-baseline.json
 npm run test:e2e   # Run Playwright E2E tests
 npm run supabase -- <args>  # Pinned Supabase CLI (version in .supabase-cli-version)
 npm run test:db          # Full pgTAP suite against the local stack (CI: migrations.yml)
@@ -209,6 +209,8 @@ MOCK_EDGE_FUNCTIONS=false npm test          # Live mode against real Supabase
 
 Non-negotiable rules to prevent schema drift (as discovered 2026-04-20 when 5 migrations were recorded in `schema_migrations` but their DDL was absent from prod):
 
+**Single migration owner** (release-plan decision, Operator Action 3): the human operator applies production migrations with `supabase db push`. The Supabase GitHub App's migration step is not relied on (its `main` record has shown `MIGRATIONS_FAILED` since 2026-03-16, and prod migrations have been applied out-of-band). If this decision changes, update this line, `AGENTS.md`, and the `deploy-edge-functions.yml` header together. For the order of migrations, Edge Functions, SPA, and mobile releases, follow `AGENTS.md` -> "Release order"; the Edge deploy workflow refuses to deploy while any local migration is unapplied in prod.
+
 ### DO
 - Write every schema change as a migration file in `supabase/migrations/`.
 - Keep every DDL statement **idempotent** (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DO $$ ... IF NOT EXISTS ... $$`). A migration must be safe to re-run.
@@ -232,3 +234,5 @@ Non-negotiable rules to prevent schema drift (as discovered 2026-04-20 when 5 mi
 ### CI coverage
 - `.github/workflows/migrations.yml` — clean-applies every migration into a fresh Supabase stack on any PR that touches `supabase/migrations/` (or the tests, types or tooling it depends on). Fails on file-vs-applied count mismatch, on any pgTAP failure (`supabase test db`, all files), and when `src/lib/database.types.ts` differs from the migrated schema.
 - `.github/workflows/prod-migration-drift.yml` — daily `supabase migration list --linked` drift detector against the prod Supabase project. Fails its own run (and emits a remediation recipe) when any local migration is not applied to prod. Required `production` environment secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROD_PROJECT_REF`, `SUPABASE_PROD_DB_PASSWORD`; protect that environment with main-only branch restrictions/reviewers. The workflow also has an in-repo `refs/heads/main` guard before any production secret-consuming step. **Detector only — does not gate `.github/workflows/deploy-edge-functions.yml` or any other deploy path.** The drift class this would surface is the one demonstrated by `9thLevelSoftware/Project-Phoenix-MP#602`, but pushing the missing migration and verifying the reporter path are separate operational steps owned by the human operator with prod DB credentials.
+- `.github/workflows/migrations.yml` — clean-applies every migration into a fresh Supabase stack on any PR that touches `supabase/migrations/`. Fails on file-vs-applied count mismatch.
+- `.github/workflows/prod-migration-drift.yml` — daily `supabase migration list --linked` drift detector against the prod Supabase project. Fails its own run (and emits a remediation recipe) when any local migration is not applied to prod. Required `production` environment secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROD_PROJECT_REF`, `SUPABASE_PROD_DB_PASSWORD`; protect that environment with main-only branch restrictions/reviewers. The workflow also has an in-repo `refs/heads/main` guard before any production secret-consuming step. **Detector only — does not itself gate any deploy path.** (`.github/workflows/deploy-edge-functions.yml` runs the same check as its own pre-deploy gate, plus `check:edge-functions` and `test:edge` in a `verify` job the deploy needs.) The drift class this would surface is the one demonstrated by `9thLevelSoftware/Project-Phoenix-MP#602`, but pushing the missing migration and verifying the reporter path are separate operational steps owned by the human operator with prod DB credentials.

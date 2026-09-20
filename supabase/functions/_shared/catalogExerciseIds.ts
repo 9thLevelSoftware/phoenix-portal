@@ -45,6 +45,11 @@ export function isAccessibleCatalogRow(
 	return true;
 }
 
+/**
+ * Earlier rows win normalized-name ties (`byName` keeps the first entry), so
+ * callers control precedence by input order. mobile-sync-push passes public
+ * library rows before the caller's custom rows.
+ */
 export function buildCatalogIndexes(
 	rows: CatalogLookupRow[],
 	userId: string,

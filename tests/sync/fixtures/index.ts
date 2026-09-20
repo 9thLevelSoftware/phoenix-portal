@@ -374,7 +374,6 @@ export function createFullSyncPayload(
 		// Add more if needed
 		while (externalActivities.length < externalActivityCount) {
 			const providerIndex = externalActivities.length % 3;
-			const providers = ["strava", "fitbit", "garmin"] as const;
 			externalActivities.push(
 				...createExternalActivityFixturesForAllProviders(userId).filter(
 					(_, i) => i === providerIndex,

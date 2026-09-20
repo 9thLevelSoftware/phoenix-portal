@@ -130,6 +130,21 @@ describe("workoutListOptions", () => {
 	});
 });
 
+const SESSION_ROW = {
+	id: "11111111-1111-4111-8111-111111111111",
+	user_id: "22222222-2222-4222-8222-222222222222",
+	name: "Leg Day",
+	started_at: "2026-03-10T09:00:00Z",
+	duration_seconds: 2400,
+	total_volume: 800,
+	set_count: 6,
+	exercise_count: 2,
+	pr_count: 1,
+	routine_name: null,
+	workout_mode: null,
+	notes: null,
+};
+
 describe("sessionDetailOptions", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -141,70 +156,232 @@ describe("sessionDetailOptions", () => {
 		expect(opts.queryKey).toEqual(queryKeys.workouts.detail("sess-1"));
 	});
 
-	it("assembles session + exercises + sets into nested structure", async () => {
-		const sessionRow = {
-			id: "11111111-1111-4111-8111-111111111111",
-			user_id: "22222222-2222-4222-8222-222222222222",
-			name: "Leg Day",
-			started_at: "2026-03-10T09:00:00Z",
-			duration_seconds: 2400,
-			total_volume: 800,
-			set_count: 6,
-			exercise_count: 2,
-			pr_count: 1,
-			routine_name: null,
-			workout_mode: null,
+	it("loads session + exercises + sets in one embedded request", async () => {
+		const setRow = {
+			id: "bbbb1111-1111-4111-8111-111111111111",
+			exercise_id: "aaaa1111-1111-4111-8111-111111111111",
+			set_number: 1,
+			target_reps: 8,
+			actual_reps: 8,
+			weight_kg: 60,
+			rpe: 7,
+			is_pr: true,
 			notes: null,
 		};
-		const exerciseRows = [
-			{
-				id: "aaaa1111-1111-4111-8111-111111111111",
-				session_id: "11111111-1111-4111-8111-111111111111",
-				name: "Squat",
-				muscle_group: "Legs",
-				order_index: 0,
-			},
-		];
-		const setRows = [
-			{
-				id: "bbbb1111-1111-4111-8111-111111111111",
-				exercise_id: "aaaa1111-1111-4111-8111-111111111111",
-				set_number: 1,
-				target_reps: 8,
-				actual_reps: 8,
-				weight_kg: 60,
-				rpe: 7,
-				is_pr: true,
-				notes: null,
-			},
-		];
+		const exerciseRow = {
+			id: "aaaa1111-1111-4111-8111-111111111111",
+			session_id: SESSION_ROW.id,
+			name: "Squat",
+			muscle_group: "Legs",
+			order_index: 0,
+		};
+		const embeddedRow = {
+			...SESSION_ROW,
+			exercises: [{ ...exerciseRow, sets: [setRow] }],
+		};
 
-		let callCount = 0;
-		fromFn.mockImplementation(() => {
-			callCount++;
-			if (callCount === 1) return buildChain({ data: sessionRow, error: null });
-			if (callCount === 2)
-				return buildChain({ data: exerciseRows, error: null });
-			return buildChain({ data: setRows, error: null });
-		});
+		chain = buildChain({ data: embeddedRow, error: null });
+		fromFn.mockImplementation(() => chain);
 
 		const { sessionDetailOptions } = await import("../workouts");
-		const opts = sessionDetailOptions("11111111-1111-4111-8111-111111111111");
+		const opts = sessionDetailOptions(SESSION_ROW.id);
 		const result = await opts.queryFn?.({} as never);
 
-		expect(result.name).toBe("Leg Day");
-		expect(result.exercises).toHaveLength(1);
-		expect(result.exercises[0].name).toBe("Squat");
-		expect(result.exercises[0].sets).toHaveLength(1);
-		expect(result.exercises[0].hasPR).toBe(true);
-		// weight_kg doubled by Zod transform
-		expect(result.exercises[0].sets[0].weight_kg).toBe(120);
+		// Single request against workout_sessions with the embedded tree
+		expect(fromFn).toHaveBeenCalledTimes(1);
+		expect(fromFn).toHaveBeenCalledWith("workout_sessions");
+		expect(chain.select).toHaveBeenCalledWith("*, exercises(*, sets(*))");
+		expect(chain.eq).toHaveBeenCalledWith("id", SESSION_ROW.id);
+		expect(chain.order).toHaveBeenCalledWith("order_index", {
+			ascending: true,
+			referencedTable: "exercises",
+		});
+		expect(chain.order).toHaveBeenCalledWith("set_number", {
+			ascending: true,
+			referencedTable: "exercises.sets",
+		});
+		expect(chain.single).toHaveBeenCalledTimes(1);
+
+		// Parsed shape is unchanged: session fields + exercises with sets/hasPR
+		const { exercises, ...sessionFields } = result as NonNullable<
+			typeof result
+		>;
+		expect(sessionFields).not.toHaveProperty("exercises");
+		expect(result?.name).toBe("Leg Day");
+		expect(result?.started_at).toBeInstanceOf(Date);
+		expect(exercises).toEqual([
+			{
+				...exerciseRow,
+				sets: [{ ...setRow, weight_kg: 120 }], // weight_kg doubled by Zod transform
+				hasPR: true,
+			},
+		]);
+	});
+
+	it("returns an empty exercise list for a session with no exercises", async () => {
+		chain = buildChain({
+			data: { ...SESSION_ROW, exercises: [] },
+			error: null,
+		});
+		fromFn.mockImplementation(() => chain);
+
+		const { sessionDetailOptions } = await import("../workouts");
+		const result = await sessionDetailOptions(SESSION_ROW.id).queryFn?.(
+			{} as never,
+		);
+
+		expect(fromFn).toHaveBeenCalledTimes(1);
+		expect(result?.exercises).toEqual([]);
+	});
+
+	it("throws the PostgREST error from the embedded select", async () => {
+		const error = { message: "boom", code: "PGRST116" };
+		chain = buildChain({ data: null, error });
+		fromFn.mockImplementation(() => chain);
+
+		const { sessionDetailOptions } = await import("../workouts");
+		await expect(
+			sessionDetailOptions(SESSION_ROW.id).queryFn?.({} as never),
+		).rejects.toBe(error);
 	});
 
 	it("has enabled: false when sessionId is empty", async () => {
 		const { sessionDetailOptions } = await import("../workouts");
 		const opts = sessionDetailOptions("");
 		expect(opts.enabled).toBe(false);
+	});
+});
+
+describe("comparisonDetailOptions", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("builds a SessionSummary from one embedded request with rep summaries", async () => {
+		const exA = "aaaa1111-1111-4111-8111-111111111111";
+		const exB = "aaaa2222-2222-4222-8222-222222222222";
+		const set = (
+			id: string,
+			exerciseId: string,
+			weight: number,
+			reps: unknown[],
+		) => ({
+			id,
+			exercise_id: exerciseId,
+			set_number: 1,
+			target_reps: 5,
+			actual_reps: 5,
+			weight_kg: weight,
+			rpe: null,
+			is_pr: false,
+			notes: null,
+			rep_summaries: reps,
+		});
+		const setA1 = "bbbb1111-1111-4111-8111-111111111111";
+		const setA2 = "bbbb2222-2222-4222-8222-222222222222";
+		const setB1 = "bbbb3333-3333-4333-8333-333333333333";
+		const embeddedRow = {
+			...SESSION_ROW,
+			exercises: [
+				{
+					id: exA,
+					session_id: SESSION_ROW.id,
+					name: "Squat",
+					muscle_group: "Legs",
+					order_index: 0,
+					sets: [
+						set(setA1, exA, 50, [
+							{ set_id: setA1, mean_velocity_mps: 0.5 },
+							{ set_id: setA1, mean_velocity_mps: null },
+						]),
+						set(setA2, exA, 60, [{ set_id: setA2, mean_velocity_mps: 0.7 }]),
+					],
+				},
+				{
+					id: exB,
+					session_id: SESSION_ROW.id,
+					name: "Row",
+					muscle_group: "Back",
+					order_index: 1,
+					sets: [set(setB1, exB, 20, [])],
+				},
+			],
+		};
+
+		chain = buildChain({ data: embeddedRow, error: null });
+		fromFn.mockImplementation(() => chain);
+
+		const { comparisonDetailOptions } = await import("../workouts");
+		const opts = comparisonDetailOptions(SESSION_ROW.id);
+		expect(opts.queryKey).toEqual(
+			queryKeys.workouts.comparison(SESSION_ROW.id, "detail"),
+		);
+		const result = await opts.queryFn?.({} as never);
+
+		expect(fromFn).toHaveBeenCalledTimes(1);
+		expect(fromFn).toHaveBeenCalledWith("workout_sessions");
+		expect(chain.select).toHaveBeenCalledWith(
+			"*, exercises(*, sets(*, rep_summaries(set_id, mean_velocity_mps)))",
+		);
+		expect(chain.order).toHaveBeenCalledWith("order_index", {
+			ascending: true,
+			referencedTable: "exercises",
+		});
+		expect(chain.order).toHaveBeenCalledWith("set_number", {
+			ascending: true,
+			referencedTable: "exercises.sets",
+		});
+
+		expect(result).toEqual({
+			id: SESSION_ROW.id,
+			name: "Leg Day",
+			startedAt: new Date("2026-03-10T09:00:00Z"),
+			totalVolume: 800,
+			duration: 40,
+			exerciseCount: 2,
+			setCount: 6,
+			prCount: 1,
+			exercises: [
+				{
+					name: "Squat",
+					// weights doubled by Zod: (100 + 120) * 5
+					volume: 1100,
+					maxWeight: 120,
+					sets: 2,
+					// null velocity ignored: (0.5 + 0.7) / 2
+					avgVelocity: expect.closeTo(0.6, 10),
+				},
+				{ name: "Row", volume: 200, maxWeight: 40, sets: 1, avgVelocity: 0 },
+			],
+		});
+	});
+
+	it("throws the PostgREST error from the embedded select", async () => {
+		const error = { message: "boom", code: "PGRST116" };
+		chain = buildChain({ data: null, error });
+		fromFn.mockImplementation(() => chain);
+
+		const { comparisonDetailOptions } = await import("../workouts");
+		await expect(
+			comparisonDetailOptions(SESSION_ROW.id).queryFn?.({} as never),
+		).rejects.toBe(error);
+		expect(fromFn).toHaveBeenCalledTimes(1);
+	});
+
+	it("handles a session with no exercises", async () => {
+		chain = buildChain({
+			data: { ...SESSION_ROW, exercises: [] },
+			error: null,
+		});
+		fromFn.mockImplementation(() => chain);
+
+		const { comparisonDetailOptions } = await import("../workouts");
+		const result = await comparisonDetailOptions(SESSION_ROW.id).queryFn?.(
+			{} as never,
+		);
+
+		expect(fromFn).toHaveBeenCalledTimes(1);
+		expect(result?.exercises).toEqual([]);
 	});
 });
 

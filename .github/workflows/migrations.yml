@@ -20,6 +20,7 @@ on:
       - "supabase/seed.sql"
       - "supabase/config.toml"
       - "supabase/tests/**"
+      - "scripts/ci/sync-queue-triage/**"
       - "src/lib/database.types.ts"
       - "scripts/gen-types.mjs"
       - "scripts/supabase-cli.mjs"
@@ -36,6 +37,7 @@ on:
       - "supabase/seed.sql"
       - "supabase/config.toml"
       - "supabase/tests/**"
+      - "scripts/ci/sync-queue-triage/**"
       - "src/lib/database.types.ts"
       - "scripts/gen-types.mjs"
       - "scripts/supabase-cli.mjs"
@@ -67,6 +69,24 @@ jobs:
       - name: Read pinned Supabase CLI version
         id: cli
         shell: bash
+      # Validated here for the same reason the two prod-facing workflows do
+      # it: an empty/malformed value makes setup-cli silently fall back to its
+      # own default, and a different CLI generates different types, which is
+      # exactly what the gen:types:check step below compares against. The
+      # regex is inlined (no Node yet at this point in the job).
+        run: |
+          set -euo pipefail
+          if [ ! -r .supabase-cli-version ]; then
+            echo "::error::.supabase-cli-version is missing or unreadable; refusing to run with an unpinned Supabase CLI."
+            exit 1
+          fi
+          version="$(tr -d '[:space:]' < .supabase-cli-version)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::.supabase-cli-version must hold a plain x.y.z version (got '${version}'); refusing to run with an unpinned Supabase CLI."
+            exit 1
+          fi
+          echo "Pinned Supabase CLI: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
         run: echo "version=$(tr -d '[:space:]' < .supabase-cli-version)" >> "$GITHUB_OUTPUT"
 
       - name: Install Supabase CLI
@@ -117,6 +137,35 @@ jobs:
       - name: pgTAP suite
         run: supabase test db
 
+      # Test-count floor (PR 25 review R-21). `supabase test db` only checks
+      # the exit code, and five of the six pgTAP files still use `no_plan()`,
+      # so DELETING an assertion leaves CI green with a smaller suite. That
+      # matters most for gamification_stats.test.sql, which is the only place
+      # the "a crafted payload cannot write a derived counter" claim is
+      # proven — a mutation that re-added the derived columns to the RPC's
+      # INSERT list was fully green against the whole suite before this PR.
+      # gamification_stats.test.sql itself now uses `SELECT plan(N)`; this
+      # floor covers the other five files.
+      #
+      # Raise PGTAP_TEST_FLOOR whenever the suite grows. It is a floor, not
+      # an equality check, so adding tests never fails the gate.
+      - name: pgTAP test-count floor
+        env:
+          PGTAP_TEST_FLOOR: "763"
+        run: |
+          set -euo pipefail
+          summary="$(supabase test db 2>&1 | tee /dev/stderr | grep -oE 'Tests=[0-9]+' | tail -1 || true)"
+          if [ -z "$summary" ]; then
+            echo "::error::Could not parse the pg_prove 'Tests=<n>' summary. The CLI output shape changed — fix this step rather than removing it."
+            exit 1
+          fi
+          count="${summary#Tests=}"
+          echo "pgTAP assertions run: $count (floor $PGTAP_TEST_FLOOR)"
+          if [ "$count" -lt "$PGTAP_TEST_FLOOR" ]; then
+            echo "::error::pgTAP suite shrank: $count assertions ran, floor is $PGTAP_TEST_FLOOR. An assertion was deleted, or a no_plan() file stopped running. Restore it, or lower the floor deliberately in the same commit."
+            exit 1
+          fi
+
       # Generated-types drift check. It also runs when the pgTAP suite
       # failed (as long as the migrations applied), so a PR sees both
       # results in one run. On failure the step prints the diff and the
@@ -136,6 +185,30 @@ jobs:
         env:
           SUPABASE_BIN: supabase
         run: npm run gen:types:check
+
+      # PR 31 (R-14/R-22): seed a stale sync_queue backlog, check the
+      # operator's read-only dry run against the expected disjoint counts,
+      # re-apply the scheduler migration so its OWN triage call runs over the
+      # backlog, and assert every row's outcome.
+      - name: Sync-queue backlog triage through the scheduler migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v psql >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q postgresql-client; }
+          DB_URL=$(supabase status -o env | sed -n 's/^DB_URL="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p')
+          test -n "$DB_URL"
+          dir=scripts/ci/sync-queue-triage
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$dir/seed.sql"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -At -f "$dir/dry_run.sql" > "$RUNNER_TEMP/dry_run.txt"
+          diff -u "$dir/expected_dry_run.txt" "$RUNNER_TEMP/dry_run.txt"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260920003100_scheduler_and_sync_queue_cron.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$dir/check.sql"
+      # SECURITY DEFINER grant guard: fails if any definer function in public
+      # is executable by anon/authenticated outside the browser allow-list,
+      # or lacks a pinned search_path. The full pgTAP suite is enabled
+      # separately; this runs only the guard file.
+      - name: pgTAP definer function grant guard
+        run: supabase test db supabase/tests/database/definer_function_grants.test.sql
 
       - name: Stop stack
         if: always()
