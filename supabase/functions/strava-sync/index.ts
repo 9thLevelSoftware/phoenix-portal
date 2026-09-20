@@ -9,6 +9,7 @@ import {
   type StravaRateLimitSnapshot,
 } from '../_shared/providerRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import { nextWatermark } from '../_shared/syncWatermark.ts';
 
 /**
  * Loose Supabase client type for helper signatures. The bare
@@ -205,7 +206,35 @@ async function refreshAccessToken(
 // Main handler
 // ---------------------------------------------------------------------------
 
-Deno.serve(async (req) => {
+export interface StravaSyncDependencies {
+  env: (key: string) => string | undefined;
+  // deno-lint-ignore no-explicit-any
+  createClient: (url: string, key: string, options?: any) => DbClient;
+  /** Used for Strava API calls. */
+  fetch: typeof fetch;
+  now: () => Date;
+}
+
+function defaultStravaSyncDependencies(): StravaSyncDependencies {
+  return {
+    env: (key) => Deno.env.get(key),
+    createClient: (url, key, options) => createClient(url, key, options),
+    fetch: (input, init) => fetch(input, init),
+    now: () => new Date(),
+  };
+}
+
+export function createStravaSyncHandler(
+  dependencies: StravaSyncDependencies = defaultStravaSyncDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => stravaSync(req, dependencies);
+}
+
+if (import.meta.main) {
+  Deno.serve(createStravaSyncHandler());
+}
+
+async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -230,9 +259,9 @@ Deno.serve(async (req) => {
     let userId: string;
 
     // Try JWT auth first (browser-initiated calls)
-    const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
+    const supabaseAuth = deps.createClient(
+      deps.env('SUPABASE_URL')!,
+      deps.env('SUPABASE_ANON_KEY')!,
       { global: { headers: { Authorization: authHeader } } },
     );
     const { data: { user: jwtUser } } = await supabaseAuth.auth.getUser();
@@ -243,7 +272,7 @@ Deno.serve(async (req) => {
     } else {
       // Not a valid user JWT -- must be service-role call from process-sync-queue
       // Verify the caller is actually using the service role key
-      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      const serviceRoleKey = deps.env('SUPABASE_SERVICE_ROLE_KEY') ?? '';
       const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
 
       if (!isServiceRole || !body.user_id) {
@@ -259,9 +288,9 @@ Deno.serve(async (req) => {
     const queueId = typeof body.queue_id === 'string' ? body.queue_id : null;
     const calledByQueueProcessor = !jwtUser;
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = deps.createClient(
+      deps.env('SUPABASE_URL')!,
+      deps.env('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
     // Subscription gate — FLAME or higher required for integrations
@@ -348,6 +377,10 @@ Deno.serve(async (req) => {
     // Fetch activities from Strava
     // ---------------------------------------------------------------
     const baseParams = new URLSearchParams({ per_page: '200' });
+    // Captured before the first request: an incremental run fetches
+    // everything after the old watermark up to (at least) this instant, so
+    // this — not the end of the run — is where the next window must start.
+    const syncStartedAt = deps.now().toISOString();
 
     // Two modes:
     //
@@ -413,7 +446,7 @@ Deno.serve(async (req) => {
       const params = new URLSearchParams(baseParams);
       params.set('page', String(page));
 
-      const activitiesResponse = await fetch(
+      const activitiesResponse = await deps.fetch(
         `https://www.strava.com/api/v3/athlete/activities?${params}`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -583,11 +616,46 @@ Deno.serve(async (req) => {
     }
 
     // ---------------------------------------------------------------
-    // Update last_sync_at (all activities persisted)
+    // Advance last_sync_at (all activities persisted) — only to the end of a
+    // window fetched contiguously from the previous watermark:
+    //  - incremental/manual with a watermark: [last_sync_at, syncStartedAt];
+    //  - first backfill (no watermark): runs newest-first and may resume
+    //    across queue passes, so the contiguous window ends at the newest
+    //    activity stored, not at this run's clock (activities uploaded
+    //    between the first and the final backfill pass are then fetched by
+    //    the next incremental, idempotently);
+    //  - `initial` against an existing watermark only reached further into
+    //    the past, so the watermark stays put (see _shared/syncWatermark.ts).
     // ---------------------------------------------------------------
+    let contiguousUpTo = syncStartedAt;
+    if (!integration.last_sync_at) {
+      const { data: newestStored } = await supabase
+        .from('external_activities')
+        .select('started_at')
+        .eq('user_id', userId)
+        .eq('provider', 'strava')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const newestMs = newestStored?.started_at
+        ? Date.parse(newestStored.started_at as string)
+        : Number.NaN;
+      if (Number.isFinite(newestMs) && newestMs < Date.parse(syncStartedAt)) {
+        contiguousUpTo = new Date(newestMs).toISOString();
+      }
+    }
+    const watermark = nextWatermark({
+      syncType: sync_type,
+      previous: integration.last_sync_at as string | null,
+      contiguousUpTo,
+    });
     await supabase
       .from('user_integrations')
-      .update({ last_sync_at: new Date().toISOString(), status: 'connected', error_message: null })
+      .update({
+        ...(watermark ? { last_sync_at: watermark } : {}),
+        status: 'connected',
+        error_message: null,
+      })
       .eq('user_id', userId)
       .eq('provider', 'strava');
 
@@ -610,4 +678,4 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
-});
+}

@@ -2,9 +2,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Database, Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
+import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 function estimatedRoutineDurationSeconds(
@@ -18,16 +18,9 @@ function estimatedRoutineDurationSeconds(
 }
 
 function normalizePerSetWeights(per: unknown): Json | null {
+	// The builder collects per_set_weights per cable, like `weight`, which is
+	// exactly what is stored (KD-8). No conversion.
 	if (per == null) return null;
-	// UI collects per_set_weights in the same "total weight" units as the
-	// single `weight` field (which is divided by WEIGHT_MULTIPLIER before
-	// storage). Divide array entries by the same multiplier so the stored
-	// per-cable representation stays consistent.
-	if (Array.isArray(per)) {
-		return per.map((x) =>
-			typeof x === "number" ? x / WEIGHT_MULTIPLIER : x,
-		) as Json;
-	}
 	return per as Json;
 }
 
@@ -74,7 +67,7 @@ function toRoutineExerciseRows(
 		exercise_id: ex.exercise_id ?? null,
 		sets: ex.sets,
 		reps: ex.reps,
-		weight: ex.weight / WEIGHT_MULTIPLIER,
+		weight: ex.weight, // per cable, stored as entered (KD-8)
 		rest_seconds: ex.rest_seconds,
 		duration_seconds: ex.duration_seconds ?? null,
 		mode: ex.mode,
@@ -94,10 +87,7 @@ function toRoutineExerciseRows(
 		eccentric_load: ex.eccentric_load ?? null,
 		echo_level: ex.echo_level ?? null,
 		drop_set_enabled: ex.drop_set_enabled ?? false,
-		drop_set_min_weight_kg:
-			ex.drop_set_min_weight_kg == null
-				? null
-				: ex.drop_set_min_weight_kg / WEIGHT_MULTIPLIER,
+		drop_set_min_weight_kg: ex.drop_set_min_weight_kg ?? null,
 	}));
 }
 
@@ -173,6 +163,9 @@ export function useSaveRoutine() {
 	});
 }
 
+/** Sentinel for "the favourite UPDATE matched no row". */
+const ROUTINE_NOT_UPDATED = "Routine was not updated";
+
 export function useToggleFavorite() {
 	const { user } = useAuth();
 	const queryClient = useQueryClient();
@@ -186,18 +179,40 @@ export function useToggleFavorite() {
 			isFavorite: boolean;
 		}) => {
 			if (!user) throw new Error("Must be logged in");
-			const { error } = await supabase
+			// `.select("id")` so a 0-row UPDATE is observable. The routines
+			// UPDATE policy is owner AND FLAME, so a user whose plan lapsed
+			// while this page was open matches no row and PostgREST returns
+			// success with an empty body — silently doing nothing.
+			const { data: updated, error } = await supabase
 				.from("routines")
 				.update({ is_favorite: isFavorite })
 				.eq("id", routineId)
-				.eq("user_id", user.id);
+				.eq("user_id", user.id)
+				.select("id")
+				.maybeSingle();
 			if (error) throw error;
+			if (!updated) throw new Error(ROUTINE_NOT_UPDATED);
 			return { routineId, isFavorite };
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: queryKeys.routines.all,
 			});
+		},
+		onError: (error: Error) => {
+			console.error("[useToggleFavorite] failed:", error);
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
+			toast.error(
+				error.message === ROUTINE_NOT_UPDATED
+					? "Routine not found, or you can no longer edit it."
+					: "Failed to update this routine. Please try again.",
+			);
 		},
 	});
 }

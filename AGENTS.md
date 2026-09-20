@@ -9,9 +9,14 @@ linked source files over guessing when scope or behavior is unclear.
   context.
 - `WORKFLOW.md`: Symphony runtime config, Linear state routing, workpad format,
   validation policy, and PR handoff rules.
+- `docs/axioms.md`: the eight first-principles axioms (FP-1…FP-8) this codebase
+  is judged against. Read them before changing auth, billing, sync,
+  deletion/export or migrations.
+- `CLAUDE.md`: the long-form map — commands, the mobile sync contract,
+  environment variables, CI coverage and migration discipline.
 - `docs/runbooks/symphony.md`: operator setup and runner checklist.
 - `docs/review/go-no-go-checklist.md`: historical 2026-03-18 GO (**not HEAD**).
-  Re-derive launch readiness from FP-1–FP-12 and CI; do not treat that
+  Re-derive launch readiness from `docs/axioms.md` and CI; do not treat that
   checklist as a current pass.
 - `.github/workflows/ci.yml`: pull request validation gates.
 
@@ -34,10 +39,24 @@ Default before handoff:
 npm run verify:full
 ```
 
-Run `npm run test:sync` for sync, Edge Function, schema, DTO, or
-migration-adjacent work. For migrations, commit idempotent SQL files under
-`supabase/migrations/`; do not use the Supabase dashboard SQL editor for schema
-changes.
+Add, for the work it touches:
+
+```bash
+npm run test:sync   # sync, DTO or schema-transform work
+npm run test:edge   # ANY change under supabase/functions/ (Deno handler tests)
+npm run test:db     # migrations or pgTAP (needs a local Supabase stack)
+```
+
+`npm run check:edge-functions` type-checks the Edge Functions and is the
+cheapest first signal after touching one.
+
+Caveat: `npm run typecheck` runs `tsc --noEmit` over a solution `tsconfig.json`
+with `"files": []`, so it compiles an empty program and always passes. Use
+`npx tsc -b --force` when you need real coverage, and compare against the
+pre-existing backlog rather than expecting zero.
+
+For migrations, commit idempotent SQL files under `supabase/migrations/`; do
+not use the Supabase dashboard SQL editor for schema changes.
 
 ## Release order
 

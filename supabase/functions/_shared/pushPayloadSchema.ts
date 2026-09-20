@@ -191,6 +191,13 @@ const exerciseSchema = z.object({
 	// stored verbatim alongside estimatedOneRepMaxKg (never recomputed). Absent
 	// on legacy payloads → null column. Issue #517 Phase 6.
 	velocityEstimatedOneRepMaxKg: nullableField(nonNegNumber),
+	// Cables used for this exercise (1 or 2). Optional and nested (KD-2):
+	// builds that don't send it store NULL = unknown, never 2. Validated here so
+	// a bad value fails the whole push up front with the handler's generic
+	// validation 400 (field "body"; no per-field path is returned), before any
+	// write, instead of the exercises.cable_count CHECK failing inside the
+	// replace_session_children transaction as a 500.
+	cableCount: nullableField(z.number().int().min(1).max(2)),
 	sets: arrayOf(setSchema).default([]),
 });
 
@@ -317,14 +324,21 @@ const cycleSchema = z.object({
 	userId: z.string(),
 	name: z.string(),
 	description: nullableField(z.string()),
-	durationWeeks: nonNegIntDefault(4),
+	// KD-6: no ingress default. An absent/null duration or status keeps the
+	// stored value in merge_training_cycles_from_push; the merge's INSERT
+	// applies the column defaults (4 / 'draft').
+	durationWeeks: nullableField(nonNegInt),
 	workoutDays: nonNegIntDefault(0),
 	restDays: nonNegIntDefault(0),
 	currentWeek: nonNegIntDefault(1),
-	status: z.string().nullish().transform((v) => v ?? "draft"),
+	status: nullableField(z.string()),
 	startedAt: nullableDatetime(),
 	lastUsedAt: nullableDatetime(),
 	updatedAt: nullableDatetime(),
+	// KD-6: server updatedAt the device last received for this cycle.
+	// Optional and nested, so older builds (absent) and older servers
+	// (stripped) keep working.
+	baseUpdatedAt: nullableDatetime(),
 	progressionSettings: nullableField(z.string()),
 	deloadSettings: nullableField(z.string()),
 	templateId: nullableField(z.string()),

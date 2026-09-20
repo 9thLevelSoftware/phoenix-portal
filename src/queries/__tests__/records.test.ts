@@ -51,17 +51,16 @@ describe("personalRecordsOptions", () => {
 		expect(opts.queryKey).toEqual(queryKeys.records.byUser("user-1"));
 	});
 
-	it("returns Zod-transformed records with doubled weights", async () => {
+	it("returns Zod-transformed records with per-cable weights", async () => {
 		chain = buildChain({ data: [recordRow], error: null });
 		const { personalRecordsOptions } = await import("../records");
 		const opts = personalRecordsOptions("user-1");
 		const result = await opts.queryFn?.({} as never);
 
 		expect(result).toHaveLength(1);
-		// value should be doubled (80 * 2 = 160)
-		expect(result[0].value).toBe(160);
-		// previous_value should be doubled (75 * 2 = 150)
-		expect(result[0].previous_value).toBe(150);
+		// Records stay per cable (KD-8); no doubling.
+		expect(result[0].value).toBe(80);
+		expect(result[0].previous_value).toBe(75);
 		// achieved_at should be a Date
 		expect(result[0].achieved_at).toBeInstanceOf(Date);
 		expect(result[0].exercise_name).toBe("Bench Press");

@@ -19,6 +19,7 @@ let mockSubscriptionRow: {
 	price_id: string | null;
 	current_period_end: string | null;
 	cancel_at_period_end: boolean;
+	updated_at?: string | null;
 } | null = null;
 let mockSubscriptionError: { message: string } | null = null;
 
@@ -188,7 +189,7 @@ describe("useSubscription effective tier", () => {
 		expect(result.current.rawTier).toBe("FLAME");
 	});
 
-	it("downgrades effective tier to FREE when status is 'past_due'", async () => {
+	it("keeps the paid tier while status is 'past_due' (Paddle retry window)", async () => {
 		mockSubscriptionRow = {
 			tier: "EMBER",
 			status: "past_due",
@@ -203,9 +204,70 @@ describe("useSubscription effective tier", () => {
 
 		await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-		expect(result.current.tier).toBe("FREE");
-		expect(result.current.isPremium).toBe(false);
+		expect(result.current.tier).toBe("EMBER");
+		expect(result.current.isPremium).toBe(true);
 		expect(result.current.rawTier).toBe("EMBER");
+		// Period ended long ago: stale, so the portal asks Paddle for a refresh
+		// (heals a lost cancel/pause webhook) while access keeps the past_due rule.
+		expect(result.current.isStale).toBe(true);
+	});
+
+	it("is not stale for a recent past_due row with no period end", async () => {
+		mockSubscriptionRow = {
+			tier: "FLAME",
+			status: "past_due",
+			price_id: "pri_flame_monthly",
+			current_period_end: null,
+			cancel_at_period_end: false,
+			updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+		};
+
+		const { result } = renderHook(() => useSubscription(), {
+			wrapper: createWrapper(),
+		});
+
+		await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+		expect(result.current.tier).toBe("FLAME");
+		expect(result.current.isStale).toBe(false);
+	});
+
+	it("is stale for a past_due row with no period end unchanged for over 3 days", async () => {
+		mockSubscriptionRow = {
+			tier: "FLAME",
+			status: "past_due",
+			price_id: "pri_flame_monthly",
+			current_period_end: null,
+			cancel_at_period_end: false,
+			updated_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+		};
+
+		const { result } = renderHook(() => useSubscription(), {
+			wrapper: createWrapper(),
+		});
+
+		await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+		expect(result.current.tier).toBe("FLAME");
+		expect(result.current.isStale).toBe(true);
+	});
+
+	it("gives a scheduled cancellation no renewal grace", async () => {
+		mockSubscriptionRow = {
+			tier: "FLAME",
+			status: "active",
+			price_id: "pri_flame_monthly",
+			current_period_end: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+			cancel_at_period_end: true,
+		};
+
+		const { result } = renderHook(() => useSubscription(), {
+			wrapper: createWrapper(),
+		});
+
+		await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+		expect(result.current.tier).toBe("FREE");
 	});
 
 	it("downgrades effective tier to FREE when status is 'incomplete'", async () => {
