@@ -86,6 +86,7 @@
 --      Any legacy sync-tombstones-retention job is unscheduled because stale
 --      clients need durable deletion evidence; account deletion cascades the
 --      user's tombstones.
+--        - sync-tombstones-retention       daily, tombstones > 180 days
 --      Skipped with a NOTICE where pg_cron is not installed (local/CI apply;
 --      prod has it). scheduler.test.sql installs pg_cron in its own
 --      transaction and asserts the jobs, so CI exercises this path.
@@ -473,6 +474,8 @@ BEGIN
     FROM (VALUES
       ('process-sync-queue', '*/5 * * * *',
        'SELECT private.invoke_edge_function(''process-sync-queue'', ''{}''::jsonb)'),
+      ('sync-tombstones-retention', '23 3 * * *',
+       'DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval ''180 days'''),
       ('cron-job-run-details-retention', '41 3 * * *',
        'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days''')
     ) AS v(jobname, schedule, command)

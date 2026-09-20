@@ -17,16 +17,9 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	createRoutineExerciseFixture,
-	createSessionFixture,
-	createSetFixture,
-	WEIGHT_BOUNDARY_VALUES,
-} from "../fixtures";
-import {
 	callPullEndpoint,
 	callPushEndpoint,
 	createMinimalPushPayload,
-	createTestExercise,
 	createTestSession,
 	createTestSet,
 	createTestUser,

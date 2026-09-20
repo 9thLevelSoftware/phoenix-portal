@@ -1,4 +1,5 @@
-import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
+// Exact pin: sync_complete relies on RealtimeChannel.httpSend (realtime-js 2.107).
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2.107.0';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { redactTokenShapedJson } from '../_shared/garminIdentity.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
@@ -69,13 +70,25 @@ import {
  * declines an incoming row because the server already has a newer copy.
  * Mobile logs these and repairs convergence on the next pull. See audit
  * item #1 resolution in phoenix-portal/docs/dto-drift-matrix.md.
+ *
+ * KD-5 (review R-3/R-6): `serverUpdatedAt` means ONE thing for every entity —
+ * the stored LWW key (`client_updated_at`) of the row that beat the push,
+ * i.e. the pushing device's own clock for a mobile-authored version and the
+ * server's now() for a portal edit. It is NOT the pull cursor and NOT
+ * comparable with `cycleVersions` / `baseUpdatedAt`, which stay on the
+ * server-owned `updated_at` (KD-6). It is null when the server has no row to
+ * report (deleted concurrently, or owned by somebody else).
  */
 interface EntityRejection {
   id: string;
   serverUpdatedAt: string | null;
 }
 
-/** Row shape returned by every `upsert_<entity>_lww` function (Phase 3.1). */
+/**
+ * Row shape returned by every `upsert_<entity>_lww` function (Phase 3.1).
+ * Since 20260920002100, `server_updated_at` from the session/routine RPCs is
+ * the stored LWW key, not the server write clock.
+ */
 interface LwwUpsertRow {
   id: string;
   accepted: boolean;
@@ -107,6 +120,49 @@ function deduplicateByKey<T>(rows: T[], keyFn: (row: T) => string): T[] {
     const key = keyFn(rows[i]).toLowerCase();
     return seen.get(key) === i;
   });
+}
+
+/**
+ * A required push sub-step (profile upsert, routine/cycle delete, routine
+ * exercise upsert or orphan cleanup) failed after earlier steps may already have
+ * written. The whole push is idempotent (upserts by id, deletes of absent
+ * rows are no-ops), so the handler answers a retryable 503 instead of a 200:
+ * mobile then keeps its dirty rows and does not advance lastSync, and the
+ * next sync re-sends the same batch (F-024).
+ */
+class PartialWriteRetryError extends Error {
+  constructor(step: string, cause: { message?: string } | null) {
+    // The DB message goes to the function log only, never to the response.
+    super(`${step} failed: ${cause?.message ?? 'unknown error'}`);
+    this.name = 'PartialWriteRetry';
+  }
+}
+
+/**
+ * Hard-delete the caller's rows by id in chunks of 100, like the ownership
+ * probe. One `.in()` with every tombstone id (up to 10,000 by schema) can
+ * exceed the PostgREST URL limit, which would fail identically on every
+ * retry and wedge sync behind a permanent 503. Deletes are idempotent, so a
+ * failure after some chunks committed is still safe to retry.
+ */
+async function deleteOwnedRowsInChunks(
+  supabase: SupabaseClient,
+  table: string,
+  ids: string[],
+  userId: string,
+  step: string,
+): Promise<void> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  const chunkSize = 100;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .in('id', chunk)
+      .eq('user_id', userId);
+    if (error) throw new PartialWriteRetryError(step, error);
+  }
 }
 
 /**
@@ -394,6 +450,8 @@ interface PushPayload {
   telemetry: RepTelemetryDto[];
   routines: RoutineDto[];
   cycles: CycleDto[];
+  deletedCycleIds: string[];
+  deletedCycles: Array<{ id: string; updatedAt: string }>;
   rpgAttributes: RpgAttributesDto | null;
   badges: BadgeDto[];
   gamificationStats: GamificationStatsDto | null;
@@ -447,6 +505,13 @@ interface SessionDto {
   echoLevel: number | null;
   warmupReps: number | null;
   workingReps: number | null;
+}
+
+function portalSessionIdOf(session: {
+  id: string;
+  routineSessionId?: string | null;
+}): string {
+  return session.routineSessionId ?? session.id;
 }
 
 interface ExerciseDto {
@@ -538,6 +603,8 @@ interface RoutineExerciseDto {
   warmupSets: string | null;
   dropSetEnabled?: boolean | null;
   dropSetMinWeightKg?: number | null;
+  /** Absent = keep the stored duration (shipping builds never send it). */
+  durationSeconds?: number | null;
 }
 
 interface CustomExerciseDto {
@@ -575,19 +642,50 @@ interface CycleDto {
   userId: string;
   name: string;
   description: string | null;
-  durationWeeks: number;
+  durationWeeks: number | null;
   workoutDays: number;
   restDays: number;
   currentWeek: number;
-  status: string;
+  status: string | null;
   startedAt: string | null;
   lastUsedAt: string | null;
   /** ISO 8601 last-write timestamp for LWW gate. Optional for backward compat. */
   updatedAt?: string | null;
+  /**
+   * KD-6: the server `updatedAt` this device last received for the cycle
+   * (from a pull or a push response's `cycleVersions`). Absent on older
+   * builds, which keep the legacy structure rules.
+   */
+  baseUpdatedAt?: string | null;
   progressionSettings: string | null;
+  progressionSettings?: string | null;
+  progressionSettingsPresent?: boolean;
   deloadSettings: string | null;
   templateId?: string | null;
+  progressStatePresent?: boolean;
+  progressState?: CycleProgressStateDto | null;
   days: CycleDayDto[];
+}
+
+/** One row of merge_training_cycles_from_push. */
+interface CycleMergeRow extends LwwUpsertRow {
+  structure_applied: boolean;
+  /**
+   * KD-5 (R-3/R-6): the stored LWW key. `server_updated_at` stays the stored
+   * server-clock `updated_at` because it feeds `cycleVersions`, which the
+   * device sends back as `baseUpdatedAt` and the merge compares with
+   * `portal_edited_at`. Rejections report this column instead, so
+   * `rejections[].serverUpdatedAt` is the LWW key for every entity.
+   */
+  client_updated_at: string | null;
+interface CycleProgressStateDto {
+  currentDayNumber: number;
+  lastCompletedDate?: number | null;
+  cycleStartDate: number;
+  lastAdvancedAt?: number | null;
+  completedDays: number[];
+  missedDays: number[];
+  rotationCount: number;
 }
 
 interface CycleDayDto {
@@ -601,6 +699,10 @@ interface CycleDayDto {
   restOverride: number | null;
   restType: string | null;
   notes: string | null;
+  echoLevelPresent?: boolean;
+  echoLevel?: string | null;
+  eccentricLoadPercentPresent?: boolean;
+  eccentricLoadPercent?: number | null;
 }
 
 interface GamificationStatsDto {
@@ -642,6 +744,8 @@ export interface MobileSyncPushHandlerDependencies {
   createAdminClient(): SupabaseClient;
   logOperationalFailure(value: { name: string }): void;
   now(): number;
+  /** Optional override for deterministic handler tests. Defaults to the cold-start flag. */
+  syncLwwEnabled?: boolean;
 }
 
 function defaultMobileSyncPushDependencies(): MobileSyncPushHandlerDependencies {
@@ -669,6 +773,7 @@ function defaultMobileSyncPushDependencies(): MobileSyncPushHandlerDependencies 
     now() {
       return Date.now();
     },
+    syncLwwEnabled: SYNC_LWW_ENABLED,
   };
 }
 
@@ -744,10 +849,64 @@ async function readBoundedRequestBody(
   return { kind: 'ok', bytes };
 }
 
+const CATALOG_LOOKUP_COLUMNS = 'id, name, display_name, aliases, user_id, is_custom, archived';
+const PUBLIC_CATALOG_TTL_MS = 10 * 60 * 1000;
+
+/** Isolate-memory cache of the public (is_custom = false) exercise catalog. */
+interface PublicCatalogCache {
+  rows: CatalogLookupRow[] | null;
+  fetchedAt: number;
+}
+
+async function fetchCatalogLookupPages(
+  fetchPage: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<CatalogLookupRow[]> {
+  const pageSize = 1000;
+  const rows: CatalogLookupRow[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await fetchPage(from, from + pageSize - 1);
+    if (error) {
+      throw new Error(`exercise_catalog lookup failed: ${error.message}`);
+    }
+    const batch = catalogLookupFromUnknown(data);
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+  return rows;
+}
+
+async function getPublicCatalogRows(
+  supabase: SupabaseClient,
+  cache: PublicCatalogCache,
+  nowMs: number,
+): Promise<CatalogLookupRow[]> {
+  const age = nowMs - cache.fetchedAt;
+  if (cache.rows !== null && age >= 0 && age < PUBLIC_CATALOG_TTL_MS) {
+    return cache.rows;
+  }
+  // Only a complete, successful fetch is cached; errors propagate uncached.
+  const rows = await fetchCatalogLookupPages((from, to) =>
+    supabase
+      .from('exercise_catalog')
+      .select(CATALOG_LOOKUP_COLUMNS)
+      .eq('is_custom', false)
+      .order('id', { ascending: true })
+      .range(from, to)
+  );
+  cache.rows = rows;
+  cache.fetchedAt = nowMs;
+  return rows;
+}
+
 async function mobileSyncPushHandler(
   req: Request,
   dependencies: MobileSyncPushHandlerDependencies,
+  publicCatalogCache: PublicCatalogCache,
 ): Promise<Response> {
+  const syncLwwEnabled = dependencies.syncLwwEnabled ?? SYNC_LWW_ENABLED;
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -1008,7 +1167,6 @@ async function mobileSyncPushHandler(
       r.exercises.map((e) => e.id),
     );
     const allCycleIds = (payload.cycles ?? []).map((c) => c.id);
-    const allCycleDayIds = (payload.cycles ?? []).flatMap((c) => c.days.map((d) => d.id));
     const allPersonalRecordIds = (payload.personalRecords ?? [])
       .map((pr) => pr.id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0);
@@ -1146,31 +1304,22 @@ async function mobileSyncPushHandler(
       }
     }
 
-    async function fetchAccessibleCatalogRows(
-      client: typeof supabase,
-      ownerId: string,
-    ): Promise<CatalogLookupRow[]> {
-      const pageSize = 1000;
-      const rows: CatalogLookupRow[] = [];
-      for (let from = 0; ; from += pageSize) {
-        const { data, error } = await client
-          .from('exercise_catalog')
-          .select('id, name, display_name, aliases, user_id, is_custom, archived')
-          .or(`is_custom.eq.false,user_id.eq.${ownerId}`)
-          .order('id', { ascending: true })
-          .range(from, from + pageSize - 1);
-        if (error) {
-          throw new Error(`exercise_catalog lookup failed: ${error.message}`);
-        }
-        const batch = catalogLookupFromUnknown(data);
-        rows.push(...batch);
-        if (batch.length < pageSize) break;
-      }
-      return rows;
-    }
-
+    // Public library rows are cached per isolate (PUBLIC_CATALOG_TTL_MS); the
+    // caller's custom rows are read on every push, after the upsert above.
+    // Public rows precede custom rows, so a public name wins a name collision.
     const catalogIndexes = buildCatalogIndexes(
-      await fetchAccessibleCatalogRows(supabase, userId),
+      [
+        ...(await getPublicCatalogRows(supabase, publicCatalogCache, dependencies.now())),
+        ...(await fetchCatalogLookupPages((from, to) =>
+          supabase
+            .from('exercise_catalog')
+            .select(CATALOG_LOOKUP_COLUMNS)
+            .eq('is_custom', true)
+            .eq('user_id', userId)
+            .order('id', { ascending: true })
+            .range(from, to)
+        )),
+      ],
       userId,
     );
     const catalogResolution = resolveCatalogExerciseIds(catalogIndexes, [
@@ -1214,12 +1363,16 @@ async function mobileSyncPushHandler(
     // IMPORTANT: local_profile_id on workout_sessions/routines/cycles has a
     // composite FK → local_profiles(user_id, id).  The profile row MUST exist
     // before any session insert, otherwise the FK fires.  If the upsert fails
-    // for any reason we null out localProfileId so downstream inserts store
-    // rows as profile-unscoped (NULL) rather than crashing with a FK violation.
+    // the push answers a retryable 503 before any session write (PR 22); it
+    // never stores this push's rows profile-unscoped (NULL).
     // =========================================================================
-    // Use `let` so we can clear it to null if the profile upsert fails.
+    // `let`: cleared to null when the id is absent from allProfiles.
     let localProfileId: string | null = payload.profileId ?? null;
+    // Use `let` so we can clear it to null if the profile upsert fails.
+    const requestProfileId: string | null = payload.profileId ?? null;
+    let localProfileId: string | null = requestProfileId;
     const allProfiles: LocalProfileDto[] | null = payload.allProfiles ?? null;
+    let profileIdsForDeferredCleanup: string[] | null = null;
     const dedicatedRecordLocalProfileIds = collectDedicatedRecordLocalProfileIds(
       payload.personalRecords ?? [],
     );
@@ -1234,6 +1387,23 @@ async function mobileSyncPushHandler(
         personalRecords: payload.personalRecords ?? [],
       });
     const validLocalProfileIdsForPush = new Set<string>();
+    // Whether this push changes a local_profiles row the portal shows. Every
+    // push re-upserts the device's profiles, so a write alone is not a change;
+    // compare against the stored rows instead. If they cannot be read, assume
+    // a change so the portal is still told to refresh.
+    let localProfilesChanged = false;
+    const storedLocalProfiles = async (): Promise<StoredLocalProfile[] | null> => {
+      const { data, error } = await supabase
+        .from('local_profiles')
+        .select('id, name, color_index, device_id')
+        .eq('user_id', userId)
+        .returns<StoredLocalProfile[]>();
+      if (error) {
+        console.warn('Failed to read local profiles for change detection:', error.message);
+        return null;
+      }
+      return data ?? [];
+    };
 
     if (allProfiles && allProfiles.length > 0) {
       // Schema already validated each allProfiles[].id is "default" or a UUID
@@ -1248,18 +1418,19 @@ async function mobileSyncPushHandler(
         updated_at: new Date().toISOString(),
       }));
 
+      const storedProfiles = await storedLocalProfiles();
+      localProfilesChanged = storedProfiles === null ||
+        localProfilesPushChangesRows(storedProfiles, profileRows, payload.deviceId);
+
       const { error: upsertError } = await supabase
         .from('local_profiles')
         .upsert(profileRows, { onConflict: 'user_id,id' });
 
       if (upsertError) {
-        // Null out localProfileId so subsequent session/routine/cycle inserts
-        // store rows as profile-unscoped (NULL) instead of hitting the FK.
-        console.warn('Failed to upsert local profiles:', upsertError.message);
-        if (localProfileId) {
-          console.warn('Clearing localProfileId to avoid FK violation on session insert');
-          localProfileId = null;
-        }
+        // Fail the push before any session write rather than storing rows
+        // profile-unscoped (NULL): unscoped rows leak across local profiles
+        // and are never re-scoped. Mobile retries the idempotent push.
+        throw new PartialWriteRetryError('local_profiles upsert', upsertError);
       } else {
         const activeIds = allProfiles.map((p) => p.id);
         for (const id of activeIds) validLocalProfileIdsForPush.add(id);
@@ -1268,21 +1439,11 @@ async function mobileSyncPushHandler(
           localProfileId = null;
         }
 
-        // Delete profiles that no longer exist on the device (from this device only)
-        const { error: deleteError } = await supabase
-          .from('local_profiles')
-          .delete()
-          .eq('user_id', userId)
-          .eq('device_id', payload.deviceId)
-          .not(
-            'id',
-            'in',
-            `(${activeIds.map((id) => `"${id}"`).join(',')})`,
-          );
-
-        if (deleteError) {
-          console.warn('Failed to clean stale profiles:', deleteError.message);
-        }
+        // Cleanup is deferred until ownership transfers have validated their
+        // source profile. Removing the source registration first would make a
+        // valid account-bound repair impossible to distinguish from a forged
+        // transfer.
+        profileIdsForDeferredCleanup = activeIds;
       }
     } else if (localProfileId) {
       // Upsert the active profile. Uses profileName when present; falls back to
@@ -1292,6 +1453,13 @@ async function mobileSyncPushHandler(
       // because the local_profiles row doesn't exist yet (issue #376).
       const profileName =
         payload.profileName ?? (localProfileId === 'default' ? 'Default' : 'Profile');
+      const activeProfileId = localProfileId;
+      const storedProfiles = await storedLocalProfiles();
+      const storedActive = storedProfiles?.find((row) => row.id === activeProfileId);
+      localProfilesChanged = storedProfiles === null ||
+        storedActive === undefined ||
+        storedActive.name !== profileName ||
+        storedActive.device_id !== payload.deviceId;
       const { error: profileError } = await supabase
         .from('local_profiles')
         .upsert(
@@ -1306,10 +1474,8 @@ async function mobileSyncPushHandler(
         );
 
       if (profileError) {
-        // Null out so sessions are stored unscoped rather than failing the FK.
-        console.warn('Failed to upsert local profile:', profileError.message);
-        console.warn('Clearing localProfileId to avoid FK violation on session insert');
-        localProfileId = null;
+        // Same as above: never write this push's sessions unscoped.
+        throw new PartialWriteRetryError('local_profiles upsert', profileError);
       } else if (localProfileId) {
         validLocalProfileIdsForPush.add(localProfileId);
       }
@@ -1379,8 +1545,119 @@ async function mobileSyncPushHandler(
             for (const profile of repairedProfiles ?? []) {
               validLocalProfileIdsForPush.add(profile.id);
             }
+            // Repair only inserts ids that were missing, so any row is new.
+            if ((repairedProfiles ?? []).length > 0) localProfilesChanged = true;
           }
         }
+      }
+    }
+
+    // Account-bound repair operations are ordered before deletion and before
+    // ordinary entity writes. The RPCs are transactional and return rows only
+    // after commit, so their exact mutation ids are safe acknowledgements.
+    let acknowledgedOwnershipTransferIds: string[] = [];
+    if (payload.ownershipTransfers.length > 0) {
+      const { data, error } = await supabase.rpc('transfer_profile_ownership', {
+        p_user_id: userId,
+        p_transfers: payload.ownershipTransfers,
+      });
+      if (error) throw new Error(`profile ownership transfer failed: ${error.message}`);
+      acknowledgedOwnershipTransferIds = ((data ?? []) as Array<{ mutation_id?: unknown }>)
+        .map((row) => row.mutation_id)
+        .filter((id): id is string => typeof id === 'string');
+    }
+
+    let acknowledgedWorkoutDeletionIds: string[] = [];
+    if (payload.workoutDeletions.length > 0) {
+      const { data, error } = await supabase.rpc('apply_workout_deletions', {
+        p_user_id: userId,
+        // Deletion routing is immutable operation metadata. Profile sync below
+        // may clear localProfileId when the original profile was deleted and
+        // omitted from allProfiles; never rebind or erase the deletion route.
+        p_request_profile_id: requestProfileId,
+        p_deletions: payload.workoutDeletions,
+      });
+      if (error) throw new Error(`workout deletion failed: ${error.message}`);
+      acknowledgedWorkoutDeletionIds = ((data ?? []) as Array<{ mutation_id?: unknown }>)
+        .map((row) => row.mutation_id)
+        .filter((id): id is string => typeof id === 'string');
+    }
+
+    // Populated after the timestamp-gated cycle deletion RPC commits.
+    let acknowledgedDeletedCycleIds: string[] = [];
+
+    if (profileIdsForDeferredCleanup) {
+      // allProfiles omission predates durable recovery and is ambiguous: it can
+      // mean an intentional local delete or an orphaned cloud registration the
+      // recovering device never knew about. Never cascade-delete an omitted
+      // registration while it still owns cloud preference sections. Profile
+      // preference transfer/merge is intentionally outside this contract.
+      const { data: preferenceOwners, error: preferenceOwnerError } = await supabase
+        .from('local_profile_preferences')
+        .select('local_profile_id')
+        .eq('user_id', userId)
+        .returns<Array<{ local_profile_id: string }>>();
+      if (preferenceOwnerError) {
+        // Conservative failure mode: a preference lookup outage must not turn
+        // profile registration cleanup into irreversible preference loss.
+        console.warn('Skipping stale profile cleanup after preference lookup failure:', preferenceOwnerError.message);
+      } else {
+        const retainedProfileIds = new Set(profileIdsForDeferredCleanup);
+        for (const row of preferenceOwners ?? []) retainedProfileIds.add(row.local_profile_id);
+        const { error: deleteError } = await supabase
+          .from('local_profiles')
+          .delete()
+          .eq('user_id', userId)
+          .eq('device_id', payload.deviceId)
+          .not(
+            'id',
+            'in',
+            `(${[...retainedProfileIds].map((id) => `"${id}"`).join(',')})`,
+          );
+        if (deleteError) console.warn('Failed to clean stale profiles:', deleteError.message);
+      }
+    }
+
+    // Query permanent account+target tombstones before active hierarchy writes.
+    // A portal session is the grouped workout parent; a mobile component is its
+    // stable exercises.id child. They are gated separately so deleting one
+    // component never suppresses or erases its siblings.
+    let blockedWorkoutSessionIds = new Set<string>();
+    let blockedWorkoutComponentIds = new Set<string>();
+    if (payload.sessions.length > 0) {
+      const { data, error } = await supabase.rpc('get_blocked_workout_session_ids', {
+        p_user_id: userId,
+        p_sessions: payload.sessions.map((session) => ({
+          id: session.id,
+          portalSessionId: portalSessionIdOf(session),
+        })),
+      });
+      if (error) throw new Error(`workout tombstone lookup failed: ${error.message}`);
+      blockedWorkoutSessionIds = new Set(
+        ((data ?? []) as Array<{ session_id?: unknown }>)
+          .map((row) => row.session_id)
+          .filter((id): id is string => typeof id === 'string'),
+      );
+
+      const components = payload.sessions.flatMap((session) =>
+        session.exercises.map((exercise) => ({
+          id: exercise.id,
+          portalSessionId: portalSessionIdOf(session),
+        }))
+      );
+      if (components.length > 0) {
+        const { data: componentData, error: componentError } = await supabase.rpc(
+          'get_blocked_workout_component_ids',
+          { p_user_id: userId, p_components: components },
+        );
+        if (componentError) {
+          throw new Error(`workout component tombstone lookup failed: ${componentError.message}`);
+        }
+        blockedWorkoutComponentIds = new Set(
+          ((componentData ?? []) as Array<{ component_id?: unknown }>)
+            .map((row) => row.component_id)
+            .filter((id): id is string => typeof id === 'string'),
+        );
       }
     }
 
@@ -1437,16 +1714,9 @@ async function mobileSyncPushHandler(
     );
     if (reBlocked) return reBlocked;
 
-    const cdBlocked = await assertChildRowsOwnedViaParent(
-      supabase,
-      'cycle_days',
-      'cycle_id',
-      'training_cycles',
-      allCycleDayIds,
-      userId,
-      cors,
-    );
-    if (cdBlocked) return cdBlocked;
+    // cycle_days ids are not probed: the day upsert never writes `id` (it
+    // conflicts on (cycle_id, day_number)), and every day's cycleId must equal
+    // its payload parent cycle, whose id is covered by directOwnerChecks.
 
     // Telemetry, phase stats and cycle days may reference parent rows from
     // previous pushes, not this payload. Validate those cross-payload parent
@@ -1533,17 +1803,21 @@ async function mobileSyncPushHandler(
     // Sessions present in the current payload are also "valid" — they get
     // upserted just above, before the personal_records write, so by the time
     // the FK retry runs they exist on the server.
-    const validPersonalRecordSessionIds = new Set<string>(sessionIdSet);
+    const validPersonalRecordSessionIds = new Set<string>(
+      [...sessionIdSet].filter((id) => !blockedWorkoutSessionIds.has(id)),
+    );
     for (const id of personalRecordSessionProbe.validIds) {
       validPersonalRecordSessionIds.add(id);
     }
 
     // =========================================================================
     // LWW reject tracking. When SYNC_LWW_ENABLED is false, these remain empty
-    // and no filtering is applied. When true, the push handler routes each
-    // shared-edit entity upsert through its `upsert_<entity>_lww` RPC and
-    // uses the accepted-id sets to filter child-table upserts so orphan child
-    // rows are not created under rejected parents.
+    // and no filtering is applied (exception: `cycles` also lists a cycle the
+    // merge RPC refused as another user's or concurrently deleted). When
+    // true, the push handler routes each shared-edit entity upsert through
+    // its `upsert_<entity>_lww` RPC (cycles: merge_training_cycles_from_push)
+    // and uses the accepted-id sets to filter child-table upserts so orphan
+    // child rows are not created under rejected parents.
     // =========================================================================
     const rejections = {
       sessions: [] as EntityRejection[],
@@ -1553,11 +1827,21 @@ async function mobileSyncPushHandler(
       rpgAttributes: [] as EntityRejection[],
       gamificationStats: [] as EntityRejection[],
     };
+    // Optional GAP tables whose write failed. The push still answers 200
+    // (these rows are non-critical and old mobile would otherwise retry the
+    // whole batch forever); the ids are the mobile DTO ids so a mobile
+    // follow-up can keep exactly those rows dirty. Old mobile ignores the key.
+    const failed = {
+      phaseStatistics: [] as string[],
+      exerciseSignatures: [] as string[],
+      assessments: [] as string[],
+      externalActivities: [] as string[],
+    };
     // null = flag OFF (accept-all semantics). Set = flag ON (only listed IDs
     // cleared the LWW gate).
     let acceptedSessionIds: Set<string> | null = null;
     let acceptedRoutineIds: Set<string> | null = null;
-    let acceptedCycleIds: Set<string> | null = null;
+    // Cycles: the merge RPC applies the LWW gate to cycle_days itself (KD-6).
 
     const childAllowed = <T>(parentSet: Set<string> | null, parentId: string): boolean =>
       parentSet === null || parentSet.has(parentId);
@@ -1574,6 +1858,9 @@ async function mobileSyncPushHandler(
     // Runs for both SYNC_LWW_ENABLED values, before any routine/cycle write.
     // =========================================================================
     const skippedDeleted = { routines: [] as string[], cycles: [] as string[] };
+    // KD-6: stored updated_at of each cycle whose pushed structure was
+    // applied. The device keeps it as the cycle's next baseUpdatedAt.
+    const cycleVersions: Record<string, string> = {};
     // Race guard (R-4): a portal delete that lands between this lookup and
     // the upsert below would be undone by the upsert, and
     // get_sync_tombstones hides tombstones of rows that are live again, so
@@ -1583,6 +1870,11 @@ async function mobileSyncPushHandler(
     // skew; it could only misfire for a same-user delete + re-create of the
     // same id inside that margin.
     const tombstoneRaceSince = new Date(Date.now() - TOMBSTONE_RACE_MARGIN_MS).toISOString();
+    // KD-5 undated-push rule (review R-1/R-7): one receipt timestamp for the
+    // whole request, substituted for any session/routine/cycle DTO that
+    // carries no `updatedAt`. Used under BOTH SYNC_LWW_ENABLED values so the
+    // stored LWW key is identical whichever way the flag is set.
+    const pushReceivedAt = new Date(dependencies.now()).toISOString();
     const reDeleteRacedTombstones = async (
       entity: 'routine' | 'cycle',
       table: 'routines' | 'training_cycles',
@@ -1658,7 +1950,9 @@ async function mobileSyncPushHandler(
     // =========================================================================
     if (payload.sessions && payload.sessions.length > 0) {
       // --- 4a. Upsert workout_sessions ---
-      const sessionRows = payload.sessions.map((s) => ({
+      const sessionRows = payload.sessions
+        .filter((s) => !blockedWorkoutSessionIds.has(s.id))
+        .map((s) => ({
         id: s.id,
         user_id: userId,
         local_profile_id: localProfileId,
@@ -1693,34 +1987,34 @@ async function mobileSyncPushHandler(
         echo_level: s.echoLevel ?? null,
         warmup_reps: s.warmupReps ?? null,
         working_reps: s.workingReps ?? null,
-        updated_at: s.updatedAt ?? null,
+        // KD-5: the LWW key, written under both SYNC_LWW_ENABLED values.
+        // updated_at (the pull cursor) is never sent: the server sets it to
+        // now() on INSERT (column default) and UPDATE (trigger), so a slow
+        // device clock cannot hide the row from delta pulls (NF-12).
+        //
+        // Undated-push rule (review R-1/R-7), identical under both flag
+        // values and for all three entities: a DTO without `updatedAt` is
+        // dated at the moment this request is served. It therefore never
+        // erases a stored key (a NULL here would wipe a portal edit's stamp
+        // on the LWW-off UPDATE path), and it wins against a portal edit
+        // made earlier, because arrival time is the only date the server
+        // has. "A portal edit beats an earlier mobile version" consequently
+        // holds only for builds that send `updatedAt`; rejecting undated
+        // pushes instead would strand such a build's edits entirely.
+        client_updated_at: s.updatedAt ?? pushReceivedAt,
       }));
 
-      // Cross-user takeover defense (from main beta audit hardening): always
-      // verify every primary key is either absent or owned by the caller
-      // before the service-role upsert touches it.
-      const sessionOwnershipResp = await assertRowsOwnedByUser(
-        supabase,
-        'workout_sessions',
-        sessionRows.map((r) => r.id),
-        userId,
-        cors,
-      );
-      if (sessionOwnershipResp) return sessionOwnershipResp;
+      // Ownership of every session id was verified once in directOwnerChecks.
 
       if (SYNC_LWW_ENABLED) {
         // Phase 3.2: route through the LWW RPC so the server rejects stale
         // rows instead of overwriting with older data. Accepted ids are used
         // to filter the exercises/sets/rep_summaries child upserts below.
-        // Fallback to NOW() when the client DTO omits updated_at (older
-        // mobile builds pre-Phase-3.2).
-        const sessionRowsWithUpdatedAt = sessionRows.map((r) => ({
-          ...r,
-          updated_at: r.updated_at ?? new Date().toISOString(),
-        }));
+        // The rows already carry the LWW key (`pushReceivedAt` when the DTO
+        // omitted `updatedAt`), identically to the LWW-off branch.
         const { data: lwwData, error: lwwErr } = await supabase.rpc(
           'upsert_workout_session_lww',
-          { p_rows: sessionRowsWithUpdatedAt },
+          { p_rows: sessionRows },
         );
         if (lwwErr) throw new Error(`workout_sessions LWW RPC failed: ${lwwErr.message}`);
         acceptedSessionIds = new Set<string>();
@@ -1742,28 +2036,50 @@ async function mobileSyncPushHandler(
       }
 
       // --- 4b-pre. Atomic delete + re-insert of session children (issue #33, F343) ---
-      // Mobile generates new random exercise/set/rep UUIDs each sync push, so
-      // upsert-by-id never matches the old rows and duplicates pile up. We
-      // therefore delete the existing exercises for the affected sessions
-      // (CASCADE removes their sets, rep_summaries and rep_telemetry) and
-      // re-insert the new rows. That delete + re-insert is performed in ONE
+      // Current mobile keeps the exercise id stable (its session id, issue
+      // #33) but generates new set/rep/telemetry UUIDs each sync push (older
+      // clients regenerated exercise ids too), so upsert-by-id never matches
+      // the old child rows and duplicates pile up. We therefore delete the
+      // existing exercises for the affected sessions (CASCADE removes their
+      // sets, rep_summaries and rep_telemetry) and re-insert the new rows.
+      // Stored telemetry of a set the payload re-sends WITHOUT telemetry is
+      // re-linked to the new set id when the match is unambiguous (see
+      // 20260920002000_replace_session_children_preserve_telemetry.sql for
+      // the key rule). That delete + re-insert is performed in ONE
       // transaction by the replace_session_children RPC below: previously the
       // delete and each upsert were separate statements, so a failure after the
       // delete permanently destroyed the user's data. The child rows are built
       // and ownership-checked here; the single RPC call near the end of this
       // block does the atomic swap.
       const affectedSessionIds = payload.sessions
+      // Parent acceptance is deferred until all component rows are built. One
+      // RPC below commits the parent gate and exact child replacement in the
+      // same transaction in both feature-flag modes.
+      const sessionRowsWithUpdatedAt = sessionRows.map((r) => ({
+        ...r,
+        updated_at: r.updated_at ?? new Date().toISOString(),
+      }));
+      // --- 4b-pre. Atomic replace of named components (issue #33, F343) ---
+      // One portal workout parent may contain several independently synced
+      // mobile components. Replace only incoming stable exercises.id values;
+      // omitted siblings remain intact. The delete and complete child reinsert
+      // happen in the same RPC transaction as parent LWW acceptance.
+      const affectedComponentIds = payload.sessions
+        .filter((s) => !blockedWorkoutSessionIds.has(s.id))
         .filter((s) => childAllowed(acceptedSessionIds, s.id))
-        .map((s) => s.id);
+        .flatMap((s) => s.exercises)
+        .filter((e) => !blockedWorkoutComponentIds.has(e.id))
+        .map((e) => e.id);
 
       // --- 4b. Build exercise rows ---
       // When LWW is enabled, only accept exercises whose parent session was
       // accepted by the LWW gate. Rejecting the parent but inserting the
       // children would leave orphan rows referencing a stale session.
       const exerciseRows = payload.sessions
+        .filter((s) => !blockedWorkoutSessionIds.has(s.id))
         .filter((s) => childAllowed(acceptedSessionIds, s.id))
         .flatMap((s) =>
-          s.exercises.map((e) => ({
+          s.exercises.filter((e) => !blockedWorkoutComponentIds.has(e.id)).map((e) => ({
             id: e.id,
             session_id: e.sessionId,
             user_id: userId,
@@ -1780,19 +2096,8 @@ async function mobileSyncPushHandler(
       // case-sensitive JS Set check while PostgreSQL treats them as equal.
       const dedupedExerciseRows = deduplicateByKey(exerciseRows, (r) => r.id);
 
-      // Ownership pre-check: reject any incoming id already owned by a different
-      // user before the atomic replace deletes/re-inserts. The actual write
-      // happens in the replace_session_children RPC below.
-      if (dedupedExerciseRows.length > 0) {
-        const exerciseOwnershipResp = await assertRowsOwnedByUser(
-          supabase,
-          'exercises',
-          dedupedExerciseRows.map((r) => r.id),
-          userId,
-          cors,
-        );
-        if (exerciseOwnershipResp) return exerciseOwnershipResp;
-      }
+      // Ownership of these ids (a subset of allExerciseIds) was verified once
+      // in directOwnerChecks, before the replace_session_children RPC below.
 
       // --- 4c. Build set rows ---
       // NOTE: `prType`, `prPhase`, `prVolume` are intentionally NOT in this row
@@ -1801,9 +2106,10 @@ async function mobileSyncPushHandler(
       // for them. See PortalSetDto doc comment in mobile for the contract.
       // Resolves audit item #3 (2026-04-19).
       const setRows = payload.sessions
+        .filter((s) => !blockedWorkoutSessionIds.has(s.id))
         .filter((s) => childAllowed(acceptedSessionIds, s.id))
         .flatMap((s) =>
-          s.exercises.flatMap((e) =>
+          s.exercises.filter((e) => !blockedWorkoutComponentIds.has(e.id)).flatMap((e) =>
             e.sets.map((st) => ({
               id: st.id,
               exercise_id: st.exerciseId,
@@ -1822,22 +2128,14 @@ async function mobileSyncPushHandler(
 
       const dedupedSetRows = deduplicateByKey(setRows, (r) => r.id);
 
-      if (dedupedSetRows.length > 0) {
-        const setOwnershipResp = await assertRowsOwnedByUser(
-          supabase,
-          'sets',
-          dedupedSetRows.map((r) => r.id),
-          userId,
-          cors,
-        );
-        if (setOwnershipResp) return setOwnershipResp;
-      }
+      // Ownership (subset of allSetIds) was verified once in directOwnerChecks.
 
       // --- 4d. Build rep_summary rows ---
       const repRows = payload.sessions
+        .filter((s) => !blockedWorkoutSessionIds.has(s.id))
         .filter((s) => childAllowed(acceptedSessionIds, s.id))
         .flatMap((s) =>
-          s.exercises.flatMap((e) =>
+          s.exercises.filter((e) => !blockedWorkoutComponentIds.has(e.id)).flatMap((e) =>
             e.sets.flatMap((st) =>
               st.repSummaries.map((r) => ({
                 id: r.id,
@@ -1862,16 +2160,8 @@ async function mobileSyncPushHandler(
 
       const dedupedRepRows = deduplicateByKey(repRows, (r) => r.id);
 
-      if (dedupedRepRows.length > 0) {
-        const repOwnershipResp = await assertRowsOwnedByUser(
-          supabase,
-          'rep_summaries',
-          dedupedRepRows.map((r) => r.id),
-          userId,
-          cors,
-        );
-        if (repOwnershipResp) return repOwnershipResp;
-      }
+      // Ownership (subset of allRepSummaryIds) was verified once in
+      // directOwnerChecks.
 
       // --- 4e. Build rep_telemetry rows (GAP 1: force curves) ---
       // NOTE: ownership for rep_telemetry.id is already verified in the
@@ -1911,25 +2201,45 @@ async function mobileSyncPushHandler(
       // child rows in a single transaction (F343). A failure anywhere rolls the
       // delete back, so partial-write data loss is impossible.
       if (
-        affectedSessionIds.length > 0 ||
+        sessionRowsWithUpdatedAt.length > 0 ||
         dedupedExerciseRows.length > 0 ||
         dedupedTelemetryRows.length > 0
       ) {
-        const { error: replaceErr } = await supabase.rpc('replace_session_children', {
+        const { data: parentResults, error: replaceErr } = await supabase.rpc(
+          'upsert_workout_sessions_with_components', {
           p_user_id: userId,
-          p_session_ids: affectedSessionIds,
+          p_enforce_lww: syncLwwEnabled,
+          p_rows: sessionRowsWithUpdatedAt,
+          p_component_ids: affectedComponentIds,
           p_exercises: dedupedExerciseRows,
           p_sets: dedupedSetRows,
           p_rep_summaries: dedupedRepRows,
           p_rep_telemetry: dedupedTelemetryRows,
-        });
+          },
+        );
         if (replaceErr) {
-          throw new Error(`session children replace failed: ${replaceErr.message}`);
+          throw new Error(`session hierarchy replace failed: ${replaceErr.message}`);
         }
-        exercisesInserted = dedupedExerciseRows.length;
-        setsInserted = dedupedSetRows.length;
-        repSummariesInserted = dedupedRepRows.length;
-        telemetryInserted = dedupedTelemetryRows.length;
+        acceptedSessionIds = new Set<string>();
+        for (const row of (parentResults ?? []) as LwwUpsertRow[]) {
+          if (row.accepted) acceptedSessionIds.add(row.id);
+          else rejections.sessions.push({ id: row.id, serverUpdatedAt: row.server_updated_at });
+        }
+        sessionsInserted = acceptedSessionIds.size;
+        const committedExerciseIds = new Set(
+          dedupedExerciseRows
+            .filter((row) => acceptedSessionIds?.has(row.session_id))
+            .map((row) => row.id),
+        );
+        const committedSetIds = new Set(
+          dedupedSetRows
+            .filter((row) => committedExerciseIds.has(row.exercise_id))
+            .map((row) => row.id),
+        );
+        exercisesInserted = committedExerciseIds.size;
+        setsInserted = committedSetIds.size;
+        repSummariesInserted = dedupedRepRows.filter((row) => committedSetIds.has(row.set_id)).length;
+        telemetryInserted = dedupedTelemetryRows.filter((row) => committedSetIds.has(row.set_id)).length;
       }
 
       // =====================================================================
@@ -1940,6 +2250,7 @@ async function mobileSyncPushHandler(
       // (Issue #99 RCA layer 3)
       // =====================================================================
       const acceptedSessions = payload.sessions
+        .filter((s) => !blockedWorkoutSessionIds.has(s.id))
         .filter((s) => childAllowed(acceptedSessionIds, s.id));
       const progressRows = buildExerciseProgressRows(
         acceptedSessions,
@@ -2006,9 +2317,19 @@ async function mobileSyncPushHandler(
     // clients. Set-derived rows remain the fallback for old clients that only
     // send isPr/prType/prPhase/prVolume on sets.
     // =========================================================================
+    const rejectedPayloadSessionIds = new Set(
+      (payload.sessions ?? [])
+        .filter((session) =>
+          blockedWorkoutSessionIds.has(session.id) ||
+          (acceptedSessionIds !== null && !acceptedSessionIds.has(session.id))
+        )
+        .map((session) => session.id),
+    );
     let prRows = buildPersonalRecordRowsForPush(
-      payload.sessions ?? [],
-      payload.personalRecords ?? [],
+      (payload.sessions ?? []).filter((session) => !rejectedPayloadSessionIds.has(session.id)),
+      (payload.personalRecords ?? []).filter((record) =>
+        record.sessionId == null || !rejectedPayloadSessionIds.has(record.sessionId)
+      ),
       userId,
       localProfileId,
       shouldValidatePersonalRecordProfileIds ? validLocalProfileIdsForPush : null,
@@ -2279,26 +2600,23 @@ async function mobileSyncPushHandler(
         estimated_duration: Math.round(r.estimatedDuration ?? 0),
         times_completed: r.timesCompleted ?? 0,
         is_favorite: r.isFavorite ?? false,
-        updated_at: r.updatedAt ?? null,
+        // KD-5: the LWW key, written under both SYNC_LWW_ENABLED values.
+        // updated_at (pull cursor) is server-owned (NF-12). An undated DTO
+        // is dated at receipt — see the session mapping above (R-1/R-7).
+        client_updated_at: r.updatedAt ?? pushReceivedAt,
       }));
 
-      const routineOwnershipResp = await assertRowsOwnedByUser(
-        supabase,
-        'routines',
-        routineRows.map((r) => r.id),
-        userId,
-        cors,
-      );
-      if (routineOwnershipResp) return routineOwnershipResp;
+      // Ownership of every routine id was verified once in directOwnerChecks.
 
       if (SYNC_LWW_ENABLED) {
+      if (syncLwwEnabled) {
         const rows = routineRows.map((r) => ({
           ...r,
           updated_at: r.updated_at ?? new Date().toISOString(),
         }));
         const { data: lwwData, error: lwwErr } = await supabase.rpc(
           'upsert_routine_lww',
-          { p_rows: rows },
+          { p_rows: routineRows },
         );
         if (lwwErr) throw new Error(`routines LWW RPC failed: ${lwwErr.message}`);
         acceptedRoutineIds = new Set<string>();
@@ -2326,20 +2644,33 @@ async function mobileSyncPushHandler(
       // Merge drop-set columns per row. Omission/`null` must not write a null
       // floor over an existing enabled row, and every upsert object needs both
       // keys so defaultToNull cannot NULL a sibling row's omitted flag.
+      //
+      // duration_seconds follows the same rule: a row that omits
+      // durationSeconds keeps its stored value. When no row in the batch
+      // carries the field (every shipping mobile build), the column is left
+      // out of the upsert entirely, so it is never touched. When some rows
+      // carry it, the rows that don't are filled from the existing row.
+      const anyDurationSent = reSource.some((e) => e.durationSeconds !== undefined);
       const dropSetProbeIds = [...new Set(
-        reSource.filter((e) => needsDropSetExistingRow(e)).map((e) => e.id),
+        reSource
+          .filter((e) =>
+            needsDropSetExistingRow(e) ||
+            (anyDurationSent && e.durationSeconds === undefined)
+          )
+          .map((e) => e.id),
       )];
       const existingDropSets = new Map<string, {
         drop_set_enabled: boolean;
         drop_set_min_weight_kg: number | null;
       }>();
+      const existingDurations = new Map<string, number | null>();
       if (dropSetProbeIds.length > 0) {
         const chunkSize = 100;
         for (let i = 0; i < dropSetProbeIds.length; i += chunkSize) {
           const chunk = dropSetProbeIds.slice(i, i + chunkSize);
           const { data: existingExercises, error: existingDropSetErr } = await supabase
             .from('routine_exercises')
-            .select('id, drop_set_enabled, drop_set_min_weight_kg')
+            .select('id, drop_set_enabled, drop_set_min_weight_kg, duration_seconds')
             .in('id', chunk);
           if (existingDropSetErr) {
             throw new Error(
@@ -2354,6 +2685,10 @@ async function mobileSyncPushHandler(
                 row.drop_set_min_weight_kg,
               ),
             });
+            existingDurations.set(
+              row.id,
+              typeof row.duration_seconds === 'number' ? row.duration_seconds : null,
+            );
           }
         }
       }
@@ -2393,13 +2728,21 @@ async function mobileSyncPushHandler(
           },
           existingDropSets.get(e.id) ?? null,
         ),
+        ...(anyDurationSent
+          ? {
+            duration_seconds: e.durationSeconds !== undefined
+              ? e.durationSeconds
+              : existingDurations.get(e.id) ?? null,
+          }
+          : {}),
       }));
 
       if (reRows.length > 0) {
         const { error: reErr } = await supabase
           .from('routine_exercises')
           .upsert(reRows, { onConflict: 'id' });
-        if (reErr) throw new Error(`routine_exercises upsert failed: ${reErr.message}`);
+        // Same retryable contract as the orphan cleanup that follows (R-5).
+        if (reErr) throw new PartialWriteRetryError('routine_exercises upsert', reErr);
       }
 
       // Remove orphan exercises: rows belonging to synced routines whose IDs
@@ -2413,6 +2756,18 @@ async function mobileSyncPushHandler(
           ? reRows.filter((r) => r.routine_id === routineId).map((r) => r.id)
           : [];
 
+        // Keep IDs in the RPC POST body. A PostgREST `.not('id', 'in', ...)`
+        // query puts every UUID in the URL and deterministically fails for
+        // large routines. An empty array intentionally deletes every child.
+        const { error: orphanErr } = await supabase.rpc(
+          'cleanup_routine_exercise_orphans',
+          {
+            p_user_id: userId,
+            p_routine_id: routineId,
+            p_keep_ids: idsForRoutine,
+          },
+        );
+        if (orphanErr) throw new PartialWriteRetryError('routine_exercises orphan cleanup', orphanErr);
         if (idsForRoutine.length > 0) {
           // Delete exercises in this routine that are NOT in the payload
           const { error: orphanErr } = await supabase
@@ -2420,14 +2775,14 @@ async function mobileSyncPushHandler(
             .delete()
             .eq('routine_id', routineId)
             .not('id', 'in', `(${idsForRoutine.join(',')})`);
-          if (orphanErr) console.warn(`routine_exercises orphan cleanup warning for ${routineId}:`, orphanErr.message);
+          if (orphanErr) throw new PartialWriteRetryError('routine_exercises orphan cleanup', orphanErr);
         } else {
           // Routine has zero exercises now -- delete all
           const { error: orphanErr } = await supabase
             .from('routine_exercises')
             .delete()
             .eq('routine_id', routineId);
-          if (orphanErr) console.warn(`routine_exercises orphan cleanup warning for ${routineId}:`, orphanErr.message);
+          if (orphanErr) throw new PartialWriteRetryError('routine_exercises orphan cleanup', orphanErr);
         }
       }
 
@@ -2460,22 +2815,19 @@ async function mobileSyncPushHandler(
       );
       if (ownershipResp) return ownershipResp;
 
-      const { error: delErr } = await supabase
-        .from('routines')
-        .delete()
-        .in('id', payload.deletedRoutineIds)
-        .eq('user_id', userId);
-      if (delErr) {
-        console.warn('routine deletion warning:', delErr.message);
-      } else {
-        console.log(`Deleted ${payload.deletedRoutineIds.length} routine(s) from server`);
-      }
+      await deleteOwnedRowsInChunks(
+        supabase,
+        'routines',
+        payload.deletedRoutineIds,
+        userId,
+        'routine delete',
+      );
+      console.log(`Deleted ${payload.deletedRoutineIds.length} routine(s) from server`);
     }
 
     // =========================================================================
-    // 7b. Delete cycles that mobile soft-deleted (tombstone propagation).
-    //     Hard-delete on server — CASCADE removes cycle_days automatically.
-    //     Ownership check prevents cross-user deletion via crafted IDs.
+    // 7b. Delete cycles through the timestamp LWW gate. Legacy clockless ids
+    //     may no-op an absent target, but cannot win over an existing row.
     // =========================================================================
     if (payload.deletedCycleIds && payload.deletedCycleIds.length > 0) {
       const cycleDelOwnershipResp = await assertRowsOwnedByUser(
@@ -2487,25 +2839,59 @@ async function mobileSyncPushHandler(
       );
       if (cycleDelOwnershipResp) return cycleDelOwnershipResp;
 
-      const { error: cycleDelErr } = await supabase
+      await deleteOwnedRowsInChunks(
+        supabase,
+        'training_cycles',
+        payload.deletedCycleIds,
+        userId,
+        'cycle delete',
+      );
+      console.log(`Deleted ${payload.deletedCycleIds.length} cycle(s) from server`);
+      const { data: existingLegacyCycles, error: cycleDelErr } = await supabase
         .from('training_cycles')
-        .delete()
+        .select('id, updated_at')
         .in('id', payload.deletedCycleIds)
         .eq('user_id', userId);
       if (cycleDelErr) {
-        console.warn('cycle deletion warning:', cycleDelErr.message);
-      } else {
-        console.log(`Deleted ${payload.deletedCycleIds.length} cycle(s) from server`);
+        throw new Error(`legacy cycle deletion lookup failed: ${cycleDelErr.message}`);
+      }
+      for (const row of existingLegacyCycles ?? []) {
+        rejections.cycles.push({
+          id: String(row.id),
+          serverUpdatedAt: row.updated_at == null ? null : String(row.updated_at),
+        });
+      }
+    }
+
+    if (payload.deletedCycles.length > 0) {
+      const cycleDelOwnershipResp = await assertRowsOwnedByUser(
+        payload.deletedCycles.map((cycle) => cycle.id),
+        cors,
+      if (cycleDelOwnershipResp) return cycleDelOwnershipResp;
+
+      const { data, error } = await supabase.rpc('delete_training_cycles_lww', {
+        p_user_id: userId,
+        p_rows: payload.deletedCycles,
+      });
+      if (error) throw new Error(`training cycle deletion LWW RPC failed: ${error.message}`);
+      for (const row of (data ?? []) as LwwUpsertRow[]) {
+        if (row.accepted) acknowledgedDeletedCycleIds.push(row.id);
+        else rejections.cycles.push({ id: row.id, serverUpdatedAt: row.server_updated_at });
       }
     }
 
     // =========================================================================
-    // 7c. Upsert training_cycles + upsert cycle_days (safe replace pattern)
-    //     cycle_days has UNIQUE(cycle_id, day_number), so upsert on that
-    //     constraint instead of delete+insert.
+    // 7c. Merge training_cycles + cycle_days in SQL (KD-6)
+    //     One service-role RPC upserts the cycles and their days and removes
+    //     orphan days, for both SYNC_LWW_ENABLED values. It keeps portal
+    //     config the phone doesn't know about (deload, progression keys,
+    //     rest_type, duration), ignores a stale structure (portal edited the
+    //     cycle after the device's baseUpdatedAt), and skips no-op writes.
     // =========================================================================
     if (liveCycles.length > 0) {
       const cycleRows = liveCycles.map((c) => ({
+    if (payload.cycles && payload.cycles.length > 0) {
+      const cycleRows = payload.cycles.map((c) => ({
         id: c.id,
         user_id: userId,
         local_profile_id: localProfileId,
@@ -2519,73 +2905,105 @@ async function mobileSyncPushHandler(
         started_at: c.startedAt,
         last_used_at: c.lastUsedAt,
         progression_settings: safeJsonParse(c.progressionSettings),
+        ...(c.progressionSettingsPresent
+          ? { progression_settings_present: true }
+          : {}),
         deload_settings: safeJsonParse(c.deloadSettings),
         template_id: c.templateId ?? null,
+        ...(c.progressStatePresent
+          ? { progress_state_present: true, progress_state: c.progressState ?? null }
+          : {}),
         updated_at: c.updatedAt ?? null,
       }));
 
+      // Ownership of every cycle id was verified once in directOwnerChecks.
       const cycleOwnershipResp = await assertRowsOwnedByUser(
         supabase,
         'training_cycles',
-        cycleRows.map((r) => r.id),
+        liveCycles.map((c) => c.id),
         userId,
         cors,
       );
       if (cycleOwnershipResp) return cycleOwnershipResp;
 
-      if (SYNC_LWW_ENABLED) {
-        const rows = cycleRows.map((r) => ({
-          ...r,
-          updated_at: r.updated_at ?? new Date().toISOString(),
-        }));
-        const { data: lwwData, error: lwwErr } = await supabase.rpc(
-          'upsert_training_cycle_lww',
-          { p_rows: rows },
-        );
-        if (lwwErr) throw new Error(`training_cycles LWW RPC failed: ${lwwErr.message}`);
-        acceptedCycleIds = new Set<string>();
-        for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
-          if (rr.accepted) acceptedCycleIds.add(rr.id);
-          else rejections.cycles.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+      // KD-4 / R-24: decided here, after this push's own routine writes (7)
+      // and deletes (7a). A day keeps its routine only when that routine
+      // exists now: it was in this push and not tombstoned (a routine
+      // created earlier in the same push counts; an LWW-rejected one still
+      // exists on the server), or it already existed for this user at the 3b
+      // probe. A tombstoned, missing or just-deleted routine becomes NULL,
+      // matching the FK's ON DELETE SET NULL, so the write cannot fail.
+      const deletedInThisPush = new Set(payload.deletedRoutineIds ?? []);
+      const keepableDayRoutineIds = new Set<string>([
+        ...liveRoutines.map((r) => r.id),
+        ...dayRoutineProbe.validIds,
+      ]);
+      const skippedRoutineIds = new Set(skippedDeleted.routines);
+      // Cleared references are logged, never dropped silently (R-3).
+      const clearedDeletedRefs = new Set<string>();
+      const clearedMissingRefs = new Set<string>();
+      const dayRoutineId = (routineId: string | null | undefined): string | null => {
+        if (!routineId) return null;
+        if (keepableDayRoutineIds.has(routineId) && !deletedInThisPush.has(routineId)) {
+          return routineId;
         }
-        cyclesUpserted = acceptedCycleIds.size;
-      } else {
-        // Legacy server-wins upsert still needs to preserve an existing
-        // template_id when older mobile builds omit or null the field.
-        const cycleIdsMissingTemplateId = cycleRows
-          .filter((row) => row.template_id == null)
-          .map((row) => row.id);
-        if (cycleIdsMissingTemplateId.length > 0) {
-          const existingTemplateIds = new Map<string, string>();
-          const chunkSize = 100;
-          for (let i = 0; i < cycleIdsMissingTemplateId.length; i += chunkSize) {
-            const chunk = cycleIdsMissingTemplateId.slice(i, i + chunkSize);
-            const { data: existingCycles, error: existingCyclesErr } = await supabase
-              .from('training_cycles')
-              .select('id, template_id')
-              .eq('user_id', userId)
-              .in('id', chunk);
-            if (existingCyclesErr) {
-              throw new Error(`training_cycles template_id probe failed: ${existingCyclesErr.message}`);
-            }
-            for (const row of existingCycles ?? []) {
-              if (typeof row.id === 'string' && typeof row.template_id === 'string') {
-                existingTemplateIds.set(row.id, row.template_id);
-              }
-            }
-          }
-          for (const row of cycleRows) {
-            if (row.template_id == null) {
-              row.template_id = existingTemplateIds.get(row.id) ?? null;
-            }
-          }
+        if (skippedRoutineIds.has(routineId) || deletedInThisPush.has(routineId)) {
+          clearedDeletedRefs.add(routineId);
+        } else {
+          // Not in this push and not on the server for this user (deleted
+          // before tombstones existed, or never pushed from the device).
+          clearedMissingRefs.add(routineId);
         }
+        return null;
+      };
 
-        const { error: cycErr } = await supabase
-          .from('training_cycles')
-          .upsert(cycleRows, { onConflict: 'id' });
-        if (cycErr) throw new Error(`training_cycles upsert failed: ${cycErr.message}`);
-        cyclesUpserted = cycleRows.length;
+      const cycleRows = liveCycles.map((c) => ({
+        id: c.id,
+        user_id: userId,
+        local_profile_id: localProfileId,
+        name: c.name,
+        // Absent/null description, duration and status pass through as NULL:
+        // the merge keeps the stored value, and its INSERT applies defaults.
+        description: c.description ?? null,
+        duration_weeks: c.durationWeeks ?? null,
+        workout_days: c.workoutDays ?? 0,
+        rest_days: c.restDays ?? 0,
+        current_week: c.currentWeek ?? 1,
+        status: c.status ?? null,
+        started_at: c.startedAt,
+        last_used_at: c.lastUsedAt,
+        progression_settings: safeJsonParse(c.progressionSettings),
+        deload_settings: safeJsonParse(c.deloadSettings),
+        template_id: c.templateId ?? null,
+        // The cycle merge reads this as the incoming LWW key (and compares
+        // it under LWW-on). Undated-push rule (R-1/R-7, NF-15): an omitted
+        // `updatedAt` is dated at receipt under BOTH flag values, so the
+        // stored key never depends on the flag and a NOT NULL `updated_at`
+        // can never be handed a null.
+        updated_at: c.updatedAt ?? pushReceivedAt,
+        base_updated_at: c.baseUpdatedAt ?? null,
+        days: c.days.map((d) => ({
+          // No id: the conflict target is (cycle_id, day_number). A client
+          // reusing an id across day rows would otherwise hit cycle_days_pkey.
+          cycle_id: d.cycleId,
+          day_number: d.dayNumber,
+          day_type: d.dayType ?? 'workout',
+          routine_id: dayRoutineId(d.routineId),
+          weight_adjustment: d.weightAdjustment ?? 0,
+          rep_modifier: d.repModifier ?? 0,
+          rest_override: d.restOverride,
+          rest_type: d.restType,
+          notes: d.notes,
+        })),
+      }));
+      if (clearedDeletedRefs.size > 0 || clearedMissingRefs.size > 0) {
+        console.warn(
+          `cycle_days routine references set to NULL: ${clearedDeletedRefs.size} deleted ` +
+            `routine(s), ${clearedMissingRefs.size} missing routine(s)` +
+            (clearedMissingRefs.size > 0
+              ? ` (missing: ${[...clearedMissingRefs].slice(0, 5).join(', ')})`
+              : ''),
+        );
       }
 
       // KD-4 / R-24: decided here, after this push's own routine writes (7)
@@ -2623,6 +3041,39 @@ async function mobileSyncPushHandler(
       // When LWW is enabled, skip days whose parent cycle was rejected.
       const dayRows = liveCycles
         .filter((c) => childAllowed(acceptedCycleIds, c.id))
+      // An RPC error throws into the generic 500 path: retryable, and the
+      // merge's writes roll back with it.
+      const { data: mergeData, error: mergeErr } = await supabase.rpc(
+        'merge_training_cycles_from_push',
+        { p_user_id: userId, p_cycles: cycleRows, p_use_lww: SYNC_LWW_ENABLED },
+      );
+      if (mergeErr) throw new Error(`training_cycles merge RPC failed: ${mergeErr.message}`);
+      const acceptedIds = new Set<string>();
+      for (const row of (Array.isArray(mergeData) ? mergeData : []) as CycleMergeRow[]) {
+        if (row.accepted) {
+          acceptedIds.add(row.id);
+          // A stale structure was not applied: the device must pull the
+          // portal version before it may use this version as its base.
+          if (row.structure_applied && row.server_updated_at) {
+            cycleVersions[row.id] = row.server_updated_at;
+          }
+          // R-3/R-6: report the stored LWW key, like sessions and routines.
+          // `server_updated_at` (the pull cursor) is reserved for
+          // cycleVersions above, which mobile compares with portal_edited_at.
+          rejections.cycles.push({ id: row.id, serverUpdatedAt: row.client_updated_at ?? null });
+      }
+      cyclesUpserted = acceptedIds.size;
+      // R-4 race guard: undo a re-create of a cycle deleted meanwhile.
+      const racedCycleIds = await reDeleteRacedTombstones(
+        'cycle',
+        'training_cycles',
+        liveCycles.map((c) => c.id),
+      );
+      if (racedCycleIds.length > 0) {
+        skippedDeleted.cycles.push(...racedCycleIds);
+        cyclesUpserted = Math.max(0, cyclesUpserted - racedCycleIds.length);
+        for (const racedId of racedCycleIds) delete cycleVersions[racedId];
+      const dayRows = payload.cycles
         .flatMap((c) =>
           c.days.map((d) => ({
             // Do not upsert id when conflict target is (cycle_id, day_number).
@@ -2638,6 +3089,15 @@ async function mobileSyncPushHandler(
             rest_override: d.restOverride,
             rest_type: d.restType,
             notes: d.notes,
+            ...(d.echoLevelPresent
+              ? { echo_level_present: true, echo_level: d.echoLevel ?? null }
+              : {}),
+            ...(d.eccentricLoadPercentPresent
+              ? {
+                eccentric_load_percent_present: true,
+                eccentric_load_percent: d.eccentricLoadPercent ?? null,
+              }
+              : {}),
           })),
         );
       if (clearedDeletedRefs.size > 0 || clearedMissingRefs.size > 0) {
@@ -2680,11 +3140,50 @@ async function mobileSyncPushHandler(
         skippedDeleted.cycles.push(...racedCycleIds);
         cyclesUpserted = Math.max(0, cyclesUpserted - racedCycleIds.length);
       }
+      // The parent clock decision and full day replacement hold the same
+      // per-cycle transaction lock, preventing an older concurrent request
+      // from resuming after a newer parent and overwriting its children.
+      const { data: lwwData, error: lwwErr } = await supabase.rpc(
+        'upsert_training_cycles_with_days_lww',
+        { p_user_id: userId, p_rows: cycleRows, p_days: dayRows },
+      if (lwwErr) throw new Error(`training cycle structure LWW RPC failed: ${lwwErr.message}`);
+      acceptedCycleIds = new Set<string>();
+      for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
+        if (rr.accepted) acceptedCycleIds.add(rr.id);
+        else rejections.cycles.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+      cyclesUpserted = acceptedCycleIds.size;
     }
 
     // =========================================================================
     // 8. Upsert rpg_attributes
     // =========================================================================
+    // Conflict key for the device-reported stats columns (F-070). The server
+    // stamp used to decide this, which made every push win against itself, so
+    // the write now carries the last workout it knows about: the newest
+    // session in this push.
+    //
+    // CLAMPED to the server's clock (review round 1, R-2/R-11/R-24):
+    // `sessionSchema.startedAt` is only checked for parseability, so a skewed
+    // phone clock or a crafted payload could otherwise park the key in 2099
+    // and freeze every device-owned column against all later honest pushes,
+    // with no path back down. The RPCs clamp again (LEAST(key, now())) for any
+    // other service-role caller.
+    //
+    // A push without sessions (older app versions, a stats-only push, a
+    // non-final history batch) carries null. Null is NOT consent: the RPCs
+    // accept it only when no key is stored yet, because a stale device sends
+    // exactly that shape (R-3/R-11).
+    const deviceLastWorkoutAt = ((): string | null => {
+      let newest = Number.NEGATIVE_INFINITY;
+      for (const session of payload.sessions) {
+        const startedAt = Date.parse(session.startedAt);
+        if (Number.isFinite(startedAt) && startedAt > newest) newest = startedAt;
+      }
+      if (!Number.isFinite(newest)) return null;
+      return new Date(Math.min(newest, dependencies.now())).toISOString();
+    })();
+
+    let rpgAttributesAccepted = false;
     if (payload.rpgAttributes) {
       const rpg = payload.rpgAttributes;
       // fix(audit #8): defensively coerce to Int before DB write. Mobile sends
@@ -2703,23 +3202,40 @@ async function mobileSyncPushHandler(
         character_class: rpg.characterClass,
         level: rpgInt(rpg.level, 1),
         experience_points: rpgInt(rpg.experiencePoints, 0),
-        updated_at: new Date().toISOString(),
+        // No `updated_at`: the RPC stamps the server clock, and the conflict
+        // compare runs on last_workout_at instead (F-070).
+        last_workout_at: deviceLastWorkoutAt,
       };
 
-      if (SYNC_LWW_ENABLED) {
+      // Both flag paths go through the RPC: it is the only writer that knows
+      // which columns are device-owned.
+      const { data: lwwData, error: lwwErr } = await supabase.rpc(
+        'upsert_rpg_attributes_lww',
+        { p_rows: [rpgRow] },
+      );
+      if (lwwErr) throw new Error(`rpg_attributes LWW RPC failed: ${lwwErr.message}`);
+      for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
+        if (rr.accepted) continue;
+        if (SYNC_LWW_ENABLED) {
+          rejections.rpgAttributes.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+        } else {
+          console.warn('rpg_attributes write rejected (SYNC_LWW_ENABLED off, not reported)');
+        }
+      if (syncLwwEnabled) {
         const { data: lwwData, error: lwwErr } = await supabase.rpc(
           'upsert_rpg_attributes_lww',
           { p_rows: [rpgRow] },
         );
         if (lwwErr) throw new Error(`rpg_attributes LWW RPC failed: ${lwwErr.message}`);
         for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
-          if (!rr.accepted) rejections.rpgAttributes.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
-        }
+          if (rr.accepted) rpgAttributesAccepted = true;
+          else rejections.rpgAttributes.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
       } else {
         const { error: rpgErr } = await supabase
           .from('rpg_attributes')
           .upsert(rpgRow, { onConflict: 'user_id' });
         if (rpgErr) throw new Error(`rpg_attributes upsert failed: ${rpgErr.message}`);
+        rpgAttributesAccepted = true;
       }
     }
 
@@ -2746,33 +3262,64 @@ async function mobileSyncPushHandler(
     // =========================================================================
     // 10. Upsert gamification_stats
     // =========================================================================
+    let gamificationStatsAccepted = false;
     if (payload.gamificationStats) {
       const gs = payload.gamificationStats;
+      // The device's own numbers go into the device_* SHADOW columns, which
+      // mobile-sync-pull serves straight back to the phone. They are NOT what
+      // the portal or the leaderboards read: total_workouts, total_reps,
+      // total_volume_kg, total_time_seconds, pr_count and all three streaks
+      // are server-derived (recompute_gamification_stats below), so a device
+      // claiming 10,000 workouts changes nothing anyone else sees.
+      //
+      // Why a shadow copy rather than serving the derived value (R-10): the
+      // installed app merges a pulled stats row with an unconditional
+      // server-wins INSERT OR REPLACE, and the two sides do not mean the same
+      // thing — the server counts grouped portal sessions, stored volume is
+      // per cable — so handing it derived numbers would halve lifetime volume
+      // for dual-cable users and shift badge progress on every phone in the
+      // fleet. There is no app-version field in the payload to gate on.
       const gsRow = {
         user_id: userId,
-        total_workouts: gs.totalWorkouts ?? 0,
-        total_reps: gs.totalReps ?? 0,
-        total_volume_kg: gs.totalVolumeKg ?? 0,
-        longest_streak: gs.longestStreak ?? 0,
-        current_streak: gs.currentStreak ?? 0,
-        total_time_seconds: gs.totalTimeSeconds ?? 0,
-        updated_at: new Date().toISOString(),
+        device_total_workouts: gs.totalWorkouts ?? 0,
+        device_total_reps: gs.totalReps ?? 0,
+        device_total_volume_kg: gs.totalVolumeKg ?? 0,
+        device_total_time_seconds: gs.totalTimeSeconds ?? 0,
+        device_longest_streak: gs.longestStreak ?? 0,
+        device_current_streak: gs.currentStreak ?? 0,
+        last_workout_at: deviceLastWorkoutAt,
       };
 
-      if (SYNC_LWW_ENABLED) {
+      const { data: lwwData, error: lwwErr } = await supabase.rpc(
+        'upsert_gamification_stats_lww',
+        { p_rows: [gsRow] },
+      );
+      if (lwwErr) throw new Error(`gamification_stats LWW RPC failed: ${lwwErr.message}`);
+      for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
+        if (rr.accepted) continue;
+        if (SYNC_LWW_ENABLED) {
+          rejections.gamificationStats.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
+        } else {
+          // Flag-off keeps the pre-LWW response contract (rejections stay
+          // empty), but both flag paths now run the same compare, so a
+          // discarded write would otherwise be invisible (R-15).
+          console.warn('gamification_stats write rejected (SYNC_LWW_ENABLED off, not reported)');
+        }
+      if (syncLwwEnabled) {
         const { data: lwwData, error: lwwErr } = await supabase.rpc(
           'upsert_gamification_stats_lww',
           { p_rows: [gsRow] },
         );
         if (lwwErr) throw new Error(`gamification_stats LWW RPC failed: ${lwwErr.message}`);
         for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
-          if (!rr.accepted) rejections.gamificationStats.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
-        }
+          if (rr.accepted) gamificationStatsAccepted = true;
+          else rejections.gamificationStats.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
       } else {
         const { error: gsErr } = await supabase
           .from('gamification_stats')
           .upsert(gsRow, { onConflict: 'user_id' });
         if (gsErr) throw new Error(`gamification_stats upsert failed: ${gsErr.message}`);
+        gamificationStatsAccepted = true;
       }
     }
 
@@ -2780,7 +3327,9 @@ async function mobileSyncPushHandler(
     // 11. Phase statistics (GAP 7)
     // =========================================================================
     if (payload.phaseStatistics && payload.phaseStatistics.length > 0) {
-      const phaseRows = payload.phaseStatistics.map((ps) => ({
+      const phaseRows = payload.phaseStatistics
+        .filter((ps) => !rejectedPayloadSessionIds.has(ps.sessionId))
+        .map((ps) => ({
         session_id: ps.sessionId,
         user_id: userId,
         concentric_kg_avg: ps.concentricKgAvg,
@@ -2795,22 +3344,26 @@ async function mobileSyncPushHandler(
         eccentric_vel_max: ps.eccentricVelMax,
         eccentric_watt_avg: ps.eccentricWattAvg,
         eccentric_watt_max: ps.eccentricWattMax,
-      }));
+        }));
 
       const { error: psErr } = await supabase
         .from('session_phase_statistics')
         .upsert(phaseRows, { onConflict: 'session_id' });
-      if (psErr) console.warn('phase_statistics upsert warning:', psErr.message);
-      else phaseStatisticsInserted = phaseRows.length;
+      if (psErr) {
+        console.warn('phase_statistics upsert warning:', psErr.message);
+        failed.phaseStatistics.push(...payload.phaseStatistics.map((ps) => ps.id));
+      } else phaseStatisticsInserted = phaseRows.length;
     }
 
     // =========================================================================
     // 12. Exercise signatures (GAP 8)
     // =========================================================================
     if (payload.exerciseSignatures && payload.exerciseSignatures.length > 0) {
+      const sigIds: string[] = [];
       const sigRows = payload.exerciseSignatures.flatMap((es) => {
         const exerciseId = catalogId(es.exerciseId);
         if (!exerciseId) return [];
+        sigIds.push(es.id);
         return [{
         user_id: userId,
         exercise_id: exerciseId,
@@ -2828,8 +3381,10 @@ async function mobileSyncPushHandler(
       const { error: sigErr } = await supabase
         .from('exercise_signatures')
         .upsert(sigRows, { onConflict: 'user_id,exercise_id' });
-      if (sigErr) console.warn('exercise_signatures upsert warning:', sigErr.message);
-      else exerciseSignaturesUpserted = sigRows.length;
+      if (sigErr) {
+        console.warn('exercise_signatures upsert warning:', sigErr.message);
+        failed.exerciseSignatures.push(...sigIds);
+      } else exerciseSignaturesUpserted = sigRows.length;
     }
 
     // =========================================================================
@@ -2840,6 +3395,7 @@ async function mobileSyncPushHandler(
         const exerciseId = catalogId(a.exerciseId);
         if (!exerciseId) return [];
         return [{
+        clientId: a.id,
         user_id: userId,
         exercise_id: exerciseId,
         estimated_1rm_kg: a.estimatedOneRepMaxKg,
@@ -2850,36 +3406,35 @@ async function mobileSyncPushHandler(
         }];
       });
 
-      // Dedup by exercise_id + created_at. Page the existence lookup (no unique index).
-      const existingAssessResult = await fetchAllByParentIds(supabase, {
-        table: 'vbt_assessments',
-        parentColumn: 'user_id',
-        parentIds: [userId],
-        entity: 'vbt assessments',
-        select: 'exercise_id, created_at',
-      });
-      if (!existingAssessResult.ok) {
-        const detail = existingAssessResult.kind === 'overflow'
-          ? `child overflow for parent ${existingAssessResult.parentId}`
-          : (existingAssessResult.error.message ?? 'lookup failed');
-        throw new Error(`vbt_assessments lookup failed: ${detail}`);
-      }
-      const existingAssess = existingAssessResult.rows;
-
-      const existingKeys = new Set(
-        existingAssess.map((r: Record<string, unknown>) => `${r.exercise_id}:${r.created_at}`)
-      );
-      const newAssess = assessRows.filter((r) => {
-        const key = `${r.exercise_id}:${r.created_at}`;
-        return !existingKeys.has(key);
-      });
-
-      if (newAssess.length > 0) {
-        const { error: aErr } = await supabase
+      // Idempotent on the natural key (PR 23). ON CONFLICT compares the
+      // timestamptz VALUE, so mobile's "...Z" and a stored row that reads
+      // back as "...+00:00" are the same assessment (the old string compare
+      // missed this and duplicated every assessment on every push). DO
+      // NOTHING (ignoreDuplicates) also tolerates two payload rows that hit
+      // one key, e.g. different mobile exercise ids resolving to one catalog
+      // id, which DO UPDATE would reject. Assessments are immutable on
+      // mobile, so there is nothing to update. Needs the
+      // vbt_assessments_identity unique index (migration 20260920002300).
+      // `.select('id')` returns only the rows actually inserted (PostgREST
+      // omits rows skipped by DO NOTHING), so assessmentsInserted stays a
+      // true new-row count. clientId is stripped before the write and kept
+      // for `failed` reporting (PR 22).
+      if (assessRows.length > 0) {
+        const { data: insertedAssess, error: aErr } = await supabase
           .from('vbt_assessments')
-          .insert(newAssess);
-        if (aErr) console.warn('vbt_assessments insert warning:', aErr.message);
-        else assessmentsInserted = newAssess.length;
+          .insert(newAssess.map(({ clientId: _clientId, ...row }) => row));
+        if (aErr) {
+          console.warn('vbt_assessments insert warning:', aErr.message);
+          failed.assessments.push(...newAssess.map((r) => r.clientId));
+        } else assessmentsInserted = newAssess.length;
+          .upsert(
+            assessRows.map(({ clientId: _clientId, ...row }) => row),
+            { onConflict: 'user_id,exercise_id,created_at', ignoreDuplicates: true },
+          )
+          .select('id');
+          console.warn('vbt_assessments upsert warning:', aErr.message);
+          failed.assessments.push(...assessRows.map((r) => r.clientId));
+        } else assessmentsInserted = insertedAssess?.length ?? 0;
       }
     }
 
@@ -2889,6 +3444,11 @@ async function mobileSyncPushHandler(
     let externalActivityIds: string[] = [];
     let externalActivityKeys: ExternalActivityAckDto[] = [];
     if (externalActivities.length > 0) {
+      // NF-10: synced_at is the pull's delta cursor (`synced_at > lastSync`,
+      // where lastSync is a server syncTime), so it must be server time.
+      // The client's `syncedAt` is ignored: a device clock or an older
+      // local timestamp would hide the activity from other devices' pulls.
+      const serverSyncedAt = new Date(dependencies.now()).toISOString();
       const activityRows = activitiesWithIds.map((a) => ({
         id: a.id,
         user_id: userId,
@@ -2906,11 +3466,11 @@ async function mobileSyncPushHandler(
         raw_data: a.rawData
           ? redactTokenShapedJson(safeJsonParse(a.rawData))
           : null,
-        synced_at: a.syncedAt ?? new Date().toISOString(),
+        synced_at: serverSyncedAt,
         updated_at: new Date().toISOString(),
       }));
 
-      if (SYNC_LWW_ENABLED) {
+      if (syncLwwEnabled) {
         // Phase 3.2: route through LWW RPC so a stale webhook push does not
         // overwrite a newer mobile-captured row (or vice versa). The RPC
         // returns the canonical server id which we surface in the ack list.
@@ -2920,6 +3480,7 @@ async function mobileSyncPushHandler(
         );
         if (lwwErr) {
           console.warn('external_activities LWW RPC warning:', lwwErr.message);
+          failed.externalActivities.push(...activityRows.map((r) => r.id));
           externalActivityIds = [];
           externalActivityKeys = [];
         } else {
@@ -2961,6 +3522,7 @@ async function mobileSyncPushHandler(
           .select('id, external_id, provider, updated_at');
         if (extErr) {
           console.warn('external_activities upsert warning:', extErr.message);
+          failed.externalActivities.push(...activityRows.map((r) => r.id));
           externalActivityIds = [];
           externalActivityKeys = [];
         } else {
@@ -3022,50 +3584,61 @@ async function mobileSyncPushHandler(
     }
 
     // =========================================================================
+    // 14a. Recompute the server-derived gamification counters
+    // =========================================================================
+    // Runs on every push (both flag paths) whether or not this payload carried
+    // gamificationStats: sessions and personal_records that landed above are
+    // the source of the counters, so the totals follow the stored rows and
+    // never a device claim. Deletes are covered by the triggers in
+    // 20260920002500.
+    //
+    // FAIL OPEN (review round 1, R-1 — this deliberately reverses the first
+    // draft, which threw). This runs in its own transaction AFTER every
+    // session/exercise/set/PR/preference write has committed, so throwing
+    // would return 500 for a push whose data all landed, skip the
+    // `sync_complete` broadcast, and make the device retry the whole payload
+    // — re-running the same recompute, which re-scans the user's entire
+    // session and set history on every batch of a multi-batch import. On a
+    // large history that meets a statement_timeout the failure is
+    // deterministic, i.e. a permanent sync-failure loop for that account.
+    // The counters are self-healing (the next push and the delete triggers
+    // reconcile them), so a stale counter is strictly better than a wedged
+    // sync. index.test.ts pins this direction.
+    const { error: recomputeErr } = await supabase.rpc(
+      'recompute_gamification_stats',
+      { p_user_id: userId },
+    );
+    if (recomputeErr) {
+      console.warn('gamification_stats recompute failed (counters stale until next push)');
+      dependencies.logOperationalFailure({ name: 'GamificationRecomputeFailure' });
+    }
+
+    // =========================================================================
     // 15. Return sync result
     // =========================================================================
     const syncTime = new Date(dependencies.now()).toISOString();
-    // Use HTTP broadcast so the edge function doesn't need an active WebSocket
-    // subscription. `channel.send()` on an unsubscribed channel silently no-ops.
-    const channel = supabase.channel(syncBroadcastTopic(userId), {
-      config: { private: true, broadcast: { self: false } },
-    });
-    try {
-      await new Promise<void>((resolve) => {
-        const subscription = channel.subscribe((status) => {
-          if (
-            status === 'SUBSCRIBED' ||
-            status === 'CHANNEL_ERROR' ||
-            status === 'TIMED_OUT' ||
-            status === 'CLOSED'
-          ) {
-            resolve();
-            // Avoid unused-binding warning on `subscription`.
-            void subscription;
-          }
-        });
-        // Safety timeout — don't block the response waiting for realtime.
-        setTimeout(resolve, 1500);
-      });
-
-      const broadcastStatus = await channel.send({
-        type: 'broadcast',
-        event: 'sync_complete',
-        payload: {
-          syncTime,
-        },
-      });
-      if (broadcastStatus !== 'ok') {
-        console.warn('mobile-sync-push broadcast warning:', broadcastStatus);
-      }
-    } catch (broadcastErr) {
-      console.warn('mobile-sync-push broadcast failed:', broadcastErr);
-    } finally {
-      try {
-        await supabase.removeChannel(channel);
-      } catch (cleanupErr) {
-        console.warn('mobile-sync-push channel cleanup warning:', cleanupErr);
-      }
+    // Tell the portal to refetch, but only when this push changed something it
+    // shows. local_profiles count only when a row was added, removed or edited
+    // (see localProfilesChanged). Ownership transfers, workout deletions and
+    // clocked cycle tombstones also count: the portal refetches workouts and
+    // cycles on sync_complete. Custom exercise catalog upserts never count.
+    const pushChangedPortalData =
+      sessionsInserted + exercisesInserted + setsInserted + repSummariesInserted +
+          telemetryInserted + routinesUpserted + cyclesUpserted + badgesUpserted +
+          exerciseProgressInserted + personalRecordsInserted +
+          phaseStatisticsInserted + exerciseSignaturesUpserted +
+          assessmentsInserted + externalActivitiesUpserted > 0 ||
+      (payload.deletedRoutineIds?.length ?? 0) > 0 ||
+      (payload.deletedCycleIds?.length ?? 0) > 0 ||
+      payload.deletedCycles.length > 0 ||
+      payload.ownershipTransfers.length > 0 ||
+      payload.workoutDeletions.length > 0 ||
+      rpgAttributesAccepted ||
+      gamificationStatsAccepted ||
+      localProfilesChanged ||
+      canonicalProfilePreferenceSections.length > 0;
+    if (pushChangedPortalData) {
+      await broadcastSyncComplete(supabase, userId, syncTime);
     }
 
     return new Response(
@@ -3087,6 +3660,11 @@ async function mobileSyncPushHandler(
         externalActivitiesUpserted,
         externalActivityIds,
         externalActivityKeys,
+        acknowledgedWorkoutSessionIds: [...(acceptedSessionIds ?? [])],
+        acknowledgedCycleIds: [...(acceptedCycleIds ?? [])],
+        acknowledgedWorkoutDeletionIds,
+        acknowledgedOwnershipTransferIds,
+        acknowledgedDeletedCycleIds,
         // Phase 3.2: per-entity LWW rejection lists. Empty when SYNC_LWW_ENABLED
         // is false or when every incoming row cleared the LWW gate. Mobile
         // logs these and repairs convergence via the next pull.
@@ -3095,6 +3673,13 @@ async function mobileSyncPushHandler(
         // server (tombstoned) and therefore not re-created. New response key;
         // older builds ignore it.
         skippedDeleted,
+        // KD-6: {cycleId: stored updated_at} for cycles whose pushed
+        // structure was applied. A cycle missing here (stale structure,
+        // LWW-rejected, deleted) must be pulled before its base advances.
+        // New response key; older builds ignore it.
+        cycleVersions,
+        // PR 22: optional-table writes that failed (push still 200).
+        failed,
         ...(preferenceEnvelope.present ? { profilePreferencesAccepted: true } : {}),
         canonicalProfilePreferenceSections,
         profilePreferenceRejections,
@@ -3102,6 +3687,17 @@ async function mobileSyncPushHandler(
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
+    if (err instanceof PartialWriteRetryError) {
+      console.warn('mobile-sync-push partial write, answering 503:', err.message);
+      dependencies.logOperationalFailure({ name: err.name });
+      return new Response(
+        JSON.stringify({
+          error: 'Sync temporarily unavailable',
+          code: 'partial_write_retry',
+        }),
+        { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
     dependencies.logOperationalFailure({
       name: safeErrorName(err, 'MobileSyncPushFailure'),
     });
@@ -3123,10 +3719,94 @@ async function mobileSyncPushHandler(
   }
 }
 
+/** Stored local_profiles columns the push can change. */
+interface StoredLocalProfile {
+  id: string;
+  name: string | null;
+  color_index: number | null;
+  device_id: string | null;
+}
+
+/**
+ * True when upserting `incoming` (the device's full profile list) and deleting
+ * this device's profiles absent from it would add, edit or remove a row.
+ */
+export function localProfilesPushChangesRows(
+  stored: StoredLocalProfile[],
+  incoming: StoredLocalProfile[],
+  deviceId: string,
+): boolean {
+  const storedById = new Map(stored.map((row) => [row.id, row]));
+  const incomingIds = new Set(incoming.map((row) => row.id));
+  const upsertChanges = incoming.some((row) => {
+    const existing = storedById.get(row.id);
+    return existing === undefined ||
+      existing.name !== row.name ||
+      (existing.color_index ?? null) !== (row.color_index ?? null) ||
+      existing.device_id !== row.device_id;
+  });
+  const deleteChanges = stored.some(
+    (row) => row.device_id === deviceId && !incomingIds.has(row.id),
+  );
+  return upsertChanges || deleteChanges;
+}
+
+/** Upper bound on the broadcast POST so a Realtime outage cannot stall pushes. */
+const SYNC_BROADCAST_TIMEOUT_MS = 1500;
+
+/**
+ * Broadcasts `sync_complete` on the private `sync:{userId}` topic through the
+ * Realtime REST endpoint (`httpSend`): one POST, no WebSocket join. Delivery
+ * is best-effort — a failure is logged and never fails the push, because the
+ * rows are already committed and the portal also refetches on reconnect.
+ */
+export async function broadcastSyncComplete(
+  supabase: SupabaseClient,
+  userId: string,
+  syncTime: string,
+): Promise<void> {
+  let channel: ReturnType<SupabaseClient['channel']> | null = null;
+  try {
+    // Load the client's access token into Realtime so httpSend carries an
+    // explicit `Authorization: Bearer` for the private topic. Without a
+    // session this resolves to the service-role key.
+    await supabase.realtime.setAuth();
+    channel = supabase.channel(syncBroadcastTopic(userId), {
+      config: { private: true },
+    });
+    const result = await channel.httpSend(
+      'sync_complete',
+      { syncTime },
+      { timeout: SYNC_BROADCAST_TIMEOUT_MS },
+    );
+    if (!result.success) {
+      console.warn('mobile-sync-push broadcast rejected:', result.status);
+    }
+  } catch (broadcastErr) {
+    console.warn(
+      'mobile-sync-push broadcast failed:',
+      safeErrorName(broadcastErr, 'BroadcastFailure'),
+    );
+  } finally {
+    if (channel) {
+      try {
+        await supabase.removeChannel(channel);
+      } catch (cleanupErr) {
+        console.warn(
+          'mobile-sync-push channel cleanup warning:',
+          safeErrorName(cleanupErr, 'ChannelCleanupFailure'),
+        );
+      }
+    }
+  }
+}
+
 export function createMobileSyncPushHandler(
   dependencies: MobileSyncPushHandlerDependencies = defaultMobileSyncPushDependencies(),
 ): (req: Request) => Promise<Response> {
-  return (req) => mobileSyncPushHandler(req, dependencies);
+  // One handler per isolate in production, so this is isolate memory.
+  const publicCatalogCache: PublicCatalogCache = { rows: null, fetchedAt: 0 };
+  return (req) => mobileSyncPushHandler(req, dependencies, publicCatalogCache);
 }
 
 if (import.meta.main) {

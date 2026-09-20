@@ -36,6 +36,11 @@ SELECT ok(
           AND a.attname = 'user_id'
     ),
     'sync_tombstones.user_id cascades when the auth user is deleted'
+    NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'public.sync_tombstones'::regclass AND contype = 'f'
+    ),
+    'sync_tombstones has no foreign key (the trigger can fire during an account cascade)'
 );
 SELECT ok(
     (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.sync_tombstones'::regclass),
@@ -192,6 +197,7 @@ VALUES (
     'routine',
     '16161616-0000-4000-8000-0000000000d3'::uuid
 );
+-- user's routines and cycles, so the trigger records nothing.
 DELETE FROM auth.users WHERE id = '16161616-0000-4000-8000-000000000003'::uuid;
 
 SELECT is(

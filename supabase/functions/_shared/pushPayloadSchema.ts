@@ -273,6 +273,11 @@ const routineExerciseSchema = z.object({
 	// value written by the portal or a newer device (SYNC_LWW_ENABLED is off).
 	dropSetEnabled: nullableField(z.boolean()),
 	dropSetMinWeightKg: nullableField(z.number()),
+	// Timed exercise length. Shipping mobile builds don't send it; absent
+	// (undefined) keeps the stored value, so they can't erase a duration set in
+	// the portal. Nested field only (KD-2): an older server strips it.
+	// Bounded to the INT column (and Kotlin Int) so it can't fail the upsert.
+	durationSeconds: nullableField(nonNegInt.max(2_147_483_647)),
 });
 
 const customExerciseSchema = z.object({
@@ -310,6 +315,20 @@ const cycleDaySchema = z.object({
 	restOverride: nullableField(nonNegInt),
 	restType: nullableField(z.string()),
 	notes: nullableField(z.string()),
+	echoLevelPresent: z.boolean().optional(),
+	echoLevel: z.string().nullable().optional(),
+	eccentricLoadPercentPresent: z.boolean().optional(),
+	eccentricLoadPercent: z.number().int().nonnegative().nullable().optional(),
+});
+
+const cycleProgressStateSchema = z.object({
+	currentDayNumber: nonNegInt,
+	lastCompletedDate: z.number().int().nonnegative().nullable().optional(),
+	cycleStartDate: z.number().int().nonnegative(),
+	lastAdvancedAt: z.number().int().nonnegative().nullable().optional(),
+	completedDays: z.array(nonNegInt),
+	missedDays: z.array(nonNegInt),
+	rotationCount: nonNegInt,
 });
 
 const cycleSchema = z.object({
@@ -317,17 +336,27 @@ const cycleSchema = z.object({
 	userId: z.string(),
 	name: z.string(),
 	description: nullableField(z.string()),
-	durationWeeks: nonNegIntDefault(4),
+	// KD-6: no ingress default. An absent/null duration or status keeps the
+	// stored value in merge_training_cycles_from_push; the merge's INSERT
+	// applies the column defaults (4 / 'draft').
+	durationWeeks: nullableField(nonNegInt),
 	workoutDays: nonNegIntDefault(0),
 	restDays: nonNegIntDefault(0),
 	currentWeek: nonNegIntDefault(1),
-	status: z.string().nullish().transform((v) => v ?? "draft"),
+	status: nullableField(z.string()),
 	startedAt: nullableDatetime(),
 	lastUsedAt: nullableDatetime(),
 	updatedAt: nullableDatetime(),
+	// KD-6: server updatedAt the device last received for this cycle.
+	// Optional and nested, so older builds (absent) and older servers
+	// (stripped) keep working.
+	baseUpdatedAt: nullableDatetime(),
 	progressionSettings: nullableField(z.string()),
+	progressionSettingsPresent: z.boolean().optional(),
 	deloadSettings: nullableField(z.string()),
 	templateId: nullableField(z.string()),
+	progressStatePresent: z.boolean().optional(),
+	progressState: cycleProgressStateSchema.nullable().optional(),
 	days: arrayOf(cycleDaySchema).default([]),
 });
 
@@ -464,6 +493,70 @@ const personalRecordSchema = z.object({
 	workoutMode: nullableField(z.string()),
 });
 
+const workoutDeletionSchema = z
+	.object({
+		mutationId: uuid,
+		scope: z.enum(["COMPONENT", "WORKOUT"]),
+		portalSessionId: uuid,
+		componentSessionId: uuid.nullable().optional(),
+		deletedAt: isoDatetime,
+	})
+	.superRefine((deletion, ctx) => {
+		if (deletion.scope === "COMPONENT" && deletion.componentSessionId == null) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["componentSessionId"],
+				message: "componentSessionId is required for COMPONENT scope",
+			});
+		}
+		if (deletion.scope === "WORKOUT" && deletion.componentSessionId != null) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				path: ["componentSessionId"],
+				message: "componentSessionId must be null for WORKOUT scope",
+			});
+		}
+	});
+
+const ownershipTransferSchema = z
+	.object({
+		mutationId: uuid,
+		sourceProfileId: localProfileIdSchema.nullable(),
+		targetProfileId: localProfileIdSchema,
+		workoutSessionIds: arrayOf(uuid).default([]),
+		routineIds: arrayOf(uuid).default([]),
+		cycleIds: arrayOf(uuid).default([]),
+		personalRecordIds: arrayOf(uuid).default([]),
+	})
+	.superRefine((transfer, ctx) => {
+		const lists = [
+			transfer.workoutSessionIds,
+			transfer.routineIds,
+			transfer.cycleIds,
+			transfer.personalRecordIds,
+		];
+		if (lists.every((ids) => ids.length === 0)) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: "ownership transfer requires at least one exact entity id",
+			});
+		}
+		for (const [index, ids] of lists.entries()) {
+			if (new Set(ids.map((id) => id.toLowerCase())).size !== ids.length) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					path: [["workoutSessionIds", "routineIds", "cycleIds", "personalRecordIds"][index]],
+					message: "duplicate entity id",
+				});
+			}
+		}
+	});
+
+const deletedCycleSchema = z.object({
+	id: uuid,
+	updatedAt: isoDatetime,
+});
+
 // ─── Top-level ───────────────────────────────────────────────────────────
 
 export const pushPayloadSchema = z.object({
@@ -474,8 +567,11 @@ export const pushPayloadSchema = z.object({
 	telemetry: arrayOf(repTelemetrySchema).default([]),
 	routines: arrayOf(routineSchema).default([]),
 	deletedRoutineIds: arrayOf(uuid).default([]),
+	workoutDeletions: arrayOf(workoutDeletionSchema).default([]),
+	ownershipTransfers: arrayOf(ownershipTransferSchema).default([]),
 	cycles: arrayOf(cycleSchema).default([]),
 	deletedCycleIds: arrayOf(uuid).default([]),
+	deletedCycles: arrayOf(deletedCycleSchema).default([]),
 	rpgAttributes: rpgAttributesSchema.nullable().optional(),
 	badges: arrayOf(badgeSchema).default([]),
 	gamificationStats: gamificationStatsSchema.nullable().optional(),
@@ -530,6 +626,8 @@ interface PushPayloadForDuplicateCheck {
 	}> | null;
 	customExercises?: Array<{ clientId: string }>;
 	allProfiles?: Array<{ id: string }> | null;
+	workoutDeletions?: Array<{ mutationId: string }>;
+	ownershipTransfers?: Array<{ mutationId: string }>;
 }
 
 function duplicateValues(values: string[]): string[] {
@@ -681,6 +779,16 @@ export function findPushPayloadDuplicateConflictKeys(
 		reports,
 		"local_profiles",
 		(payload.allProfiles ?? []).map((profile) => profile.id),
+	);
+	reportDuplicate(
+		reports,
+		"workout_deletion_tombstones",
+		(payload.workoutDeletions ?? []).map((deletion) => deletion.mutationId),
+	);
+	reportDuplicate(
+		reports,
+		"profile_ownership_transfers",
+		(payload.ownershipTransfers ?? []).map((transfer) => transfer.mutationId),
 	);
 
 	return reports;

@@ -8,12 +8,17 @@ import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { stripBodyMusclesSourcemapsPlugin } from "./src/lib/build/body-muscles-sourcemaps";
 import {
+	createPwaShellPrecache,
+	createPwaWorkboxOptions,
+} from "./src/lib/build/pwa";
+import {
 	productionSourcemapSetting,
 	shouldUploadSourcemaps,
 } from "./src/lib/build/sourcemaps";
 
 const uploadSourcemaps = shouldUploadSourcemaps(process.env);
 const configDir = path.dirname(fileURLToPath(import.meta.url));
+const pwaShell = createPwaShellPrecache();
 
 export default defineConfig({
 	plugins: [
@@ -22,6 +27,7 @@ export default defineConfig({
 		// Tailwind is not being actively used – do not remove them
 		react(),
 		tailwindcss(),
+		pwaShell.plugin,
 		VitePWA({
 			registerType: "autoUpdate",
 			updateViaCache: "none",
@@ -55,14 +61,7 @@ export default defineConfig({
 					},
 				],
 			},
-			workbox: {
-				cleanupOutdatedCaches: true,
-				skipWaiting: true,
-				clientsClaim: true,
-				globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2}"],
-				navigateFallback: "/index.html",
-				navigateFallbackDenylist: [/^\/api\//],
-			},
+			workbox: createPwaWorkboxOptions(pwaShell.manifestTransform),
 			devOptions: {
 				enabled: false,
 			},

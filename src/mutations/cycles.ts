@@ -4,6 +4,7 @@ import type { Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
+import type { CycleProgressionSettings } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 interface CycleDayInput {
@@ -17,14 +18,9 @@ interface CycleDayInput {
 	rest_type?: string | null;
 }
 
-interface ProgressionSettings {
-	type: "percentage" | "fixed" | "manual";
-	amount: number;
-	frequency: number;
-	trigger: "all_sets" | "target_rpe" | "cycle_complete";
-	upperIncrement: number;
-	lowerIncrement: number;
-}
+// String-valued so mobile can decode it as Map<String, String>; built by
+// buildCycleProgressionSettings.
+type ProgressionSettings = CycleProgressionSettings;
 
 interface DeloadSettings {
 	frequency: number;
@@ -200,20 +196,18 @@ export function useDeleteCycle() {
 		mutationFn: async (cycleId: string) => {
 			if (!user) throw new Error("Must be logged in to delete cycles");
 
-			// Delete the cycle (CASCADE handles cycle_days)
-			const { data: deleted, error: cycleError } = await supabase
-				.from("training_cycles")
-				.delete()
-				.eq("id", cycleId)
-				.eq("user_id", user.id)
-				.select("id")
-				.maybeSingle();
+			const { data, error } = await supabase.rpc("delete_training_cycle_lww", {
+				p_cycle_id: cycleId,
+				p_updated_at: new Date().toISOString(),
+			});
 
-			if (cycleError) throw cycleError;
-			if (!deleted)
+			if (error) throw error;
+			const result = data?.[0];
+			if (!result?.accepted) {
 				throw new Error(
-					"Cycle not found or you don't have permission to delete it",
+					"Cycle changed on another device; refresh and try again",
 				);
+			}
 
 			return { id: cycleId };
 		},
