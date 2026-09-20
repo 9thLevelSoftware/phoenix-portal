@@ -17,6 +17,12 @@ import { queryKeys } from "./keys";
 export const EXERCISE_PROGRESS_SERIES_LIMIT = 1000;
 export const WORKBENCH_ROWS_PER_EXERCISE = 200;
 
+const progressGroupSchema = z.object({
+	exercise_name: z.string(),
+	latest_recorded_at: z.string(),
+	rows: z.array(exerciseProgressSchema),
+});
+
 /** Fetch distinct exercise names for the user */
 export function exerciseListOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
@@ -89,9 +95,8 @@ export function progressionWorkbenchOptions(
 			);
 			if (error) throw error;
 
-			const progressRows = (data ?? []).flatMap((group) =>
-				z.array(exerciseProgressSchema).parse(group.rows ?? []),
-			);
+			const groups = z.array(progressGroupSchema).parse(data ?? []);
+			const progressRows = groups.flatMap((group) => group.rows);
 			return { progressRows };
 		},
 		staleTime: 5 * 60 * 1000,

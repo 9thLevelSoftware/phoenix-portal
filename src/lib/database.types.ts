@@ -2715,11 +2715,7 @@ export type Database = {
 					p_limit_per_exercise?: number;
 					p_profile_id?: string;
 				};
-				Returns: {
-					exercise_name: string;
-					latest_recorded_at: string;
-					rows: Json;
-				}[];
+				Returns: Json;
 			};
 			get_acwr: {
 				Args: {
@@ -3099,6 +3095,10 @@ export type Database = {
 					rejection_reason: string;
 					server_revision: number;
 				}[];
+			};
+			personal_record_bests: {
+				Args: { p_profile_id?: string };
+				Returns: Json;
 			};
 			personal_record_history: {
 				Args: {

@@ -164,11 +164,10 @@ GRANT EXECUTE ON FUNCTION public.exercise_progress_series(text, text, integer) T
 -- exercise_progress_series_many: the batched form for the progression
 -- workbench, so it needs one call instead of one per exercise.
 --
--- Returns ONE ROW PER EXERCISE: `rows` is a jsonb array of that exercise's
--- newest p_limit_per_exercise exercise_progress rows (full row objects,
--- recorded_at DESC, id DESC). A flat SETOF would exceed PostgREST's 1,000-row
--- max_rows as soon as a user has a few exercises and would be truncated
--- silently (the F-034 defect again); one row per exercise stays far below it.
+-- Returns ONE JSONB ARRAY: each element carries one exercise and its newest
+-- p_limit_per_exercise exercise_progress rows (full row objects, recorded_at
+-- DESC, id DESC). The scalar envelope is one PostgREST result row even when
+-- p_exercises is NULL and the user has more than 1,000 distinct exercises.
 -- p_exercises NULL = every exercise. p_limit_per_exercise is clamped to
 -- 1..1000 (NULL -> 100). Exercises are ordered by their newest row, newest
 -- first, then name.
@@ -180,7 +179,7 @@ CREATE FUNCTION public.exercise_progress_series_many(
   p_profile_id text DEFAULT NULL,
   p_limit_per_exercise integer DEFAULT 100
 )
-RETURNS TABLE (exercise_name text, latest_recorded_at timestamptz, rows jsonb)
+RETURNS jsonb
 LANGUAGE sql
 STABLE
 SECURITY INVOKER
@@ -198,22 +197,71 @@ AS $$
       AND (p_exercises IS NULL OR ep.exercise_name = ANY (p_exercises))
       AND (p_profile_id IS NULL OR ep.local_profile_id = p_profile_id)
   )
-  SELECT
-    r.exercise_name,
-    max(r.recorded_at) AS latest_recorded_at,
-    jsonb_agg(to_jsonb(r) - 'rn' ORDER BY r.recorded_at DESC, r.id DESC) AS rows
-  FROM ranked r
-  WHERE r.rn <= LEAST(GREATEST(COALESCE(p_limit_per_exercise, 100), 1), 1000)
-  GROUP BY r.exercise_name
-  ORDER BY latest_recorded_at DESC, r.exercise_name ASC;
+  , grouped AS (
+    SELECT
+      r.exercise_name,
+      max(r.recorded_at) AS latest_recorded_at,
+      jsonb_agg(to_jsonb(r) - 'rn' ORDER BY r.recorded_at DESC, r.id DESC) AS rows
+    FROM ranked r
+    WHERE r.rn <= LEAST(GREATEST(COALESCE(p_limit_per_exercise, 100), 1), 1000)
+    GROUP BY r.exercise_name
+  )
+  SELECT COALESCE(
+    jsonb_agg(
+      jsonb_build_object(
+        'exercise_name', g.exercise_name,
+        'latest_recorded_at', g.latest_recorded_at,
+        'rows', g.rows
+      )
+      ORDER BY g.latest_recorded_at DESC, g.exercise_name ASC
+    ),
+    '[]'::jsonb
+  )
+  FROM grouped g;
 $$;
 
 COMMENT ON FUNCTION public.exercise_progress_series_many(text[], text, integer) IS
-  'Caller-scoped: one row per exercise with a jsonb array of its newest exercise_progress rows (recorded_at DESC, id DESC). NULL exercises = all. Per-exercise limit clamped 1..1000 (NULL/default 100).';
+  'Caller-scoped: one JSONB array of exercise groups, each with its newest exercise_progress rows (recorded_at DESC, id DESC). Scalar envelope avoids PostgREST row truncation when NULL exercises means all. Per-exercise limit clamped 1..1000 (NULL/default 100).';
 
 REVOKE ALL ON FUNCTION public.exercise_progress_series_many(text[], text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.exercise_progress_series_many(text[], text, integer) FROM anon;
 GRANT EXECUTE ON FUNCTION public.exercise_progress_series_many(text[], text, integer) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- personal_record_bests: compact goal-progress input. Returning one JSONB
+-- envelope avoids truncating users with more than 1,000 exercise/type groups.
+-- ---------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.personal_record_bests(text);
+
+CREATE FUNCTION public.personal_record_bests(p_profile_id text DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT COALESCE(jsonb_agg(to_jsonb(best) ORDER BY best.exercise_name, best.exercise_id, best.record_type), '[]'::jsonb)
+  FROM (
+    SELECT
+      pr.exercise_id,
+      pr.exercise_name,
+      upper(pr.record_type) AS record_type,
+      max(pr.value) AS value
+    FROM public.personal_records pr
+    WHERE pr.user_id = auth.uid()
+      AND pr.deleted_at IS NULL
+      AND upper(pr.record_type) IN ('MAX_WEIGHT', '1RM')
+      AND (p_profile_id IS NULL OR pr.local_profile_id = p_profile_id)
+    GROUP BY pr.exercise_id, pr.exercise_name, upper(pr.record_type)
+  ) best;
+$$;
+
+COMMENT ON FUNCTION public.personal_record_bests(text) IS
+  'Caller-scoped: one JSONB array with the best live MAX_WEIGHT/1RM value per exercise identity and record type. NULL profile = all profiles.';
+
+REVOKE ALL ON FUNCTION public.personal_record_bests(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.personal_record_bests(text) FROM anon;
+GRANT EXECUTE ON FUNCTION public.personal_record_bests(text) TO authenticated;
 
 -- ---------------------------------------------------------------------------
 -- personal_record_history: keyset pages of live personal records, newest

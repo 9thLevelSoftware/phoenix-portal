@@ -751,23 +751,24 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 							</div>
 						)}
 
-						{hasNextPage && (
-							<div className="text-center mt-4">
-								<Button
-									variant="outline"
-									disabled={isFetchingNextPage}
-									onClick={() => {
-										void fetchNextPage();
-									}}
-									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
-								>
-									{isFetchingNextPage ? "Loading…" : "Load older records"}
-								</Button>
-							</div>
-						)}
 					</motion.div>
 				)}
 			</AnimatePresence>
+
+			{hasNextPage && (
+				<div className="text-center mt-4">
+					<Button
+						variant="outline"
+						disabled={isFetchingNextPage}
+						onClick={() => {
+							void fetchNextPage();
+						}}
+						className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+					>
+						{isFetchingNextPage ? "Loading…" : "Load older records"}
+					</Button>
+				</div>
+			)}
 		</div>
 	);
 }

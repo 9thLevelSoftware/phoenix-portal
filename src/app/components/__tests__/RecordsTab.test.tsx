@@ -79,4 +79,29 @@ describe("RecordsTab", () => {
 			screen.queryByText(/couldn't load personal records/i),
 		).not.toBeInTheDocument();
 	});
+
+	it("offers the next history page in the grouped view", () => {
+		mockQuery.result = {
+			...emptyInfiniteResult(),
+			data: [
+				{
+					id: "record-1",
+					exercise_id: "exercise-1",
+					exercise_name: "Bench Press",
+					muscle_group: "Chest",
+					value: 100,
+					unit: "kg",
+					record_type: "MAX_WEIGHT",
+					achieved_at: new Date("2026-09-01T00:00:00Z"),
+					workout_phase: null,
+				},
+			],
+			isPending: false,
+			hasNextPage: true,
+		};
+		renderWithProviders(<RecordsTab unit="kg" />);
+		expect(
+			screen.getByRole("button", { name: /load older records/i }),
+		).toBeInTheDocument();
+	});
 });

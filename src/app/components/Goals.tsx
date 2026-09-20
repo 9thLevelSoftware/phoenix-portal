@@ -61,7 +61,7 @@ import {
 	useCreateGoal,
 	useUpdateGoal,
 } from "@/mutations/goals";
-import { goalsOptions } from "@/queries/goals";
+import { goalPrBestsOptions, goalsOptions } from "@/queries/goals";
 import { personalRecordsOptions } from "@/queries/records";
 import { workoutListOptions } from "@/queries/workouts";
 import type { Goal } from "@/schemas/goals";
@@ -105,8 +105,8 @@ export function useGoalProgress(
 	const { data: workouts } = useQuery(
 		workoutListOptions(user?.id ?? "", profileId),
 	);
-	const { data: records } = useInfiniteQuery(
-		personalRecordsOptions(user?.id ?? "", profileId),
+	const { data: records } = useQuery(
+		goalPrBestsOptions(user?.id ?? "", profileId),
 	);
 
 	return useMemo(() => {
