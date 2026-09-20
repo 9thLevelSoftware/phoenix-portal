@@ -64,6 +64,10 @@ describe("KD-24 route × TIER_PRICING matrix", () => {
 	const performanceTab = readRepoFile(
 		"src/app/components/analytics/PerformanceTab.tsx",
 	);
+	const mobilePerformanceTab = readRepoFile(
+		"src/app/components/analytics/MobilePerformanceTab.tsx",
+	);
+	const biomechanics = readRepoFile("src/app/components/Biomechanics.tsx");
 
 	it("keeps Ember features on sync/dashboard/history — not leaderboards", () => {
 		const ember = featureBlob("EMBER");
@@ -148,7 +152,29 @@ describe("KD-24 route × TIER_PRICING matrix", () => {
 		expect(routes).not.toMatch(/requiredTier="INFERNO"/);
 		expect(nearestRequiredTier(routes, "/replay/:sessionId")).toBe("FLAME");
 		expect(sessionReplay).toMatch(/requiredTier="FLAME"/);
-		expect(performanceTab).toMatch(/requiredTier="INFERNO"/);
+		// Force curves / VBT / ROM / SRA are INFERNO; session replay without
+		// them stays FLAME.
+		expect(performanceTab).toMatch(
+			/requiredTier=\{FEATURE_MIN_TIER\.biomechanics\}/,
+		);
+	});
+
+	it("wires every INFERNO biomechanics gate to FEATURE_MIN_TIER.biomechanics", () => {
+		// KD-12: the matrix is declared once and consumed. Before this, the
+		// inner gates hard-coded "INFERNO" and `biomechanics` was read only by
+		// this test, so the two could drift apart silently.
+		expect(FEATURE_MIN_TIER.biomechanics).toBe("INFERNO");
+
+		for (const [label, source] of [
+			["PerformanceTab", performanceTab],
+			["MobilePerformanceTab", mobilePerformanceTab],
+			["Biomechanics", biomechanics],
+		] as const) {
+			expect(source, label).toMatch(
+				/requiredTier=\{FEATURE_MIN_TIER\.biomechanics\}/,
+			);
+			expect(source, label).not.toMatch(/requiredTier="INFERNO"/);
+		}
 	});
 
 	it("reads every route gate from FEATURE_MIN_TIER (src/lib/tierMatrix.ts)", () => {
@@ -208,9 +234,12 @@ describe("KD-24 route × TIER_PRICING matrix", () => {
 		const initiateOauth = readRepoFile(
 			"supabase/functions/initiate-oauth/index.ts",
 		);
-		const gateIdx = initiateOauth.search(
-			/requireSubscription\(\s*supabase,\s*user\.id,\s*'FLAME',\s*cors\s*\)/,
-		);
+		// The call alone is not the gate: deleting the `if (!gate.allowed)`
+		// line leaves the call in place and hands every FREE/EMBER user an
+		// OAuth URL. Assert the call AND its short-circuit, as one match.
+		const gate =
+			/requireSubscription\(\s*supabase,\s*user\.id,\s*'FLAME',\s*cors\s*\)[\s\S]{0,160}?if\s*\(\s*!gate\.allowed\s*\)\s*(\{\s*)?return\s+gate\.response;/;
+		const gateIdx = initiateOauth.search(gate);
 		expect(gateIdx).toBeGreaterThan(-1);
 		expect(gateIdx).toBeLessThan(initiateOauth.indexOf("from('oauth_states')"));
 		expect(FEATURE_MIN_TIER.integrations).toBe("FLAME");
