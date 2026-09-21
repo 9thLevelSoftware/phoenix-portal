@@ -56,7 +56,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { PHOENIX } from "@/lib/colors";
 import { cancelSuccessMessage } from "@/lib/paddle";
 import { supabase } from "@/lib/supabase";
-import { formatVolume, type WeightUnit } from "@/lib/units";
+import { formatVolume } from "@/lib/units";
 import { useUpdateProfile } from "@/mutations/profile";
 import { integrationsOptions } from "@/queries/integrations";
 import { queryKeys } from "@/queries/keys";
@@ -98,17 +98,6 @@ function getInitials(name: string | null | undefined): string {
 	return name.slice(0, 2).toUpperCase();
 }
 
-/**
- * Profile volume: the per-cable sum of workout_sessions.total_volume (KD-8),
- * labelled per cable. The only volume figure the Profile page shows.
- */
-export function formatProfileVolume(
-	perCableKg: number | null | undefined,
-	unit: WeightUnit,
-): string {
-	return `${formatVolume(perCableKg ?? 0, unit)} per cable`;
-}
-
 export function Profile() {
 	const { user, signOut } = useAuth();
 	const userId = user?.id ?? "";
@@ -119,6 +108,7 @@ export function Profile() {
 		cancelAtPeriodEnd,
 		isEntitled,
 		isStale,
+		needsPaymentUpdate,
 	} = useSubscription();
 	const { activeProfileId } = useProfileFilterStore();
 	const queryClient = useQueryClient();
@@ -314,7 +304,7 @@ export function Profile() {
 			label: "Total Volume",
 			value: statsLoading
 				? "..."
-				: formatProfileVolume(stats?.totalVolume, weightUnit),
+				: formatVolume(stats?.totalVolume ?? 0, weightUnit),
 			icon: Dumbbell,
 		},
 	];
@@ -433,12 +423,29 @@ export function Profile() {
 									<div className="text-white font-medium">
 										{PLAN_LABELS[subscriptionDisplayTier]}
 									</div>
-									{isStale && (
-										<div className="text-sm text-muted-foreground">
-											{subscriptionStatus === "past_due"
-												? "Payment past due. Checking billing status..."
-												: "Subscription expired. Refreshing billing status..."}
+									{/*
+									 * A failed payment must be visible DURING Paddle's retry
+									 * window, which is exactly when `isStale` is still false
+									 * for a past_due row (it only flips
+									 * PAST_DUE_REFRESH_AFTER_DAYS past the period end). Gate
+									 * this on the billing action instead, so the user is told
+									 * while they can still act on it (R-33, plan-alignment
+									 * R-41).
+									 */}
+									{needsPaymentUpdate ? (
+										<div
+											className="text-sm text-warning"
+											data-testid="profile-past-due-notice"
+										>
+											Your last payment failed — update your card to keep your
+											plan.
 										</div>
+									) : (
+										isStale && (
+											<div className="text-sm text-muted-foreground">
+												Subscription expired. Refreshing billing status...
+											</div>
+										)
 									)}
 									{isEntitled && currentPeriodEnd && (
 										<div className="text-sm text-muted-foreground">
@@ -455,8 +462,17 @@ export function Profile() {
 									</Button>
 								) : (
 									<>
-										<Button asChild variant="outline" size="sm">
-											<Link to="/pricing">Manage Plan</Link>
+										<Button
+											asChild
+											variant={needsPaymentUpdate ? "cta" : "outline"}
+											size="sm"
+										>
+											{/* The full update-payment flow lives on the billing
+											    page; point at it rather than duplicating the
+											    Paddle transaction handling here. */}
+											<Link to="/pricing">
+												{needsPaymentUpdate ? "Update payment" : "Manage Plan"}
+											</Link>
 										</Button>
 										{canCancel && (
 											<Button
@@ -548,7 +564,7 @@ export function Profile() {
 										<div className="text-3xl text-primary font-data">
 											{statsLoading
 												? "..."
-												: formatProfileVolume(stats?.totalVolume, weightUnit)}
+												: formatVolume(stats?.totalVolume ?? 0, weightUnit)}
 										</div>
 									</div>
 									<div className="p-4 bg-gradient-to-br from-success/10 to-emerald-600/10 border border-success/30 rounded-lg">
@@ -688,12 +704,12 @@ export function Profile() {
 									<div className="flex items-center justify-between py-2">
 										<span className="text-muted-foreground">Total Volume</span>
 										<span className="text-primary font-data">
-											{/* One source only: the session-derived per-cable sum.
-											    gamification_stats.total_volume_kg is a device-pushed
-											    two-cable total until PR 25 derives it server-side. */}
-											{statsLoading
-												? "..."
-												: formatProfileVolume(stats?.totalVolume, weightUnit)}
+											{formatVolume(
+												gamificationStats?.total_volume_kg ??
+													stats?.totalVolume ??
+													0,
+												weightUnit,
+											)}
 										</span>
 									</div>
 								</div>

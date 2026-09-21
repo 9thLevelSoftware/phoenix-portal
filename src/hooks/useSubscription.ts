@@ -10,6 +10,19 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
+// SPA -> Edge `_shared` import. This is the one billing predicate, shared so
+// the CTA and the server cannot disagree (R-11). It is safe because
+// billingAction.ts and its only transitive import (subscriptionEntitlement.ts)
+// are pure predicates: no Deno.*, no env reads, no secret names, no
+// service-role path. That is NOT true of the directory as a whole
+// (paddleWebhookSecurity.ts, hmac.ts and every handler's default dependencies
+// read secrets), so only these two modules may ever be imported from src/, and
+// neither may grow a re-export of anything else in `_shared`. Bundle guard:
+// tests/security/edge-function-security.test.ts.
+import {
+	type BillingActionName,
+	billingAction,
+} from "../../supabase/functions/_shared/billingAction.ts";
 
 const subscriptionTierSchema = z.enum(["FREE", "EMBER", "FLAME", "INFERNO"]);
 const subscriptionStatusSchema = z.enum([
@@ -33,6 +46,15 @@ interface SubscriptionData {
 	currentPeriodEnd: string | null;
 	cancelAtPeriodEnd: boolean;
 	isEntitled: boolean;
+	/**
+	 * The one billing routing predicate, shared with the Edge functions
+	 * (supabase/functions/_shared/billingAction.ts):
+	 * `manage` | `refresh` | `checkout`. A checkout may be opened only for
+	 * `checkout` — paddle-checkout-custom-data refuses to sign anything else.
+	 */
+	billingAction: BillingActionName;
+	/** past_due: access continues, but the card has to be updated (R-33). */
+	needsPaymentUpdate: boolean;
 	isStale: boolean;
 	isLoading: boolean;
 	/** True when the subscription query failed and no cached data is available. */
@@ -49,7 +71,7 @@ async function fetchSubscription(userId: string) {
 	const { data, error } = await supabase
 		.from("subscriptions")
 		.select(
-			"tier, status, price_id, current_period_end, cancel_at_period_end, updated_at",
+			"tier, status, price_id, current_period_end, cancel_at_period_end, updated_at, paddle_subscription_id",
 		)
 		.eq("user_id", userId)
 		.maybeSingle();
@@ -66,6 +88,7 @@ async function fetchSubscription(userId: string) {
 			currentPeriodEnd: null,
 			cancelAtPeriodEnd: false,
 			updatedAt: null,
+			paddleSubscriptionId: null,
 		};
 	}
 
@@ -88,6 +111,10 @@ async function fetchSubscription(userId: string) {
 		currentPeriodEnd: data.current_period_end ?? null,
 		cancelAtPeriodEnd: Boolean(data.cancel_at_period_end),
 		updatedAt: typeof data.updated_at === "string" ? data.updated_at : null,
+		paddleSubscriptionId:
+			typeof data.paddle_subscription_id === "string"
+				? data.paddle_subscription_id
+				: null,
 	};
 }
 
@@ -165,6 +192,19 @@ export function useSubscription(): SubscriptionData {
 	);
 	const isEntitled = !billingUnavailable && tier !== "FREE";
 
+	// Same predicate the Edge functions use, so the CTA and the server can
+	// never disagree about whether a new checkout is allowed (R-11, F-022).
+	// A billing outage must not read as "no subscription, open a checkout".
+	const action = billingUnavailable
+		? null
+		: billingAction({
+				paddle_subscription_id: data?.paddleSubscriptionId ?? null,
+				tier: rawTier,
+				status,
+				current_period_end: currentPeriodEnd,
+				cancel_at_period_end: cancelAtPeriodEnd,
+			});
+
 	return {
 		tier,
 		rawTier,
@@ -173,6 +213,10 @@ export function useSubscription(): SubscriptionData {
 		currentPeriodEnd,
 		cancelAtPeriodEnd,
 		isEntitled,
+		// Billing unavailable: never "checkout" — an outage must not sell the
+		// user a subscription they may already have.
+		billingAction: action?.action ?? "refresh",
+		needsPaymentUpdate: Boolean(action?.needsPaymentUpdate),
 		isStale: isStaleActiveSubscription(status, currentPeriodEnd, {
 			updatedAt: data && "updatedAt" in data ? data.updatedAt : null,
 		}),
