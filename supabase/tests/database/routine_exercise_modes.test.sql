@@ -69,11 +69,14 @@ SELECT ok(
     'anon cannot execute normalize_workout_mode'
 );
 
--- A real SPA-shaped write: authenticated EMBER user through RLS.
+-- A real SPA-shaped write: authenticated user through RLS. Portal routine
+-- authoring is FLAME since 20260920000900_flame_write_policies.sql, so an
+-- EMBER fixture here would be refused by the INSERT policy before the
+-- trigger ever ran.
 INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
 VALUES (
     'a1a1a1a1-0000-4000-8000-000000000011'::uuid,
-    'EMBER',
+    'FLAME',
     'active',
     now() + INTERVAL '30 days'
 )

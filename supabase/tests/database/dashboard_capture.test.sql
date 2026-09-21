@@ -122,6 +122,10 @@ SELECT hasnt_trigger('public', 'workout_sessions', 'trg_update_profile_stats_on_
     'trg_update_profile_stats_on_workout is dropped by 20260920002500');
 SELECT hasnt_trigger('public', 'personal_records', 'trg_update_pr_count_on_record',
     'trg_update_pr_count_on_record is dropped by 20260920002500');
+SELECT has_trigger('public', 'workout_sessions', 'trg_update_profile_stats_on_workout',
+    'workout_sessions has trg_update_profile_stats_on_workout');
+SELECT has_trigger('public', 'personal_records', 'trg_update_pr_count_on_record',
+    'personal_records has trg_update_pr_count_on_record');
 
 SELECT set_eq(
     $sql$
@@ -136,6 +140,9 @@ SELECT set_eq(
     $sql$
         VALUES
             ('CREATE TRIGGER subscriptions_audit_trigger AFTER INSERT OR DELETE OR UPDATE ON public.subscriptions FOR EACH ROW EXECUTE FUNCTION log_subscription_event()'::text, 'O'::text)
+            ('CREATE TRIGGER subscriptions_audit_trigger AFTER INSERT OR DELETE OR UPDATE ON public.subscriptions FOR EACH ROW EXECUTE FUNCTION log_subscription_event()'::text, 'O'::text),
+            ('CREATE TRIGGER trg_update_profile_stats_on_workout AFTER INSERT ON public.workout_sessions FOR EACH ROW EXECUTE FUNCTION update_profile_stats_on_workout()', 'O'),
+            ('CREATE TRIGGER trg_update_pr_count_on_record AFTER INSERT ON public.personal_records FOR EACH ROW EXECUTE FUNCTION update_pr_count_on_record()', 'O')
     $sql$,
     'trigger definitions match the prod capture byte for byte and are enabled'
 );
@@ -421,6 +428,42 @@ SELECT results_eq(
     $sql$,
     $values$ VALUES (2::bigint, 150::numeric, 900::bigint, 1) $values$,
     'recompute_gamification_stats derives the counters the dropped triggers used to add'
+-- trg_update_profile_stats_on_workout
+INSERT INTO public.workout_sessions (user_id, name, total_volume, duration_seconds, started_at)
+VALUES ('c3c3c3c3-0000-4000-8000-000000000003'::uuid, 'capture session 1', 100, 600, now());
+
+SELECT results_eq(
+    $sql$
+        SELECT total_workouts, total_volume_kg, total_time_seconds
+        FROM public.gamification_stats
+        WHERE user_id = 'c3c3c3c3-0000-4000-8000-000000000003'::uuid
+    $sql$,
+    $values$ VALUES (1::bigint, 100::numeric, 600::bigint) $values$,
+    'inserting a workout_sessions row fires trg_update_profile_stats_on_workout (creates the stats row)'
+);
+
+INSERT INTO public.workout_sessions (user_id, name, total_volume, duration_seconds, started_at)
+VALUES ('c3c3c3c3-0000-4000-8000-000000000003'::uuid, 'capture session 2', 50, 300, now());
+
+SELECT results_eq(
+    $sql$
+        SELECT total_workouts, total_volume_kg, total_time_seconds
+        FROM public.gamification_stats
+        WHERE user_id = 'c3c3c3c3-0000-4000-8000-000000000003'::uuid
+    $sql$,
+    $values$ VALUES (2::bigint, 150::numeric, 900::bigint) $values$,
+    'a second workout increments the existing stats row'
+);
+
+-- trg_update_pr_count_on_record
+INSERT INTO public.personal_records (user_id, exercise_name, value)
+VALUES ('c3c3c3c3-0000-4000-8000-000000000003'::uuid, 'Capture Press', 80);
+
+SELECT is(
+    (SELECT pr_count FROM public.gamification_stats
+     WHERE user_id = 'c3c3c3c3-0000-4000-8000-000000000003'::uuid),
+    1,
+    'inserting a personal_records row fires trg_update_pr_count_on_record'
 );
 
 -- subscriptions_audit_trigger

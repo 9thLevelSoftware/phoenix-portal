@@ -448,7 +448,7 @@ SELECT lives_ok(
             'b2b2b2b2-4444-4000-8000-000000000002'::uuid
         )
     $sql$,
-    'EMBER user can still import_shared_cycle'
+    'FLAME user can still import_shared_cycle'
 );
 
     'FLAME user can still import_shared_cycle'

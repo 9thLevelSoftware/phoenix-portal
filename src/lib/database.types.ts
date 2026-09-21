@@ -1180,11 +1180,8 @@ export type Database = {
 					avatar_url: string | null;
 					challenge_updates: boolean;
 					created_at: string | null;
-					digest_frequency: string | null;
-					digest_last_sent_at: string | null;
 					display_name: string | null;
 					email_digests: boolean;
-					feature_flags: Json | null;
 					id: string;
 					leaderboard_participation: boolean;
 					profile_visible: boolean;
@@ -1199,11 +1196,8 @@ export type Database = {
 					avatar_url?: string | null;
 					challenge_updates?: boolean;
 					created_at?: string | null;
-					digest_frequency?: string | null;
-					digest_last_sent_at?: string | null;
 					display_name?: string | null;
 					email_digests?: boolean;
-					feature_flags?: Json | null;
 					id: string;
 					leaderboard_participation?: boolean;
 					profile_visible?: boolean;
@@ -1218,11 +1212,8 @@ export type Database = {
 					avatar_url?: string | null;
 					challenge_updates?: boolean;
 					created_at?: string | null;
-					digest_frequency?: string | null;
-					digest_last_sent_at?: string | null;
 					display_name?: string | null;
 					email_digests?: boolean;
-					feature_flags?: Json | null;
 					id?: string;
 					leaderboard_participation?: boolean;
 					profile_visible?: boolean;
@@ -1387,7 +1378,7 @@ export type Database = {
 					muscle_group: string;
 					name: string;
 					order_index: number;
-					per_set_echo_levels: Json | null;
+					per_set_echo_levels: string | null;
 					per_set_reps: Json | null;
 					per_set_rest: Json | null;
 					per_set_weights: Json | null;
@@ -1420,7 +1411,7 @@ export type Database = {
 					muscle_group?: string;
 					name: string;
 					order_index?: number;
-					per_set_echo_levels?: Json | null;
+					per_set_echo_levels?: string | null;
 					per_set_reps?: Json | null;
 					per_set_rest?: Json | null;
 					per_set_weights?: Json | null;
@@ -1453,7 +1444,7 @@ export type Database = {
 					muscle_group?: string;
 					name?: string;
 					order_index?: number;
-					per_set_echo_levels?: Json | null;
+					per_set_echo_levels?: string | null;
 					per_set_reps?: Json | null;
 					per_set_rest?: Json | null;
 					per_set_weights?: Json | null;
@@ -1490,7 +1481,7 @@ export type Database = {
 			};
 			routines: {
 				Row: {
-					created_at: string;
+					created_at: string | null;
 					description: string;
 					estimated_duration: number;
 					exercise_count: number;
@@ -1501,11 +1492,11 @@ export type Database = {
 					name: string;
 					tags: string[] | null;
 					times_completed: number;
-					updated_at: string;
+					updated_at: string | null;
 					user_id: string;
 				};
 				Insert: {
-					created_at?: string;
+					created_at?: string | null;
 					description?: string;
 					estimated_duration?: number;
 					exercise_count?: number;
@@ -1516,11 +1507,11 @@ export type Database = {
 					name: string;
 					tags?: string[] | null;
 					times_completed?: number;
-					updated_at?: string;
+					updated_at?: string | null;
 					user_id: string;
 				};
 				Update: {
-					created_at?: string;
+					created_at?: string | null;
 					description?: string;
 					estimated_duration?: number;
 					exercise_count?: number;
@@ -1531,7 +1522,7 @@ export type Database = {
 					name?: string;
 					tags?: string[] | null;
 					times_completed?: number;
-					updated_at?: string;
+					updated_at?: string | null;
 					user_id?: string;
 				};
 				Relationships: [
@@ -2122,7 +2113,7 @@ export type Database = {
 					started_at: string | null;
 					status: string;
 					template_id: string | null;
-					updated_at: string;
+					updated_at: string | null;
 					user_id: string;
 					workout_days: number;
 				};
@@ -2140,7 +2131,7 @@ export type Database = {
 					started_at?: string | null;
 					status?: string;
 					template_id?: string | null;
-					updated_at?: string;
+					updated_at?: string | null;
 					user_id: string;
 					workout_days?: number;
 				};
@@ -2158,7 +2149,7 @@ export type Database = {
 					started_at?: string | null;
 					status?: string;
 					template_id?: string | null;
-					updated_at?: string;
+					updated_at?: string | null;
 					user_id?: string;
 					workout_days?: number;
 				};
@@ -2202,7 +2193,6 @@ export type Database = {
 					exercise_name: string | null;
 					goal_type: string;
 					id: string;
-					last_snapshot_at: string | null;
 					period: string;
 					predicted_completion_date: string | null;
 					status: string;
@@ -2220,7 +2210,6 @@ export type Database = {
 					exercise_name?: string | null;
 					goal_type: string;
 					id?: string;
-					last_snapshot_at?: string | null;
 					period?: string;
 					predicted_completion_date?: string | null;
 					status?: string;
@@ -2238,7 +2227,6 @@ export type Database = {
 					exercise_name?: string | null;
 					goal_type?: string;
 					id?: string;
-					last_snapshot_at?: string | null;
 					period?: string;
 					predicted_completion_date?: string | null;
 					status?: string;
@@ -2671,6 +2659,10 @@ export type Database = {
 				};
 				Returns: boolean;
 			};
+			assert_child_payload: {
+				Args: { p_error: string; p_payload: Json };
+				Returns: undefined;
+			};
 			check_rate_limit: {
 				Args: {
 					p_key: string;
@@ -2683,6 +2675,32 @@ export type Database = {
 					remaining: number;
 					retry_after_seconds: number;
 				}[];
+			};
+			create_cycle_with_days: {
+				Args: {
+					p_days: Json;
+					p_deload_settings: Json;
+					p_description: string;
+					p_duration_weeks: number;
+					p_local_profile_id?: string;
+					p_name: string;
+					p_progression_settings: Json;
+					p_rest_days: number;
+					p_started_at: string;
+					p_workout_days: number;
+				};
+				Returns: string;
+			};
+			create_routine_with_exercises: {
+				Args: {
+					p_description: string;
+					p_estimated_duration: number;
+					p_exercise_count: number;
+					p_exercises: Json;
+					p_local_profile_id?: string;
+					p_name: string;
+				};
+				Returns: string;
 			};
 			derive_gamification_stats: {
 				Args: { p_user_id: string };
@@ -3125,6 +3143,7 @@ export type Database = {
 				Returns: undefined;
 			};
 			jsonb_redact_token_keys: { Args: { data: Json }; Returns: Json };
+			kotlin_to_long_or_null: { Args: { p_value: string }; Returns: number };
 			local_profile_preference_section_canonical: {
 				Args: {
 					p_row: Database["public"]["Tables"]["local_profile_preferences"]["Row"];
@@ -3147,6 +3166,12 @@ export type Database = {
 					rejection_reason: string;
 					server_revision: number;
 				}[];
+			};
+			normalize_eccentric_load: { Args: { p_value: string }; Returns: string };
+			normalize_echo_level: { Args: { p_value: string }; Returns: string };
+			normalize_rep_count_timing: {
+				Args: { p_value: string };
+				Returns: string;
 			};
 			personal_record_history: {
 				Args: {
@@ -3194,6 +3219,12 @@ export type Database = {
 				Args: { p_user_id: string };
 				Returns: undefined;
 			};
+			normalize_stop_at_position: {
+				Args: { p_value: string };
+				Returns: string;
+			};
+			normalize_superset_color: { Args: { p_value: string }; Returns: string };
+			normalize_workout_mode: { Args: { p_mode: string }; Returns: string };
 			refresh_community_benchmarks: { Args: never; Returns: undefined };
 			refresh_hot_scores: { Args: never; Returns: undefined };
 			replace_session_children: {
