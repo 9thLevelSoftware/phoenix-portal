@@ -13,6 +13,10 @@ import {
 } from "../_shared/liftosaurSync.ts";
 import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
+import {
+	completeSyncQueueEntry,
+	heartbeatSyncQueueEntry,
+} from "../_shared/syncQueue.ts";
 
 /**
  * Liftosaur Sync Edge Function
@@ -26,10 +30,26 @@ import { requireSubscription } from "../_shared/requireSubscription.ts";
  * - Normalizes and upserts to external_activities
  *
  * API docs: https://www.liftosaur.com/doc/api
+ *
+ * When dispatched by process-sync-queue the body also carries `queue_id`: the
+ * run completes that row only, and renews its lease (heartbeat) while it runs.
+ * process-sync-queue reclaims a liftosaur task after HEARTBEAT_LEASE_MS
+ * (5 minutes) without a heartbeat. The longest silent window here is one
+ * request (capped by PROVIDER_REQUEST_TIMEOUT_MS) or 100 record upserts.
  */
 
 // deno-lint-ignore no-explicit-any
 type DbClient = SupabaseClient<any, any, any>;
+
+/**
+ * Renew the sync_queue lease after this many upserted records. Records are
+ * upserted one by one, so a 2,000-record history can outlast
+ * process-sync-queue's heartbeat lease without it.
+ */
+const HEARTBEAT_EVERY_RECORDS = 100;
+
+/** Per-request ceiling for Liftosaur calls, so a hung request cannot outlast the lease. */
+const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
 
 export interface LiftosaurSyncAuthClient {
 	auth: {
@@ -38,31 +58,52 @@ export interface LiftosaurSyncAuthClient {
 }
 
 export interface LiftosaurSyncHandlerDependencies {
-	createAuthClient(authorization: string): LiftosaurSyncAuthClient;
-	createAdminClient(): DbClient;
+	/** Optional when `env` + `createClient` are given instead (PR 51's shape). */
+	createAuthClient?(authorization: string): LiftosaurSyncAuthClient;
+	createAdminClient?(): DbClient;
+	env?: (key: string) => string | undefined;
+	// deno-lint-ignore no-explicit-any
+	createClient?: (url: string, key: string, options?: any) => DbClient;
+	/** Used for Liftosaur API calls; defaults to global fetch. */
+	fetch?: typeof fetch;
+	/** Wall clock; defaults to `new Date()`. */
+	now?: () => Date;
 }
 
-function defaultLiftosaurSyncDependencies(): LiftosaurSyncHandlerDependencies {
+type ResolvedLiftosaurSyncDeps = Required<LiftosaurSyncHandlerDependencies>;
+
+/**
+ * Fill in every injection point so the handler body never branches. Fixtures
+ * reach this handler in two shapes: the client factories (PR 50's tests) and
+ * `env` + `createClient` + `fetch` + `now` (PR 51's).
+ */
+function resolveDeps(
+	d: LiftosaurSyncHandlerDependencies,
+): ResolvedLiftosaurSyncDeps {
+	const env = d.env ?? ((key: string) => Deno.env.get(key));
+	const make = d.createClient ??
+		// deno-lint-ignore no-explicit-any
+		((url: string, key: string, options?: any) => createClient(url, key, options));
 	return {
-		createAuthClient(authorization: string) {
-			return createClient(
-				Deno.env.get("SUPABASE_URL")!,
-				Deno.env.get("SUPABASE_ANON_KEY")!,
-				{ global: { headers: { Authorization: authorization } } }
-			) as unknown as LiftosaurSyncAuthClient;
-		},
-		createAdminClient() {
-			return createClient(
-				Deno.env.get("SUPABASE_URL")!,
-				Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-			);
-		},
+		env,
+		createClient: make,
+		fetch: d.fetch ?? ((input, init) => fetch(input, init)),
+		now: d.now ?? (() => new Date()),
+		createAuthClient: d.createAuthClient ??
+			((authorization: string) =>
+				make(
+					env("SUPABASE_URL")!,
+					env("SUPABASE_ANON_KEY")!,
+					{ global: { headers: { Authorization: authorization } } }
+				) as unknown as LiftosaurSyncAuthClient),
+		createAdminClient: d.createAdminClient ??
+			(() => make(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!)),
 	};
 }
 
 async function liftosaurSyncHandler(
 	req: Request,
-	deps: LiftosaurSyncHandlerDependencies
+	deps: ResolvedLiftosaurSyncDeps
 ): Promise<Response> {
 	const cors = getCorsHeaders(req);
 
@@ -102,7 +143,7 @@ async function liftosaurSyncHandler(
 		} else {
 			// Not a valid user JWT -- must be service-role call from process-sync-queue
 			// Verify the caller is actually using the service role key
-			const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+			const serviceRoleKey = deps.env("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 			const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
 
 			if (!isServiceRole || !body.user_id) {
@@ -118,8 +159,16 @@ async function liftosaurSyncHandler(
 		}
 
 		const { api_key, sync_type } = body;
+		const queueId = typeof body.queue_id === "string" ? body.queue_id : null;
+		const calledByQueueProcessor = !jwtUser;
+		// Only the queue path holds a lease on a sync_queue row.
+		const leaseQueueId = calledByQueueProcessor ? queueId : null;
 
 		const supabase = deps.createAdminClient();
+
+		// Renew the lease immediately: the processor claimed this row before it
+		// called us, so the work below must not run on that claim's clock.
+		await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
 
 		// Subscription gate — FLAME or higher required for integrations
 		const gate = await requireSubscription(supabase, userId, "FLAME", cors);
@@ -220,7 +269,7 @@ async function liftosaurSyncHandler(
 		// Capture the watermark before fetching so records Liftosaur writes while
 		// this run is in flight fall inside the next window rather than being
 		// skipped. Upserts are idempotent, so the overlap costs nothing.
-		const syncStartedAt = new Date().toISOString();
+		const syncStartedAt = deps.now().toISOString();
 
 		// Resumable backfill. /history is newest-first and one run reads at most
 		// LIFTOSAUR_MAX_PAGES pages, so a larger history is read DOWNWARD over
@@ -247,7 +296,19 @@ async function liftosaurSyncHandler(
 		let fetched: LiftosaurFetchResult;
 		try {
 			fetched = await fetchLiftosaurHistory(
-				createLiftosaurPageFetcher(storedApiKey),
+				createLiftosaurPageFetcher(
+					storedApiKey,
+					deps.fetch,
+					// PR 51: the fetch phase is otherwise silent, so renew the
+					// lease per page or the processor re-dispatches this row.
+					() =>
+						heartbeatSyncQueueEntry(
+							supabase,
+							leaseQueueId,
+							userId,
+							deps.now(),
+						),
+				),
 				{
 					startDate: chainAfter,
 					endDate: inBackfill ? backfillBefore : null,
@@ -311,12 +372,24 @@ async function liftosaurSyncHandler(
 		// import time. It is written insert-only (ignoreDuplicates: ON CONFLICT
 		// DO NOTHING), so a re-sync never moves its stored date; its other
 		// columns are then re-applied with an UPDATE so edits still land.
-		const importedAt = new Date().toISOString();
+		const importedAt = deps.now().toISOString();
 
 		let importedCount = 0;
 		let failedCount = 0;
+		let processedRecords = 0;
 		const undatedRows: Array<Record<string, unknown>> = [];
 		for (const record of allRecords) {
+			// PR 51: records are upserted one by one, so a long history would
+			// otherwise outlive the lease.
+			processedRecords++;
+			if (processedRecords % HEARTBEAT_EVERY_RECORDS === 0) {
+				await heartbeatSyncQueueEntry(
+					supabase,
+					leaseQueueId,
+					userId,
+					deps.now(),
+				);
+			}
 			const { undated, row } = toLiftosaurActivityRow(
 				userId,
 				record,
@@ -406,17 +479,17 @@ async function liftosaurSyncHandler(
 			.eq("user_id", userId)
 			.eq("provider", "liftosaur");
 
-		// Mark sync queue entry as completed
-		if (sync_type) {
-			await supabase
-				.from("sync_queue")
-				.update({
-					status: "completed",
-					completed_at: new Date().toISOString(),
-				})
-				.eq("user_id", userId)
-				.eq("provider", "liftosaur")
-				.eq("status", "pending");
+		// Complete only the queue row this run was dispatched for (or, for a
+		// browser run, at most the newest pending row of the same sync_type).
+		// Never sweep every pending row: a second queued task must still run.
+		if (queueId || sync_type) {
+			await completeSyncQueueEntry(supabase, {
+				userId,
+				provider: "liftosaur",
+				syncType: sync_type ?? "incremental",
+				queueId,
+				calledByQueueProcessor,
+			});
 		}
 
 		return new Response(
@@ -616,9 +689,10 @@ async function ensureFollowUpTask(
 }
 
 export function createLiftosaurSyncHandler(
-	deps: LiftosaurSyncHandlerDependencies = defaultLiftosaurSyncDependencies()
+	deps: LiftosaurSyncHandlerDependencies = {}
 ): (req: Request) => Promise<Response> {
-	return (req) => liftosaurSyncHandler(req, deps);
+	const resolved = resolveDeps(deps);
+	return (req) => liftosaurSyncHandler(req, resolved);
 }
 
 if (import.meta.main) {

@@ -96,9 +96,17 @@ export type LiftosaurPageFetcher = (params: URLSearchParams) => Promise<unknown>
  * Build a page fetcher bound to an API key, mapping Liftosaur's auth failures
  * onto LiftosaurAuthError and any other non-2xx onto a generic Error.
  */
+/** Per-request ceiling, so a hung provider call cannot outlast a queue lease. */
+export const LIFTOSAUR_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * `onPage` (PR 51) runs after every page that came back, so a caller holding a
+ * `sync_queue` lease can renew it while the otherwise-silent fetch phase runs.
+ */
 export function createLiftosaurPageFetcher(
   apiKey: string,
   fetchImpl: typeof fetch = fetch,
+  onPage?: () => Promise<void>,
 ): LiftosaurPageFetcher {
   return async (params) => {
     const response = await fetchImpl(
@@ -108,6 +116,7 @@ export function createLiftosaurPageFetcher(
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
+        signal: AbortSignal.timeout(LIFTOSAUR_REQUEST_TIMEOUT_MS),
       },
     );
 
@@ -119,12 +128,15 @@ export function createLiftosaurPageFetcher(
     if (!response.ok) {
       throw new Error(`Liftosaur API returned ${response.status}`);
     }
+    let page: unknown;
     try {
-      return await response.json();
+      page = await response.json();
     } catch {
       // Never let provider body text (e.g. an HTML error page) reach the caller.
       throw new Error('Liftosaur API returned an unreadable response');
     }
+    await onPage?.();
+    return page as Awaited<ReturnType<LiftosaurPageFetcher>>;
   };
 }
 

@@ -128,10 +128,14 @@ export class FakeQuery implements PromiseLike<Result> {
   }
 }
 
-/** A client whose `auth.getUser()` resolves to no user (service-role path). */
-export function fakeClient(db: FakeDb) {
+/**
+ * A client whose `auth.getUser()` resolves to `userId` (the browser JWT path)
+ * or, by default, to no user at all (the service-role path).
+ */
+export function fakeClient(db: FakeDb, userId: string | null = null) {
+  const user = userId === null ? null : { id: userId };
   return {
     from: (table: string) => db.from(table),
-    auth: { getUser: () => Promise.resolve({ data: { user: null }, error: null }) },
+    auth: { getUser: () => Promise.resolve({ data: { user }, error: null }) },
   };
 }

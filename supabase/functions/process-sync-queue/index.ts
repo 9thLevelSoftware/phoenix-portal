@@ -31,17 +31,30 @@ type DbClient = SupabaseClient<any, any, any>;
 
 const MAX_RETRIES = 10;
 
-// A task that has sat in `processing` longer than this lease is assumed to have
+// A task that has sat in `processing` longer than its lease is assumed to have
 // crashed mid-run (the worker died before marking it completed/failed) and is
 // reclaimed back to `pending` so it can be retried.
 //
-// It must comfortably exceed the longest a live task can run: a pass runs up
-// to the Edge wall-clock limit (400 s on paid plans) and the cron fires every
-// 5 minutes, so passes can overlap. A lease at or below that would let the
-// next pass reclaim and re-dispatch a row whose sync is still running. The
-// cost of a long lease is that a genuinely crashed row waits this long before
-// it is retried.
+// Providers that renew their lease while they run (heartbeatSyncQueueEntry in
+// _shared/syncQueue.ts bumps `started_at` after every upsert chunk and every
+// few fetched pages) get a short lease: a row whose heartbeat is older than
+// 5 minutes has stopped making progress, so it is reclaimed within a cron
+// tick or two instead of stranding the user's sync for half an hour.
+export const HEARTBEAT_LEASE_MS = 5 * 60 * 1000;
+
+// Providers that do NOT heartbeat keep the long lease. It must comfortably
+// exceed the longest a live task can run: a pass runs up to the Edge
+// wall-clock limit (400 s on paid plans) and the cron fires every 5 minutes,
+// so passes can overlap. A lease at or below that would let the next pass
+// reclaim and re-dispatch a row whose sync is still running.
 export const PROCESSING_LEASE_MS = 30 * 60 * 1000;
+
+/** Provider sync functions that call heartbeatSyncQueueEntry while running. */
+const HEARTBEAT_PROVIDERS: ReadonlySet<string> = new Set(['strava', 'hevy', 'liftosaur']);
+
+export function processingLeaseMs(provider: string): number {
+  return HEARTBEAT_PROVIDERS.has(provider) ? HEARTBEAT_LEASE_MS : PROCESSING_LEASE_MS;
+}
 
 const PROVIDERS = ['strava', 'fitbit', 'garmin', 'hevy', 'liftosaur'] as const;
 
@@ -208,12 +221,13 @@ async function processSyncQueue(
       }
     }
 
-    // Reclaim tasks stuck in `processing` past the lease (crashed workers) so
+    // Reclaim tasks stuck in `processing` past the lease (crashed workers, or a
+    // heartbeating provider whose heartbeat went quiet) so
     // they are retried instead of being stranded forever. Increment retry_count
     // on each reclaim and mark `permanently_failed` at the cap; otherwise a task
     // whose sync deterministically times out/crashes would be requeued every
     // lease interval forever and never reach a terminal state.
-    const leaseExpiry = new Date(Date.now() - PROCESSING_LEASE_MS).toISOString();
+    const leaseExpiry = new Date(Date.now() - processingLeaseMs(provider)).toISOString();
     const { data: staleTasks } = await supabase
       .from('sync_queue')
       .select('id, retry_count')
