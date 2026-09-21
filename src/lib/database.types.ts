@@ -298,10 +298,17 @@ export type Database = {
 				];
 			};
 			deletion_requests: {
+				// Hand-edited for PR 35 (claimed_at, needs_support_reason,
+				// last_attempt_at from migration 20260920003500). This branch
+				// does not contain PR 4, so `gen:types` cannot regenerate here;
+				// the verify phase regenerates the whole file.
 				Row: {
 					cancelled_at: string | null;
+					claimed_at: string | null;
 					executed_at: string | null;
 					id: string;
+					last_attempt_at: string | null;
+					needs_support_reason: string | null;
 					previous_cancelled_at: string | null;
 					previous_requested_at: string | null;
 					requested_at: string;
@@ -312,8 +319,11 @@ export type Database = {
 				};
 				Insert: {
 					cancelled_at?: string | null;
+					claimed_at?: string | null;
 					executed_at?: string | null;
 					id?: string;
+					last_attempt_at?: string | null;
+					needs_support_reason?: string | null;
 					previous_cancelled_at?: string | null;
 					previous_requested_at?: string | null;
 					requested_at?: string;
@@ -324,8 +334,11 @@ export type Database = {
 				};
 				Update: {
 					cancelled_at?: string | null;
+					claimed_at?: string | null;
 					executed_at?: string | null;
 					id?: string;
+					last_attempt_at?: string | null;
+					needs_support_reason?: string | null;
 					previous_cancelled_at?: string | null;
 					previous_requested_at?: string | null;
 					requested_at?: string;

@@ -4,6 +4,9 @@ import { supabase } from "@/lib/supabase";
 
 const DELETION_REQUEST_KEY = "deletion-request";
 
+/** Sentinel for "the row is no longer pending", so the toast can say so. */
+const ALREADY_STARTED = "deletion-already-started";
+
 /**
  * Statuses the Danger Zone can render. `pending` drives the countdown /
  * "Delete Now" states; `executing` (the claim PR 35's process_due takes) drives
@@ -22,7 +25,9 @@ export function deletionRequestOptions(userId: string) {
 		queryFn: async () => {
 			const { data, error } = await supabase
 				.from("deletion_requests")
-				.select("id, user_id, requested_at, scheduled_for, status")
+				.select(
+					"id, user_id, requested_at, scheduled_for, status, needs_support_reason",
+				)
 				.eq("user_id", userId)
 				// UNIQUE (user_id): at most one row can match either status.
 				.in("status", [...ACTIVE_DELETION_STATUSES])
@@ -184,6 +189,17 @@ export function useRequestDeletion(userId: string) {
 				return;
 			}
 			console.error("[useRequestDeletion] failed:", error);
+			// A request already exists (UNIQUE(user_id)) — typically one that is
+			// being executed right now, so say so instead of "try again".
+			if ((error as { code?: string }).code === "23505") {
+				toast.error(
+					"Your account already has a deletion request. Reload the page to see it.",
+				);
+				queryClient.invalidateQueries({
+					queryKey: [DELETION_REQUEST_KEY, userId],
+				});
+				return;
+			}
 			toast.error("Failed to schedule account deletion. Please try again.");
 		},
 	});
@@ -208,7 +224,10 @@ export function useCancelDeletion(userId: string) {
 				.select("id")
 				.maybeSingle();
 			if (error) throw error;
-			if (!cancelled) throw new Error("No pending deletion request to cancel.");
+			// Matching no row means the request is no longer `pending` — the
+			// deletion has been claimed and is running (RLS only lets a user
+			// cancel a pending row).
+			if (!cancelled) throw new Error(ALREADY_STARTED);
 		},
 		onSuccess: () => {
 			toast.success("Account deletion cancelled. Your account is safe.");
@@ -218,7 +237,14 @@ export function useCancelDeletion(userId: string) {
 		},
 		onError: (error: Error) => {
 			console.error("[useCancelDeletion] failed:", error);
-			toast.error("Failed to cancel account deletion. Please try again.");
+			queryClient.invalidateQueries({
+				queryKey: [DELETION_REQUEST_KEY, userId],
+			});
+			toast.error(
+				error.message === ALREADY_STARTED
+					? "Your account deletion has already started and can no longer be cancelled."
+					: "Failed to cancel account deletion. Please try again.",
+			);
 		},
 	});
 }
@@ -231,7 +257,9 @@ export function useCancelDeletion(userId: string) {
  *   3. Deletes the auth user (cascading to all private data)
  *   4. Removes avatar storage objects
  */
-export function useExecuteDeletion() {
+export function useExecuteDeletion(userId: string) {
+	const queryClient = useQueryClient();
+
 	return useMutation({
 		mutationFn: async () => {
 			const { data, error } = await supabase.functions.invoke("delete-account");
@@ -244,7 +272,16 @@ export function useExecuteDeletion() {
 		},
 		onError: (error: Error) => {
 			console.error("[useExecuteDeletion] failed:", error);
-			toast.error("Failed to delete account. Please try again.");
+			// A failed purge releases the claim and may park the request for
+			// support (billing_subscription_not_found, request_survived_purge).
+			// Refetch so Danger Zone can say what actually happened instead of
+			// leaving the pre-click copy on screen.
+			queryClient.invalidateQueries({
+				queryKey: [DELETION_REQUEST_KEY, userId],
+			});
+			toast.error(
+				"We could not delete your account. Check the message on this page for what to do next.",
+			);
 		},
 	});
 }

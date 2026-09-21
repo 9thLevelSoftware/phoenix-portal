@@ -28,8 +28,15 @@ refresh_token_reuse_interval = 60
 # auth.getUser() with it; no valid user returns 401.
 verify_jwt = false
 
+# Auth: two modes, both checked in the handler. The hourly pg_cron job
+# (`delete-due-accounts`, via private.invoke_edge_function) POSTs
+# {"mode":"process_due"} with no JWT and the `x-cron-secret` header, compared
+# in constant time against CRON_SECRET (_shared/cronSecret.ts). "Delete now"
+# from the portal sends the user's JWT, verified with auth.getUser(); only
+# that user can be deleted. verify_jwt must stay false or the gateway returns
+# 401 to pg_net and no scheduled deletion ever runs.
 [functions.delete-account]
-verify_jwt = true
+verify_jwt = false
 
 [functions.disconnect-integration]
 verify_jwt = true

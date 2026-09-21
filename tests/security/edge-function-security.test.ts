@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -709,5 +709,69 @@ describe("Garmin webhook identity helpers", () => {
 			laps: [{ distance: 400 }],
 		});
 		expect(JSON.stringify(row.raw_data)).not.toMatch(/token/i);
+	});
+});
+
+/**
+ * The gateway half of the cron gate (PR 35 R-21). A function that pg_cron
+ * calls through `private.invoke_edge_function` is invoked with no JWT, so if
+ * `verify_jwt` is true the gateway 401s it before the handler's own cron
+ * secret check ever runs — and nothing in the handler tests can see that.
+ */
+describe("Edge Function gateway settings (supabase/config.toml)", () => {
+	const config = readFileSync(
+		join(process.cwd(), "supabase/config.toml"),
+		"utf8",
+	);
+
+	/** `verify_jwt` for `[functions.<name>]`, or undefined when unlisted. */
+	function verifyJwtFor(name: string): boolean | undefined {
+		const header = `[functions.${name}]`;
+		const start = config.indexOf(header);
+		if (start === -1) return undefined;
+		const rest = config.slice(start + header.length);
+		const nextSection = rest.indexOf("\n[");
+		const section = nextSection === -1 ? rest : rest.slice(0, nextSection);
+		const setting = section.match(/^\s*verify_jwt\s*=\s*(true|false)\s*$/m);
+		return setting ? setting[1] === "true" : undefined;
+	}
+
+	/** Every handler that authenticates a pg_cron caller by shared secret. */
+	const cronInvokedFunctions = readdirSync(
+		join(process.cwd(), "supabase/functions"),
+		{ withFileTypes: true },
+	)
+		.filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
+		.map((entry) => entry.name)
+		.filter((name) => {
+			const entrypoint = join(
+				process.cwd(),
+				"supabase/functions",
+				name,
+				"index.ts",
+			);
+			return (
+				existsSync(entrypoint) &&
+				readFileSync(entrypoint, "utf8").includes("hasValidCronSecret")
+			);
+		});
+
+	it("finds the cron-invoked functions", () => {
+		expect(cronInvokedFunctions).toContain("delete-account");
+		expect(cronInvokedFunctions).toContain("process-sync-queue");
+	});
+
+	it.each([
+		"delete-account",
+		"process-sync-queue",
+	])("%s is listed with verify_jwt = false", (name) => {
+		expect(verifyJwtFor(name)).toBe(false);
+	});
+
+	it("every cron-invoked function has verify_jwt = false", () => {
+		const offenders = cronInvokedFunctions.filter(
+			(name) => verifyJwtFor(name) !== false,
+		);
+		expect(offenders).toEqual([]);
 	});
 });
