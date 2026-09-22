@@ -168,35 +168,17 @@ describe("sessionDetailOptions", () => {
 			is_pr: true,
 			notes: null,
 		};
-		const exerciseRows = [
-			{
-				id: "aaaa1111-1111-4111-8111-111111111111",
-				session_id: "11111111-1111-4111-8111-111111111111",
-				name: "Squat",
-				muscle_group: "Legs",
-				order_index: 0,
-				cable_count: 2,
-			},
-		];
-		const setRows = [
-			{
-				id: "bbbb1111-1111-4111-8111-111111111111",
-				exercise_id: "aaaa1111-1111-4111-8111-111111111111",
-				set_number: 1,
-				target_reps: 8,
-				actual_reps: 8,
-				weight_kg: 60,
-				rpe: 7,
-				is_pr: true,
-				notes: null,
-			},
-		];
+		// Was two orphan plurals (`exerciseRows` / `setRows`) the merge left
+		// beside the live singulars — the plural carried `cable_count: 2` and
+		// the singular lost it at the seam, which is why `cable_count` parsed
+		// to null. The singular is the one the embedded tree uses.
 		const exerciseRow = {
 			id: "aaaa1111-1111-4111-8111-111111111111",
 			session_id: SESSION_ROW.id,
 			name: "Squat",
 			muscle_group: "Legs",
 			order_index: 0,
+			cable_count: 2,
 		};
 		const embeddedRow = {
 			...SESSION_ROW,
@@ -244,7 +226,11 @@ describe("sessionDetailOptions", () => {
 		expect(exercises).toEqual([
 			{
 				...exerciseRow,
-				sets: [{ ...setRow, weight_kg: 120 }], // weight_kg doubled by Zod transform
+				// Was `weight_kg: 120`, "weight_kg doubled by Zod transform" —
+				// pre-KD-8. setSchema.weight_kg is perCableWeight = z.number(),
+				// so 60 stays 60 (and the expect two dozen lines up already
+				// pins that).
+				sets: [{ ...setRow, weight_kg: 60 }],
 				hasPR: true,
 			},
 		]);
@@ -364,6 +350,9 @@ describe("comparisonDetailOptions", () => {
 			referencedTable: "exercises.sets",
 		});
 
+		// totalVolume / exerciseCount / setCount / prCount come from the session
+		// row (`parsedSession.*`), not from the nested sets — SESSION_ROW is
+		// the fixture and is deliberately independent of the tree below.
 		expect(result).toEqual({
 			id: SESSION_ROW.id,
 			name: "Leg Day",
@@ -376,14 +365,17 @@ describe("comparisonDetailOptions", () => {
 			exercises: [
 				{
 					name: "Squat",
-					// weights doubled by Zod: (100 + 120) * 5
-					volume: 1100,
-					maxWeight: 120,
+					// Was "weights doubled by Zod: (100 + 120) * 5" with volume
+					// 1100 / maxWeight 120 — pre-KD-8. The stored loads are
+					// 50 and 60 per cable and stay that way, so (50 + 60) * 5.
+					volume: 550,
+					maxWeight: 60,
 					sets: 2,
 					// null velocity ignored: (0.5 + 0.7) / 2
 					avgVelocity: expect.closeTo(0.6, 10),
 				},
-				{ name: "Row", volume: 200, maxWeight: 40, sets: 1, avgVelocity: 0 },
+				// Same collapse: 20 per cable stays 20 (was 40), 20 * 5 = 100.
+				{ name: "Row", volume: 100, maxWeight: 20, sets: 1, avgVelocity: 0 },
 			],
 		});
 	});

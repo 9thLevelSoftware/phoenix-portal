@@ -356,8 +356,18 @@ describe("useRequestDeletion", () => {
 		const { useRequestDeletion } = await import("../account");
 
 		// UNIQUE(user_id): typically a request that is being executed right now.
-		mockChain.insert.mockResolvedValue({
-			error: Object.assign(new Error("duplicate key"), { code: "23505" }),
+		// Was `mockChain.insert.mockResolvedValue({ error: … code: "23505" })`
+		// — that models a direct INSERT the schema no longer permits.
+		// `request_account_deletion()` is the only write transport since
+		// 20260920003300 revoked `insert` on deletion_requests, so a raw 23505
+		// that leaks past its already_pending / already_executing raises comes
+		// back on `rpc`. Same code, same user-facing copy, the real transport.
+		rpc.mockResolvedValue({
+			data: null,
+			error: Object.assign(
+				new Error("duplicate key value violates unique constraint"),
+				{ code: "23505" },
+			),
 		});
 
 		const { queryClient, wrapper } = createWrapper();

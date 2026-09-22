@@ -140,6 +140,20 @@ const REQUEST_DELETION_TRANSPORT_FAILURES = new Map<
 			log: false,
 		},
 	],
+	[
+		// UNIQUE (user_id). request_account_deletion() maps its own unique
+		// violation onto P0001:already_pending / already_executing, so this is
+		// defence in depth for a raw 23505 that leaks past that catch (or a
+		// direct-write path that is restored). Retrying cannot fix it and
+		// "please try again" must not be the answer.
+		"23505",
+		{
+			message:
+				"Your account already has a deletion request. Reload the page to see it.",
+			refresh: true,
+			log: false,
+		},
+	],
 ]);
 
 /** Classify a request_account_deletion() failure, or null if unrecognised. */
@@ -217,7 +231,17 @@ export function useCancelDeletion(userId: string) {
 				.select("id")
 				.maybeSingle();
 			if (error) throw error;
-			if (!cancelled) throw new Error("No pending deletion request to cancel.");
+			// RLS only lets a user cancel a `pending` row, so a claimed
+			// (executing) request matches nothing. That is not "try again" —
+			// it has started and can no longer be cancelled. Tag it so onError
+			// can say so instead of the generic retry line.
+			if (!cancelled) {
+				const started = new Error(
+					"No pending deletion request to cancel.",
+				) as Error & { code?: string };
+				started.code = "already_started";
+				throw started;
+			}
 		},
 		onSuccess: () => {
 			toast.success("Account deletion cancelled. Your account is safe.");
@@ -225,7 +249,18 @@ export function useCancelDeletion(userId: string) {
 				queryKey: [DELETION_REQUEST_KEY, userId],
 			});
 		},
-		onError: (error: Error) => {
+		onError: (error: Error & { code?: string }) => {
+			if (error?.code === "already_started") {
+				toast.error(
+					"Your account deletion has already started and can no longer be cancelled.",
+				);
+				// The card is showing pre-click copy; refetch so it can say
+				// "deletion in progress" instead.
+				queryClient.invalidateQueries({
+					queryKey: [DELETION_REQUEST_KEY, userId],
+				});
+				return;
+			}
 			console.error("[useCancelDeletion] failed:", error);
 			toast.error("Failed to cancel account deletion. Please try again.");
 		},
@@ -239,7 +274,9 @@ export function useCancelDeletion(userId: string) {
  *   2. Marks the deletion request as executed
  *   3. Deletes the auth user (cascading to all private data)
  */
-export function useExecuteDeletion() {
+export function useExecuteDeletion(userId: string) {
+	const queryClient = useQueryClient();
+
 	return useMutation({
 		mutationFn: async () => {
 			const { data, error } = await supabase.functions.invoke("delete-account");
@@ -252,7 +289,18 @@ export function useExecuteDeletion() {
 		},
 		onError: (error: Error) => {
 			console.error("[useExecuteDeletion] failed:", error);
-			toast.error("Failed to delete account. Please try again.");
+			// Not "please try again": a failed purge may have parked the row
+			// with needs_support_reason (KD-11), and `process_due` skips those,
+			// so retrying is guaranteed to fail again. The message points at
+			// the page card, which is the only thing that knows the reason.
+			toast.error(
+				"We could not delete your account. Check the message on this page for what to do next.",
+			);
+			// Refetch so the Danger Zone can show the parked-purge state
+			// instead of leaving the pre-click copy on screen.
+			queryClient.invalidateQueries({
+				queryKey: [DELETION_REQUEST_KEY, userId],
+			});
 		},
 	});
 }
