@@ -9,7 +9,6 @@ import {
   type StravaRateLimitSnapshot,
 } from '../_shared/providerRateLimit.ts';
 import { checkManualSyncRateLimit } from '../_shared/manualSyncRateLimit.ts';
-import { computeIncrementalWindow } from '../_shared/incrementalWindow.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
   completeSyncQueueEntry,
@@ -21,7 +20,7 @@ import {
   syncAlreadyQueuedResponse,
   syncQueueUnavailableResponse,
 } from '../_shared/syncQueue.ts';
-import { refreshStravaAccessToken, stravaTokenNeedsRefresh } from '../_shared/stravaToken.ts';
+import { computeIncrementalWindow } from '../_shared/incrementalWindow.ts';
 import { nextWatermark } from '../_shared/syncWatermark.ts';
 import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
 
@@ -159,6 +158,43 @@ export const STRAVA_LOCATION_KEYS = [
   'end_latlng',
 ] as const;
 
+/**
+ * Drop the location keys from a raw Strava activity. Returns a copy; the input
+ * is untouched. Top-level only, which is the whole surface the
+ * `/athlete/activities` list endpoint returns these on — detailed
+ * `segment_efforts` are not requested by this function.
+ */
+export function stripStravaLocationData(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const stripped: Record<string, unknown> = { ...raw };
+  for (const key of STRAVA_LOCATION_KEYS) {
+    delete stripped[key];
+  }
+  return stripped;
+}
+
+/**
+ * The exact row written to `external_activities`. Extracted so a test can
+ * assert what gets stored without standing up the whole handler.
+ */
+export function buildExternalActivityRow(
+  userId: string,
+  raw: StravaActivityRaw,
+  syncedAt: string,
+): Record<string, unknown> {
+  return {
+    user_id: userId,
+    ...normalizeStravaActivity(raw),
+    raw_data: stripStravaLocationData(raw as unknown as Record<string, unknown>),
+    synced_at: syncedAt,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Token refresh
+// ---------------------------------------------------------------------------
+
 const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token';
 
 interface StravaClientCredentials {
@@ -253,19 +289,7 @@ async function refreshAccessToken(
     // The underlying message may name internals; log it, never propagate it.
     console.error('[STRAVA_REFRESH] network error:', err);
     throw new StravaRefreshError(null, 'network error');
- * Drop the location keys from a raw Strava activity. Returns a copy; the input
- * is untouched. Top-level only, which is the whole surface the
- * `/athlete/activities` list endpoint returns these on — detailed
- * `segment_efforts` are not requested by this function.
-export function stripStravaLocationData(
-  raw: Record<string, unknown>,
-): Record<string, unknown> {
-  const stripped: Record<string, unknown> = { ...raw };
-  for (const key of STRAVA_LOCATION_KEYS) {
-    delete stripped[key];
   }
-  return stripped;
-}
 
   if (!response.ok) {
     // The body is read only to classify the failure (see
@@ -358,34 +382,12 @@ function describeRefreshFailure(err: StravaRefreshError): string {
     .map((d) => `${d.resource ?? '?'}/${d.field ?? '?'}/${d.code ?? '?'}`)
     .join(',');
   return `status=${err.status ?? 'none'} reason=${err.message} errors=[${details}]`;
- * The exact row written to `external_activities`. Extracted so a test can
- * assert what gets stored without standing up the whole handler.
-export function buildExternalActivityRow(
-  raw: StravaActivityRaw,
-  syncedAt: string,
-): Record<string, unknown> {
-    user_id: userId,
-    ...normalizeStravaActivity(raw),
-    raw_data: stripStravaLocationData(raw as unknown as Record<string, unknown>),
-    synced_at: syncedAt,
-// ---------------------------------------------------------------------------
-// Token refresh (shared with the disconnect path: _shared/stravaToken.ts)
-// ---------------------------------------------------------------------------
-function refreshAccessToken(refreshToken: string) {
-  return refreshStravaAccessToken(refreshToken, {
-    fetch: (input, init) => fetch(input, init),
-    clientId: Deno.env.get('STRAVA_CLIENT_ID'),
-    clientSecret: Deno.env.get('STRAVA_CLIENT_SECRET'),
-  });
 }
 
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
 
-// Guarded by `import.meta.main` at the bottom so the exported helpers above can
-// be imported by a test without this module binding a port.
-const stravaSyncHandler = async (req: Request): Promise<Response> => {
 export interface StravaSyncDependencies {
   env: (key: string) => string | undefined;
   // deno-lint-ignore no-explicit-any
@@ -429,33 +431,8 @@ async function runStravaSync(
   req: Request,
   deps: StravaSyncDependencies,
   owned: OwnedQueueRow,
-export interface StravaSyncAuthClient {
-  auth: {
-    getUser(): Promise<{ data: { user: { id: string } | null } }>;
-export interface StravaSyncHandlerDependencies {
-  createAuthClient(authorization: string): StravaSyncAuthClient;
-  createAdminClient(): DbClient;
-  /** Pause between Strava pages. Injectable so tests need not wait. */
-  sleep?(ms: number): Promise<void>;
-function defaultStravaSyncDependencies(): StravaSyncHandlerDependencies {
-    createAuthClient(authorization: string) {
-      return createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_ANON_KEY')!,
-        { global: { headers: { Authorization: authorization } } },
-      ) as unknown as StravaSyncAuthClient;
-    },
-    createAdminClient() {
-      return createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-      );
-    },
-async function stravaSyncHandler(
-  deps: StravaSyncHandlerDependencies,
 ): Promise<Response> {
   const cors = getCorsHeaders(req);
-  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -484,7 +461,6 @@ async function stravaSyncHandler(
       deps.env('SUPABASE_ANON_KEY')!,
       { global: { headers: { Authorization: authHeader } } },
     );
-    const supabaseAuth = deps.createAuthClient(authHeader);
     const { data: { user: jwtUser } } = await supabaseAuth.auth.getUser();
 
     if (jwtUser) {
@@ -521,7 +497,6 @@ async function stravaSyncHandler(
       deps.env('SUPABASE_URL')!,
       deps.env('SUPABASE_SERVICE_ROLE_KEY')!
     );
-    const supabase = deps.createAdminClient();
 
     // Cap browser-initiated invocations per user: they hit Strava's
     // application-wide read quota. Keyed on the JWT-verified id, so an
@@ -591,11 +566,14 @@ async function stravaSyncHandler(
 
     let accessToken = (await decryptOAuthSecret(tokens.access_token as string)) ?? '';
     let refreshToken = (await decryptOAuthSecret(tokens.refresh_token as string)) ?? '';
+    const tokenExpiresAt = tokens.token_expires_at
+      ? new Date(tokens.token_expires_at).getTime()
+      : 0;
 
     // ---------------------------------------------------------------
     // Refresh token if expired (with 60s buffer)
     // ---------------------------------------------------------------
-    if (stravaTokenNeedsRefresh(tokens.token_expires_at as string | null)) {
+    if (Date.now() >= tokenExpiresAt - 60_000) {
       console.log('Strava access token expired, refreshing...');
       let refreshed: StravaRefreshedTokens;
       try {
@@ -697,23 +675,14 @@ async function stravaSyncHandler(
     }
 
     // ---------------------------------------------------------------
-    // Fetch activities from Strava
+    // Fetch activities from Strava (two-pass: forward gap-fill + backward backfill)
     // ---------------------------------------------------------------
-    const baseParams = new URLSearchParams({ per_page: '200' });
-    // Captured before the first request: an incremental run fetches
+    // Capture the new watermark BEFORE fetching: an incremental run fetches
     // everything after the old watermark up to (at least) this instant, so
     // this — not the end of the run — is where the next window must start.
     const syncStartedAt = deps.now().toISOString();
-    // Capture the new watermark BEFORE fetching: anything Strava records while
-    // this run is in flight falls inside the next window instead of behind it.
-    const syncStartedAt = new Date().toISOString();
 
-    // Strava's `after`/`before` filter on activity START time, while
-    // last_sync_at is wall-clock sync time. The incremental window therefore
-    // reaches back a lookback from the earlier of the watermark and the newest
-    // stored start (see _shared/incrementalWindow.ts), so late uploads that
-    // started before the last sync are still picked up. Upserts are idempotent,
-    // so the overlap is free.
+    // Newest stored activity anchors the incremental window (lookback below).
     const { data: newestStored } = await supabase
       .from('external_activities')
       .select('started_at')
@@ -723,38 +692,22 @@ async function stravaSyncHandler(
       .limit(1)
       .maybeSingle();
 
+    // Lookback window: `after = min(lastWatermark, newestStored) - 72h`. A late
+    // upload whose started_at falls before the old watermark is then still
+    // fetched. Returns null when neither anchor is set (pure first backfill).
     const incrementalWindow = computeIncrementalWindow({
       lastWatermark: integration.last_sync_at as string | null,
       maxStoredStartedAt: (newestStored?.started_at as string | null | undefined) ?? null,
     });
 
-    // Modes:
-    //
-    // Incremental (last_sync_at set): one forward pass from the window.
-    //
-    // Backfill (`initial`, or no watermark yet): Strava returns activities
-    //   newest-first, so each page walks further into the past. A run that hits
-    //   the page ceiling stops partway; the oldest Strava activity already
-    //   stored IS how far back we got, so passing it as `before` makes each
-    //   retry continue from there.
-    //
-    //   When rows are already stored (a reconnect after disconnect, a re-auth
-    //   after a revoked token, or a resumed backfill), a forward pass from the
-    //   incremental window runs FIRST. Without it, the interval between the old
-    //   last_sync_at and now would never be requested: the backward pass only
-    //   fetches activities older than anything stored.
     const isBackfill = sync_type === 'initial' || !integration.last_sync_at;
     const previousWatermark = (integration.last_sync_at as string | null) ?? null;
     const toEpoch = (iso: string | Date) =>
       String(Math.floor(new Date(iso).getTime() / 1000));
 
-    // Strava's quotas are application-wide (100 reads / 15 min, 1,000 / day), so
-    // a single user's backfill spends budget every other user shares. Cap the
-    // pages one invocation may take (across all passes), and stop early once
-    // Strava's own reported usage says we are close to the ceiling.
     const MAX_PAGES_PER_RUN = 10;
-    // Pages the forward pass may not use when a backward pass follows, so a
-    // large reconnect gap cannot starve an incomplete backfill of progress.
+    // Pages reserved for the backward pass so a large forward gap cannot starve
+    // the backfill of its pages.
     const BACKWARD_RESERVED_PAGES = 2;
     // Requests deliberately left unspent so an in-flight backfill cannot starve
     // other users' syncs (or the webhook path) of quota.
@@ -764,6 +717,9 @@ async function stravaSyncHandler(
     type PassDirection = 'forward' | 'backward';
     const passes: Array<{ direction: PassDirection; params: URLSearchParams; maxPages: number }> = [];
 
+    // Forward pass: gap-fill since the incremental window. Runs for every
+    // incremental, and for a backfill whenever rows are already stored (the
+    // reconnect gap is [last_sync_at, now] and must not be skipped).
     if (!isBackfill || newestStored?.started_at) {
       const forward = new URLSearchParams({ per_page: '200' });
       if (incrementalWindow) forward.set('after', toEpoch(incrementalWindow.after));
@@ -774,6 +730,10 @@ async function stravaSyncHandler(
       });
     }
 
+    // Backward pass: walk into the past from the oldest stored activity (or
+    // from the present when nothing is stored). `before` is exclusive; the
+    // boundary activity is already stored, and upserts are idempotent even if
+    // Strava treats it as inclusive.
     let oldestStoredMs: number | null = null;
     if (isBackfill) {
       const backward = new URLSearchParams({ per_page: '200' });
@@ -785,79 +745,23 @@ async function stravaSyncHandler(
         .order('started_at', { ascending: true })
         .limit(1)
         .maybeSingle();
-
       if (oldestStored?.started_at) {
-        // `before` is exclusive; the boundary activity is already stored, and
-        // upserts are idempotent even if Strava treats it as inclusive.
         oldestStoredMs = new Date(oldestStored.started_at as string).getTime();
         backward.set('before', toEpoch(oldestStored.started_at as string));
-        console.log(
-          `Strava backfill resuming before ${oldestStored.started_at}`,
-        );
+        console.log(`Strava backfill resuming before ${oldestStored.started_at}`);
       }
       passes.push({ direction: 'backward', params: backward, maxPages: MAX_PAGES_PER_RUN });
     }
 
-    // Per pass: whether it reached a short (final) page, and the start times of
-    // everything it fetched, in response order.
     const passResults = new Map<PassDirection, { complete: boolean; startsMs: number[] }>();
-    // Keyed by Strava id: the forward and backward windows can overlap, and a
-    // page boundary can repeat an activity; each one is upserted once.
-    const fetchedById = new Map<number, StravaActivityRaw>();
+    // Dedupes across passes: a reconnect gap and a backfill can both return the
+    // same activity when the gap reaches past the oldest stored row.
+    const fetchedById = new Map<string, StravaActivityRaw>();
 
     let budgetExhausted = false;
     let pagesUsed = 0;
     let lastSnapshot: StravaRateLimitSnapshot | null = null;
 
-    while (page <= MAX_PAGES_PER_RUN) {
-      const params = new URLSearchParams(baseParams);
-      params.set('page', String(page));
-
-      let activitiesResponse: Response;
-      try {
-        activitiesResponse = await deps.fetch(
-          `https://www.strava.com/api/v3/athlete/activities?${params}`,
-          {
-            headers: { Authorization: `Bearer ${accessToken}` },
-            signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
-          }
-        );
-      } catch {
-        // AbortSignal timeouts, DNS failures and connection resets are
-        // transient provider failures. 502 is in process-sync-queue's retry
-        // set; a 500 would terminally fail the task.
-        console.error('Strava activities request failed before a response');
-        return new Response(
-          JSON.stringify({
-            error: 'Failed to fetch Strava activities',
-            code: 'activities_fetch_failed',
-          }),
-          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // Record what Strava reports about our quota on every response, success
-      // or failure — a 429 is exactly when this information matters most.
-      lastSnapshot = parseStravaRateLimitHeaders(activitiesResponse.headers);
-      await recordStravaUsage(supabase, lastSnapshot);
-      // Renew the lease per page: the fetch phase is otherwise silent, and a
-      // reclaimed row would be dispatched a second time while this run lives.
-      await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
-
-      if (activitiesResponse.status === 429) {
-        const retryAfter = parseRetryAfterSeconds(activitiesResponse.headers);
-        console.warn(
-          `Strava rate limited; retry-after=${retryAfter ?? 'unspecified'}s, ` +
-            `${rawActivities.length} activities fetched before the limit`,
-        );
-        // Stop cleanly rather than erroring: activities already fetched are
-        // persisted below, and last_sync_at is withheld so the queue retry
-        // resumes from the same cutoff.
-      const activitiesResponse = await deps.fetch(
-        `https://www.strava.com/api/v3/athlete/activities?${params}`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }
     const reserveReached = (snapshot: StravaRateLimitSnapshot | null) => {
       if (!snapshot) return false;
       const budget = checkReadBudget(snapshot, RESERVED_REQUESTS);
@@ -868,33 +772,50 @@ async function stravaSyncHandler(
       );
       return true;
     };
+
     for (const pass of passes) {
-      // Re-check headroom before opening another pass, not only between pages.
       if (reserveReached(lastSnapshot)) {
         budgetExhausted = true;
         break;
       }
-
       const result = { complete: false, startsMs: [] as number[] };
       passResults.set(pass.direction, result);
       let page = 1;
-
       while (page <= pass.maxPages && pagesUsed < MAX_PAGES_PER_RUN) {
         const params = new URLSearchParams(pass.params);
         params.set('page', String(page));
 
-        const activitiesResponse = await fetch(
-          `https://www.strava.com/api/v3/athlete/activities?${params}`,
-          {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          }
-        );
+        let activitiesResponse: Response;
+        try {
+          activitiesResponse = await deps.fetch(
+            `https://www.strava.com/api/v3/athlete/activities?${params}`,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+            }
+          );
+        } catch {
+          // AbortSignal timeouts, DNS failures and connection resets are
+          // transient provider failures. 502 is in process-sync-queue's retry
+          // set; a 500 would terminally fail the task.
+          console.error('Strava activities request failed before a response');
+          return new Response(
+            JSON.stringify({
+              error: 'Failed to fetch Strava activities',
+              code: 'activities_fetch_failed',
+            }),
+            { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+          );
+        }
         pagesUsed++;
 
         // Record what Strava reports about our quota on every response, success
         // or failure — a 429 is exactly when this information matters most.
         lastSnapshot = parseStravaRateLimitHeaders(activitiesResponse.headers);
         await recordStravaUsage(supabase, lastSnapshot);
+        // Renew the lease per page: the fetch phase is otherwise silent, and a
+        // reclaimed row would be dispatched a second time while this run lives.
+        await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 
         if (activitiesResponse.status === 429) {
           const retryAfter = parseRetryAfterSeconds(activitiesResponse.headers);
@@ -903,21 +824,12 @@ async function stravaSyncHandler(
               `${fetchedById.size} activities fetched before the limit`,
           );
           // Stop cleanly rather than erroring: activities already fetched are
-          // persisted below and the queue retry resumes once quota frees up.
+          // persisted below, and last_sync_at is withheld so the queue retry
+          // resumes from the same cutoff.
           budgetExhausted = true;
           break;
         }
 
-        // The provider's body is logged above and never returned: it is
-        // attacker-influenced text that would otherwise be echoed to the
-        // browser and copied into sync_queue.error_message by the processor.
-        return new Response(
-          JSON.stringify({
-            error: 'Failed to fetch Strava activities',
-            code: `provider_fetch_failed_${activitiesResponse.status}`,
-          }),
-          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
-        );
         if (!activitiesResponse.ok) {
           const errorText = await activitiesResponse.text();
           console.error('Strava activities fetch failed:', activitiesResponse.status, errorText);
@@ -930,15 +842,21 @@ async function stravaSyncHandler(
               .eq('provider', 'strava');
           }
 
+          // The provider's body is logged above and never returned: it is
+          // attacker-influenced text that would otherwise be echoed to the
+          // browser and copied into sync_queue.error_message by the processor.
           return new Response(
-            JSON.stringify({ error: 'Failed to fetch Strava activities', details: errorText }),
+            JSON.stringify({
+              error: 'Failed to fetch Strava activities',
+              code: `provider_fetch_failed_${activitiesResponse.status}`,
+            }),
             { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
           );
         }
 
         const pageActivities: StravaActivityRaw[] = await activitiesResponse.json();
         for (const activity of pageActivities) {
-          fetchedById.set(activity.id, activity);
+          fetchedById.set(String(activity.id), activity);
           result.startsMs.push(new Date(activity.start_date).getTime());
         }
 
@@ -954,29 +872,22 @@ async function stravaSyncHandler(
         }
 
         page++;
-        await sleep(delayBetweenPagesMs);
+        await new Promise((r) => setTimeout(r, delayBetweenPagesMs));
       }
-
       if (budgetExhausted) break;
     }
 
-    // A pass that never started, or stopped on a full page (page ceiling or
-    // budget), leaves activities upstream.
     const passIncomplete = (direction: PassDirection) =>
       passes.some((pass) => pass.direction === direction) &&
       passResults.get(direction)?.complete !== true;
-    const forwardIncomplete = passIncomplete('forward');
-    const backwardIncomplete = passIncomplete('backward');
-    const moreRemaining = forwardIncomplete || backwardIncomplete;
-
+    // Either pass stopped short of its end (page ceiling, budget reserve, 429).
+    const moreRemaining = passIncomplete('forward') || passIncomplete('backward');
     const rawActivities = [...fetchedById.values()];
 
     // ---------------------------------------------------------------
     // Normalize and upsert activities
     // ---------------------------------------------------------------
     const errors: string[] = [];
-    // Activities written this run. Includes re-saves of rows already stored
-    // (the lookback overlap is intentional), but never counts one twice.
     let syncedCount = 0;
     let failedCount = 0;
 
@@ -998,20 +909,13 @@ async function stravaSyncHandler(
       const chunkRaw = uniqueActivities.slice(i, i + UPSERT_CHUNK_SIZE);
       const rangeLabel = `Activities ${i}-${i + chunkRaw.length - 1}`;
       try {
-        const rows = chunkRaw.map((raw) => ({
-          user_id: userId,
-          ...normalizeStravaActivity(raw),
-          raw_data: raw,
-          synced_at: syncedAt,
-        }));
+        const rows = chunkRaw.map((raw) =>
+          buildExternalActivityRow(userId, raw, syncedAt)
+        );
 
         const { error: upsertError } = await supabase
           .from('external_activities')
           .upsert(rows, { onConflict: 'user_id,provider,external_id' });
-          .upsert(
-            buildExternalActivityRow(userId, raw, new Date().toISOString()),
-            { onConflict: 'user_id,provider,external_id' }
-          );
 
         if (upsertError) {
           failedCount += chunkRaw.length;
@@ -1058,33 +962,25 @@ async function stravaSyncHandler(
     }
 
     // ---------------------------------------------------------------
-    // Pagination stopped short of the end (page ceiling or rate-limit reserve).
+    // A pass stopped short of its end (page ceiling, budget reserve, 429).
     // Everything fetched IS persisted, but activities remain upstream, so the
-    // watermark may only move to what was fully read. Report retryably and
-    // let the queue resume from the moved resume point.
+    // watermark must not advance past them. Report retryably and let the queue
+    // resume from the forward pass's newest fully-read start.
     // ---------------------------------------------------------------
     if (moreRemaining) {
-      // Forward resume point. The forward window is anchored on
-      // min(last_sync_at, newest stored start). Rows persisted above raise the
-      // newest stored start, but last_sync_at must move too or min() pins the
-      // window in place and every retry re-reads the same pages.
-      //   - Forward pass complete: its whole window is read; the pre-fetch
-      //     watermark is safe.
-      //   - Forward pass truncated: only safe to advance to the newest fetched
-      //     start when the pages came back in ascending start order (then
-      //     everything before it was read). Strava is believed to return
-      //     ascending order when `after` is set (A-008, provisional), but this
-      //     is checked rather than assumed; otherwise nothing is advanced.
-      // last_sync_at is only written when it was already set: while it is null
-      // the anchor is the newest stored start, which advances by itself, and
-      // setting it would end an unfinished backfill for non-initial syncs.
+      // Forward resume point: the newest activity the forward pass actually
+      // read (only when its start times are in ascending order — Strava
+      // returns newest-first for `before` pages, and an out-of-order forward
+      // page means we cannot say what the contiguous window covered).
       let forwardResumeAt: string | null = null;
       let forwardProgress = false;
       const forwardResult = passResults.get('forward');
       const forwardAnchorMs = incrementalWindow?.anchor.getTime() ?? null;
 
       if (forwardResult?.complete) {
-        if (previousWatermark !== null) forwardResumeAt = syncStartedAt;
+        // Forward finished; the gap is covered. Keep the old watermark so the
+        // next incremental still reaches back over the lookback window.
+        // (Only a complete run may advance past the anchor.)
       } else if (forwardResult && forwardResult.startsMs.length > 0) {
         const starts = forwardResult.startsMs;
         const ascending = starts.every((ms, i) => i === 0 || ms >= starts[i - 1]);
@@ -1096,23 +992,28 @@ async function stravaSyncHandler(
           );
         } else if (forwardAnchorMs === null || newestFetchedMs > forwardAnchorMs) {
           forwardProgress = true;
+          // Only advance when there WAS a prior watermark: a first backfill's
+          // resume point is the oldest stored row (the `before` cursor), not
+          // the forward window.
           if (previousWatermark !== null) {
             forwardResumeAt = new Date(newestFetchedMs).toISOString();
           }
         }
       }
 
-      // Backward resume point: the oldest stored start. It moved if this run
-      // persisted anything older than it.
+      // Backward progress: the backward pass fetched at least one activity
+      // older than the oldest previously stored, so the next `before` cursor
+      // will be strictly earlier.
       const backwardStarts = passResults.get('backward')?.startsMs ?? [];
       const backwardProgress =
         backwardStarts.length > 0 &&
         (oldestStoredMs === null ||
           backwardStarts.reduce((min, ms) => Math.min(min, ms), Infinity) < oldestStoredMs);
 
+      // A retry is only safe when this run actually advanced a resume point.
+      // If neither pass moved, the next attempt would reissue identical
+      // requests and spin until the retry cap — fail terminally instead.
       const madeProgress = forwardProgress || backwardProgress;
-      // A rate limit (429 or the reserve) is transient: the retry after the
-      // window rolls over does something different even if nothing moved.
       const retryable = budgetExhausted || madeProgress;
       const partialMessage = retryable
         ? `Fetched ${rawActivities.length} activities before reaching the Strava ` +
@@ -1149,19 +1050,30 @@ async function stravaSyncHandler(
 
     // ---------------------------------------------------------------
     // Advance last_sync_at (all activities persisted) — only to the end of a
-    // window fetched contiguously from the previous watermark:
-    //  - incremental/manual with a watermark: [last_sync_at, syncStartedAt];
+    // window fetched contiguously:
+    //  - complete run against an EXISTING watermark: the forward pass (when
+    //    present) covered [lookback, syncStartedAt], so the watermark may
+    //    advance to this run's start. This supersedes _shared/syncWatermark.ts's
+    //    `initial` carve-out, which assumed a single-pass backfill-only initial
+    //    that never reached into [last_sync_at, now]. Two-pass fills that gap,
+    //    so advancing is safe and the next incremental still overlaps via
+    //    the 72h lookback.
     //  - first backfill (no watermark): runs newest-first and may resume
     //    across queue passes, so the contiguous window ends at the newest
     //    activity stored, not at this run's clock (activities uploaded
     //    between the first and the final backfill pass are then fetched by
-    //    the next incremental, idempotently);
-    //  - `initial` against an existing watermark only reached further into
-    //    the past, so the watermark stays put (see _shared/syncWatermark.ts).
+    //    the next incremental, idempotently).
     // ---------------------------------------------------------------
-    let contiguousUpTo = syncStartedAt;
-    if (!integration.last_sync_at) {
-      const { data: newestStored } = await supabase
+    let watermark: string | null;
+    if (previousWatermark !== null) {
+      // Complete run with a prior watermark: forward (if any) covered through
+      // this instant. SyncStartedAt is the safe upper bound.
+      watermark = syncStartedAt;
+    } else {
+      // First backfill: newest stored activity is how far the contiguous
+      // window reaches. Never the clock — that would skip uploads that landed
+      // during the backfill. Re-query: the pre-fetch snapshot was empty.
+      const { data: newestAfterBackfill } = await supabase
         .from('external_activities')
         .select('started_at')
         .eq('user_id', userId)
@@ -1169,18 +1081,19 @@ async function stravaSyncHandler(
         .order('started_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      const newestMs = newestStored?.started_at
-        ? Date.parse(newestStored.started_at as string)
+      const newestMs = newestAfterBackfill?.started_at
+        ? Date.parse(newestAfterBackfill.started_at as string)
         : Number.NaN;
-      if (Number.isFinite(newestMs) && newestMs < Date.parse(syncStartedAt)) {
-        contiguousUpTo = new Date(newestMs).toISOString();
-      }
+      const contiguousUpTo =
+        Number.isFinite(newestMs) && newestMs < Date.parse(syncStartedAt)
+          ? new Date(newestMs).toISOString()
+          : syncStartedAt;
+      watermark = nextWatermark({
+        syncType: sync_type,
+        previous: previousWatermark,
+        contiguousUpTo,
+      });
     }
-    const watermark = nextWatermark({
-      syncType: sync_type,
-      previous: integration.last_sync_at as string | null,
-      contiguousUpTo,
-    });
     await supabase
       .from('user_integrations')
       .update({
@@ -1188,7 +1101,6 @@ async function stravaSyncHandler(
         status: 'connected',
         error_message: null,
       })
-      .update({ last_sync_at: syncStartedAt, status: 'connected', error_message: null })
       .eq('user_id', userId)
       .eq('provider', 'strava');
 
@@ -1214,15 +1126,4 @@ async function stravaSyncHandler(
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
-};
-
-if (import.meta.main) {
-  Deno.serve(stravaSyncHandler);
-}
-export function createStravaSyncHandler(
-  deps: StravaSyncHandlerDependencies = defaultStravaSyncDependencies(),
-): (req: Request) => Promise<Response> {
-  return (req) => stravaSyncHandler(req, deps);
-}
-  Deno.serve(createStravaSyncHandler());
 }
