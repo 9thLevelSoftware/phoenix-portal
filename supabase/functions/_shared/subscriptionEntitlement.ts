@@ -20,6 +20,10 @@ export type SubscriptionTier = 'FREE' | 'EMBER' | 'FLAME' | 'INFERNO';
  */
 export const ENTITLEMENT_GRACE_HOURS = 48;
 
+// Applied only when `cancelAtPeriodEnd` is false. Callers that read a
+// `subscriptions` row must select `cancel_at_period_end` alongside
+// `current_period_end` — without that column the grace is granted to a
+// subscription already scheduled to cancel at period end.
 const GRACE_MS = ENTITLEMENT_GRACE_HOURS * 60 * 60 * 1000;
 
 const PAID_TIERS = new Set<string>(['EMBER', 'FLAME', 'INFERNO']);

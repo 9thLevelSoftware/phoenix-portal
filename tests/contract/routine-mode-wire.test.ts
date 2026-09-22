@@ -79,7 +79,8 @@ describe("routine mode wire contract", () => {
 		WIRE_MODES,
 	)("builder option %s survives save and pull as a wire name", (wire) => {
 		const [row] = toRoutineExerciseRows([builderExercise(wire)]);
-		const pulled = pullRoutineExerciseDtoMode(row);
+		// Pass the field, not the row: the DTO mirror only reads `mode`.
+		const pulled = pullRoutineExerciseDtoMode({ mode: row.mode });
 
 		expect(pulled).toBe(wire);
 		expect(WIRE_MODES as readonly unknown[]).toContain(pulled);

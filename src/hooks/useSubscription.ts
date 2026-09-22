@@ -70,8 +70,12 @@ interface SubscriptionData {
 async function fetchSubscription(userId: string) {
 	const { data, error } = await supabase
 		.from("subscriptions")
+		// One column list. A merge seam used to leave two strings here; the
+		// client takes the first as the select and treats the second as the
+		// options bag, so `paddle_subscription_id` never came back and
+		// `billingAction` was always routed as if the account had no Paddle
+		// subscription.
 		.select(
-			"tier, status, price_id, current_period_end, cancel_at_period_end, updated_at",
 			"tier, status, price_id, current_period_end, cancel_at_period_end, updated_at, paddle_subscription_id",
 		)
 		.eq("user_id", userId)
@@ -127,7 +131,9 @@ export function useSubscription(): SubscriptionData {
 
 	const { data, isLoading, isError, error, refetch } = useQuery({
 		queryKey: subscriptionKey,
-		queryFn: () => fetchSubscription(user?.id),
+		// `enabled: !!user` gates execution; the id is only read once the query
+		// runs, so the fallback keeps the call total without widening the fetch.
+		queryFn: () => fetchSubscription(user?.id ?? ""),
 		enabled: !!user,
 		staleTime: 5 * 60 * 1000, // 5 minutes
 		// Preserve the last-known entitlement across transient refetch errors so a

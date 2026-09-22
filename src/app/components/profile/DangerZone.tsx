@@ -153,8 +153,10 @@ export function DangerZone() {
 					</CardTitle>
 					<CardDescription className="text-amber-300/80">
 						We could not finish deleting your account on {scheduledDateStr}{" "}
-						because {supportReasonSentence(deletionRequest.needs_support_reason)}
-						; please contact support to finish it.
+						because{" "}
+						{supportReasonSentence(deletionRequest.needs_support_reason)}
+						{";"}
+						please contact support to finish it.
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
@@ -375,8 +377,8 @@ export function DangerZone() {
 							Your account and data will be permanently deleted on{" "}
 							{deletionDateStr} (30 days from now). Your subscription is
 							cancelled on that date, so no payment is taken after it. A renewal
-							that falls due before {deletionDateStr} is still charged unless you
-							cancel your plan first in{" "}
+							that falls due before {deletionDateStr} is still charged unless
+							you cancel your plan first in{" "}
 							<Link to="/pricing" className="text-primary underline">
 								Billing
 							</Link>

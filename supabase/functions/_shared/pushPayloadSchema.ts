@@ -49,7 +49,7 @@ const uuid = z
  */
 export const localProfileIdSchema = z
 	.string()
-	.refine((v) => v === "default" || UUID_REGEX.test(v), {
+	.refine((v: string) => v === "default" || UUID_REGEX.test(v), {
 		message: 'expected "default" or a UUID',
 	});
 
@@ -60,7 +60,7 @@ export const localProfileIdSchema = z
  */
 export const platformSchema = z
 	.unknown()
-	.transform<"android" | "ios" | "unknown">((value) => {
+	.transform<"android" | "ios" | "unknown">((value: unknown) => {
 		if (typeof value !== "string") return "unknown";
 		const normalized = value.trim().toLowerCase();
 		if (!normalized) return "unknown";
@@ -78,7 +78,7 @@ export const platformSchema = z
 // permissive about format but strict about parseability.
 const isoDatetime = z
 	.string()
-	.refine((v) => Number.isFinite(Date.parse(v)), {
+	.refine((v: string) => Number.isFinite(Date.parse(v)), {
 		message: "expected an ISO-8601 datetime string",
 	});
 
@@ -92,7 +92,7 @@ function nullableDatetime() {
 function datetimeWithDefault(makeDefault: () => string) {
 	return isoDatetime
 		.nullish()
-		.transform((v) => v ?? makeDefault());
+		.transform((v: string | null | undefined) => v ?? makeDefault());
 }
 
 // ─── Bounded numbers ─────────────────────────────────────────────────────
@@ -105,10 +105,14 @@ const nonNegInt = z.number().int().nonnegative();
 
 // Non-negative scalar with a NOT-NULL-DEFAULT fallback (nullish → default).
 function nonNegNumberDefault(fallback: number) {
-	return nonNegNumber.nullish().transform((v) => v ?? fallback);
+	return nonNegNumber
+		.nullish()
+		.transform((v: number | null | undefined) => v ?? fallback);
 }
 function nonNegIntDefault(fallback: number) {
-	return nonNegInt.nullish().transform((v) => v ?? fallback);
+	return nonNegInt
+		.nullish()
+		.transform((v: number | null | undefined) => v ?? fallback);
 }
 
 // Helper: coerce missing (undefined/null) to [] for backward compat, but
@@ -119,7 +123,10 @@ function nonNegIntDefault(fallback: number) {
 function arrayOf<T extends z.ZodTypeAny>(item: T) {
 	return z
 		.unknown()
-		.superRefine((v, ctx) => {
+		// `ctx` is deliberately `any`: `tsc` resolves `npm:zod@4.3.6` as
+		// untyped (TS2307) while Deno sees the real `$RefinementCtx`, and a
+		// structural annotation that satisfies one toolchain breaks the other.
+		.superRefine((v: unknown, ctx: any) => {
 			if (v === undefined || v === null) return;
 			if (!Array.isArray(v)) {
 				ctx.addIssue({

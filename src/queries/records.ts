@@ -87,7 +87,7 @@ export function personalRecordsOptions(
 
 			return {
 				records: personalRecordListSchema.parse(
-					await resolvePersonalRecordDisplayNames(rows),
+					await resolvePersonalRecordDisplayNames(rows, userId),
 				),
 				nextCursor:
 					last && rows.length === PERSONAL_RECORDS_PAGE_SIZE

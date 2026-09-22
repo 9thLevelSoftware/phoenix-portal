@@ -76,7 +76,7 @@ describe("workoutListOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { workoutListOptions } = await import("../workouts");
 		const opts = workoutListOptions("user-abc");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result).toHaveLength(1);
 		expect(result[0].total_volume).toBe(500); // per cable, as stored (KD-8)
@@ -92,7 +92,7 @@ describe("workoutListOptions", () => {
 		});
 		const { workoutListOptions } = await import("../workouts");
 		const opts = workoutListOptions("user-abc");
-		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
+		await expect(opts.queryFn!({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "DB error" }),
 		);
 	});
@@ -101,7 +101,7 @@ describe("workoutListOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { workoutListOptions } = await import("../workouts");
 		const opts = workoutListOptions("user-abc");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toEqual([]);
 	});
 
@@ -125,7 +125,7 @@ describe("workoutListOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { workoutListOptions } = await import("../workouts");
 		const opts = workoutListOptions("user-abc");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result[0].name).toBe("Untitled Workout");
 	});
 });
@@ -190,7 +190,7 @@ describe("sessionDetailOptions", () => {
 
 		const { sessionDetailOptions } = await import("../workouts");
 		const opts = sessionDetailOptions(SESSION_ROW.id);
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result.name).toBe("Leg Day");
 		expect(result.exercises).toHaveLength(1);
@@ -244,7 +244,7 @@ describe("sessionDetailOptions", () => {
 		fromFn.mockImplementation(() => chain);
 
 		const { sessionDetailOptions } = await import("../workouts");
-		const result = await sessionDetailOptions(SESSION_ROW.id).queryFn?.(
+		const result = await sessionDetailOptions(SESSION_ROW.id).queryFn!(
 			{} as never,
 		);
 
@@ -259,7 +259,7 @@ describe("sessionDetailOptions", () => {
 
 		const { sessionDetailOptions } = await import("../workouts");
 		await expect(
-			sessionDetailOptions(SESSION_ROW.id).queryFn?.({} as never),
+			sessionDetailOptions(SESSION_ROW.id).queryFn!({} as never),
 		).rejects.toBe(error);
 	});
 
@@ -334,7 +334,7 @@ describe("comparisonDetailOptions", () => {
 		expect(opts.queryKey).toEqual(
 			queryKeys.workouts.comparison(SESSION_ROW.id, "detail"),
 		);
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(fromFn).toHaveBeenCalledTimes(1);
 		expect(fromFn).toHaveBeenCalledWith("workout_sessions");
@@ -387,7 +387,7 @@ describe("comparisonDetailOptions", () => {
 
 		const { comparisonDetailOptions } = await import("../workouts");
 		await expect(
-			comparisonDetailOptions(SESSION_ROW.id).queryFn?.({} as never),
+			comparisonDetailOptions(SESSION_ROW.id).queryFn!({} as never),
 		).rejects.toBe(error);
 		expect(fromFn).toHaveBeenCalledTimes(1);
 	});
@@ -400,7 +400,7 @@ describe("comparisonDetailOptions", () => {
 		fromFn.mockImplementation(() => chain);
 
 		const { comparisonDetailOptions } = await import("../workouts");
-		const result = await comparisonDetailOptions(SESSION_ROW.id).queryFn?.(
+		const result = await comparisonDetailOptions(SESSION_ROW.id).queryFn!(
 			{} as never,
 		);
 
@@ -435,7 +435,7 @@ describe("dashboardStatsOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { dashboardStatsOptions } = await import("../workouts");
 		const opts = dashboardStatsOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		// Raw data returned as-is (no doubling)
 		expect(result[0].total_volume).toBe(400);
 	});
@@ -476,11 +476,16 @@ describe("workoutListInfiniteOptions", () => {
 		);
 		const opts = workoutListInfiniteOptions("user-abc");
 		const shortPage = Array.from({ length: 3 }, () => ({}));
-		expect(opts.getNextPageParam(shortPage as never, [])).toBeUndefined();
+		// The query-option type declares all four paginator params
+		// (`lastPageParam: number`, `allPageParams: number[]`); the
+		// implementation reads only the first two.
+		expect(
+			opts.getNextPageParam(shortPage as never, [], 0, []),
+		).toBeUndefined();
 		const fullPage = Array.from({ length: WORKOUTS_PAGE_SIZE }, () => ({}));
-		expect(opts.getNextPageParam(fullPage as never, [fullPage as never])).toBe(
-			WORKOUTS_PAGE_SIZE,
-		);
+		expect(
+			opts.getNextPageParam(fullPage as never, [fullPage as never], 0, [0]),
+		).toBe(WORKOUTS_PAGE_SIZE);
 	});
 });
 
@@ -494,7 +499,7 @@ describe("workoutStreakOptions", () => {
 		const { workoutStreakOptions } = await import("../workouts");
 		const opts = workoutStreakOptions("user-abc");
 		expect(opts.queryKey).toEqual(["workouts", "streak", "user-abc"]);
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(rpcFn).toHaveBeenCalledWith("workout_current_streak", {
 			p_user_id: "user-abc",
 		});
@@ -533,7 +538,7 @@ describe("recentPRsOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { recentPRsOptions } = await import("../workouts");
 		const opts = recentPRsOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(chain.is).toHaveBeenCalledWith("deleted_at", null);
 		expect(result[0].value).toBe(100); // per cable, not doubled
 		expect(result[0].previous_value).toBe(90); // per cable, not doubled
@@ -563,7 +568,7 @@ describe("recentPRsOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { recentPRsOptions } = await import("../workouts");
 		const opts = recentPRsOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result[0].exercise_name).toBe("Bayesian Curl (Handles)");
 	});

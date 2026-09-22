@@ -584,7 +584,8 @@ describe("deletionRequestOptions", () => {
 		);
 		const inFilter = vi.fn(() => ({ maybeSingle }));
 		const eqUserId = vi.fn(() => ({ in: inFilter }));
-		const select = vi.fn(() => ({ eq: eqUserId }));
+		// Typed so `select.mock.calls[0][0]` is a column list, not `[]`.
+		const select = vi.fn((_columns: string) => ({ eq: eqUserId }));
 		mockChain.select.mockImplementation(select);
 
 		await deletionRequestOptions(TEST_USER_ID).queryFn();

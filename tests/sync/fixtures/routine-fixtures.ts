@@ -56,7 +56,7 @@ export function createRoutineFixture(
 ): RoutineRow {
 	const id = overrides.id ?? nextTestUuid();
 
-	return {
+	const base: RoutineRow = {
 		id,
 		user_id: overrides.user_id ?? DEFAULT_USER_ID,
 		name: "Push Day A",
@@ -70,8 +70,9 @@ export function createRoutineFixture(
 		local_profile_id: null,
 		created_at: DEFAULT_TIMESTAMP,
 		updated_at: DEFAULT_TIMESTAMP,
-		...overrides,
-	} satisfies RoutineRow;
+		client_updated_at: DEFAULT_TIMESTAMP,
+	};
+	return Object.assign(base, overrides);
 }
 
 /**
@@ -85,7 +86,7 @@ export function createRoutineExerciseFixture(
 ): RoutineExerciseRow {
 	const id = overrides.id ?? nextTestUuid();
 
-	return {
+	const base: RoutineExerciseRow = {
 		id,
 		routine_id: overrides.routine_id ?? nextTestUuid(),
 		name: "Bench Press",
@@ -97,6 +98,7 @@ export function createRoutineExerciseFixture(
 		mode: "OLD_SCHOOL" as WorkoutMode,
 		order_index: 0,
 		created_at: DEFAULT_TIMESTAMP,
+		exercise_id: null,
 
 		// Superset configuration
 		superset_id: null,
@@ -129,8 +131,8 @@ export function createRoutineExerciseFixture(
 		// Drop-set retry (mobile #673). Floor is per-cable kg.
 		drop_set_enabled: false,
 		drop_set_min_weight_kg: null,
-		...overrides,
-	} satisfies RoutineExerciseRow;
+	};
+	return Object.assign(base, overrides);
 }
 
 /**

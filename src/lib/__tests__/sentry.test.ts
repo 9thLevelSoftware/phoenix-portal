@@ -170,7 +170,15 @@ describe("initSentry scrubbing hooks", () => {
 				],
 			},
 			{},
-		);
+		) as
+			| {
+					spans?: Array<{
+						data?: Record<string, unknown>;
+						description?: string;
+					}>;
+					contexts?: { trace?: { data?: Record<string, unknown> } };
+			  }
+			| undefined;
 
 		expect(JSON.stringify(sent)).not.toContain(ACCESS);
 		expect(JSON.stringify(sent)).not.toContain(REFRESH);

@@ -65,44 +65,28 @@ type FunctionOverrides = {
 		"import_shared_cycle",
 		"p_local_profile_id"
 	>;
-};
-
-type GeneratedTables = GeneratedPublic["Tables"];
-
-/**
- * 20260920003500_due_deletion_cron.sql adds three columns to
- * `deletion_requests` (`claimed_at`, `needs_support_reason`,
- * `last_attempt_at`) that the generated types predate. Until
- * `npm run gen:types:local` is re-run against a stack with that migration,
- * the Danger Zone cannot `SELECT needs_support_reason` — which is the only
- * way to tell a parked purge (KD-11: `process_due` skips it) from a normal
- * grace expiry, and getting that wrong offers a "Delete Now" that is
- * guaranteed to fail again.
- */
-type DueDeletionClaimColumns = {
-	claimed_at: string | null;
-	needs_support_reason: string | null;
-	last_attempt_at: string | null;
-};
-
-type WithExtraColumns<
-	Name extends keyof GeneratedTables,
-	Extra extends Record<string, unknown>,
-> = Omit<GeneratedTables[Name], "Row" | "Insert" | "Update"> & {
-	Row: GeneratedTables[Name]["Row"] & Extra;
-	Insert: GeneratedTables[Name]["Insert"] & {
-		[K in keyof Extra]?: Extra[K];
-	};
-	Update: GeneratedTables[Name]["Update"] & {
-		[K in keyof Extra]?: Extra[K];
-	};
-};
-
-type TableOverrides = {
-	deletion_requests: WithExtraColumns<
-		"deletion_requests",
-		DueDeletionClaimColumns
+	// 20260920120000: non-STRICT plpgsql, and the caller passes NULL for a
+	// component id (WORKOUT scope) and for a profile id (default profile).
+	delete_workout_with_tombstone: WithNullableArgs<
+		"delete_workout_with_tombstone",
+		"p_component_session_id" | "p_profile_id"
 	>;
+	// 20260920004000: `RETURNS jsonb`, one array of
+	// { exercise_name, muscle_group, sessions }. The generator records a
+	// jsonb scalar as `Json`, which is not iterable and has no `.slice`.
+	exercise_frequency: {
+		Args: GeneratedFunctions["exercise_frequency"]["Args"];
+		Returns: Array<{
+			exercise_name: string | null;
+			muscle_group: string | null;
+			sessions: number;
+		}>;
+	};
+	// Same 20260920004000 shape as exercise_frequency (names only).
+	exercise_names: {
+		Args: GeneratedFunctions["exercise_names"]["Args"];
+		Returns: Array<{ exercise_name: string | null }>;
+	};
 };
 
 export type Database = Omit<GeneratedDatabase, "public"> & {
@@ -112,10 +96,12 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
 	__InternalSupabase: {
 		PostgrestVersion: "14.1";
 	};
-	public: Omit<GeneratedPublic, "Functions" | "Tables"> & {
+	// Tables come straight from the generator: the `deletion_requests` claim
+	// columns (20260920003500) are in `database.types.ts` as of the
+	// regeneration that un-spliced it, so no table override is needed.
+	public: Omit<GeneratedPublic, "Functions"> & {
 		Functions: Omit<GeneratedFunctions, keyof FunctionOverrides> &
 			FunctionOverrides;
-		Tables: Omit<GeneratedTables, keyof TableOverrides> & TableOverrides;
 	};
 };
 

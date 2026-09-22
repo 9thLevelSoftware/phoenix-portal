@@ -10,7 +10,7 @@ describe("CommunityContentPreview", () => {
 	it("renders full routine exercise details from a snapshot", () => {
 		render(
 			<RoutineSnapshotPreview
-				exercises={[
+				exercises={routineExercisesSnapshotSchema.parse([
 					{
 						name: "Bench Press",
 						muscle_group: "Chest",
@@ -30,7 +30,7 @@ describe("CommunityContentPreview", () => {
 						drop_set_enabled: true,
 						drop_set_min_weight_kg: 12.5,
 					},
-				]}
+				])}
 			/>,
 		);
 
@@ -57,7 +57,7 @@ describe("CommunityContentPreview", () => {
 		render(
 			<RoutineSnapshotPreview
 				unit="lbs"
-				exercises={[
+				exercises={routineExercisesSnapshotSchema.parse([
 					{
 						name: "Bench Press",
 						muscle_group: "Chest",
@@ -74,7 +74,7 @@ describe("CommunityContentPreview", () => {
 						is_amrap: false,
 						is_bodyweight: false,
 					},
-				]}
+				])}
 			/>,
 		);
 
@@ -89,7 +89,7 @@ describe("CommunityContentPreview", () => {
 	it("keeps exercise numbering sequential when supersets are rendered", () => {
 		render(
 			<RoutineSnapshotPreview
-				exercises={[
+				exercises={routineExercisesSnapshotSchema.parse([
 					{
 						name: "Back Squat",
 						muscle_group: "Legs",
@@ -135,7 +135,7 @@ describe("CommunityContentPreview", () => {
 						mode: "OLD_SCHOOL",
 						order_index: 3,
 					},
-				]}
+				])}
 			/>,
 		);
 
@@ -176,19 +176,21 @@ describe("CommunityContentPreview", () => {
 	it("renders a colour name (not valid CSS) as its hex", () => {
 		render(
 			<RoutineSnapshotPreview
-				exercises={[0, 1].map((index) => ({
-					name: `Ex ${index}`,
-					muscle_group: "Arms",
-					sets: 3,
-					reps: 10,
-					weight: 0,
-					rest_seconds: 60,
-					mode: "OLD_SCHOOL",
-					order_index: index,
-					superset_id: "superset-a",
-					superset_order: index,
-					superset_color: "amber",
-				}))}
+				exercises={routineExercisesSnapshotSchema.parse(
+					[0, 1].map((index) => ({
+						name: `Ex ${index}`,
+						muscle_group: "Arms",
+						sets: 3,
+						reps: 10,
+						weight: 0,
+						rest_seconds: 60,
+						mode: "OLD_SCHOOL",
+						order_index: index,
+						superset_id: "superset-a",
+						superset_order: index,
+						superset_color: "amber",
+					})),
+				)}
 			/>,
 		);
 		const group = document.querySelector<HTMLElement>(
@@ -223,7 +225,7 @@ describe("CommunityContentPreview", () => {
 								exercise_count: 1,
 								estimated_duration: 150,
 								tags: ["Chest"],
-								exercises: [
+								exercises: routineExercisesSnapshotSchema.parse([
 									{
 										name: "Bench Press",
 										muscle_group: "Chest",
@@ -234,7 +236,7 @@ describe("CommunityContentPreview", () => {
 										mode: "OLD_SCHOOL",
 										order_index: 0,
 									},
-								],
+								]),
 							},
 						},
 						{
