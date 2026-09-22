@@ -46,8 +46,10 @@ describe("CommunityContentPreview", () => {
 		// Stored wire mode renders as its display label, not "OLD_SCHOOL".
 		expect(screen.getByText("Old School")).toBeInTheDocument();
 		expect(screen.queryByText("OLD_SCHOOL")).not.toBeInTheDocument();
-		expect(screen.getByText(/3 sets \/ 8 reps \/ 80 kg/i)).toBeInTheDocument();
-		expect(screen.getByText(/Weights:/i)).toBeInTheDocument();
+		// Was two more assertions against the pre-KD-8 doubling — the same
+		// prescription and weights list the two per-cable assertions above
+		// already pin, with the single-cable load doubled ("80 kg") and the
+		// per-cable label dropped ("Weights:"). Collapsed onto the landed form.
 		expect(screen.getByText(/Rest: 90s between sets/i)).toBeInTheDocument();
 	});
 

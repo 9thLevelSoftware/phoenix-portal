@@ -49,54 +49,23 @@ export function profileStatsOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
 		queryKey: queryKeys.profile.stats(userId, profileId),
 		queryFn: async () => {
+			// Was: an ascending `workout_sessions` scan plus a `personal_records`
+			// count and a `computeBestStreak` helper, all summed client-side and
+			// then thrown away — the return always read the RPC row. That scan is
+			// the F-034 bug (capped at PostgREST's 1,000 rows, so it reported
+			// exactly 1,000 workouts and summed the OLDEST 1,000 sessions), and
+			// the splice left `computeBestStreak` declared nowhere. The aggregate
+			// is the contract; this just returns its row.
 			const { data, error } = await supabase.rpc("profile_workout_stats", {
 				p_tz: "UTC",
 				...(profileId ? { p_profile_id: profileId } : {}),
 			});
 			if (error) throw error;
-			// Fetch all workout sessions for stats computation
-			let sessionQuery = supabase
-				.from("workout_sessions")
-				.select("started_at, total_volume")
-				.eq("user_id", userId);
-
-			if (profileId) {
-				sessionQuery = sessionQuery.eq("local_profile_id", profileId);
-			}
-
-			const { data: sessions, error: sessionsError } = await sessionQuery.order(
-				"started_at",
-				{ ascending: true },
-			);
-			if (sessionsError) throw sessionsError;
-
-			const totalWorkouts = sessions?.length ?? 0;
-			const totalVolume = (sessions ?? []).reduce(
-				// Per cable, as stored (KD-8).
-				(sum, s) => sum + (s.total_volume ?? 0),
-				0,
-			);
-
-			// Compute best streak from sessions
-			const bestStreak = computeBestStreak(sessions ?? []);
-
-			// Count personal_records rows. Phase-specific records are distinct PRs.
-			let prQuery = supabase
-				.from("personal_records")
-				.select("id", { count: "exact", head: true })
-				.eq("user_id", userId)
-				.is("deleted_at", null);
-
-			if (profileId) {
-				prQuery = prQuery.eq("local_profile_id", profileId);
-			}
-
-			const { count: prCount, error: prError } = await prQuery;
-			if (prError) throw prError;
 
 			const stats = data?.[0];
 			return {
 				totalWorkouts: stats?.total_workouts ?? 0,
+				// KD-8: the stored per-cable volume, never doubled here.
 				totalVolume: Number(stats?.total_volume ?? 0),
 				bestStreak: stats?.best_streak ?? 0,
 				prCount: stats?.pr_count ?? 0,

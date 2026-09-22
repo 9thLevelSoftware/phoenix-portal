@@ -2,14 +2,16 @@ import { queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { goalListSchema } from "@/schemas/goals";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
 
 const goalPrBestSchema = z.object({
 	exercise_id: z.string().nullable(),
 	exercise_name: z.string(),
 	record_type: z.string(),
-	value: z.number().transform((perCable) => perCable * WEIGHT_MULTIPLIER),
+	// Per cable, as stored (KD-8). Same identity as
+	// `personalRecordSchema.value`; any total is the display layer's job
+	// (src/lib/units/loadDisplay.ts), and goal PRs carry no cable count.
+	value: z.number(),
 });
 
 /**

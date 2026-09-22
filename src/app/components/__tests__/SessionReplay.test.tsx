@@ -48,6 +48,21 @@ const mockDb = vi.hoisted(() => ({
 	rows: {} as Record<string, unknown[]>,
 }));
 
+// `fetchSetTelemetry` pages through `fetchAllKeysetPages`, whose query shape
+// (.gte/.or/.limit, thenable) the chainable supabase double below cannot serve,
+// so every telemetry read threw and SessionReplay took its error path. Route it
+// at the same table-aware `mockDb.rows` the tests already fill —
+// `telemetry_points: []` is then exactly the RLS-filtered empty array the
+// comment above describes.
+vi.mock("@/queries/telemetry", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/queries/telemetry")>();
+	return {
+		...actual,
+		fetchSetTelemetry: (source: "rep_telemetry" | "telemetry_points") =>
+			Promise.resolve((mockDb.rows[source] ?? []) as never),
+	};
+});
+
 vi.mock("@/lib/supabase", () => {
 	const chainFor = (table: string) => {
 		const chain = {

@@ -7,7 +7,9 @@ import type {
 	EmbeddedRoutineSnapshot,
 	RoutineExerciseSnapshot,
 } from "@/schemas/community";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
+// Was two import statements from workoutModes.ts — the merge unioned the
+// blocks and left `workoutModeLabel` declared twice (and pulled in a
+// load-doubling constant KD-8 deleted). One block; loads stay per cable.
 import {
 	eccentricLoadLabel,
 	echoLevelLabel,
@@ -16,7 +18,6 @@ import {
 	toWireMode,
 	workoutModeLabel,
 } from "../../../../supabase/functions/_shared/workoutModes.ts";
-import { workoutModeLabel } from "../../../../supabase/functions/_shared/workoutModes.ts";
 
 function orderedExercises(exercises: RoutineExerciseSnapshot[]) {
 	return [...exercises].sort((a, b) => a.order_index - b.order_index);

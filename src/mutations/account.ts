@@ -10,6 +10,13 @@ const DELETION_REQUEST_KEY = "deletion-request";
  * a read-only "deletion in progress" card. `cancelled` and `executed` are
  * deliberately excluded so the card falls back to "no request" — a cancelled
  * request is gone, and an `executed` row only survives a crashed purge.
+ *
+ * A `pending` row can additionally carry `needs_support_reason` (KD-11): a
+ * purge that could not proceed parked it back to `pending` with that reason set
+ * and `process_due` skips it (`.is('needs_support_reason', null)`). The column
+ * has to be selected or the Danger Zone cannot tell that state apart from a
+ * normal expiry — which would offer a "Delete Now" that is guaranteed to fail
+ * again.
  */
 const ACTIVE_DELETION_STATUSES = ["pending", "executing"] as const;
 
@@ -22,7 +29,9 @@ export function deletionRequestOptions(userId: string) {
 		queryFn: async () => {
 			const { data, error } = await supabase
 				.from("deletion_requests")
-				.select("id, user_id, requested_at, scheduled_for, status")
+				.select(
+					"id, user_id, requested_at, scheduled_for, status, needs_support_reason",
+				)
 				.eq("user_id", userId)
 				// UNIQUE (user_id): at most one row can match either status.
 				.in("status", [...ACTIVE_DELETION_STATUSES])
