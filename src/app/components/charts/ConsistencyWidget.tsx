@@ -126,7 +126,7 @@ export function ConsistencyWidget({
 						className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"
 						aria-hidden="true"
 					>
-						<span className="text-lg font-bold text-white leading-none">
+						<span className="text-lg font-bold text-foreground leading-none">
 							{current}/{target}
 						</span>
 						<span className="text-[10px] text-muted-foreground leading-none mt-0.5">
@@ -155,7 +155,7 @@ export function ConsistencyWidget({
 			{/* Stats row */}
 			<div className="grid grid-cols-3 gap-2">
 				<div className="flex flex-col items-center rounded-lg bg-muted/40 px-2 py-2 text-center">
-					<span className="text-base font-bold text-white leading-none">
+					<span className="text-base font-bold text-foreground leading-none">
 						{avgPerWeek.toFixed(1)}
 					</span>
 					<span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
@@ -171,7 +171,7 @@ export function ConsistencyWidget({
 					</span>
 				</div>
 				<div className="flex flex-col items-center rounded-lg bg-muted/40 px-2 py-2 text-center">
-					<span className="text-base font-bold text-white leading-none truncate w-full text-center">
+					<span className="text-base font-bold text-foreground leading-none truncate w-full text-center">
 						{mostActiveDay}
 					</span>
 					<span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">

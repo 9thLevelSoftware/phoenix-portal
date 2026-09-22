@@ -76,7 +76,7 @@ export function SupersetContainer({
 					size="sm"
 					variant="ghost"
 					onClick={onUngroup}
-					className="text-muted-foreground hover:text-white"
+					className="text-muted-foreground hover:text-foreground"
 				>
 					<Unlink className="w-4 h-4 mr-1" />
 					Ungroup
@@ -94,7 +94,7 @@ export function SupersetContainer({
 									<GripVertical className="w-4 h-4 text-muted-foreground cursor-grab active:cursor-grabbing" />
 									<div className="flex-1">
 										<div className="flex items-center gap-2 mb-1">
-											<span className="font-semibold text-white">
+											<span className="font-semibold text-foreground">
 												{exercise.exerciseName}
 											</span>
 											<span className="text-xs px-2 py-0.5 rounded bg-secondary text-muted-foreground">
@@ -115,7 +115,7 @@ export function SupersetContainer({
 										size="sm"
 										variant="ghost"
 										onClick={() => onEditExercise(exercise.id)}
-										className="text-muted-foreground hover:text-white"
+										className="text-muted-foreground hover:text-foreground"
 									>
 										<Edit className="w-4 h-4" />
 									</Button>
@@ -147,7 +147,7 @@ export function SupersetContainer({
 				size="sm"
 				variant="outline"
 				onClick={onAddExercise}
-				className="w-full mt-3 border-dashed border-secondary text-muted-foreground hover:border-primary hover:text-white"
+				className="w-full mt-3 border-dashed border-secondary text-muted-foreground hover:border-primary hover:text-foreground"
 			>
 				<Plus className="w-4 h-4 mr-2" />
 				Add Exercise to Superset

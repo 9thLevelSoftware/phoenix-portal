@@ -64,6 +64,7 @@ function ForceCurveInner({
 	} = useChartTooltip();
 
 	const margins = CHART_MARGINS;
+	const repColors = REP_COLORS();
 
 	// Downsample and optionally normalize each rep
 	const processedReps: ProcessedRep[] = useMemo(() => {
@@ -165,14 +166,22 @@ function ForceCurveInner({
 					tooltipData: {
 						label: `Rep ${closestRep.repNumber} · ${xLabel}: ${Math.round(closestPoint.x)}`,
 						value: `${closestPoint.force_n.toFixed(1)} N`,
-						color: REP_COLORS[closestRep.colorIndex % REP_COLORS.length],
+						color: repColors[closestRep.colorIndex % repColors.length],
 					},
 					tooltipLeft: xScale(closestPoint.x),
 					tooltipTop: yScale(closestPoint.force_n),
 				});
 			}
 		},
-		[processedReps, xScale, yScale, showTooltipProp, normalized, showTooltip],
+		[
+			processedReps,
+			xScale,
+			yScale,
+			showTooltipProp,
+			normalized,
+			showTooltip,
+			repColors,
+		],
 	);
 
 	const getX = (d: { x: number }) => d.x;
@@ -190,7 +199,7 @@ function ForceCurveInner({
 			>
 				{/* Gradient definitions for each rep */}
 				{processedReps.map((rep) => {
-					const color = REP_COLORS[rep.colorIndex % REP_COLORS.length];
+					const color = repColors[rep.colorIndex % repColors.length];
 					return (
 						<LinearGradient
 							key={`gradient-${rep.repNumber}`}
@@ -206,7 +215,7 @@ function ForceCurveInner({
 
 				{/* Render each rep: area fill + line stroke */}
 				{processedReps.map((rep) => {
-					const color = REP_COLORS[rep.colorIndex % REP_COLORS.length];
+					const color = repColors[rep.colorIndex % repColors.length];
 					const isSelected =
 						selectedRep === null || selectedRep === rep.repNumber;
 					const opacity = isSelected ? 1 : 0.2;
@@ -241,34 +250,34 @@ function ForceCurveInner({
 					scale={xScale}
 					label={normalized ? "Time (%)" : "Time (ms)"}
 					labelProps={{
-						fill: CHART_COLORS.axisText,
+						fill: CHART_COLORS().axisText,
 						fontSize: FONT_SIZES.label,
 						textAnchor: "middle",
 					}}
 					tickLabelProps={{
-						fill: CHART_COLORS.axisText,
+						fill: CHART_COLORS().axisText,
 						fontSize: FONT_SIZES.axis,
 						textAnchor: "middle",
 					}}
-					stroke={CHART_COLORS.gridLine}
-					tickStroke={CHART_COLORS.gridLine}
+					stroke={CHART_COLORS().gridLine}
+					tickStroke={CHART_COLORS().gridLine}
 				/>
 				<AxisLeft
 					left={margins.left}
 					scale={yScale}
 					label="Force (N)"
 					labelProps={{
-						fill: CHART_COLORS.axisText,
+						fill: CHART_COLORS().axisText,
 						fontSize: FONT_SIZES.label,
 						textAnchor: "middle",
 					}}
 					tickLabelProps={{
-						fill: CHART_COLORS.axisText,
+						fill: CHART_COLORS().axisText,
 						fontSize: FONT_SIZES.axis,
 						textAnchor: "end",
 					}}
-					stroke={CHART_COLORS.gridLine}
-					tickStroke={CHART_COLORS.gridLine}
+					stroke={CHART_COLORS().gridLine}
+					tickStroke={CHART_COLORS().gridLine}
 				/>
 			</svg>
 

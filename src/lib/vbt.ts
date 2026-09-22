@@ -5,8 +5,6 @@
 
 import { getThemeTokens } from "./theme-tokens";
 
-const tokens = getThemeTokens();
-
 // --- Simplified Zone System (Mobile) ---
 
 export type SimplifiedVbtZone =
@@ -29,48 +27,51 @@ export interface SimplifiedZoneInfo {
  * Simplified 5-zone system matching mobile app classification.
  * Used for user-facing velocity feedback during workouts.
  */
-export const SIMPLIFIED_ZONES: SimplifiedZoneInfo[] = [
-	{
-		zone: "GRIND",
-		label: "Grind",
-		color: tokens.danger, // Flame Red
-		minVelocity: 0,
-		maxVelocity: 0.25,
-		description: "Slow controlled movement, heavy resistance",
-	},
-	{
-		zone: "SLOW",
-		label: "Slow",
-		color: tokens.accent, // Gold
-		minVelocity: 0.25,
-		maxVelocity: 0.5,
-		description: "Controlled tempo, moderate resistance",
-	},
-	{
-		zone: "MODERATE",
-		label: "Moderate",
-		color: tokens.primary, // Ember
-		minVelocity: 0.5,
-		maxVelocity: 0.75,
-		description: "Steady pace, challenging resistance",
-	},
-	{
-		zone: "FAST",
-		label: "Fast",
-		color: tokens.success, // Forge Green
-		minVelocity: 0.75,
-		maxVelocity: 1.0,
-		description: "Quick movement, lighter resistance",
-	},
-	{
-		zone: "EXPLOSIVE",
-		label: "Explosive",
-		color: tokens.cableB, // Blue
-		minVelocity: 1.0,
-		maxVelocity: Infinity,
-		description: "Maximum velocity, explosive power",
-	},
-];
+export function SIMPLIFIED_ZONES(): SimplifiedZoneInfo[] {
+	const tokens = getThemeTokens();
+	return [
+		{
+			zone: "GRIND",
+			label: "Grind",
+			color: tokens.danger, // Flame Red
+			minVelocity: 0,
+			maxVelocity: 0.25,
+			description: "Slow controlled movement, heavy resistance",
+		},
+		{
+			zone: "SLOW",
+			label: "Slow",
+			color: tokens.accent, // Gold
+			minVelocity: 0.25,
+			maxVelocity: 0.5,
+			description: "Controlled tempo, moderate resistance",
+		},
+		{
+			zone: "MODERATE",
+			label: "Moderate",
+			color: tokens.primary, // Ember
+			minVelocity: 0.5,
+			maxVelocity: 0.75,
+			description: "Steady pace, challenging resistance",
+		},
+		{
+			zone: "FAST",
+			label: "Fast",
+			color: tokens.success, // Forge Green
+			minVelocity: 0.75,
+			maxVelocity: 1.0,
+			description: "Quick movement, lighter resistance",
+		},
+		{
+			zone: "EXPLOSIVE",
+			label: "Explosive",
+			color: tokens.cableB, // Blue
+			minVelocity: 1.0,
+			maxVelocity: Infinity,
+			description: "Maximum velocity, explosive power",
+		},
+	];
+}
 
 // --- Dr. Mann VBT Zone System ---
 
@@ -105,53 +106,58 @@ export type VbtZoneInfo = MannZoneInfo;
  * Colors map to Phoenix theme palette.
  * Used for advanced VBT training zone classification.
  */
-export const MANN_ZONES: MannZoneInfo[] = [
-	{
-		zone: "absolute-strength",
-		label: "Absolute Strength",
-		color: tokens.danger,
-		minVelocity: 0,
-		maxVelocity: 0.5,
-		description: "Maximum force production, heavy grinding reps",
-	},
-	{
-		zone: "accelerative-strength",
-		label: "Accelerative Strength",
-		color: tokens.primary,
-		minVelocity: 0.5,
-		maxVelocity: 0.75,
-		description: "Heavy with intent to accelerate",
-	},
-	{
-		zone: "strength-speed",
-		label: "Strength-Speed",
-		color: tokens.accent,
-		minVelocity: 0.75,
-		maxVelocity: 1.0,
-		description: "Moderate load moved with speed",
-	},
-	{
-		zone: "speed-strength",
-		label: "Speed-Strength",
-		color: tokens.success,
-		minVelocity: 1.0,
-		maxVelocity: 1.3,
-		description: "Light load, emphasis on velocity",
-	},
-	{
-		zone: "starting-strength",
-		label: "Starting Strength",
-		color: tokens.cableB,
-		minVelocity: 1.3,
-		maxVelocity: Infinity,
-		description: "Explosive movement from dead stop",
-	},
-];
+export function MANN_ZONES(): MannZoneInfo[] {
+	const tokens = getThemeTokens();
+	return [
+		{
+			zone: "absolute-strength",
+			label: "Absolute Strength",
+			color: tokens.danger,
+			minVelocity: 0,
+			maxVelocity: 0.5,
+			description: "Maximum force production, heavy grinding reps",
+		},
+		{
+			zone: "accelerative-strength",
+			label: "Accelerative Strength",
+			color: tokens.primary,
+			minVelocity: 0.5,
+			maxVelocity: 0.75,
+			description: "Heavy with intent to accelerate",
+		},
+		{
+			zone: "strength-speed",
+			label: "Strength-Speed",
+			color: tokens.accent,
+			minVelocity: 0.75,
+			maxVelocity: 1.0,
+			description: "Moderate load moved with speed",
+		},
+		{
+			zone: "speed-strength",
+			label: "Speed-Strength",
+			color: tokens.success,
+			minVelocity: 1.0,
+			maxVelocity: 1.3,
+			description: "Light load, emphasis on velocity",
+		},
+		{
+			zone: "starting-strength",
+			label: "Starting Strength",
+			color: tokens.cableB,
+			minVelocity: 1.3,
+			maxVelocity: Infinity,
+			description: "Explosive movement from dead stop",
+		},
+	];
+}
 
 /**
  * @deprecated Use MANN_ZONES instead for clarity
  */
-export const VBT_ZONES: MannZoneInfo[] = MANN_ZONES;
+export function VBT_ZONES(): MannZoneInfo[] {
+	return MANN_ZONES();
+}
 
 // --- Classification Functions ---
 
@@ -170,10 +176,10 @@ export const VBT_ZONES: MannZoneInfo[] = MANN_ZONES;
  * @returns Zone information with display label, color, and description
  */
 export function classifyVbtZone(meanVelocityMps: number): SimplifiedZoneInfo {
-	const zone = SIMPLIFIED_ZONES.find(
+	const zone = SIMPLIFIED_ZONES().find(
 		(z) => meanVelocityMps >= z.minVelocity && meanVelocityMps < z.maxVelocity,
 	);
-	return zone ?? SIMPLIFIED_ZONES[0];
+	return zone ?? SIMPLIFIED_ZONES()[0];
 }
 
 /**
@@ -190,10 +196,10 @@ export function classifyVbtZone(meanVelocityMps: number): SimplifiedZoneInfo {
  * @returns Zone information with display label, color, and description
  */
 export function classifyMannZone(meanVelocityMps: number): MannZoneInfo {
-	const zone = MANN_ZONES.find(
+	const zone = MANN_ZONES().find(
 		(z) => meanVelocityMps >= z.minVelocity && meanVelocityMps < z.maxVelocity,
 	);
-	return zone ?? MANN_ZONES[0];
+	return zone ?? MANN_ZONES()[0];
 }
 
 // --- Helper Functions ---
@@ -214,7 +220,7 @@ export function getDominantMannZone(velocities: number[]): MannZoneInfo | null {
 	}
 
 	let maxCount = 0;
-	let dominantZoneId: MannVbtZone = MANN_ZONES[0].zone;
+	let dominantZoneId: MannVbtZone = MANN_ZONES()[0].zone;
 
 	for (const [zoneId, count] of zoneCounts) {
 		if (count > maxCount) {
@@ -223,7 +229,7 @@ export function getDominantMannZone(velocities: number[]): MannZoneInfo | null {
 		}
 	}
 
-	return MANN_ZONES.find((z) => z.zone === dominantZoneId) ?? MANN_ZONES[0];
+	return MANN_ZONES().find((z) => z.zone === dominantZoneId) ?? MANN_ZONES()[0];
 }
 
 /**
@@ -242,7 +248,7 @@ export function getDominantSimplifiedZone(
 	}
 
 	let maxCount = 0;
-	let dominantZoneId: SimplifiedVbtZone = SIMPLIFIED_ZONES[0].zone;
+	let dominantZoneId: SimplifiedVbtZone = SIMPLIFIED_ZONES()[0].zone;
 
 	for (const [zoneId, count] of zoneCounts) {
 		if (count > maxCount) {
@@ -252,8 +258,8 @@ export function getDominantSimplifiedZone(
 	}
 
 	return (
-		SIMPLIFIED_ZONES.find((z) => z.zone === dominantZoneId) ??
-		SIMPLIFIED_ZONES[0]
+		SIMPLIFIED_ZONES().find((z) => z.zone === dominantZoneId) ??
+		SIMPLIFIED_ZONES()[0]
 	);
 }
 
@@ -265,7 +271,7 @@ export function getDominantSimplifiedZone(
 export function getSimplifiedZoneById(
 	zoneId: SimplifiedVbtZone,
 ): SimplifiedZoneInfo | undefined {
-	return SIMPLIFIED_ZONES.find((z) => z.zone === zoneId);
+	return SIMPLIFIED_ZONES().find((z) => z.zone === zoneId);
 }
 
 /**
@@ -274,5 +280,5 @@ export function getSimplifiedZoneById(
  * @returns Zone information or undefined if not found
  */
 export function getMannZoneById(zoneId: MannVbtZone): MannZoneInfo | undefined {
-	return MANN_ZONES.find((z) => z.zone === zoneId);
+	return MANN_ZONES().find((z) => z.zone === zoneId);
 }

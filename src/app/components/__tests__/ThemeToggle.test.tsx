@@ -30,9 +30,42 @@ function installLocalStorageStub() {
 }
 
 describe("ThemeToggle", () => {
+	let originalMatchMedia: typeof window.matchMedia;
+	let originalLocalStorage: Storage;
+	let originalLocalStorageDescriptor: PropertyDescriptor | undefined;
+
 	beforeEach(() => {
+		originalMatchMedia = window.matchMedia;
+		originalLocalStorage = window.localStorage;
+		originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(
+			window,
+			"localStorage",
+		);
 		installLocalStorageStub();
 		localStorage.clear();
+	});
+
+	afterEach(() => {
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: originalMatchMedia,
+		});
+		if (originalLocalStorageDescriptor) {
+			Object.defineProperty(
+				window,
+				"localStorage",
+				originalLocalStorageDescriptor,
+			);
+		} else {
+			Object.defineProperty(window, "localStorage", {
+				configurable: true,
+				value: originalLocalStorage,
+			});
+		}
+		Object.defineProperty(globalThis, "localStorage", {
+			configurable: true,
+			value: originalLocalStorage,
+		});
 	});
 
 	it("renders light, dark, and system options", () => {

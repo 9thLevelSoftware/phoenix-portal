@@ -29,11 +29,11 @@ const STATUS_LABELS: Record<SraStatus, string> = {
 	SUPERCOMPENSATED: "Supercompensated",
 };
 
-const STATUS_BG_COLORS: Record<SraStatus, string> = {
-	FATIGUED: "rgba(220, 38, 38, 0.08)",
-	RECOVERING: "rgba(245, 158, 11, 0.08)",
-	RECOVERED: "rgba(16, 185, 129, 0.08)",
-	SUPERCOMPENSATED: "rgba(96, 165, 250, 0.08)",
+const STATUS_BG_CLASSES: Record<SraStatus, string> = {
+	FATIGUED: "bg-danger-soft",
+	RECOVERING: "bg-warning-soft",
+	RECOVERED: "bg-success-soft",
+	SUPERCOMPENSATED: "bg-info-soft",
 };
 
 const SRA_SIGNAL_TYPES = new Set([
@@ -79,10 +79,10 @@ function getRecoBorderColor(signal: string): string {
 	return "var(--accent)";
 }
 
-function getRecoBgColor(signal: string): string {
-	if (signal === "sra_supercompensated") return "rgba(96,165,250,0.08)";
-	if (signal === "sra_recovered") return "rgba(16,185,129,0.08)";
-	return "rgba(245,158,11,0.08)";
+function getRecoBgClass(signal: string): string {
+	if (signal === "sra_supercompensated") return "bg-info-soft";
+	if (signal === "sra_recovered") return "bg-success-soft";
+	return "bg-warning-soft";
 }
 
 // --- Sub-components ---
@@ -97,7 +97,7 @@ function MuscleGroupCard({ recovery }: MuscleGroupCardProps) {
 
 	const color = STATUS_COLORS[status];
 	const label = STATUS_LABELS[status];
-	const bgColor = STATUS_BG_COLORS[status];
+	const backgroundClass = STATUS_BG_CLASSES[status];
 	const isNoData = hoursSinceLastTrained === 0;
 	const showRemaining =
 		!isNoData &&
@@ -106,8 +106,7 @@ function MuscleGroupCard({ recovery }: MuscleGroupCardProps) {
 
 	return (
 		<div
-			className="rounded-lg p-3 flex items-start gap-3"
-			style={{ backgroundColor: bgColor }}
+			className={`rounded-lg p-3 flex items-start gap-3 ${backgroundClass}`}
 			data-testid={`sra-card-${muscleGroup.toLowerCase()}`}
 		>
 			{/* Status dot */}
@@ -120,7 +119,7 @@ function MuscleGroupCard({ recovery }: MuscleGroupCardProps) {
 
 			{/* Text content */}
 			<div className="min-w-0 flex-1">
-				<p className="text-sm font-medium text-white leading-snug">
+				<p className="text-sm font-medium text-foreground leading-snug">
 					{muscleGroup}
 				</p>
 
@@ -155,21 +154,20 @@ function SraRecommendationCallout({
 	recommendation,
 }: SraRecommendationCalloutProps) {
 	const borderColor = getRecoBorderColor(recommendation.signal);
-	const bgColor = getRecoBgColor(recommendation.signal);
+	const backgroundClass = getRecoBgClass(recommendation.signal);
 
 	return (
 		<div
-			className="flex items-start gap-3 rounded-md px-3 py-2 text-sm"
+			className={`flex items-start gap-3 rounded-md px-3 py-2 text-sm ${backgroundClass}`}
 			style={{
 				borderLeft: `2px solid ${borderColor}`,
-				backgroundColor: bgColor,
 			}}
 		>
 			<span className="mt-0.5 shrink-0">
 				{getRecoIcon(recommendation.signal)}
 			</span>
 			<div className="min-w-0">
-				<p className="font-medium text-white leading-snug">
+				<p className="font-medium text-foreground leading-snug">
 					{recommendation.title}
 				</p>
 				<p className="text-muted-foreground text-xs mt-0.5">
@@ -196,7 +194,7 @@ export function SraRecoveryMatrix({
 		<div className="relative">
 			{/* Always render the full component (powers blurred preview) */}
 			<Card className="p-6 bg-surface-2 border-secondary">
-				<h3 className="text-xl text-white mb-5">SRA Recovery Matrix</h3>
+				<h3 className="text-xl text-foreground mb-5">SRA Recovery Matrix</h3>
 
 				{recoveries.length === 0 ? (
 					<div className="py-10 text-center text-muted-foreground text-sm">
@@ -238,7 +236,7 @@ export function SraRecoveryMatrix({
 					aria-label="Premium feature preview"
 				>
 					<div className="text-center max-w-sm p-6">
-						<h3 className="text-white text-lg mb-2">
+						<h3 className="text-foreground text-lg mb-2">
 							Unlock Training Intelligence
 						</h3>
 						<p className="text-muted-foreground text-sm mb-4">

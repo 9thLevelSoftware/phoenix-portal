@@ -127,7 +127,7 @@ export function DangerZone() {
 								variant="outline"
 								onClick={() => cancelDeletion.mutate()}
 								disabled={cancelDeletion.isPending}
-								className="flex-1 border-secondary text-white hover:bg-secondary/50"
+								className="flex-1 border-secondary text-foreground hover:bg-secondary/50"
 							>
 								{cancelDeletion.isPending ? (
 									<Loader2 className="mr-2 h-4 w-4 animate-spin" />

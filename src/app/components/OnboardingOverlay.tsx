@@ -139,7 +139,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 									<Rocket className="size-16 text-accent" />
 								</div>
 							)}
-							<DialogTitle className="text-xl text-center text-white">
+							<DialogTitle className="text-xl text-center text-foreground">
 								{step.title}
 							</DialogTitle>
 							<DialogDescription className="text-center text-muted-foreground">
@@ -156,7 +156,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 									>
 										<feature.icon className="size-5 shrink-0 text-primary mt-0.5" />
 										<div>
-											<p className="text-sm font-medium text-white">
+											<p className="text-sm font-medium text-foreground">
 												{feature.label}
 											</p>
 											<p className="text-xs text-muted-foreground">

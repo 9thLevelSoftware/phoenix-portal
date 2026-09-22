@@ -14,9 +14,9 @@ export function WeekOverview({ days }: WeekOverviewProps) {
 	// Calculate muscle distribution (mock calculation)
 	const muscleDistribution = [
 		{ name: "Chest", percentage: 22, color: "var(--primary)" },
-		{ name: "Back", percentage: 20, color: PHOENIX.flameRed },
-		{ name: "Legs", percentage: 18, color: PHOENIX.gold },
-		{ name: "Shoulders", percentage: 15, color: PHOENIX.forgeGreen },
+		{ name: "Back", percentage: 20, color: PHOENIX().flameRed },
+		{ name: "Legs", percentage: 18, color: PHOENIX().gold },
+		{ name: "Shoulders", percentage: 15, color: PHOENIX().forgeGreen },
 		{ name: "Arms", percentage: 15, color: "var(--chart-5)" },
 		{ name: "Core", percentage: 10, color: "var(--chart-5)" },
 	];
@@ -25,7 +25,7 @@ export function WeekOverview({ days }: WeekOverviewProps) {
 
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
-			<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
+			<h2 className="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
 				<BarChart3 className="w-5 h-5 text-primary" />
 				Week at a Glance
 			</h2>
@@ -63,7 +63,7 @@ export function WeekOverview({ days }: WeekOverviewProps) {
 
 			{/* Muscle Distribution */}
 			<div className="border-t border-secondary pt-6">
-				<h3 className="font-semibold text-white mb-4">
+				<h3 className="font-semibold text-foreground mb-4">
 					Muscle Group Distribution
 				</h3>
 				<p className="text-sm text-muted-foreground mb-4">

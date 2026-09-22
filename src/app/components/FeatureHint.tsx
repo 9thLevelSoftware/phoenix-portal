@@ -52,7 +52,7 @@ export function FeatureHint({
 			<TooltipContent
 				side={side}
 				sideOffset={8}
-				className="max-w-[240px] bg-[var(--surface-1)] border border-[var(--primary)]/30 text-white p-3"
+				className="max-w-[240px] bg-[var(--surface-1)] border border-[var(--primary)]/30 text-foreground p-3"
 			>
 				<p className="text-xs text-[var(--muted-foreground)] mb-2">{content}</p>
 				<Button

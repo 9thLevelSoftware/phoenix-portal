@@ -26,7 +26,7 @@ export function UnsavedChangesDialog({
 		<AlertDialog open={open} onOpenChange={(o) => !o && onCancel()}>
 			<AlertDialogContent className="bg-surface-2 border-secondary">
 				<AlertDialogHeader>
-					<AlertDialogTitle className="text-white">
+					<AlertDialogTitle className="text-foreground">
 						Discard changes?
 					</AlertDialogTitle>
 					<AlertDialogDescription>
@@ -36,7 +36,7 @@ export function UnsavedChangesDialog({
 				<AlertDialogFooter>
 					<AlertDialogCancel
 						onClick={onCancel}
-						className="border-secondary text-muted-foreground hover:text-white"
+						className="border-secondary text-muted-foreground hover:text-foreground"
 					>
 						Cancel
 					</AlertDialogCancel>

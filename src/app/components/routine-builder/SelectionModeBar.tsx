@@ -29,7 +29,7 @@ export function SelectionModeBar({
 				>
 					<Card className="px-6 py-4 bg-surface-2 border-2 border-primary shadow-2xl">
 						<div className="flex items-center gap-6">
-							<div className="flex items-center gap-2 text-white">
+							<div className="flex items-center gap-2 text-foreground">
 								<Check className="w-5 h-5 text-success" />
 								<span className="font-semibold">{selectedCount}</span>
 								<span className="text-muted-foreground">
@@ -54,7 +54,7 @@ export function SelectionModeBar({
 								<Button
 									onClick={onCancel}
 									variant="ghost"
-									className="text-muted-foreground hover:text-white"
+									className="text-muted-foreground hover:text-foreground"
 								>
 									Cancel
 								</Button>

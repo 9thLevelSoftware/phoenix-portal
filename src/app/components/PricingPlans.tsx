@@ -132,7 +132,7 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 		accentBorder: "border-primary",
 		accentBg: "from-primary/10 to-chart-2/10",
 		accentText: "text-primary",
-		buttonClass: "bg-primary hover:bg-primary/90 text-white border-0",
+		buttonClass: "bg-primary hover:bg-primary/90 text-foreground border-0",
 		popular: true,
 	},
 	INFERNO: {
@@ -623,7 +623,9 @@ export function PricingPlans() {
 		<div className="min-h-screen p-4 md:p-8">
 			<div className="max-w-5xl mx-auto">
 				<div className="text-center mb-10">
-					<h1 className="text-display-2 text-white mb-3">Choose Your Plan</h1>
+					<h1 className="text-display-2 text-foreground mb-3">
+						Choose Your Plan
+					</h1>
 					<p className="text-muted-foreground text-lg max-w-2xl mx-auto">
 						Unlock premium features to get the most out of your training data
 					</p>
@@ -631,7 +633,7 @@ export function PricingPlans() {
 
 				<div className="flex items-center justify-center gap-3 mb-10">
 					<span
-						className={`text-sm font-medium ${!isAnnual ? "text-white" : "text-muted-foreground"}`}
+						className={`text-sm font-medium ${!isAnnual ? "text-foreground" : "text-muted-foreground"}`}
 					>
 						Monthly
 					</span>
@@ -641,7 +643,7 @@ export function PricingPlans() {
 						aria-label="Annual billing"
 					/>
 					<span
-						className={`text-sm font-medium ${isAnnual ? "text-white" : "text-muted-foreground"}`}
+						className={`text-sm font-medium ${isAnnual ? "text-foreground" : "text-muted-foreground"}`}
 					>
 						Annual
 					</span>
@@ -670,7 +672,7 @@ export function PricingPlans() {
 							>
 								{tierConfig.popular && (
 									<div className="absolute -top-3 left-1/2 -translate-x-1/2">
-										<Badge className="bg-primary text-white border-0 px-3">
+										<Badge className="bg-primary text-foreground border-0 px-3">
 											Most Popular
 										</Badge>
 									</div>
@@ -714,7 +716,7 @@ export function PricingPlans() {
 								<CardContent className="text-center">
 									<div className="mb-6">
 										<div className="flex items-baseline justify-center gap-1">
-											<span className="text-4xl font-bold text-white font-data">
+											<span className="text-4xl font-bold text-foreground font-data">
 												{isAnnual
 													? tierConfig.annualMonthly
 													: tierConfig.monthlyPrice}
@@ -778,7 +780,7 @@ export function PricingPlans() {
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
-							className="bg-primary text-white border-0"
+							className="bg-primary text-foreground border-0"
 							onClick={() => {
 								if (pendingPlanChange) {
 									void handlePlanChange(pendingPlanChange);

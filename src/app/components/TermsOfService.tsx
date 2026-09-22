@@ -7,7 +7,7 @@ import { PhoenixLogo } from "./PhoenixLogo";
 export function TermsOfService() {
 	const navigate = useNavigate();
 	return (
-		<div className="min-h-screen bg-background text-white">
+		<div className="min-h-screen bg-background text-foreground">
 			{/* Header */}
 			<header className="sticky top-0 z-50 bg-surface-1 border-b border-secondary">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">

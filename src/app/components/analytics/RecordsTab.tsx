@@ -265,7 +265,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 								size="sm"
 								className={
 									activeFilter === filter
-										? "bg-primary border-0 text-white flex-shrink-0"
+										? "bg-primary border-0 text-foreground flex-shrink-0"
 										: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
 								}
 							>
@@ -334,7 +334,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 						<Trophy className="w-4 h-4 text-accent" />
 						<span className="text-xs text-muted-foreground">Phase PRs</span>
 					</div>
-					<div className="text-2xl font-semibold text-white font-data">
+					<div className="text-2xl font-semibold text-foreground font-data">
 						{totalPRs}
 					</div>
 				</Card>
@@ -343,7 +343,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 						<Flame className="w-4 h-4 text-primary" />
 						<span className="text-xs text-muted-foreground">Exercises</span>
 					</div>
-					<div className="text-2xl font-semibold text-white font-data">
+					<div className="text-2xl font-semibold text-foreground font-data">
 						{exercisePRs.length}
 					</div>
 				</Card>
@@ -352,7 +352,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 						<Star className="w-4 h-4 text-warning" />
 						<span className="text-xs text-muted-foreground">This Month</span>
 					</div>
-					<div className="text-2xl font-semibold text-white font-data">
+					<div className="text-2xl font-semibold text-foreground font-data">
 						{
 							(records ?? []).filter(
 								(r) =>
@@ -396,12 +396,12 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 										>
 											<div className="flex items-center gap-3">
 												<div className="text-left">
-													<h3 className="text-base font-semibold text-white">
+													<h3 className="text-base font-semibold text-foreground">
 														{exercise.exercise}
 													</h3>
 													<div className="flex items-center gap-2 mt-1">
 														<Badge
-															className={`${getMuscleGroupColor(exercise.muscleGroup)} text-white border-0 text-xs`}
+															className={`${getMuscleGroupColor(exercise.muscleGroup)} text-foreground border-0 text-xs`}
 														>
 															{exercise.muscleGroup}
 														</Badge>
@@ -411,7 +411,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 
 											<div className="flex items-center gap-3">
 												<div className="text-right hidden sm:block">
-													<div className="text-base font-semibold text-white font-data">
+													<div className="text-base font-semibold text-foreground font-data">
 														{formatRecordMeasurement(
 															exercise.currentValue,
 															exercise.unit,
@@ -477,7 +477,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 																		{isHovered && (
 																			<div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap">
 																				<div className="bg-surface-2 border border-secondary rounded-lg px-3 py-2 shadow-lg text-center">
-																					<div className="text-sm font-semibold text-white font-data">
+																					<div className="text-sm font-semibold text-foreground font-data">
 																						{formatRecordMeasurement(
 																							entry.value,
 																							entry.unit,
@@ -561,7 +561,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 																			},
 																		)}
 																	</td>
-																	<td className="py-2.5 text-white font-semibold font-data">
+																	<td className="py-2.5 text-foreground font-semibold font-data">
 																		{formatRecordMeasurement(
 																			entry.value,
 																			entry.unit,
@@ -628,10 +628,10 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 										className="relative pl-20"
 									>
 										<div className="absolute left-4 w-8 h-8 rounded-full bg-accent flex items-center justify-center border-4 border-background">
-											<milestone.icon className="w-4 h-4 text-white" />
+											<milestone.icon className="w-4 h-4 text-foreground" />
 										</div>
 										<Card className="p-4 bg-gradient-to-br from-accent/20 to-warning/20 border-2 border-accent/50">
-											<h3 className="text-base font-semibold text-white">
+											<h3 className="text-base font-semibold text-foreground">
 												{milestone.name}
 											</h3>
 											<p className="text-sm text-secondary-foreground">
@@ -657,11 +657,11 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 											<div className="flex items-center justify-between gap-2">
 												<div className="min-w-0">
 													<div className="flex items-center gap-2 mb-1 flex-wrap">
-														<h3 className="text-base font-semibold text-white truncate">
+														<h3 className="text-base font-semibold text-foreground truncate">
 															{pr.exercise_name}
 														</h3>
 														<Badge
-															className={`${getMuscleGroupColor(pr.muscle_group)} text-white border-0 text-xs flex-shrink-0`}
+															className={`${getMuscleGroupColor(pr.muscle_group)} text-foreground border-0 text-xs flex-shrink-0`}
 														>
 															{pr.muscle_group}
 														</Badge>

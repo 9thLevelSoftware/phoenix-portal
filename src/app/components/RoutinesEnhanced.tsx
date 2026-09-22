@@ -100,7 +100,9 @@ export function RoutinesEnhanced() {
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 							<div>
-								<h1 className="text-display-2 mb-2 text-white">My Routines</h1>
+								<h1 className="text-display-2 mb-2 text-foreground">
+									My Routines
+								</h1>
 								<p className="text-muted-foreground">
 									Build your perfect workout
 								</p>
@@ -131,7 +133,9 @@ export function RoutinesEnhanced() {
 						className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 					>
 						<div>
-							<h1 className="text-display-2 mb-2 text-white">My Routines</h1>
+							<h1 className="text-display-2 mb-2 text-foreground">
+								My Routines
+							</h1>
 							<p className="text-muted-foreground">
 								Build your perfect workout
 							</p>
@@ -261,7 +265,7 @@ function RoutineGrid({
 							{/* Header */}
 							<div className="flex items-start justify-between mb-3">
 								<div className="flex-1">
-									<h3 className="text-lg font-semibold text-white mb-1">
+									<h3 className="text-lg font-semibold text-foreground mb-1">
 										{routine.name}
 									</h3>
 									<p className="text-sm text-muted-foreground line-clamp-2">
@@ -294,7 +298,7 @@ function RoutineGrid({
 										<DropdownMenuTrigger asChild>
 											<button
 												type="button"
-												className="text-muted-foreground hover:text-white transition-colors"
+												className="text-muted-foreground hover:text-foreground transition-colors"
 											>
 												<MoreVertical className="w-5 h-5" />
 											</button>

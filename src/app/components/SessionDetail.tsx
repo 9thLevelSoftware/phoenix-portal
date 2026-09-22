@@ -148,7 +148,7 @@ export function SessionDetail() {
 				</div>
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
 					<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
-					<h2 className="text-xl font-semibold text-white mb-2">
+					<h2 className="text-xl font-semibold text-foreground mb-2">
 						Session Not Found
 					</h2>
 					<p className="text-muted-foreground">
@@ -231,7 +231,9 @@ export function SessionDetail() {
 							</SubscriptionGate>
 						</div>
 
-						<h1 className="text-display-2 mb-2 text-white">{session.name}</h1>
+						<h1 className="text-display-2 mb-2 text-foreground">
+							{session.name}
+						</h1>
 						<div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
 							<span>
 								{session.started_at.toLocaleDateString("en-US", {
@@ -286,7 +288,7 @@ export function SessionDetail() {
 									<Clock className="w-5 h-5 text-primary" />
 									<div className="text-sm text-muted-foreground">Duration</div>
 								</div>
-								<div className="text-2xl font-semibold text-white font-data">
+								<div className="text-2xl font-semibold text-foreground font-data">
 									{session.duration_seconds}m
 								</div>
 							</div>
@@ -295,7 +297,7 @@ export function SessionDetail() {
 									<TrendingUp className="w-5 h-5 text-success" />
 									<div className="text-sm text-muted-foreground">Volume</div>
 								</div>
-								<div className="text-2xl font-semibold text-white font-data">
+								<div className="text-2xl font-semibold text-foreground font-data">
 									{formatVolume(session.total_volume, unit)}
 								</div>
 							</div>
@@ -304,7 +306,7 @@ export function SessionDetail() {
 									<Dumbbell className="w-5 h-5 text-accent" />
 									<div className="text-sm text-muted-foreground">Sets</div>
 								</div>
-								<div className="text-2xl font-semibold text-white font-data">
+								<div className="text-2xl font-semibold text-foreground font-data">
 									{totalSets}
 								</div>
 							</div>
@@ -325,7 +327,7 @@ export function SessionDetail() {
 											Calories
 										</div>
 									</div>
-									<div className="text-2xl font-semibold text-white font-data">
+									<div className="text-2xl font-semibold text-foreground font-data">
 										{Math.round(session.estimated_calories)}
 									</div>
 								</div>
@@ -338,7 +340,7 @@ export function SessionDetail() {
 											Heaviest Lift
 										</div>
 									</div>
-									<div className="text-2xl font-semibold text-white font-data">
+									<div className="text-2xl font-semibold text-foreground font-data">
 										{formatWeight(session.heaviest_lift_kg, unit)}
 									</div>
 								</div>
@@ -357,7 +359,7 @@ export function SessionDetail() {
 						<Card className="bg-surface-2 border-secondary p-6">
 							<div className="flex items-center gap-2 mb-4">
 								<Activity className="w-5 h-5 text-primary" />
-								<h3 className="text-lg font-semibold text-white">
+								<h3 className="text-lg font-semibold text-foreground">
 									Biomechanics Summary
 								</h3>
 							</div>
@@ -366,7 +368,7 @@ export function SessionDetail() {
 									<div className="text-sm text-muted-foreground mb-1">
 										Avg Velocity
 									</div>
-									<div className="text-lg font-semibold text-white font-data">
+									<div className="text-lg font-semibold text-foreground font-data">
 										{session.avg_velocity_mps.toFixed(2)}{" "}
 										<span className="text-sm text-muted-foreground">m/s</span>
 									</div>
@@ -376,7 +378,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Asymmetry
 										</div>
-										<div className="text-lg font-semibold text-white font-data">
+										<div className="text-lg font-semibold text-foreground font-data">
 											{session.avg_asymmetry_pct.toFixed(1)}%
 										</div>
 									</div>
@@ -386,7 +388,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Velocity Loss
 										</div>
-										<div className="text-lg font-semibold text-white font-data">
+										<div className="text-lg font-semibold text-foreground font-data">
 											{session.velocity_loss_pct.toFixed(1)}%
 										</div>
 									</div>
@@ -396,7 +398,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Dominant Side
 										</div>
-										<div className="text-lg font-semibold text-white">
+										<div className="text-lg font-semibold text-foreground">
 											{session.dominant_side}
 										</div>
 									</div>
@@ -406,7 +408,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Strength Profile
 										</div>
-										<div className="text-lg font-semibold text-white">
+										<div className="text-lg font-semibold text-foreground">
 											{session.strength_profile}
 										</div>
 									</div>
@@ -429,7 +431,7 @@ export function SessionDetail() {
 						<Card className="bg-surface-2 border-secondary p-6">
 							<div className="flex items-center gap-2 mb-4">
 								<Shield className="w-5 h-5 text-success" />
-								<h3 className="text-lg font-semibold text-white">
+								<h3 className="text-lg font-semibold text-foreground">
 									Safety & Form
 								</h3>
 							</div>
@@ -454,7 +456,7 @@ export function SessionDetail() {
 													}}
 												/>
 											</div>
-											<span className="text-lg font-semibold text-white font-data">
+											<span className="text-lg font-semibold text-foreground font-data">
 												{session.form_score}
 											</span>
 										</div>
@@ -505,7 +507,7 @@ export function SessionDetail() {
 						<Card className="bg-surface-2 border-secondary p-6">
 							<div className="flex items-center gap-2 mb-4">
 								<Settings className="w-5 h-5 text-accent" />
-								<h3 className="text-lg font-semibold text-white">
+								<h3 className="text-lg font-semibold text-foreground">
 									Session Config
 								</h3>
 							</div>
@@ -515,7 +517,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Eccentric Load
 										</div>
-										<div className="text-lg font-semibold text-white font-data">
+										<div className="text-lg font-semibold text-foreground font-data">
 											{session.eccentric_load}
 										</div>
 									</div>
@@ -525,7 +527,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Echo Level
 										</div>
-										<div className="text-lg font-semibold text-white font-data">
+										<div className="text-lg font-semibold text-foreground font-data">
 											{session.echo_level}
 										</div>
 									</div>
@@ -535,7 +537,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Warmup Reps
 										</div>
-										<div className="text-lg font-semibold text-white font-data">
+										<div className="text-lg font-semibold text-foreground font-data">
 											{session.warmup_reps}
 										</div>
 									</div>
@@ -545,7 +547,7 @@ export function SessionDetail() {
 										<div className="text-sm text-muted-foreground mb-1">
 											Working Reps
 										</div>
-										<div className="text-lg font-semibold text-white font-data">
+										<div className="text-lg font-semibold text-foreground font-data">
 											{session.working_reps}
 										</div>
 									</div>
@@ -561,7 +563,7 @@ export function SessionDetail() {
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ delay: 0.2 }}
 				>
-					<h2 className="text-2xl font-semibold text-white mb-4">
+					<h2 className="text-2xl font-semibold text-foreground mb-4">
 						Exercise Breakdown
 					</h2>
 					<div className="space-y-3">
@@ -581,11 +583,11 @@ export function SessionDetail() {
 									>
 										<div className="flex items-center gap-3">
 											<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-												<Dumbbell className="w-5 h-5 text-white" />
+												<Dumbbell className="w-5 h-5 text-foreground" />
 											</div>
 											<div className="text-left">
 												<div className="flex items-center gap-2">
-													<h3 className="text-lg font-semibold text-white">
+													<h3 className="text-lg font-semibold text-foreground">
 														{displayExerciseName(exercise.name)}
 													</h3>
 													{exercise.hasPR && (
@@ -595,7 +597,7 @@ export function SessionDetail() {
 												<Badge
 													className={`${getMuscleGroupColor(
 														exercise.muscle_group,
-													)} text-white border-0 mt-1`}
+													)} text-foreground border-0 mt-1`}
 												>
 													{exercise.muscle_group}
 												</Badge>
@@ -650,7 +652,7 @@ export function SessionDetail() {
 																		: ""
 																}`}
 															>
-																<td className="py-3 text-white font-semibold font-data">
+																<td className="py-3 text-foreground font-semibold font-data">
 																	{set.set_number}
 																</td>
 																<td className="py-3 text-secondary-foreground font-data">
@@ -667,7 +669,7 @@ export function SessionDetail() {
 																</td>
 																<td className="py-3">
 																	{set.is_pr && (
-																		<Badge className="bg-accent text-white border-0">
+																		<Badge className="bg-accent text-foreground border-0">
 																			NEW PR
 																		</Badge>
 																	)}
@@ -747,11 +749,11 @@ export function SessionDetail() {
 					className="print:hidden"
 				>
 					<Card className="bg-surface-2 border-secondary p-4">
-						<h3 className="text-lg font-semibold text-white mb-3">
+						<h3 className="text-lg font-semibold text-foreground mb-3">
 							Workout Notes
 						</h3>
 						{session.notes ? (
-							<div className="rounded-lg border border-secondary bg-background p-3 text-white whitespace-pre-wrap">
+							<div className="rounded-lg border border-secondary bg-background p-3 text-foreground whitespace-pre-wrap">
 								{session.notes}
 							</div>
 						) : (

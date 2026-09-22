@@ -1,6 +1,10 @@
+import { useEffect, useState } from "react";
+
 export type ThemeTokens = {
 	primary: string;
+	primaryForeground: string;
 	accent: string;
+	accentForeground: string;
 	danger: string;
 	success: string;
 	warning: string;
@@ -14,13 +18,19 @@ export type ThemeTokens = {
 	surface3: string;
 	cableA: string;
 	cableB: string;
+	chart1: string;
+	chart2: string;
+	chart3: string;
+	chart4: string;
 	chart5: string;
 	chartPalette: readonly string[];
 };
 
 const FALLBACKS: ThemeTokens = {
 	primary: "rgb(255, 107, 53)",
+	primaryForeground: "rgb(6, 6, 10)",
 	accent: "rgb(245, 158, 11)",
+	accentForeground: "rgb(6, 6, 10)",
 	danger: "rgb(255, 82, 82)",
 	success: "rgb(0, 230, 118)",
 	warning: "rgb(255, 171, 0)",
@@ -34,17 +44,19 @@ const FALLBACKS: ThemeTokens = {
 	surface3: "rgb(20, 20, 32)",
 	cableA: "rgb(255, 107, 53)",
 	cableB: "rgb(107, 163, 247)",
+	chart1: "rgb(255, 107, 53)",
+	chart2: "rgb(107, 163, 247)",
+	chart3: "rgb(245, 158, 11)",
+	chart4: "rgb(0, 230, 118)",
 	chart5: "rgb(124, 77, 255)",
 	chartPalette: [
 		"rgb(255, 107, 53)",
+		"rgb(107, 163, 247)",
 		"rgb(245, 158, 11)",
 		"rgb(0, 230, 118)",
-		"rgb(107, 163, 247)",
 		"rgb(124, 77, 255)",
 	],
 };
-
-const cache = new Map<string, ThemeTokens>();
 
 function readCssVariable(
 	styles: CSSStyleDeclaration | null,
@@ -54,22 +66,30 @@ function readCssVariable(
 	return styles?.getPropertyValue(name).trim() || fallback;
 }
 
-export function getThemeTokens(theme?: string): ThemeTokens {
-	const key =
-		theme ??
-		(typeof document !== "undefined"
-			? document.documentElement.dataset.theme || "dark"
-			: "dark");
-	const cached = cache.get(key);
-	if (cached) return cached;
-
+/** Read the active CSS theme at call time. */
+export function getThemeTokens(): ThemeTokens {
 	const styles =
 		typeof document !== "undefined"
 			? getComputedStyle(document.documentElement)
 			: null;
-	const tokens: ThemeTokens = {
+	const chart1 = readCssVariable(styles, "--chart-1", FALLBACKS.chart1);
+	const chart2 = readCssVariable(styles, "--chart-2", FALLBACKS.chart2);
+	const chart3 = readCssVariable(styles, "--chart-3", FALLBACKS.chart3);
+	const chart4 = readCssVariable(styles, "--chart-4", FALLBACKS.chart4);
+	const chart5 = readCssVariable(styles, "--chart-5", FALLBACKS.chart5);
+	return {
 		primary: readCssVariable(styles, "--primary", FALLBACKS.primary),
+		primaryForeground: readCssVariable(
+			styles,
+			"--primary-foreground",
+			FALLBACKS.primaryForeground,
+		),
 		accent: readCssVariable(styles, "--accent", FALLBACKS.accent),
+		accentForeground: readCssVariable(
+			styles,
+			"--accent-foreground",
+			FALLBACKS.accentForeground,
+		),
 		danger: readCssVariable(styles, "--destructive", FALLBACKS.danger),
 		success: readCssVariable(styles, "--success", FALLBACKS.success),
 		warning: readCssVariable(styles, "--warning", FALLBACKS.warning),
@@ -87,16 +107,25 @@ export function getThemeTokens(theme?: string): ThemeTokens {
 		surface3: readCssVariable(styles, "--surface-3", FALLBACKS.surface3),
 		cableA: readCssVariable(styles, "--cable-a", FALLBACKS.cableA),
 		cableB: readCssVariable(styles, "--cable-b", FALLBACKS.cableB),
-		chart5: readCssVariable(styles, "--chart-5", FALLBACKS.chart5),
-		chartPalette: [
-			readCssVariable(styles, "--cable-a", FALLBACKS.chartPalette[0]),
-			readCssVariable(styles, "--accent", FALLBACKS.chartPalette[1]),
-			readCssVariable(styles, "--success", FALLBACKS.chartPalette[2]),
-			readCssVariable(styles, "--cable-b", FALLBACKS.chartPalette[3]),
-			readCssVariable(styles, "--chart-5", FALLBACKS.chartPalette[4]),
-		],
+		chart1,
+		chart2,
+		chart3,
+		chart4,
+		chart5,
+		chartPalette: [chart1, chart2, chart3, chart4, chart5],
 	};
-	cache.set(key, tokens);
+}
+
+/** Subscribe to ThemeProvider's resolved-theme event and refresh tokens. */
+export function useThemeTokens(): ThemeTokens {
+	const [tokens, setTokens] = useState<ThemeTokens>(getThemeTokens);
+
+	useEffect(() => {
+		const refresh = () => setTokens(getThemeTokens());
+		window.addEventListener("phoenix-theme-change", refresh);
+		return () => window.removeEventListener("phoenix-theme-change", refresh);
+	}, []);
+
 	return tokens;
 }
 

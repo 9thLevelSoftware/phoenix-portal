@@ -69,7 +69,7 @@ function WorkoutCard({
 							isSelected ? "bg-primary border-primary" : "border-secondary"
 						}`}
 					>
-						{isSelected && <Check className="w-4 h-4 text-white" />}
+						{isSelected && <Check className="w-4 h-4 text-foreground" />}
 					</div>
 				)}
 
@@ -77,7 +77,7 @@ function WorkoutCard({
 				<div className="flex items-center gap-4">
 					<div className="relative">
 						<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-primary flex items-center justify-center transition-transform">
-							<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+							<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-foreground" />
 						</div>
 						<div className="absolute -bottom-1 -right-1 bg-background rounded px-1.5 py-0.5 text-xs text-muted-foreground border border-secondary">
 							{workout.started_at.getDate()}
@@ -85,7 +85,7 @@ function WorkoutCard({
 					</div>
 
 					<div>
-						<h3 className="text-lg font-semibold text-white mb-1">
+						<h3 className="text-lg font-semibold text-foreground mb-1">
 							{workout.name}
 						</h3>
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -119,20 +119,20 @@ function WorkoutCard({
 				<div className="flex-1 grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-4 sm:gap-6">
 					<div className="text-center">
 						<div className="text-sm text-muted-foreground mb-1">Volume</div>
-						<div className="text-lg font-semibold text-white font-data">
+						<div className="text-lg font-semibold text-foreground font-data">
 							{formatVolume(workout.total_volume, unit)}
 						</div>
 					</div>
 					<div className="text-center">
 						<div className="text-sm text-muted-foreground mb-1">Duration</div>
-						<div className="text-lg font-semibold text-white flex items-center justify-center gap-1 font-data">
+						<div className="text-lg font-semibold text-foreground flex items-center justify-center gap-1 font-data">
 							<Clock className="w-4 h-4" />
 							{workout.duration_seconds}m
 						</div>
 					</div>
 					{workout.pr_count > 0 && (
 						<div className="text-center col-span-2 sm:col-span-1">
-							<Badge className="bg-accent text-white border-0">
+							<Badge className="bg-accent text-foreground border-0">
 								<Award className="w-3 h-3 mr-1" />
 								{workout.pr_count} PR{workout.pr_count > 1 ? "s" : ""}
 							</Badge>
@@ -341,7 +341,9 @@ export function WorkoutHistory() {
 			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
 					<div className="max-w-7xl mx-auto">
-						<h1 className="text-display-2 mb-2 text-white">Workout History</h1>
+						<h1 className="text-display-2 mb-2 text-foreground">
+							Workout History
+						</h1>
 						<p className="text-muted-foreground">
 							Your training journey, documented
 						</p>
@@ -377,7 +379,7 @@ export function WorkoutHistory() {
 						className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 					>
 						<div>
-							<h1 className="text-display-2 mb-2 text-white">
+							<h1 className="text-display-2 mb-2 text-foreground">
 								Workout History
 							</h1>
 							<p className="text-muted-foreground">
@@ -400,7 +402,7 @@ export function WorkoutHistory() {
 									}}
 									className={
 										compareMode
-											? "bg-primary border-0 text-white"
+											? "bg-primary border-0 text-foreground"
 											: "border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 									}
 								>
@@ -431,7 +433,7 @@ export function WorkoutHistory() {
 							<select
 								value={dateRange}
 								onChange={(e) => setDateRange(e.target.value)}
-								className="px-4 py-2 rounded-lg bg-surface-2 border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+								className="px-4 py-2 rounded-lg bg-surface-2 border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
 							>
 								<option>Last 7 days</option>
 								<option>Last 30 days</option>
@@ -538,10 +540,10 @@ export function WorkoutHistory() {
 									<div className="flex flex-col sm:flex-row sm:items-center gap-4 opacity-40">
 										<div className="flex items-center gap-4">
 											<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-primary/30 to-chart-2/30 flex items-center justify-center">
-												<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-white/50" />
+												<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-foreground/50" />
 											</div>
 											<div>
-												<h3 className="text-lg font-semibold text-white/60 mb-1">
+												<h3 className="text-lg font-semibold text-foreground/60 mb-1">
 													{workout.name}
 												</h3>
 												<div className="text-sm text-muted-foreground/60">
@@ -649,7 +651,7 @@ export function WorkoutHistory() {
 							{/* Panel Header */}
 							<div className="sticky top-0 bg-gradient-to-b from-surface-2 to-background border-b border-secondary p-6 flex items-center justify-between">
 								<div>
-									<h3 className="text-xl font-semibold text-white mb-1">
+									<h3 className="text-xl font-semibold text-foreground mb-1">
 										{selectedDay.toLocaleDateString("en-US", {
 											weekday: "long",
 											month: "long",
@@ -682,7 +684,7 @@ export function WorkoutHistory() {
 										}}
 										className="p-4 bg-surface-2 border-secondary hover:border-primary/50 cursor-pointer transition-all"
 									>
-										<h4 className="text-lg font-semibold text-white mb-2">
+										<h4 className="text-lg font-semibold text-foreground mb-2">
 											{workout.name}
 										</h4>
 										<div className="space-y-2 text-sm">
@@ -710,7 +712,7 @@ export function WorkoutHistory() {
 											{workout.pr_count > 0 && (
 												<div className="flex items-center justify-between">
 													<span className="text-muted-foreground">PRs</span>
-													<Badge className="bg-accent text-white border-0">
+													<Badge className="bg-accent text-foreground border-0">
 														{workout.pr_count}
 													</Badge>
 												</div>

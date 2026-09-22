@@ -35,7 +35,7 @@ export function CycleOverview({
 
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
-			<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
+			<h2 className="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
 				<Calendar className="w-5 h-5 text-primary" />
 				Cycle Details
 			</h2>

@@ -30,11 +30,11 @@ const PRIORITY_COLORS: Record<Recommendation["priority"], string> = {
 	positive: "var(--success)",
 };
 
-const PRIORITY_BG_COLORS: Record<Recommendation["priority"], string> = {
-	critical: "rgba(220, 38, 38, 0.08)",
-	actionable: "rgba(245, 158, 11, 0.08)",
-	info: "rgba(96, 165, 250, 0.08)",
-	positive: "rgba(16, 185, 129, 0.08)",
+const PRIORITY_BG_CLASSES: Record<Recommendation["priority"], string> = {
+	critical: "bg-danger-soft",
+	actionable: "bg-warning-soft",
+	info: "bg-info-soft",
+	positive: "bg-success-soft",
 };
 
 // --- Helpers ---
@@ -86,20 +86,19 @@ interface RecommendationCardProps {
 function RecommendationCard({ recommendation }: RecommendationCardProps) {
 	const { priority, title, action, metric } = recommendation;
 	const borderColor = PRIORITY_COLORS[priority];
-	const bgColor = PRIORITY_BG_COLORS[priority];
+	const backgroundClass = PRIORITY_BG_CLASSES[priority];
 
 	return (
 		<div
-			className="flex items-start gap-3 rounded-md px-3 py-2.5 text-sm"
+			className={`flex items-start gap-3 rounded-md px-3 py-2.5 text-sm ${backgroundClass}`}
 			style={{
 				borderLeft: `2px solid ${borderColor}`,
-				backgroundColor: bgColor,
 			}}
 			role="alert"
 		>
 			<span className="mt-0.5">{getPriorityIcon(priority)}</span>
 			<div className="min-w-0 flex-1">
-				<p className="font-medium text-white leading-snug">{title}</p>
+				<p className="font-medium text-foreground leading-snug">{title}</p>
 				<p className="text-muted-foreground text-xs mt-0.5">{action}</p>
 				{metric && (
 					<p className="text-muted-foreground text-xs mt-1">
@@ -108,7 +107,7 @@ function RecommendationCard({ recommendation }: RecommendationCardProps) {
 							{metric.current} {metric.unit}
 						</span>{" "}
 						/ Threshold:{" "}
-						<span className="font-medium text-white">
+						<span className="font-medium text-foreground">
 							{metric.threshold} {metric.unit}
 						</span>
 					</p>
@@ -147,7 +146,9 @@ export function RecommendationsPanel({
 					aria-expanded={expanded}
 				>
 					<div className="flex items-center gap-3">
-						<h3 className="text-xl text-white">Training Recommendations</h3>
+						<h3 className="text-xl text-foreground">
+							Training Recommendations
+						</h3>
 						{recommendations.length > 0 && (
 							<span
 								className="text-xs font-medium px-2 py-0.5 rounded-full bg-primary/20 text-primary"
@@ -211,7 +212,7 @@ export function RecommendationsPanel({
 					aria-label="Premium feature preview"
 				>
 					<div className="text-center max-w-sm p-6">
-						<h3 className="text-white text-lg mb-2">
+						<h3 className="text-foreground text-lg mb-2">
 							Unlock Training Recommendations
 						</h3>
 						<p className="text-muted-foreground text-sm mb-4">

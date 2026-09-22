@@ -7,13 +7,28 @@ import {
 } from "react";
 
 type Theme = "dark" | "light" | "system";
+type ResolvedTheme = "dark" | "light";
+
 const Ctx = createContext<{
 	theme: Theme;
-	resolved: "dark" | "light";
+	resolved: ResolvedTheme;
 	setTheme: (t: Theme) => void;
 } | null>(null);
 
-function resolve(t: Theme): "dark" | "light" {
+function isTheme(value: string | null): value is Theme {
+	return value === "dark" || value === "light" || value === "system";
+}
+
+function getPersistedTheme(): Theme {
+	try {
+		const persisted = localStorage.getItem("phoenix-theme");
+		return isTheme(persisted) ? persisted : "dark";
+	} catch {
+		return "dark";
+	}
+}
+
+function resolve(t: Theme): ResolvedTheme {
 	if (t !== "system") return t;
 	return window.matchMedia("(prefers-color-scheme: light)").matches
 		? "light"
@@ -21,22 +36,25 @@ function resolve(t: Theme): "dark" | "light" {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-	const [theme, setThemeState] = useState<Theme>(
-		() => (localStorage.getItem("phoenix-theme") as Theme) || "dark",
-	);
-	const [resolved, setResolved] = useState<"dark" | "light">(() =>
-		resolve(theme),
-	);
+	const [theme, setThemeState] = useState<Theme>(getPersistedTheme);
+	const [resolved, setResolved] = useState<ResolvedTheme>(() => resolve(theme));
 
 	useEffect(() => {
-		const next = resolve(theme);
-		setResolved(next);
-		document.documentElement.dataset.theme = next;
+		setResolved(resolve(theme));
+	}, [theme]);
+
+	useEffect(() => {
+		const root = document.documentElement;
+		root.dataset.theme = resolved;
 		const meta = document.querySelector(
 			"meta[name='color-scheme']",
 		) as HTMLMetaElement | null;
-		if (meta) meta.content = next + (next === "dark" ? " light" : " dark");
-	}, [theme]);
+		if (meta)
+			meta.content = resolved + (resolved === "dark" ? " light" : " dark");
+		window.dispatchEvent(
+			new CustomEvent("phoenix-theme-change", { detail: resolved }),
+		);
+	}, [resolved]);
 
 	useEffect(() => {
 		if (theme !== "system") return;
@@ -48,7 +66,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
 	const setTheme = (t: Theme) => {
 		setThemeState(t);
-		localStorage.setItem("phoenix-theme", t);
+		try {
+			localStorage.setItem("phoenix-theme", t);
+		} catch {
+			// Theme state still applies when storage is unavailable.
+		}
 	};
 
 	return (

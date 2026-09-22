@@ -94,7 +94,7 @@ export function ProgressionWorkbench({
 		<Card className="border-secondary bg-surface-2 p-6">
 			<div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 				<div>
-					<h3 className="text-xl text-white">Progression Workbench</h3>
+					<h3 className="text-xl text-foreground">Progression Workbench</h3>
 					<p className="text-sm text-muted-foreground">
 						1RM trend, phase-aware PRs, plateau risk, and next progression.
 					</p>
@@ -131,7 +131,7 @@ export function ProgressionWorkbench({
 				<div className="min-w-0 space-y-4">
 					<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 						<div>
-							<h4 className="text-lg font-semibold text-white">
+							<h4 className="text-lg font-semibold text-foreground">
 								{selected.exerciseName}
 							</h4>
 							<p className="text-sm text-muted-foreground">
@@ -139,7 +139,7 @@ export function ProgressionWorkbench({
 							</p>
 						</div>
 						<div className="text-right">
-							<div className="text-2xl font-semibold text-white">
+							<div className="text-2xl font-semibold text-foreground">
 								{selected.currentOneRm} {unit}
 							</div>
 							<div className="text-xs text-muted-foreground">current 1RM</div>
@@ -156,7 +156,7 @@ export function ProgressionWorkbench({
 								<ArrowUpRight className="size-3.5" aria-hidden="true" />
 								<span>Gain rate</span>
 							</div>
-							<div className="text-lg font-semibold text-white">
+							<div className="text-lg font-semibold text-foreground">
 								{selected.gainRatePctPer30Days}%
 							</div>
 						</div>
@@ -165,7 +165,7 @@ export function ProgressionWorkbench({
 								<Target className="size-3.5" aria-hidden="true" />
 								<span>Phase PRs</span>
 							</div>
-							<div className="text-lg font-semibold text-white">
+							<div className="text-lg font-semibold text-foreground">
 								{selected.phasePrCount}
 							</div>
 						</div>

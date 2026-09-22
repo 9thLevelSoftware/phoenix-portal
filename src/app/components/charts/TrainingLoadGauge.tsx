@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { CHART_COLORS } from "./shared/EChartsTheme";
+import { useThemeTokens } from "@/lib/theme-tokens";
 import { EChartsWrapper } from "./shared/EChartsWrapper";
 
 export interface TrainingLoadGaugeProps {
@@ -13,15 +13,15 @@ const ZONE_LABELS: Record<string, string> = {
 	high: "High",
 };
 
-const ZONE_COLORS: Record<string, string> = {
-	low: CHART_COLORS.success,
-	optimal: CHART_COLORS.secondary,
-	high: CHART_COLORS.danger,
-};
-
 export function TrainingLoadGauge({ score, zone }: TrainingLoadGaugeProps) {
+	const themeTokens = useThemeTokens();
 	const clamped = Math.min(Math.max(score, 0), 100);
-	const zoneColor = ZONE_COLORS[zone];
+	const zoneColor =
+		zone === "low"
+			? themeTokens.success
+			: zone === "optimal"
+				? themeTokens.accent
+				: themeTokens.danger;
 	const zoneLabel = ZONE_LABELS[zone];
 
 	const option = useMemo(
@@ -39,9 +39,9 @@ export function TrainingLoadGauge({ score, zone }: TrainingLoadGaugeProps) {
 						lineStyle: {
 							width: 16,
 							color: [
-								[0.35, CHART_COLORS.success],
-								[0.75, CHART_COLORS.secondary],
-								[1, CHART_COLORS.danger],
+								[0.35, themeTokens.success],
+								[0.75, themeTokens.accent],
+								[1, themeTokens.danger],
 							],
 						},
 					},
@@ -61,14 +61,14 @@ export function TrainingLoadGauge({ score, zone }: TrainingLoadGaugeProps) {
 						size: 12,
 						itemStyle: {
 							color: zoneColor,
-							borderColor: "var(--surface-1)",
+							borderColor: themeTokens.surface1,
 							borderWidth: 2,
 						},
 					},
 					detail: {
 						valueAnimation: true,
 						formatter: "{value}",
-						color: "var(--primary-foreground)",
+						color: themeTokens.primaryForeground,
 						fontSize: 28,
 						fontWeight: 700,
 						offsetCenter: [0, "-10%"],
@@ -88,7 +88,7 @@ export function TrainingLoadGauge({ score, zone }: TrainingLoadGaugeProps) {
 				},
 			],
 		}),
-		[clamped, zoneColor, zoneLabel],
+		[clamped, zoneColor, zoneLabel, themeTokens],
 	);
 
 	return <EChartsWrapper option={option} height={200} />;

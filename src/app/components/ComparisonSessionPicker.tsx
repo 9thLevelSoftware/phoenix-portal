@@ -52,7 +52,7 @@ export function ComparisonSessionPicker({
 		<Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
 			<DialogContent className="bg-background border-secondary max-h-[80vh] flex flex-col">
 				<DialogHeader>
-					<DialogTitle className="text-white">
+					<DialogTitle className="text-foreground">
 						Select Session to Compare
 					</DialogTitle>
 					<DialogDescription>
@@ -68,7 +68,7 @@ export function ComparisonSessionPicker({
 						placeholder="Search by name or date..."
 						value={search}
 						onChange={(e) => setSearch(e.target.value)}
-						className="w-full pl-10 pr-4 py-2 bg-surface-2 border border-secondary rounded-lg text-white text-sm placeholder:text-muted focus:border-primary focus:outline-none"
+						className="w-full pl-10 pr-4 py-2 bg-surface-2 border border-secondary rounded-lg text-foreground text-sm placeholder:text-muted focus:border-primary focus:outline-none"
 					/>
 				</div>
 
@@ -94,10 +94,10 @@ export function ComparisonSessionPicker({
 							>
 								<div className="flex items-center gap-3">
 									<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center shrink-0">
-										<Dumbbell className="w-5 h-5 text-white" />
+										<Dumbbell className="w-5 h-5 text-foreground" />
 									</div>
 									<div className="flex-1 min-w-0">
-										<h4 className="text-sm font-semibold text-white truncate">
+										<h4 className="text-sm font-semibold text-foreground truncate">
 											{workout.name}
 										</h4>
 										<div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">

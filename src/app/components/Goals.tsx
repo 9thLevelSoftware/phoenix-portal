@@ -405,7 +405,9 @@ export function Goals() {
 						initial={{ opacity: 0, y: 20 }}
 						animate={{ opacity: 1, y: 0 }}
 					>
-						<h1 className="text-display-2 mb-2 text-white">Training Goals</h1>
+						<h1 className="text-display-2 mb-2 text-foreground">
+							Training Goals
+						</h1>
 						<p className="text-muted-foreground mb-8">
 							Set targets, track progress, achieve greatness.
 						</p>
@@ -439,7 +441,9 @@ export function Goals() {
 					className="flex items-center justify-between mb-8"
 				>
 					<div>
-						<h1 className="text-display-2 mb-2 text-white">Training Goals</h1>
+						<h1 className="text-display-2 mb-2 text-foreground">
+							Training Goals
+						</h1>
 						<p className="text-muted-foreground">
 							Set targets, track progress, achieve greatness.
 						</p>
@@ -507,7 +511,7 @@ export function Goals() {
 											<div className="flex-1 min-w-0">
 												<div className="flex items-center gap-2 mb-1">
 													<Icon className="w-4 h-4 text-primary" />
-													<h3 className="text-lg font-semibold text-white">
+													<h3 className="text-lg font-semibold text-foreground">
 														{getGoalDescription(goal)}
 													</h3>
 												</div>
@@ -558,7 +562,7 @@ export function Goals() {
 						<button
 							type="button"
 							onClick={() => setShowCompleted(!showCompleted)}
-							className="flex items-center gap-2 text-muted-foreground hover:text-white mb-4 transition-colors"
+							className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4 transition-colors"
 						>
 							{showCompleted ? (
 								<ChevronUp className="w-4 h-4" />
@@ -582,7 +586,7 @@ export function Goals() {
 												<Award className="w-4 h-4 text-success" />
 											</div>
 											<div>
-												<p className="text-sm text-white">
+												<p className="text-sm text-foreground">
 													{getGoalDescription(goal)}
 												</p>
 												<p className="text-xs text-muted-foreground">
@@ -609,7 +613,7 @@ export function Goals() {
 						<button
 							type="button"
 							onClick={() => setShowArchived(!showArchived)}
-							className="flex items-center gap-2 text-muted-foreground hover:text-white mb-4 transition-colors"
+							className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4 transition-colors"
 						>
 							{showArchived ? (
 								<ChevronUp className="w-4 h-4" />
@@ -651,7 +655,7 @@ export function Goals() {
 															updates: { status: "active" },
 														})
 													}
-													className="hover:bg-primary/10 text-muted-foreground hover:text-white"
+													className="hover:bg-primary/10 text-muted-foreground hover:text-foreground"
 													title="Restore goal"
 												>
 													<RotateCcw className="w-4 h-4 mr-1" />
@@ -835,7 +839,7 @@ function GoalFormDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="bg-background border-secondary sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle className="text-white">{title}</DialogTitle>
+					<DialogTitle className="text-foreground">{title}</DialogTitle>
 				</DialogHeader>
 
 				<div className="space-y-6 py-4">

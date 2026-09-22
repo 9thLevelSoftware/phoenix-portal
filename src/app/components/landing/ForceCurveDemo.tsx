@@ -61,11 +61,11 @@ const PHASE_DIVIDER_TIME = 1.8;
 
 function getVelocityZone(v: number): { name: string; color: string } {
 	const abs = Math.abs(v);
-	if (abs >= 1.0) return { name: "Explosive", color: PHOENIX.ember };
-	if (abs >= 0.75) return { name: "Fast", color: PHOENIX.gold };
-	if (abs >= 0.5) return { name: "Moderate", color: PHOENIX.forgeGreen };
-	if (abs >= 0.25) return { name: "Slow", color: PHOENIX.ashGray };
-	return { name: "Grind", color: PHOENIX.moltenSteel };
+	if (abs >= 1.0) return { name: "Explosive", color: PHOENIX().ember };
+	if (abs >= 0.75) return { name: "Fast", color: PHOENIX().gold };
+	if (abs >= 0.5) return { name: "Moderate", color: PHOENIX().forgeGreen };
+	if (abs >= 0.25) return { name: "Slow", color: PHOENIX().ashGray };
+	return { name: "Grind", color: PHOENIX().moltenSteel };
 }
 
 // ---------------------------------------------------------------------------
@@ -161,8 +161,8 @@ export function Chart({ width, height }: { width: number; height: number }) {
 			>
 				<LinearGradient
 					id="force-area-gradient"
-					from={PHOENIX.ember}
-					to={PHOENIX.ember}
+					from={PHOENIX().ember}
+					to={PHOENIX().ember}
 					fromOpacity={0.25}
 					toOpacity={0}
 					vertical
@@ -185,7 +185,7 @@ export function Chart({ width, height }: { width: number; height: number }) {
 						x={(d) => xScale(getTime(d))}
 						y={(d) => yScale(getForce(d))}
 						curve={curveMonotoneX}
-						stroke={PHOENIX.ember}
+						stroke={PHOENIX().ember}
 						strokeWidth={2}
 					/>
 
@@ -218,8 +218,8 @@ export function Chart({ width, height }: { width: number; height: number }) {
 									cx={tooltipLeft - MARGINS.left}
 									cy={tooltipTop - MARGINS.top}
 									r={4}
-									fill={PHOENIX.ember}
-									stroke={PHOENIX.white}
+									fill={PHOENIX().ember}
+									stroke={PHOENIX().white}
 									strokeWidth={1.5}
 									pointerEvents="none"
 								/>

@@ -11,11 +11,16 @@ import { ASYMMETRY_THRESHOLD, calculateAsymmetry } from "@/lib/biomechanics";
 import { PHOENIX } from "@/lib/colors";
 import type { RepSummary } from "@/schemas/telemetry";
 
-// -- Colors --
-const COLOR_BALANCED = PHOENIX.forgeGreen; // Forge Green
-const COLOR_IMBALANCED = PHOENIX.flameRed; // Flame Red
-const COLOR_AXIS = PHOENIX.ashGray;
-const COLOR_THRESHOLD = PHOENIX.gold; // Gold for threshold lines
+function getAsymmetryColors() {
+	const phoenix = PHOENIX();
+	return {
+		balanced: phoenix.forgeGreen,
+		imbalanced: phoenix.flameRed,
+		axis: phoenix.ashGray,
+		threshold: phoenix.gold,
+	};
+}
+
 const COLOR_TEXT = "var(--foreground)";
 
 // -- Types --
@@ -149,7 +154,7 @@ function PerRepChart({
 							key={t}
 							from={{ x: xScale(t), y: 0 }}
 							to={{ x: xScale(t), y: innerHeight }}
-							stroke={COLOR_THRESHOLD}
+							stroke={getAsymmetryColors().threshold}
 							strokeWidth={1}
 							strokeDasharray="4,3"
 							opacity={0.6}
@@ -160,7 +165,7 @@ function PerRepChart({
 					<Line
 						from={{ x: centerX, y: 0 }}
 						to={{ x: centerX, y: innerHeight }}
-						stroke={COLOR_AXIS}
+						stroke={getAsymmetryColors().axis}
 						strokeWidth={1}
 					/>
 
@@ -168,7 +173,9 @@ function PerRepChart({
 					{repSummaries.map((rep, i) => {
 						const a = asymmetries[i];
 						const isBalanced = Math.abs(a) <= ASYMMETRY_THRESHOLD;
-						const barColor = isBalanced ? COLOR_BALANCED : COLOR_IMBALANCED;
+						const barColor = isBalanced
+							? getAsymmetryColors().balanced
+							: getAsymmetryColors().imbalanced;
 						const barX = a >= 0 ? centerX : xScale(a);
 						const barWidth = Math.abs(xScale(a) - centerX);
 						const barY = yScale(String(i + 1)) ?? 0;
@@ -224,8 +231,8 @@ function PerRepChart({
 							(v) => Math.abs(v) <= maxAbs,
 						)}
 						tickFormat={(v) => `${v as number}%`}
-						stroke={COLOR_AXIS}
-						tickStroke={COLOR_AXIS}
+						stroke={getAsymmetryColors().axis}
+						tickStroke={getAsymmetryColors().axis}
 						tickLabelProps={() => ({
 							fill: COLOR_TEXT,
 							fontSize: 10,
@@ -236,8 +243,8 @@ function PerRepChart({
 					<AxisLeft
 						scale={yScale}
 						tickFormat={(v) => `Rep ${v}`}
-						stroke={COLOR_AXIS}
-						tickStroke={COLOR_AXIS}
+						stroke={getAsymmetryColors().axis}
+						tickStroke={getAsymmetryColors().axis}
 						tickLabelProps={() => ({
 							fill: COLOR_TEXT,
 							fontSize: 10,
@@ -273,7 +280,9 @@ function PerRepChart({
 					<div>Asymmetry: {tooltipData.asymmetry.toFixed(1)}%</div>
 					<div
 						style={{
-							color: tooltipData.isBalanced ? COLOR_BALANCED : COLOR_IMBALANCED,
+							color: tooltipData.isBalanced
+								? getAsymmetryColors().balanced
+								: getAsymmetryColors().imbalanced,
 						}}
 					>
 						{tooltipData.isBalanced ? "Balanced" : "Imbalanced"}
@@ -293,7 +302,9 @@ function SummaryDisplay({ repSummaries }: { repSummaries: RepSummary[] }) {
 
 	const isBalanced = Math.abs(avgAsymmetry) <= ASYMMETRY_THRESHOLD;
 	const label = getSummaryLabel(avgAsymmetry);
-	const color = isBalanced ? COLOR_BALANCED : COLOR_IMBALANCED;
+	const color = isBalanced
+		? getAsymmetryColors().balanced
+		: getAsymmetryColors().imbalanced;
 
 	// Calculate left/right split as percentages
 	const leftPct = 50 - avgAsymmetry / 2;
@@ -332,21 +343,23 @@ function SummaryDisplay({ repSummaries }: { repSummaries: RepSummary[] }) {
 						className="transition-all duration-300"
 						style={{
 							width: `${leftPct}%`,
-							backgroundColor: avgAsymmetry < 0 ? color : COLOR_BALANCED,
+							backgroundColor:
+								avgAsymmetry < 0 ? color : getAsymmetryColors().balanced,
 						}}
 					/>
 					<div
 						className="transition-all duration-300"
 						style={{
 							width: `${rightPct}%`,
-							backgroundColor: avgAsymmetry > 0 ? color : COLOR_BALANCED,
+							backgroundColor:
+								avgAsymmetry > 0 ? color : getAsymmetryColors().balanced,
 						}}
 					/>
 				</div>
 			</div>
 
 			{/* Rep count */}
-			<div className="text-xs" style={{ color: COLOR_AXIS }}>
+			<div className="text-xs" style={{ color: getAsymmetryColors().axis }}>
 				Based on {repSummaries.length} rep{repSummaries.length !== 1 ? "s" : ""}
 			</div>
 		</div>
@@ -363,7 +376,7 @@ export function AsymmetryGauge({
 		return (
 			<div
 				className="flex items-center justify-center text-sm"
-				style={{ height, color: COLOR_AXIS }}
+				style={{ height, color: getAsymmetryColors().axis }}
 			>
 				No asymmetry data
 			</div>

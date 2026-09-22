@@ -71,12 +71,12 @@ export function CommunityFilterPanel() {
 				variant="outline"
 				size="sm"
 				onClick={handleOpen}
-				className="border-secondary text-muted-foreground hover:border-primary hover:text-white relative"
+				className="border-secondary text-muted-foreground hover:border-primary hover:text-foreground relative"
 			>
 				<Filter className="w-4 h-4 mr-1.5" />
 				Filter
 				{activeCount > 0 && (
-					<Badge className="absolute -top-2 -right-2 bg-primary text-white text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center border-0">
+					<Badge className="absolute -top-2 -right-2 bg-primary text-foreground text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center border-0">
 						{activeCount}
 					</Badge>
 				)}
@@ -97,7 +97,7 @@ export function CommunityFilterPanel() {
 			>
 				<SheetContent side="right" className="bg-background border-secondary">
 					<SheetHeader>
-						<SheetTitle className="text-white">Filters</SheetTitle>
+						<SheetTitle className="text-foreground">Filters</SheetTitle>
 						<SheetDescription className="text-muted-foreground">
 							Narrow down the feed by muscle group and difficulty.
 						</SheetDescription>
@@ -113,7 +113,7 @@ export function CommunityFilterPanel() {
 								Muscle Group
 							</label>
 							<Select value={localMuscle} onValueChange={setLocalMuscle}>
-								<SelectTrigger className="bg-surface-2 border-secondary text-white">
+								<SelectTrigger className="bg-surface-2 border-secondary text-foreground">
 									<SelectValue placeholder="All muscle groups" />
 								</SelectTrigger>
 								<SelectContent className="bg-surface-2 border-secondary">
@@ -138,7 +138,7 @@ export function CommunityFilterPanel() {
 								value={localDifficulty}
 								onValueChange={setLocalDifficulty}
 							>
-								<SelectTrigger className="bg-surface-2 border-secondary text-white">
+								<SelectTrigger className="bg-surface-2 border-secondary text-foreground">
 									<SelectValue placeholder="All difficulties" />
 								</SelectTrigger>
 								<SelectContent className="bg-surface-2 border-secondary">
@@ -155,7 +155,7 @@ export function CommunityFilterPanel() {
 					<div className="flex gap-3 px-4 mt-auto pb-6">
 						<Button
 							variant="outline"
-							className="flex-1 border-secondary text-muted-foreground hover:text-white"
+							className="flex-1 border-secondary text-muted-foreground hover:text-foreground"
 							onClick={handleClear}
 						>
 							Clear Filters

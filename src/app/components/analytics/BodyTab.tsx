@@ -79,7 +79,7 @@ export default function BodyTab({
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 				{/* Muscle Balance Radar */}
 				<Card className="p-6 bg-surface-2 border-secondary">
-					<h3 className="text-xl text-white mb-6">Muscle Balance Radar</h3>
+					<h3 className="text-xl text-foreground mb-6">Muscle Balance Radar</h3>
 					{muscleGroupData.length > 0 ? (
 						<MuscleRadar currentData={muscleRadarData} />
 					) : (
@@ -91,7 +91,7 @@ export default function BodyTab({
 
 				{/* Muscle Distribution Donut */}
 				<Card className="p-6 bg-surface-2 border-secondary">
-					<h3 className="text-xl text-white mb-6">Muscle Distribution</h3>
+					<h3 className="text-xl text-foreground mb-6">Muscle Distribution</h3>
 					{muscleDonutOption ? (
 						<EChartsWrapper option={muscleDonutOption} height={300} />
 					) : (
@@ -104,7 +104,7 @@ export default function BodyTab({
 
 			{/* Muscle Group Breakdown Table */}
 			<Card className="p-6 bg-surface-2 border-secondary">
-				<h3 className="text-xl text-white mb-6">Muscle Group Breakdown</h3>
+				<h3 className="text-xl text-foreground mb-6">Muscle Group Breakdown</h3>
 				{muscleGroupData.length > 0 ? (
 					<div className="overflow-x-auto">
 						<table className="w-full text-sm">
@@ -135,7 +135,7 @@ export default function BodyTab({
 															backgroundColor: muscle.color,
 														}}
 													/>
-													<span className="text-white">{muscle.name}</span>
+													<span className="text-foreground">{muscle.name}</span>
 												</div>
 											</td>
 											<td
@@ -170,12 +170,12 @@ export default function BodyTab({
 			{/* Interactive Body Heatmap */}
 			<Card className="p-6 bg-surface-2 border-secondary">
 				<div className="flex justify-between items-center mb-6">
-					<h3 className="text-xl text-white">Body Overview</h3>
+					<h3 className="text-xl text-foreground">Body Overview</h3>
 					<div className="flex items-center gap-3">
 						{selectedMuscleGroup && (
 							<button
 								type="button"
-								className="text-xs text-primary hover:text-white transition-colors"
+								className="text-xs text-primary hover:text-foreground transition-colors"
 								onClick={() => setSelectedMuscleGroup(null)}
 							>
 								Clear selection
@@ -184,14 +184,14 @@ export default function BodyTab({
 						<div className="flex bg-muted/20 rounded-lg overflow-hidden">
 							<button
 								type="button"
-								className={`px-3 py-1 text-sm transition-colors ${bodySide === "front" ? "bg-primary text-white" : "text-muted-foreground hover:text-white"}`}
+								className={`px-3 py-1 text-sm transition-colors ${bodySide === "front" ? "bg-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
 								onClick={() => setBodySide("front")}
 							>
 								Front
 							</button>
 							<button
 								type="button"
-								className={`px-3 py-1 text-sm transition-colors ${bodySide === "back" ? "bg-primary text-white" : "text-muted-foreground hover:text-white"}`}
+								className={`px-3 py-1 text-sm transition-colors ${bodySide === "back" ? "bg-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
 								onClick={() => setBodySide("back")}
 							>
 								Back

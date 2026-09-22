@@ -67,7 +67,7 @@ export function ReportDialog({
 		<Dialog open={open} onOpenChange={handleClose}>
 			<DialogContent className="bg-background border-secondary sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle className="text-white">Report Content</DialogTitle>
+					<DialogTitle className="text-foreground">Report Content</DialogTitle>
 					<DialogDescription>
 						Select a reason for reporting this content. Reports are reviewed by
 						moderators.
@@ -101,7 +101,7 @@ export function ReportDialog({
 							onChange={(e) => setDescription(e.target.value)}
 							placeholder="Provide any additional context..."
 							maxLength={500}
-							className="text-sm bg-surface-2 border-secondary text-white min-h-20"
+							className="text-sm bg-surface-2 border-secondary text-foreground min-h-20"
 						/>
 						<span
 							className={`text-xs ${
@@ -121,7 +121,7 @@ export function ReportDialog({
 					<Button
 						variant="ghost"
 						onClick={() => handleClose(false)}
-						className="text-muted-foreground hover:text-white"
+						className="text-muted-foreground hover:text-foreground"
 					>
 						Cancel
 					</Button>

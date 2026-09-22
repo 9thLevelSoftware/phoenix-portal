@@ -147,7 +147,7 @@ export function MobileBottomNav() {
 											>
 												<Flame
 													className="w-3 h-3 text-accent"
-													fill={PHOENIX.ember}
+													fill={PHOENIX().ember}
 												/>
 											</motion.div>
 										)}
@@ -236,7 +236,7 @@ export function MobileBottomNav() {
 
 					<DrawerContent className="bg-background border-secondary">
 						<DrawerHeader>
-							<DrawerTitle className="text-white">More</DrawerTitle>
+							<DrawerTitle className="text-foreground">More</DrawerTitle>
 						</DrawerHeader>
 						<div className="pb-8">
 							{moreGroups.map((group) => (

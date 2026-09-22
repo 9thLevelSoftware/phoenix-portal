@@ -368,7 +368,7 @@ export function LandingPage() {
 				{showForgotPassword ? (
 					<div className="space-y-4">
 						<div className="text-center mb-4">
-							<h3 className="text-lg font-semibold text-white mb-1">
+							<h3 className="text-lg font-semibold text-foreground mb-1">
 								Reset your password
 							</h3>
 							<p className="text-sm text-muted-foreground">
@@ -388,7 +388,7 @@ export function LandingPage() {
 								placeholder="you@example.com"
 								value={resetEmail}
 								onChange={(e) => setResetEmail(e.target.value)}
-								className="bg-background border-secondary text-white placeholder:text-muted"
+								className="bg-background border-secondary text-foreground placeholder:text-muted"
 							/>
 						</div>
 						<Button
@@ -411,7 +411,7 @@ export function LandingPage() {
 								setShowForgotPassword(false);
 								setResetEmail("");
 							}}
-							className="w-full text-sm text-muted-foreground hover:text-white transition-colors"
+							className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
 						>
 							Back to sign in
 						</button>
@@ -449,7 +449,7 @@ export function LandingPage() {
 										id="signin-email"
 										type="email"
 										placeholder="you@example.com"
-										className="bg-background border-secondary text-white placeholder:text-muted"
+										className="bg-background border-secondary text-foreground placeholder:text-muted"
 										{...signInForm.register("email")}
 									/>
 									{signInForm.formState.errors.email && (
@@ -469,7 +469,7 @@ export function LandingPage() {
 										id="signin-password"
 										type="password"
 										placeholder="Enter your password"
-										className="bg-background border-secondary text-white placeholder:text-muted"
+										className="bg-background border-secondary text-foreground placeholder:text-muted"
 										{...signInForm.register("password")}
 									/>
 									{signInForm.formState.errors.password && (
@@ -520,7 +520,7 @@ export function LandingPage() {
 										id="signup-email"
 										type="email"
 										placeholder="you@example.com"
-										className="bg-background border-secondary text-white placeholder:text-muted"
+										className="bg-background border-secondary text-foreground placeholder:text-muted"
 										{...signUpForm.register("email")}
 									/>
 									{signUpForm.formState.errors.email && (
@@ -540,7 +540,7 @@ export function LandingPage() {
 										id="signup-password"
 										type="password"
 										placeholder="At least 6 characters"
-										className="bg-background border-secondary text-white placeholder:text-muted"
+										className="bg-background border-secondary text-foreground placeholder:text-muted"
 										{...signUpForm.register("password")}
 									/>
 									{signUpForm.formState.errors.password && (
@@ -560,7 +560,7 @@ export function LandingPage() {
 										id="signup-confirm"
 										type="password"
 										placeholder="Confirm your password"
-										className="bg-background border-secondary text-white placeholder:text-muted"
+										className="bg-background border-secondary text-foreground placeholder:text-muted"
 										{...signUpForm.register("confirmPassword")}
 									/>
 									{signUpForm.formState.errors.confirmPassword && (
@@ -620,7 +620,7 @@ export function LandingPage() {
 													buildAndroidChromeIntentUrl() ??
 													"https://phoenix-portal.com"
 												}
-												className="mt-2 inline-flex items-center text-amber-100 underline underline-offset-2 hover:text-white"
+												className="mt-2 inline-flex items-center text-amber-100 underline underline-offset-2 hover:text-foreground"
 											>
 												Open in Chrome
 											</a>
@@ -696,7 +696,7 @@ export function LandingPage() {
 	);
 
 	return (
-		<div className="min-h-screen bg-background text-white overflow-x-hidden">
+		<div className="min-h-screen bg-background text-foreground overflow-x-hidden">
 			{authDialog}
 
 			{/* Sticky Nav Header */}
@@ -718,14 +718,14 @@ export function LandingPage() {
 						<button
 							type="button"
 							onClick={() => scrollToSection("features")}
-							className="text-base font-medium text-muted-foreground hover:text-white transition-colors nav-link-landing"
+							className="text-base font-medium text-muted-foreground hover:text-foreground transition-colors nav-link-landing"
 						>
 							Features
 						</button>
 						<button
 							type="button"
 							onClick={() => scrollToSection("pricing")}
-							className="text-base font-medium text-muted-foreground hover:text-white transition-colors nav-link-landing"
+							className="text-base font-medium text-muted-foreground hover:text-foreground transition-colors nav-link-landing"
 						>
 							Pricing
 						</button>
@@ -733,7 +733,7 @@ export function LandingPage() {
 							href="https://ko-fi.com/vitruvianredux"
 							target="_blank"
 							rel="noopener noreferrer"
-							className="text-base font-medium text-muted-foreground hover:text-white transition-colors nav-link-landing"
+							className="text-base font-medium text-muted-foreground hover:text-foreground transition-colors nav-link-landing"
 						>
 							Support
 						</a>
@@ -814,7 +814,7 @@ export function LandingPage() {
 							asChild
 							size="lg"
 							variant="outline"
-							className="w-full sm:w-auto border border-white/15 text-white hover:bg-white/5"
+							className="w-full sm:w-auto border border-border text-foreground hover:bg-secondary"
 						>
 							<a
 								href="https://github.com/nicholascross/ProjectPhoenix"
@@ -842,7 +842,7 @@ export function LandingPage() {
 			<section className="relative py-24 px-4 sm:px-6 lg:px-8">
 				<div className="max-w-4xl mx-auto text-center">
 					<motion.h2
-						className="text-4xl sm:text-5xl md:text-6xl tracking-tight font-family-display text-white"
+						className="text-4xl sm:text-5xl md:text-6xl tracking-tight font-family-display text-foreground"
 						initial={{ opacity: 0, y: 20 }}
 						whileInView={{ opacity: 1, y: 0 }}
 						viewport={{ once: true }}
@@ -894,7 +894,7 @@ export function LandingPage() {
 						className="text-center mb-16"
 					>
 						<p className="eyebrow text-primary mb-3">WHAT YOU GET</p>
-						<h2 className="text-3xl sm:text-4xl mb-4 text-white font-family-display">
+						<h2 className="text-3xl sm:text-4xl mb-4 text-foreground font-family-display">
 							What your machine captures — finally visible.
 						</h2>
 						<p className="text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -923,7 +923,7 @@ export function LandingPage() {
 											{feature.badge}
 										</span>
 									</div>
-									<h3 className="text-lg font-semibold mb-1.5 text-white">
+									<h3 className="text-lg font-semibold mb-1.5 text-foreground">
 										{feature.title}
 									</h3>
 									<p className="text-sm text-muted-foreground leading-relaxed">
@@ -946,7 +946,7 @@ export function LandingPage() {
 						className="text-center mb-10"
 					>
 						<p className="eyebrow text-primary mb-3">TRY IT</p>
-						<h2 className="text-3xl sm:text-4xl mb-3 text-white font-family-display">
+						<h2 className="text-3xl sm:text-4xl mb-3 text-foreground font-family-display">
 							Explore a real force curve.
 						</h2>
 						<p className="text-lg text-muted-foreground max-w-xl mx-auto">
@@ -975,7 +975,7 @@ export function LandingPage() {
 						className="text-center mb-16"
 					>
 						<p className="eyebrow text-primary mb-3">PRICING</p>
-						<h2 className="text-3xl sm:text-4xl mb-4 text-white font-family-display">
+						<h2 className="text-3xl sm:text-4xl mb-4 text-foreground font-family-display">
 							Plans
 						</h2>
 						<p className="text-lg text-muted-foreground">
@@ -1010,7 +1010,7 @@ export function LandingPage() {
 											Coming Soon
 										</div>
 									)}
-									<h3 className="text-2xl mb-2 text-white text-center">
+									<h3 className="text-2xl mb-2 text-foreground text-center">
 										{tier.name}
 									</h3>
 									<div className="text-center mb-6">
@@ -1054,7 +1054,7 @@ export function LandingPage() {
 												? "w-full border-2 border-accent/30 bg-transparent text-accent/60 cursor-not-allowed"
 												: tier.highlight
 													? "w-full bg-primary hover:bg-primary/90 border-0"
-													: "w-full border border-white/15 text-white hover:bg-white/5"
+													: "w-full border border-border text-foreground hover:bg-secondary"
 										}
 									>
 										{tier.cta}
@@ -1074,7 +1074,7 @@ export function LandingPage() {
 						whileInView={{ opacity: 1, y: 0 }}
 						viewport={{ once: true }}
 					>
-						<h2 className="text-3xl sm:text-4xl mb-4 text-white font-family-display">
+						<h2 className="text-3xl sm:text-4xl mb-4 text-foreground font-family-display">
 							Start syncing workouts.
 						</h2>
 						<p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto leading-relaxed">
@@ -1086,7 +1086,7 @@ export function LandingPage() {
 							<Button
 								asChild
 								size="lg"
-								className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white border-0"
+								className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-foreground border-0"
 							>
 								<a
 									href="https://github.com/nicholascross/ProjectPhoenix"
@@ -1100,7 +1100,7 @@ export function LandingPage() {
 								size="lg"
 								variant="outline"
 								onClick={openAuth}
-								className="w-full sm:w-auto border border-white/15 text-white hover:bg-white/5"
+								className="w-full sm:w-auto border border-border text-foreground hover:bg-secondary"
 							>
 								Preview dashboard
 							</Button>
@@ -1133,7 +1133,7 @@ export function LandingPage() {
 							</p>
 						</div>
 						<div>
-							<h4 className="text-white mb-4">Product</h4>
+							<h4 className="text-foreground mb-4">Product</h4>
 							<ul className="space-y-2 text-muted-foreground text-sm">
 								<li>
 									<button
@@ -1156,7 +1156,7 @@ export function LandingPage() {
 							</ul>
 						</div>
 						<div>
-							<h4 className="text-white mb-4">Project</h4>
+							<h4 className="text-foreground mb-4">Project</h4>
 							<ul className="space-y-2 text-muted-foreground text-sm">
 								<li>
 									<a
@@ -1176,7 +1176,7 @@ export function LandingPage() {
 							</ul>
 						</div>
 						<div>
-							<h4 className="text-white mb-4">Legal</h4>
+							<h4 className="text-foreground mb-4">Legal</h4>
 							<ul className="space-y-2 text-muted-foreground text-sm">
 								<li>
 									<Link
@@ -1201,7 +1201,7 @@ export function LandingPage() {
 						<p className="text-muted-foreground text-sm">
 							<span className="text-primary font-semibold">Phoenix Portal</span>{" "}
 							is a community preservation project by{" "}
-							<span className="text-white font-semibold">
+							<span className="text-foreground font-semibold">
 								9th Level Software LLC
 							</span>
 						</p>

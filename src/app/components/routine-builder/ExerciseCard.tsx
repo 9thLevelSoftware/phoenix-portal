@@ -59,7 +59,7 @@ export function ExerciseCard({
 											: "border-muted hover:border-muted-foreground"
 									}`}
 								>
-									{isSelected && <Check className="w-3 h-3 text-white" />}
+									{isSelected && <Check className="w-3 h-3 text-foreground" />}
 								</div>
 							) : (
 								<GripVertical className="w-5 h-5 text-muted-foreground cursor-grab active:cursor-grabbing" />
@@ -69,7 +69,7 @@ export function ExerciseCard({
 						{/* Exercise Info */}
 						<div className="flex-1 min-w-0">
 							<div className="flex items-center gap-2 mb-1 flex-wrap">
-								<h4 className="font-semibold text-white truncate">
+								<h4 className="font-semibold text-foreground truncate">
 									{exercise.exerciseName}
 								</h4>
 								<Badge
@@ -96,7 +96,7 @@ export function ExerciseCard({
 									e.stopPropagation();
 									onEdit();
 								}}
-								className="text-muted-foreground hover:text-white"
+								className="text-muted-foreground hover:text-foreground"
 							>
 								<Edit className="w-4 h-4" />
 							</Button>

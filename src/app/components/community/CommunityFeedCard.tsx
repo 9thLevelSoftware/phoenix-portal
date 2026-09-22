@@ -51,7 +51,7 @@ export function CommunityFeedCard({
 				{/* Header: Author + Actions */}
 				<div className="flex items-start justify-between mb-3">
 					<div className="flex items-center gap-2 min-w-0">
-						<div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-white text-xs shrink-0">
+						<div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-foreground text-xs shrink-0">
 							{authorName.charAt(0).toUpperCase()}
 						</div>
 						<button
@@ -91,7 +91,7 @@ export function CommunityFeedCard({
 						>
 							<ArrowBigUp
 								className="w-5 h-5"
-								fill={isVoted ? PHOENIX.ember : "none"}
+								fill={isVoted ? PHOENIX().ember : "none"}
 							/>
 							<span className="text-sm font-medium">{item.vote_count}</span>
 						</button>
@@ -99,7 +99,7 @@ export function CommunityFeedCard({
 				</div>
 
 				{/* Title */}
-				<h3 className="text-white font-semibold mb-2 line-clamp-2">
+				<h3 className="text-foreground font-semibold mb-2 line-clamp-2">
 					{item.name}
 				</h3>
 

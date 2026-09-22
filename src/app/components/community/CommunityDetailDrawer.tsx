@@ -118,11 +118,11 @@ function DetailContent({
 			{/* Author */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-2">
-					<div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-sm">
+					<div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-foreground text-sm">
 						{authorName.charAt(0).toUpperCase()}
 					</div>
 					<div>
-						<p className="text-sm text-white">{authorName}</p>
+						<p className="text-sm text-foreground">{authorName}</p>
 						<p className="text-xs text-muted-foreground">Shared {sharedAgo}</p>
 					</div>
 				</div>
@@ -208,7 +208,7 @@ function DetailContent({
 						voteMutation.mutate({ itemId: displayItem.id, itemType })
 					}
 					disabled={voteMutation.isPending}
-					className="flex-1 border-secondary text-muted-foreground hover:border-primary hover:text-white"
+					className="flex-1 border-secondary text-muted-foreground hover:border-primary hover:text-foreground"
 				>
 					<ArrowBigUp className="w-5 h-5 mr-1.5" />
 					{displayItem.vote_count}
@@ -220,7 +220,7 @@ function DetailContent({
 						className="flex-1 border-primary/50 text-primary transition-colors"
 					>
 						<Link to={importedHref}>
-							<Bookmark className="w-4 h-4 mr-1.5" fill={PHOENIX.ember} />
+							<Bookmark className="w-4 h-4 mr-1.5" fill={PHOENIX().ember} />
 							{itemType === "routine"
 								? "Saved to My Routines"
 								: "Saved to My Cycles"}
@@ -238,7 +238,7 @@ function DetailContent({
 							detailError ||
 							!hasImportableSnapshot
 						}
-						className="flex-1 border-secondary text-muted-foreground transition-colors hover:border-primary hover:text-white"
+						className="flex-1 border-secondary text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
 					>
 						<Bookmark className="w-4 h-4 mr-1.5" />
 						{saveMutation.isPending
@@ -283,7 +283,7 @@ export function CommunityDetailDrawer({
 			<Drawer open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
 				<DrawerContent className="bg-background border-secondary max-h-[85vh]">
 					<DrawerHeader>
-						<DrawerTitle className="text-white text-left">
+						<DrawerTitle className="text-foreground text-left">
 							{item.name}
 						</DrawerTitle>
 						<DrawerDescription className="text-muted-foreground text-left">
@@ -314,7 +314,7 @@ export function CommunityDetailDrawer({
 		<Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
 			<DialogContent className="bg-background border-secondary sm:max-w-2xl max-h-[80vh] overflow-y-auto">
 				<DialogHeader>
-					<DialogTitle className="text-white">{item.name}</DialogTitle>
+					<DialogTitle className="text-foreground">{item.name}</DialogTitle>
 					<DialogDescription className="text-muted-foreground">
 						{item.difficulty} {isRoutine(item) ? "Routine" : "Cycle"}
 					</DialogDescription>

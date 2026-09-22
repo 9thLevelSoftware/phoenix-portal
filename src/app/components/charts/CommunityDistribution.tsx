@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import { useThemeTokens, withAlpha } from "@/lib/theme-tokens";
+import { CHART_COLORS } from "./shared/ChartTheme";
 import { EChartsWrapper } from "./shared/EChartsWrapper";
 
 export interface CommunityDistributionProps {
@@ -77,6 +79,8 @@ export function CommunityDistribution({
 	color,
 	label,
 }: CommunityDistributionProps) {
+	const themeTokens = useThemeTokens();
+	const chartColors = CHART_COLORS(themeTokens);
 	const option = useMemo(() => {
 		const points = generateBellCurvePoints(percentiles);
 		if (points.length === 0) return {};
@@ -131,10 +135,9 @@ export function CommunityDistribution({
 					data: leftPoints,
 					smooth: true,
 					symbol: "none",
-					lineStyle: { color: "var(--muted-foreground)", width: 1.5 },
+					lineStyle: { color: chartColors.axisText, width: 1.5 },
 					areaStyle: {
-						color:
-							"color-mix(in srgb, var(--muted-foreground) 13%, transparent)",
+						color: withAlpha(chartColors.axisText, 0.13),
 					},
 					silent: true,
 					z: 1,
@@ -170,7 +173,7 @@ export function CommunityDistribution({
 				},
 			],
 		};
-	}, [percentiles, userValue, color]);
+	}, [percentiles, userValue, color, chartColors.axisText]);
 
 	return (
 		<div

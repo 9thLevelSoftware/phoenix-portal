@@ -439,7 +439,7 @@ export function RoutineBuilder() {
 									setRoutineName(e.target.value);
 									setHasUnsavedChanges(true);
 								}}
-								className="text-xl font-semibold bg-transparent border-none text-white focus-visible:ring-0 w-full max-w-xs md:max-w-md text-center"
+								className="text-xl font-semibold bg-transparent border-none text-foreground focus-visible:ring-0 w-full max-w-xs md:max-w-md text-center"
 							/>
 						</div>
 
@@ -478,7 +478,9 @@ export function RoutineBuilder() {
 					<div className="lg:col-span-2">
 						<div className="mb-4 flex items-center justify-between">
 							<div>
-								<h2 className="text-xl font-semibold text-white">Exercises</h2>
+								<h2 className="text-xl font-semibold text-foreground">
+									Exercises
+								</h2>
 								<p className="text-sm text-muted-foreground">
 									{exercises.length} exercises • ~{Math.round(totalDuration)}{" "}
 									min
@@ -547,7 +549,7 @@ export function RoutineBuilder() {
 													size="sm"
 													variant="ghost"
 													onClick={() => handleUngroupSuperset(item.id)}
-													className="text-muted-foreground hover:text-white"
+													className="text-muted-foreground hover:text-foreground"
 												>
 													Ungroup
 												</Button>
@@ -683,14 +685,14 @@ export function RoutineBuilder() {
 			<Dialog open={showPreview} onOpenChange={setShowPreview}>
 				<DialogContent className="bg-surface-2 border-secondary">
 					<DialogHeader>
-						<DialogTitle className="text-white">{routineName}</DialogTitle>
+						<DialogTitle className="text-foreground">{routineName}</DialogTitle>
 						<DialogDescription>Routine summary</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4">
 						<div className="grid grid-cols-2 gap-4">
 							<div className="p-3 bg-background rounded-lg border border-secondary">
 								<div className="text-sm text-muted-foreground">Exercises</div>
-								<div className="text-2xl font-bold text-white">
+								<div className="text-2xl font-bold text-foreground">
 									{exercises.length}
 								</div>
 							</div>
@@ -698,7 +700,7 @@ export function RoutineBuilder() {
 								<div className="text-sm text-muted-foreground">
 									Est. Duration
 								</div>
-								<div className="text-2xl font-bold text-white">
+								<div className="text-2xl font-bold text-foreground">
 									~{Math.round(totalDuration)} min
 								</div>
 							</div>
@@ -710,7 +712,7 @@ export function RoutineBuilder() {
 									className="flex items-center justify-between p-2 bg-background rounded-lg border border-secondary"
 								>
 									<div>
-										<div className="font-medium text-white text-sm">
+										<div className="font-medium text-foreground text-sm">
 											{ex.name}
 										</div>
 										<div className="text-xs text-muted-foreground">
@@ -788,7 +790,7 @@ function SortableExerciseItem({
 						<div
 							className={`flex h-5 w-5 items-center justify-center rounded border text-xs ${
 								isSelectionSelected
-									? "border-primary bg-primary text-white"
+									? "border-primary bg-primary text-foreground"
 									: "border-secondary text-muted-foreground"
 							}`}
 						>
@@ -806,9 +808,9 @@ function SortableExerciseItem({
 
 					<div className="flex-1">
 						<div className="flex items-center gap-2 mb-1">
-							<h3 className="font-semibold text-white">{exercise.name}</h3>
+							<h3 className="font-semibold text-foreground">{exercise.name}</h3>
 							<Badge
-								className={`${getMuscleGroupColor(exercise.muscleGroup)} text-white border-0 text-xs`}
+								className={`${getMuscleGroupColor(exercise.muscleGroup)} text-foreground border-0 text-xs`}
 							>
 								{exercise.muscleGroup}
 							</Badge>
@@ -939,14 +941,14 @@ function ExerciseDetailPanel({
 		>
 			<Card className="p-6 bg-surface-2 border-secondary sticky top-24">
 				<div className="flex items-center justify-between mb-6">
-					<h3 className="text-lg font-semibold text-white">
+					<h3 className="text-lg font-semibold text-foreground">
 						Exercise Settings
 					</h3>
 					<Button
 						size="sm"
 						variant="ghost"
 						onClick={onClose}
-						className="text-muted-foreground hover:text-white"
+						className="text-muted-foreground hover:text-foreground"
 					>
 						<X className="w-4 h-4" />
 					</Button>
@@ -956,7 +958,7 @@ function ExerciseDetailPanel({
 					<div className="space-y-4 rounded-lg border border-secondary/70 bg-background/60 p-4">
 						<div className="flex items-center justify-between">
 							<div>
-								<Label className="text-white">Bodyweight</Label>
+								<Label className="text-foreground">Bodyweight</Label>
 								<p className="text-xs text-muted-foreground">
 									Hides external load and stores this movement as
 									bodyweight-only.
@@ -976,7 +978,7 @@ function ExerciseDetailPanel({
 
 						<div className="flex items-center justify-between gap-4">
 							<div>
-								<Label className="text-white">Exercise Type</Label>
+								<Label className="text-foreground">Exercise Type</Label>
 								<p className="text-xs text-muted-foreground">
 									Switch between rep-based and duration-based prescriptions.
 								</p>
@@ -986,7 +988,9 @@ function ExerciseDetailPanel({
 									size="sm"
 									variant={!isDurationBased ? "default" : "outline"}
 									onClick={() => onUpdate({ durationSeconds: null })}
-									className={!isDurationBased ? "bg-primary text-white" : ""}
+									className={
+										!isDurationBased ? "bg-primary text-foreground" : ""
+									}
 								>
 									Reps
 								</Button>
@@ -998,7 +1002,9 @@ function ExerciseDetailPanel({
 											durationSeconds: exercise.durationSeconds ?? 30,
 										})
 									}
-									className={isDurationBased ? "bg-primary text-white" : ""}
+									className={
+										isDurationBased ? "bg-primary text-foreground" : ""
+									}
 								>
 									Duration
 								</Button>
@@ -1007,7 +1013,7 @@ function ExerciseDetailPanel({
 
 						<div className="flex items-center justify-between">
 							<div>
-								<Label className="text-white">AMRAP</Label>
+								<Label className="text-foreground">AMRAP</Label>
 								<p className="text-xs text-muted-foreground">
 									Marks the set target as as many reps as possible.
 								</p>
@@ -1022,7 +1028,7 @@ function ExerciseDetailPanel({
 							<div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
 								<div className="mb-2 flex items-center justify-between">
 									<div>
-										<Label className="text-white">Superset Group</Label>
+										<Label className="text-foreground">Superset Group</Label>
 										<p className="text-xs text-muted-foreground">
 											This exercise is currently grouped with other movements.
 										</p>
@@ -1087,7 +1093,7 @@ function ExerciseDetailPanel({
 															})
 														: updatePerSetReps(i, e.target.value)
 												}
-												className="bg-background border-secondary text-white"
+												className="bg-background border-secondary text-foreground"
 												placeholder={isDurationBased ? "30" : "10"}
 											/>
 										)}
@@ -1102,7 +1108,7 @@ function ExerciseDetailPanel({
 												step={unit === "lbs" ? "0.5" : "1"}
 												value={getDisplayWeight(weightValues[i] ?? 0, unit)}
 												onChange={(e) => updatePerSetWeight(i, e.target.value)}
-												className="bg-background border-secondary text-white"
+												className="bg-background border-secondary text-foreground"
 												placeholder={unit === "lbs" ? "45.0" : "20"}
 											/>
 										</div>
@@ -1115,7 +1121,7 @@ function ExerciseDetailPanel({
 											type="number"
 											value={restValues[i] ?? 0}
 											onChange={(e) => updatePerSetRest(i, e.target.value)}
-											className="bg-background border-secondary text-white"
+											className="bg-background border-secondary text-foreground"
 											placeholder="90"
 										/>
 									</div>
@@ -1152,7 +1158,7 @@ function ExerciseDetailPanel({
 						<select
 							value={exercise.mode}
 							onChange={(e) => onUpdate({ mode: e.target.value })}
-							className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+							className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
 						>
 							<option>Old School</option>
 							<option>Pump</option>
@@ -1177,7 +1183,7 @@ function ExerciseDetailPanel({
 					</div>
 
 					<Collapsible>
-						<CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border border-secondary px-4 py-3 text-sm text-muted-foreground transition-colors hover:text-white">
+						<CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border border-secondary px-4 py-3 text-sm text-muted-foreground transition-colors hover:text-foreground">
 							<span>Advanced Settings</span>
 							<ChevronDown className="h-4 w-4" />
 						</CollapsibleTrigger>
@@ -1194,7 +1200,7 @@ function ExerciseDetailPanel({
 												eccentricLoad: e.target.value || null,
 											})
 										}
-										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
 									>
 										<option value="">Standard</option>
 										<option value="light">Light</option>
@@ -1211,7 +1217,7 @@ function ExerciseDetailPanel({
 										onChange={(e) =>
 											onUpdate({ echoLevel: e.target.value || null })
 										}
-										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
 									>
 										<option value="">Off</option>
 										<option value="low">Low</option>
@@ -1230,7 +1236,7 @@ function ExerciseDetailPanel({
 												repCountTiming: e.target.value || null,
 											})
 										}
-										className="bg-background border-secondary text-white"
+										className="bg-background border-secondary text-foreground"
 										placeholder="2-0-2"
 									/>
 								</div>
@@ -1245,7 +1251,7 @@ function ExerciseDetailPanel({
 												stopAtPosition: e.target.value || null,
 											})
 										}
-										className="bg-background border-secondary text-white"
+										className="bg-background border-secondary text-foreground"
 										placeholder="Lockout"
 									/>
 								</div>
@@ -1253,7 +1259,7 @@ function ExerciseDetailPanel({
 
 							<div className="flex items-center justify-between rounded-lg border border-secondary/70 bg-background/60 px-4 py-3">
 								<div>
-									<Label className="text-white">Stall Detection</Label>
+									<Label className="text-foreground">Stall Detection</Label>
 									<p className="text-xs text-muted-foreground">
 										Flag stalled reps in synced session playback.
 									</p>
@@ -1353,7 +1359,9 @@ function ExercisePickerModal({
 			>
 				<div className="p-6 border-b border-secondary">
 					<div className="flex items-center justify-between mb-4">
-						<h2 className="text-xl font-semibold text-white">Add Exercise</h2>
+						<h2 className="text-xl font-semibold text-foreground">
+							Add Exercise
+						</h2>
 						<Button size="sm" variant="ghost" onClick={onClose}>
 							<X className="w-4 h-4" />
 						</Button>
@@ -1366,7 +1374,7 @@ function ExercisePickerModal({
 							placeholder="Search exercises..."
 							value={searchQuery}
 							onChange={(e) => setSearchQuery(e.target.value)}
-							className="pl-9 bg-surface-2 border-secondary text-white placeholder:text-muted"
+							className="pl-9 bg-surface-2 border-secondary text-foreground placeholder:text-muted"
 						/>
 					</div>
 
@@ -1377,7 +1385,7 @@ function ExercisePickerModal({
 							onClick={() => setMuscleFilter(null)}
 							className={
 								!muscleFilter
-									? "bg-primary border-0 text-white flex-shrink-0"
+									? "bg-primary border-0 text-foreground flex-shrink-0"
 									: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
 							}
 						>
@@ -1392,7 +1400,7 @@ function ExercisePickerModal({
 								}
 								className={
 									muscleFilter === group
-										? "bg-primary border-0 text-white flex-shrink-0"
+										? "bg-primary border-0 text-foreground flex-shrink-0"
 										: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
 								}
 							>
@@ -1424,11 +1432,11 @@ function ExercisePickerModal({
 								>
 									<div className="flex items-center justify-between">
 										<div>
-											<h4 className="font-semibold text-white mb-1">
+											<h4 className="font-semibold text-foreground mb-1">
 												{exercise.name}
 											</h4>
 											<div className="flex gap-1.5 flex-wrap">
-												<Badge className="bg-primary text-white border-0 text-xs">
+												<Badge className="bg-primary text-foreground border-0 text-xs">
 													{exercise.muscleGroup}
 												</Badge>
 												{exercise.equipment.length > 0 && (

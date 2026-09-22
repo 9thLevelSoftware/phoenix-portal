@@ -62,7 +62,7 @@ export function ResetPassword() {
 					<div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
 						<Lock className="w-6 h-6 text-primary" />
 					</div>
-					<h1 className="text-2xl font-semibold text-white mb-1">
+					<h1 className="text-2xl font-semibold text-foreground mb-1">
 						Set new password
 					</h1>
 					<p className="text-sm text-muted-foreground">
@@ -81,7 +81,7 @@ export function ResetPassword() {
 							placeholder="At least 8 characters"
 							value={newPassword}
 							onChange={(e) => setNewPassword(e.target.value)}
-							className="bg-background border-secondary text-white placeholder:text-muted"
+							className="bg-background border-secondary text-foreground placeholder:text-muted"
 						/>
 					</div>
 
@@ -98,7 +98,7 @@ export function ResetPassword() {
 							placeholder="Confirm your new password"
 							value={confirmPassword}
 							onChange={(e) => setConfirmPassword(e.target.value)}
-							className="bg-background border-secondary text-white placeholder:text-muted"
+							className="bg-background border-secondary text-foreground placeholder:text-muted"
 						/>
 					</div>
 

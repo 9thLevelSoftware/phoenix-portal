@@ -37,8 +37,8 @@ export function ChartTooltipContent({
 			left={left}
 			style={{
 				...defaultStyles,
-				backgroundColor: CHART_COLORS.tooltipBg,
-				border: `1px solid ${CHART_COLORS.tooltipBorder}`,
+				backgroundColor: CHART_COLORS().tooltipBg,
+				border: `1px solid ${CHART_COLORS().tooltipBorder}`,
 				borderRadius: "6px",
 				padding: "8px 12px",
 				color: "var(--foreground)",
@@ -57,7 +57,7 @@ export function ChartTooltipContent({
 				{data.label}
 			</div>
 			<div
-				style={{ fontWeight: 600, color: data.color ?? CHART_COLORS.primary }}
+				style={{ fontWeight: 600, color: data.color ?? CHART_COLORS().primary }}
 			>
 				{data.value}
 			</div>

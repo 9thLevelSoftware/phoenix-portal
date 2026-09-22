@@ -115,7 +115,7 @@ function ChallengeProgressBar({
 		<div>
 			<div className="flex items-center justify-between mb-2 text-sm">
 				<span className="text-muted-foreground">Your Progress</span>
-				<span className="text-white font-data">{percentage}%</span>
+				<span className="text-foreground font-data">{percentage}%</span>
 			</div>
 			<Progress value={percentage} className="h-3" />
 			{progress && (
@@ -173,17 +173,19 @@ function ChallengeCard({
 									<div
 										className={`w-12 h-12 rounded-lg bg-gradient-to-br ${getDifficultyColor(challenge.difficulty)} flex items-center justify-center`}
 									>
-										<Flame className="w-6 h-6 text-white" />
+										<Flame className="w-6 h-6 text-foreground" />
 									</div>
 									<div>
-										<h3 className="text-xl text-white">{challenge.name}</h3>
+										<h3 className="text-xl text-foreground">
+											{challenge.name}
+										</h3>
 										<p className="text-sm text-muted-foreground">
 											{challenge.description}
 										</p>
 									</div>
 								</div>
 								<Badge
-									className={`${getDifficultyColor(challenge.difficulty)} text-white border-0`}
+									className={`${getDifficultyColor(challenge.difficulty)} text-foreground border-0`}
 								>
 									{challenge.difficulty.toUpperCase()}
 								</Badge>
@@ -206,7 +208,7 @@ function ChallengeCard({
 						<div className="grid grid-cols-2 md:grid-cols-3 gap-4">
 							<div>
 								<div className="text-xs text-muted-foreground mb-1">Target</div>
-								<div className="text-xl text-white font-data">
+								<div className="text-xl text-foreground font-data">
 									{challenge.target_value.toLocaleString()}{" "}
 									{challenge.target_unit}
 								</div>
@@ -221,7 +223,7 @@ function ChallengeCard({
 							</div>
 							<div>
 								<div className="text-xs text-muted-foreground mb-1">Type</div>
-								<div className="text-xl text-white capitalize">
+								<div className="text-xl text-foreground capitalize">
 									{challenge.challenge_type}
 								</div>
 							</div>
@@ -233,7 +235,7 @@ function ChallengeCard({
 						{challenge.prize && (
 							<div className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg">
 								<div className="text-xs text-muted-foreground mb-2">Prize</div>
-								<div className="text-white">{challenge.prize}</div>
+								<div className="text-foreground">{challenge.prize}</div>
 							</div>
 						)}
 						{isJoined ? (
@@ -413,7 +415,7 @@ function MobileChallengeCard({
 								: "🎯"}
 				</div>
 				<div className="flex-1 min-w-0">
-					<h3 className="text-white font-semibold mb-2 truncate">
+					<h3 className="text-foreground font-semibold mb-2 truncate">
 						{challenge.name}
 					</h3>
 
@@ -527,7 +529,7 @@ export function Challenges() {
 			<div className="block md:hidden">
 				{/* Mobile Header */}
 				<header className="px-4 py-4 border-b border-secondary">
-					<h1 className="text-2xl font-bold text-white">Challenges</h1>
+					<h1 className="text-2xl font-bold text-foreground">Challenges</h1>
 				</header>
 
 				{/* Mobile Tabs */}
@@ -613,7 +615,7 @@ export function Challenges() {
 					>
 						<AlertDialogContent className="bg-background border-secondary">
 							<AlertDialogHeader>
-								<AlertDialogTitle className="text-white">
+								<AlertDialogTitle className="text-foreground">
 									Leave challenge?
 								</AlertDialogTitle>
 								<AlertDialogDescription>
@@ -657,7 +659,7 @@ export function Challenges() {
 											key={challenge.id}
 											className="p-4 bg-surface-2 border-secondary"
 										>
-											<h3 className="text-white font-semibold mb-1">
+											<h3 className="text-foreground font-semibold mb-1">
 												{challenge.name}
 											</h3>
 											<p className="text-xs text-muted-foreground mb-2">
@@ -689,7 +691,7 @@ export function Challenges() {
 										key={challenge.id}
 										className="p-4 bg-surface-2 border-secondary"
 									>
-										<h3 className="text-white font-semibold mb-1">
+										<h3 className="text-foreground font-semibold mb-1">
 											{challenge.name}
 										</h3>
 										<p className="text-xs text-muted-foreground mb-3">
@@ -703,7 +705,7 @@ export function Challenges() {
 												type="button"
 												onClick={() => joinMutation.mutate(challenge.id)}
 												disabled={joinMutation.isPending}
-												className="px-4 py-1.5 text-sm font-medium rounded-lg bg-primary text-white"
+												className="px-4 py-1.5 text-sm font-medium rounded-lg bg-primary text-foreground"
 											>
 												{joinMutation.isPending ? (
 													<Loader2 className="w-4 h-4 animate-spin" />
@@ -725,7 +727,7 @@ export function Challenges() {
 				<PageShell>
 					{/* Desktop Header */}
 					<div className="mb-8">
-						<h1 className="text-display-2 mb-2 text-white">Challenges</h1>
+						<h1 className="text-display-2 mb-2 text-foreground">Challenges</h1>
 						<p className="text-muted-foreground">
 							Compete, conquer, and claim your glory
 						</p>
@@ -742,7 +744,7 @@ export function Challenges() {
 							{activeChallenges.length === 0 ? (
 								<div className="text-center py-16">
 									<Trophy className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-									<h3 className="text-xl font-semibold text-white mb-2">
+									<h3 className="text-xl font-semibold text-foreground mb-2">
 										No active challenges right now
 									</h3>
 									<p className="text-muted-foreground">
@@ -793,10 +795,10 @@ export function Challenges() {
 										>
 											<Card className="p-6 bg-surface-2 border-secondary h-full">
 												<div className="mb-4">
-													<h3 className="text-lg text-white mb-2">
+													<h3 className="text-lg text-foreground mb-2">
 														{challenge.name}
 													</h3>
-													<Badge className="bg-success text-white border-0">
+													<Badge className="bg-success text-foreground border-0">
 														Completed
 													</Badge>
 												</div>
@@ -808,7 +810,9 @@ export function Challenges() {
 														<div className="text-xs text-muted-foreground mb-1">
 															Reward Earned
 														</div>
-														<div className="text-white">{challenge.prize}</div>
+														<div className="text-foreground">
+															{challenge.prize}
+														</div>
 													</div>
 												)}
 											</Card>

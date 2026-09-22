@@ -55,7 +55,7 @@ export function ContentActionMenu({
 					<button
 						type="button"
 						onClick={(e) => e.stopPropagation()}
-						className="p-1 rounded-md text-muted-foreground hover:text-white hover:bg-[var(--surface-3)] transition-colors"
+						className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-[var(--surface-3)] transition-colors"
 						aria-label="Content actions"
 					>
 						<MoreVertical className="w-4 h-4" />
@@ -133,7 +133,7 @@ export function ContentActionMenu({
 			<AlertDialog open={showBlockConfirm} onOpenChange={setShowBlockConfirm}>
 				<AlertDialogContent className="bg-background border-secondary">
 					<AlertDialogHeader>
-						<AlertDialogTitle className="text-white">
+						<AlertDialogTitle className="text-foreground">
 							Block this user?
 						</AlertDialogTitle>
 						<AlertDialogDescription>

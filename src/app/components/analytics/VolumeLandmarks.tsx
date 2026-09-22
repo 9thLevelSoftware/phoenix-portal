@@ -69,7 +69,7 @@ function RecommendationCallout({ recommendation }: RecommendationCalloutProps) {
 				)}
 			</span>
 			<div className="min-w-0">
-				<p className="font-medium text-white leading-snug">
+				<p className="font-medium text-foreground leading-snug">
 					{recommendation.title}
 				</p>
 				<p className="text-muted-foreground text-xs mt-0.5">
@@ -102,7 +102,7 @@ export function VolumeLandmarks({
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
 			<div className="flex items-center justify-between mb-5">
-				<h3 className="text-xl text-white">Weekly Volume Landmarks</h3>
+				<h3 className="text-xl text-foreground">Weekly Volume Landmarks</h3>
 				{typeof totalSessions === "number" && totalSessions < 3 && (
 					<span className="text-xs text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded px-2 py-1">
 						Accuracy improves with more training history
@@ -174,7 +174,7 @@ export function VolumeLandmarks({
 								>
 									{/* Muscle group name */}
 									<span
-										className="text-sm text-white shrink-0 text-right"
+										className="text-sm text-foreground shrink-0 text-right"
 										style={{ width: 70 }}
 									>
 										{landmark.muscleGroup}

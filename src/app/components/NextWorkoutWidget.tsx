@@ -45,7 +45,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 		return (
 			<Card className="p-6 bg-surface-2 border-secondary" data-print-hide>
 				<div className="flex items-center justify-between mb-4">
-					<h3 className="text-xl text-white">Today's Workout</h3>
+					<h3 className="text-xl text-foreground">Today's Workout</h3>
 				</div>
 				<div className="flex flex-col items-center justify-center py-6 text-center">
 					<Calendar className="w-10 h-10 text-secondary mb-3" />
@@ -69,7 +69,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 		return (
 			<Card className="p-6 bg-surface-2 border-secondary" data-print-hide>
 				<div className="flex items-center justify-between mb-4">
-					<h3 className="text-xl text-white">Today's Workout</h3>
+					<h3 className="text-xl text-foreground">Today's Workout</h3>
 					<Badge className="bg-secondary text-muted-foreground border-0">
 						{cycleDetail.name}
 					</Badge>
@@ -93,8 +93,10 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 				data-print-hide
 			>
 				<div className="flex items-center justify-between mb-4">
-					<h3 className="text-xl text-white">Today's Schedule</h3>
-					<Badge className="bg-success text-white border-0">Rest Day</Badge>
+					<h3 className="text-xl text-foreground">Today's Schedule</h3>
+					<Badge className="bg-success text-foreground border-0">
+						Rest Day
+					</Badge>
 				</div>
 				<div className="space-y-4">
 					<div className="flex items-center gap-3">
@@ -134,8 +136,10 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 			data-print-hide
 		>
 			<div className="flex items-center justify-between mb-4">
-				<h3 className="text-xl text-white">Today's Workout</h3>
-				<Badge className="bg-success text-white border-0">Active Cycle</Badge>
+				<h3 className="text-xl text-foreground">Today's Workout</h3>
+				<Badge className="bg-success text-foreground border-0">
+					Active Cycle
+				</Badge>
 			</div>
 			<div className="space-y-4">
 				<div className="flex items-center gap-3">
@@ -151,7 +155,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 				</div>
 				<div className="p-3 bg-background rounded-lg border border-secondary">
 					<p className="text-sm text-muted-foreground mb-1">Routine</p>
-					<p className="text-white font-semibold">
+					<p className="text-foreground font-semibold">
 						{result.routineId ? (
 							<RoutineName routineId={result.routineId} />
 						) : (

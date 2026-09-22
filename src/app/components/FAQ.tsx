@@ -225,7 +225,7 @@ export function FAQ() {
 	const navigate = useNavigate();
 
 	return (
-		<div className="min-h-screen bg-background text-white">
+		<div className="min-h-screen bg-background text-foreground">
 			{/* Header */}
 			<header className="sticky top-0 z-50 bg-surface-1 border-b border-secondary">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -270,7 +270,7 @@ export function FAQ() {
 					<article className="space-y-10">
 						{faqCategories.map((category) => (
 							<section key={category.title}>
-								<h2 className="text-2xl font-semibold text-white mb-4">
+								<h2 className="text-2xl font-semibold text-foreground mb-4">
 									{category.title}
 								</h2>
 								<Accordion type="single" collapsible className="w-full">
@@ -307,7 +307,9 @@ export function FAQ() {
 										<div className="flex items-start gap-3">
 											<ExternalLink className="w-5 h-5 text-primary mt-0.5 shrink-0" />
 											<div>
-												<p className="font-medium text-white">GitHub Issues</p>
+												<p className="font-medium text-foreground">
+													GitHub Issues
+												</p>
 												<p className="text-muted-foreground text-sm">
 													For bug reports, feature requests, and technical
 													support, open an issue on our GitHub repository. This
@@ -328,7 +330,7 @@ export function FAQ() {
 										<div className="flex items-start gap-3">
 											<MessageSquare className="w-5 h-5 text-primary mt-0.5 shrink-0" />
 											<div>
-												<p className="font-medium text-white">Community</p>
+												<p className="font-medium text-foreground">Community</p>
 												<p className="text-muted-foreground text-sm">
 													For workout-related questions, training advice, and
 													routine sharing, check out the Community section

@@ -142,7 +142,7 @@ function QuickStatCard({
 				>
 					{icon}
 				</div>
-				<div className="text-2xl font-bold text-white mb-1 font-data">
+				<div className="text-2xl font-bold text-foreground mb-1 font-data">
 					{numericValue != null ? (
 						<NumberFlow value={numericValue} className="tabular-nums" />
 					) : (
@@ -171,7 +171,7 @@ function MobileRecentActivityCard({
 	return (
 		<Card className="p-4 signal-panel active:scale-[0.98] transition-transform">
 			<div className="flex items-center justify-between mb-2">
-				<h4 className="font-semibold text-white">{title}</h4>
+				<h4 className="font-semibold text-foreground">{title}</h4>
 				<span className="text-xs text-muted-foreground">{time}</span>
 			</div>
 			<div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -285,7 +285,7 @@ function ActiveChallengesSection({ userId }: { userId: string }) {
 					>
 						<div className="mb-3 flex items-start justify-between gap-3">
 							<div>
-								<h4 className="text-sm font-semibold text-white">
+								<h4 className="text-sm font-semibold text-foreground">
 									{challenge.name}
 								</h4>
 								<p className="text-xs text-muted-foreground">
@@ -397,9 +397,9 @@ export function Dashboard() {
 						className="text-center mb-10"
 					>
 						<div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
-							<Flame className="w-8 h-8 text-primary" fill={PHOENIX.ember} />
+							<Flame className="w-8 h-8 text-primary" fill={PHOENIX().ember} />
 						</div>
-						<h1 className="text-display-2 mb-3 text-white">
+						<h1 className="text-display-2 mb-3 text-foreground">
 							Welcome to Phoenix Portal
 						</h1>
 						<p className="text-muted-foreground max-w-xs mx-auto">
@@ -417,10 +417,10 @@ export function Dashboard() {
 							<Card className="p-5 signal-panel">
 								<div className="flex items-center gap-4">
 									<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-										<TrendingUp className="w-5 h-5 text-white" />
+										<TrendingUp className="w-5 h-5 text-foreground" />
 									</div>
 									<div>
-										<h3 className="font-semibold text-white">
+										<h3 className="font-semibold text-foreground">
 											Track your progress
 										</h3>
 										<p className="text-xs text-muted-foreground">
@@ -440,10 +440,10 @@ export function Dashboard() {
 								<Card className="p-5 signal-panel">
 									<div className="flex items-center gap-4">
 										<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center flex-shrink-0">
-											<Dumbbell className="w-5 h-5 text-white" />
+											<Dumbbell className="w-5 h-5 text-foreground" />
 										</div>
 										<div>
-											<h3 className="font-semibold text-white">
+											<h3 className="font-semibold text-foreground">
 												Build custom routines
 											</h3>
 											<p className="text-xs text-muted-foreground">
@@ -465,10 +465,10 @@ export function Dashboard() {
 								<Card className="p-5 signal-panel">
 									<div className="flex items-center gap-4">
 										<div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
-											<Trophy className="w-5 h-5 text-white" />
+											<Trophy className="w-5 h-5 text-foreground" />
 										</div>
 										<div>
-											<h3 className="font-semibold text-white">
+											<h3 className="font-semibold text-foreground">
 												Join challenges
 											</h3>
 											<p className="text-xs text-muted-foreground">
@@ -493,7 +493,7 @@ export function Dashboard() {
 						<div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
 							<Flame className="w-10 h-10 text-primary" />
 						</div>
-						<h1 className="text-display-1 mb-4 text-white">
+						<h1 className="text-display-1 mb-4 text-foreground">
 							Welcome to Phoenix Portal
 						</h1>
 						<p className="text-xl text-muted-foreground max-w-xl mx-auto">
@@ -511,9 +511,9 @@ export function Dashboard() {
 						<motion.div variants={fadeUp}>
 							<Card className="p-6 signal-panel h-full">
 								<div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center mb-4">
-									<TrendingUp className="w-6 h-6 text-white" />
+									<TrendingUp className="w-6 h-6 text-foreground" />
 								</div>
-								<h3 className="text-lg font-semibold text-white mb-2">
+								<h3 className="text-lg font-semibold text-foreground mb-2">
 									Track your progress
 								</h3>
 								<p className="text-sm text-muted-foreground">
@@ -527,9 +527,9 @@ export function Dashboard() {
 							<Link to="/routines/new" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
-										<Dumbbell className="w-6 h-6 text-white" />
+										<Dumbbell className="w-6 h-6 text-foreground" />
 									</div>
-									<h3 className="text-lg font-semibold text-white mb-2">
+									<h3 className="text-lg font-semibold text-foreground mb-2">
 										Build custom routines
 									</h3>
 									<p className="text-sm text-muted-foreground">
@@ -544,9 +544,9 @@ export function Dashboard() {
 							<Link to="/challenges" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center mb-4">
-										<Trophy className="w-6 h-6 text-white" />
+										<Trophy className="w-6 h-6 text-foreground" />
 									</div>
-									<h3 className="text-lg font-semibold text-white mb-2">
+									<h3 className="text-lg font-semibold text-foreground mb-2">
 										Join challenges
 									</h3>
 									<p className="text-sm text-muted-foreground">
@@ -570,7 +570,9 @@ export function Dashboard() {
 				<div className="sticky top-0 z-40 bg-surface-1 border-b border-secondary px-4 py-4">
 					<div className="flex items-center justify-between">
 						<div>
-							<h1 className="text-2xl font-bold text-white">Welcome back!</h1>
+							<h1 className="text-2xl font-bold text-foreground">
+								Welcome back!
+							</h1>
 							<p className="text-sm text-muted-foreground">Let's crush today</p>
 						</div>
 					</div>
@@ -602,11 +604,11 @@ export function Dashboard() {
 								>
 									<Flame
 										className="w-16 h-16 text-primary"
-										fill={PHOENIX.ember}
+										fill={PHOENIX().ember}
 									/>
 								</motion.div>
 								<div className="flex-1">
-									<div className="text-4xl font-bold text-white mb-1 font-data">
+									<div className="text-4xl font-bold text-foreground mb-1 font-data">
 										<NumberFlow value={streak ?? 0} className="tabular-nums" />{" "}
 										{streak === 1 ? "Day" : "Days"}
 									</div>
@@ -638,7 +640,7 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.2 }}
 					>
-						<h2 className="text-lg font-semibold text-white mb-3">
+						<h2 className="text-lg font-semibold text-foreground mb-3">
 							Today's Workout
 						</h2>
 						{activeCycle ? (
@@ -670,7 +672,7 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.3 }}
 					>
-						<h2 className="text-lg font-semibold text-white mb-3">
+						<h2 className="text-lg font-semibold text-foreground mb-3">
 							Quick Stats
 						</h2>
 						{workoutsLoading ? (
@@ -737,7 +739,9 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.4 }}
 					>
-						<h2 className="text-lg font-semibold text-white mb-3">This Week</h2>
+						<h2 className="text-lg font-semibold text-foreground mb-3">
+							This Week
+						</h2>
 						{statsLoading ? (
 							<Card className="p-5 signal-panel">
 								<Skeleton className="h-8 w-32 mb-1" />
@@ -759,7 +763,7 @@ export function Dashboard() {
 						) : (
 							<Card className="p-5 signal-panel">
 								<div className="mb-4">
-									<div className="text-3xl font-bold text-white mb-1 font-data">
+									<div className="text-3xl font-bold text-foreground mb-1 font-data">
 										{formatVolume(weeklyTotal, unit)}
 									</div>
 									<div className="text-sm text-success flex items-center gap-1">
@@ -817,7 +821,7 @@ export function Dashboard() {
 						transition={{ delay: 0.5 }}
 					>
 						<div className="flex items-center justify-between mb-3">
-							<h2 className="text-lg font-semibold text-white">
+							<h2 className="text-lg font-semibold text-foreground">
 								Recent Activity
 							</h2>
 							<Link
@@ -921,11 +925,11 @@ export function Dashboard() {
 									>
 										<Flame
 											className="w-16 h-16 text-primary"
-											fill={PHOENIX.ember}
+											fill={PHOENIX().ember}
 										/>
 									</motion.div>
 									<div>
-										<h3 className="text-3xl font-bold mb-1 text-white font-data">
+										<h3 className="text-3xl font-bold mb-1 text-foreground font-data">
 											<NumberFlow
 												value={streak ?? 0}
 												className="tabular-nums"
@@ -950,7 +954,7 @@ export function Dashboard() {
 							className="col-span-1 lg:col-span-7"
 						>
 							<div className="signal-panel p-6 h-full">
-								<h3 className="text-lg font-medium mb-6 text-white">
+								<h3 className="text-lg font-medium mb-6 text-foreground">
 									Quick Stats
 								</h3>
 								{workoutsLoading ? (
@@ -975,7 +979,7 @@ export function Dashboard() {
 												<div className="text-sm text-muted-foreground mb-1">
 													Total Workouts
 												</div>
-												<div className="text-2xl font-semibold text-white font-data">
+												<div className="text-2xl font-semibold text-foreground font-data">
 													<NumberFlow
 														value={workouts?.length ?? 0}
 														className="tabular-nums"
@@ -991,7 +995,7 @@ export function Dashboard() {
 												<div className="text-sm text-muted-foreground mb-1">
 													Phase PRs
 												</div>
-												<div className="text-2xl font-semibold text-white font-data">
+												<div className="text-2xl font-semibold text-foreground font-data">
 													<NumberFlow
 														value={recentPRs?.length ?? 0}
 														className="tabular-nums"
@@ -1007,7 +1011,7 @@ export function Dashboard() {
 												<div className="text-sm text-muted-foreground mb-1">
 													Badges Earned
 												</div>
-												<div className="text-2xl font-semibold text-white font-data">
+												<div className="text-2xl font-semibold text-foreground font-data">
 													{badgesLoading ? "..." : (earnedBadges?.length ?? 0)}
 												</div>
 											</div>
@@ -1020,7 +1024,7 @@ export function Dashboard() {
 												<div className="text-sm text-muted-foreground mb-1">
 													Weekly Volume
 												</div>
-												<div className="text-2xl font-semibold text-white font-data">
+												<div className="text-2xl font-semibold text-foreground font-data">
 													{formatVolume(weeklyTotal, unit)}
 												</div>
 											</div>
@@ -1044,7 +1048,7 @@ export function Dashboard() {
 							) : (
 								<div className="signal-panel p-6 flex flex-col items-center justify-center text-center h-full">
 									<Calendar className="w-12 h-12 text-primary mb-4 opacity-80" />
-									<h3 className="text-xl font-medium text-white mb-6">
+									<h3 className="text-xl font-medium text-foreground mb-6">
 										Scheduled
 										<br />
 										Workout
@@ -1070,7 +1074,7 @@ export function Dashboard() {
 								<ChartSkeleton />
 							) : (
 								<div className="signal-panel p-6 flex flex-col h-full">
-									<h3 className="text-lg font-medium mb-6 text-white">
+									<h3 className="text-lg font-medium mb-6 text-foreground">
 										Weekly Volume
 									</h3>
 									{weeklyTotal === 0 ? (
@@ -1151,7 +1155,7 @@ export function Dashboard() {
 							>
 								<Card className="p-5 signal-panel">
 									<div className="flex items-center justify-between mb-4">
-										<h3 className="text-xl text-white">Recent Activity</h3>
+										<h3 className="text-xl text-foreground">Recent Activity</h3>
 										<Button
 											variant="ghost"
 											className="text-primary hover:bg-primary/10"
@@ -1188,7 +1192,9 @@ export function Dashboard() {
 												>
 													<div className="flex-1">
 														<div className="flex items-center gap-2 mb-1">
-															<h4 className="text-white">{workout.name}</h4>
+															<h4 className="text-foreground">
+																{workout.name}
+															</h4>
 															{workout.pr_count > 0 && (
 																<Badge className="bg-accent text-background border-0 text-xs">
 																	{workout.pr_count} PR
@@ -1223,7 +1229,7 @@ export function Dashboard() {
 									transition={{ delay: 0.45 }}
 								>
 									<Card className="p-5 signal-panel">
-										<h3 className="text-xl text-white mb-6">
+										<h3 className="text-xl text-foreground mb-6">
 											Volume Breakdown
 										</h3>
 										<ResponsiveContainer width="100%" height={200}>
@@ -1238,12 +1244,12 @@ export function Dashboard() {
 													>
 														<stop
 															offset="5%"
-															stopColor={PHOENIX.ember}
+															stopColor={PHOENIX().ember}
 															stopOpacity={0.8}
 														/>
 														<stop
 															offset="95%"
-															stopColor={PHOENIX.flameRed}
+															stopColor={PHOENIX().flameRed}
 															stopOpacity={0.1}
 														/>
 													</linearGradient>
@@ -1251,7 +1257,7 @@ export function Dashboard() {
 												<CartesianGrid strokeOpacity={0.3} vertical={false} />
 												<XAxis
 													dataKey="day"
-													stroke={PHOENIX.mutedForeground}
+													stroke={PHOENIX().mutedForeground}
 													tickLine={false}
 													axisLine={false}
 													tick={{
@@ -1260,7 +1266,7 @@ export function Dashboard() {
 													}}
 												/>
 												<YAxis
-													stroke={PHOENIX.mutedForeground}
+													stroke={PHOENIX().mutedForeground}
 													tickLine={false}
 													axisLine={false}
 													tick={{
@@ -1272,7 +1278,7 @@ export function Dashboard() {
 												<Area
 													type="monotone"
 													dataKey="volume"
-													stroke={PHOENIX.ember}
+													stroke={PHOENIX().ember}
 													strokeWidth={2}
 													fill="url(#volumeGradient)"
 													animationDuration={800}
@@ -1303,7 +1309,7 @@ export function Dashboard() {
 							{/* Recent PRs */}
 							<motion.div variants={fadeUp}>
 								<Card className="p-5 signal-panel">
-									<h3 className="text-xl text-white mb-4 flex items-center gap-2">
+									<h3 className="text-xl text-foreground mb-4 flex items-center gap-2">
 										<Trophy className="w-5 h-5 text-accent" />
 										Recent PRs
 									</h3>
@@ -1334,7 +1340,9 @@ export function Dashboard() {
 													className="p-3 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg"
 												>
 													<div className="flex items-center justify-between mb-1">
-														<h4 className="text-white">{pr.exercise_name}</h4>
+														<h4 className="text-foreground">
+															{pr.exercise_name}
+														</h4>
 														<Badge className="bg-accent text-background border-0">
 															NEW
 														</Badge>
@@ -1362,7 +1370,9 @@ export function Dashboard() {
 							{/* Active Challenges */}
 							<motion.div variants={fadeUp}>
 								<Card className="p-5 signal-panel">
-									<h3 className="text-xl text-white mb-4">Active Challenges</h3>
+									<h3 className="text-xl text-foreground mb-4">
+										Active Challenges
+									</h3>
 									<ActiveChallengesSection userId={user?.id ?? ""} />
 								</Card>
 							</motion.div>
@@ -1370,7 +1380,9 @@ export function Dashboard() {
 							{/* Badge Showcase */}
 							<motion.div variants={fadeUp}>
 								<Card className="p-5 signal-panel">
-									<h3 className="text-xl text-white mb-4">Recent Badges</h3>
+									<h3 className="text-xl text-foreground mb-4">
+										Recent Badges
+									</h3>
 									{badgesLoading ? (
 										<div className="space-y-3">
 											{["sk-a", "sk-b", "sk-c"].map((k) => (
@@ -1403,7 +1415,7 @@ export function Dashboard() {
 												>
 													<div className="flex items-center justify-between gap-3">
 														<div>
-															<div className="text-white">
+															<div className="text-foreground">
 																{badge.badge_name}
 															</div>
 															<div className="text-xs text-muted-foreground">

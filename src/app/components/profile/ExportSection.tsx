@@ -108,7 +108,7 @@ export function ExportSection() {
 	return (
 		<Card className="bg-surface-2 border-secondary">
 			<CardHeader>
-				<CardTitle className="flex items-center gap-2 text-white">
+				<CardTitle className="flex items-center gap-2 text-foreground">
 					<FileSpreadsheet className="h-5 w-5 text-primary" />
 					Export Data
 				</CardTitle>
@@ -122,7 +122,7 @@ export function ExportSection() {
 						variant="outline"
 						onClick={handleExportWorkouts}
 						disabled={workoutsLoading || exporting !== null}
-						className="flex-1 border-secondary text-white hover:bg-secondary/50"
+						className="flex-1 border-secondary text-foreground hover:bg-secondary/50"
 					>
 						{exporting === "workouts" ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -137,7 +137,7 @@ export function ExportSection() {
 						variant="outline"
 						onClick={handleExportRecords}
 						disabled={recordsLoading || exporting !== null}
-						className="flex-1 border-secondary text-white hover:bg-secondary/50"
+						className="flex-1 border-secondary text-foreground hover:bg-secondary/50"
 					>
 						{exporting === "records" ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -155,7 +155,7 @@ export function ExportSection() {
 				</p>
 
 				<div className="border-t border-secondary pt-4 mt-4">
-					<p className="text-sm font-medium text-white mb-2">
+					<p className="text-sm font-medium text-foreground mb-2">
 						Complete Data Export
 					</p>
 					<p className="text-xs text-muted-foreground mb-3">

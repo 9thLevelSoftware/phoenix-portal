@@ -47,7 +47,7 @@ export function RoutinePickerModal({
 						<Card className="bg-surface-2 border-secondary">
 							{/* Header */}
 							<div className="flex items-center justify-between p-6 border-b border-secondary">
-								<h2 className="text-xl font-semibold text-white">
+								<h2 className="text-xl font-semibold text-foreground">
 									Select Routine
 								</h2>
 								<Button variant="ghost" size="sm" onClick={onClose}>
@@ -84,10 +84,10 @@ export function RoutinePickerModal({
 												<div className="flex items-center justify-between">
 													<div className="flex items-center gap-3">
 														<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-															<Dumbbell className="w-5 h-5 text-white" />
+															<Dumbbell className="w-5 h-5 text-foreground" />
 														</div>
 														<div>
-															<div className="font-semibold text-white">
+															<div className="font-semibold text-foreground">
 																{routine.name}
 															</div>
 															<div className="text-sm text-muted-foreground">
@@ -123,7 +123,7 @@ export function RoutinePickerModal({
 											>
 												<div className="flex items-center justify-between">
 													<div>
-														<div className="font-semibold text-white">
+														<div className="font-semibold text-foreground">
 															{routine.name}
 														</div>
 														<div className="text-sm text-muted-foreground">

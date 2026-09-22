@@ -128,12 +128,12 @@ function AnalyticsTabSkeleton() {
 }
 
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
-	Chest: PHOENIX.ember,
-	Back: PHOENIX.flameRed,
-	Legs: PHOENIX.gold,
-	Shoulders: PHOENIX.forgeGreen,
-	Arms: PHOENIX.ashGray,
-	Core: PHOENIX.flameYellow,
+	Chest: PHOENIX().ember,
+	Back: PHOENIX().flameRed,
+	Legs: PHOENIX().gold,
+	Shoulders: PHOENIX().forgeGreen,
+	Arms: PHOENIX().ashGray,
+	Core: PHOENIX().flameYellow,
 };
 
 // Map old tab names to new tab names for backward compatibility
@@ -228,7 +228,10 @@ function convertStrengthSeriesPoint(
 	) as Record<string, string | number>;
 }
 
-const EXERCISE_COLORS = [PHOENIX.ember, PHOENIX.flameRed, PHOENIX.gold];
+function getExerciseColors(): string[] {
+	const phoenix = PHOENIX();
+	return [phoenix.ember, phoenix.flameRed, phoenix.gold];
+}
 
 interface Insight {
 	type: "positive" | "warning" | "neutral";
@@ -372,9 +375,9 @@ function bucketByWeekMobile(
 }
 
 const MUSCLE_GROUP_COLORS_MOBILE: Record<string, string> = {
-	Chest: PHOENIX.ember,
-	Back: PHOENIX.gold,
-	Legs: PHOENIX.forgeGreen,
+	Chest: PHOENIX().ember,
+	Back: PHOENIX().gold,
+	Legs: PHOENIX().forgeGreen,
 	Shoulders: "var(--chart-5)",
 	Arms: "var(--chart-5)",
 	Core: "var(--chart-5)",
@@ -393,7 +396,7 @@ function MobileStatCard({ label, value, icon, delta }: MobileStatCardProps) {
 			<div className="flex flex-col">
 				<div className="text-muted-foreground text-xs mb-1">{label}</div>
 				<div className="flex items-center justify-between">
-					<span className="text-2xl font-bold text-white font-data">
+					<span className="text-2xl font-bold text-foreground font-data">
 						{value}
 					</span>
 					<div className="text-primary">{icon}</div>
@@ -677,7 +680,7 @@ export function Analytics() {
 	}));
 	const muscleGroupData = (muscleGroupRaw ?? []).map((m) => ({
 		...m,
-		color: MUSCLE_GROUP_COLORS[m.name] ?? PHOENIX.ashGray,
+		color: MUSCLE_GROUP_COLORS[m.name] ?? PHOENIX().ashGray,
 	}));
 
 	const muscleHighlighterData: ExtendedBodyPart[] = useMemo(() => {
@@ -842,12 +845,12 @@ export function Analytics() {
 				{
 					type: "value" as const,
 					name: `Volume (${unit})`,
-					nameTextStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
+					nameTextStyle: { color: CHART_COLORS().axisText, fontSize: 11 },
 				},
 				{
 					type: "value" as const,
 					name: "Sessions",
-					nameTextStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
+					nameTextStyle: { color: CHART_COLORS().axisText, fontSize: 11 },
 					splitLine: { show: false },
 				},
 			],
@@ -865,13 +868,13 @@ export function Analytics() {
 							x2: 0,
 							y2: 1,
 							colorStops: [
-								{ offset: 0, color: `${CHART_COLORS.primary}80` },
-								{ offset: 1, color: `${CHART_COLORS.primary}08` },
+								{ offset: 0, color: `${CHART_COLORS().primary}80` },
+								{ offset: 1, color: `${CHART_COLORS().primary}08` },
 							],
 						},
 					},
-					lineStyle: { color: CHART_COLORS.primary, width: 2 },
-					itemStyle: { color: CHART_COLORS.primary },
+					lineStyle: { color: CHART_COLORS().primary, width: 2 },
+					itemStyle: { color: CHART_COLORS().primary },
 				},
 				{
 					name: "Sessions",
@@ -880,7 +883,7 @@ export function Analytics() {
 					data: volumeData.map((d) => d.workouts),
 					barWidth: "40%",
 					itemStyle: {
-						color: `${CHART_COLORS.secondary}99`,
+						color: `${CHART_COLORS().secondary}99`,
 						borderRadius: [4, 4, 0, 0],
 					},
 				},
@@ -899,7 +902,7 @@ export function Analytics() {
 			},
 			legend: {
 				bottom: 0,
-				textStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
+				textStyle: { color: CHART_COLORS().axisText, fontSize: 11 },
 			},
 			series: [
 				{
@@ -937,19 +940,20 @@ export function Analytics() {
 	const strengthEChartsOption = useMemo(() => {
 		if (strengthProgressData.length === 0) return null;
 		const dates = strengthProgressData.map((d) => d.date as string);
+		const exerciseColors = getExerciseColors();
 		return {
 			tooltip: { trigger: "axis" as const },
 			legend: {
 				data: strengthExercises,
 				bottom: 0,
-				textStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
+				textStyle: { color: CHART_COLORS().axisText, fontSize: 11 },
 			},
 			grid: { ...ECHARTS_GRID, bottom: 60 },
 			xAxis: { type: "category" as const, data: dates },
 			yAxis: {
 				type: "value" as const,
 				name: unit,
-				nameTextStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
+				nameTextStyle: { color: CHART_COLORS().axisText, fontSize: 11 },
 			},
 			series: strengthSeries.series.map((item, i) => ({
 				name: item.name,
@@ -958,7 +962,7 @@ export function Analytics() {
 				smooth: true,
 				lineStyle: { width: 2 },
 				itemStyle: {
-					color: EXERCISE_COLORS[i % EXERCISE_COLORS.length],
+					color: exerciseColors[i % exerciseColors.length],
 				},
 				symbol: "circle",
 				symbolSize: 6,
@@ -979,7 +983,7 @@ export function Analytics() {
 			yAxis: {
 				type: "value" as const,
 				name: `Volume (${unit})`,
-				nameTextStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
+				nameTextStyle: { color: CHART_COLORS().axisText, fontSize: 11 },
 			},
 			series: [
 				{
@@ -995,13 +999,13 @@ export function Analytics() {
 							x2: 0,
 							y2: 1,
 							colorStops: [
-								{ offset: 0, color: `${CHART_COLORS.success}60` },
-								{ offset: 1, color: `${CHART_COLORS.success}08` },
+								{ offset: 0, color: `${CHART_COLORS().success}60` },
+								{ offset: 1, color: `${CHART_COLORS().success}08` },
 							],
 						},
 					},
-					lineStyle: { color: CHART_COLORS.success, width: 2 },
-					itemStyle: { color: CHART_COLORS.success },
+					lineStyle: { color: CHART_COLORS().success, width: 2 },
+					itemStyle: { color: CHART_COLORS().success },
 				},
 			],
 		};
@@ -1127,8 +1131,8 @@ export function Analytics() {
 	}));
 	const mobileMusclData = (muscleGroupRaw ?? []).map((m) => ({
 		...m,
-		color: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX.ashGray,
-		fill: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX.ashGray,
+		color: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX().ashGray,
+		fill: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX().ashGray,
 	}));
 	const mobileStrengthData = buildMobileStrengthPhaseData(
 		strengthRaw ?? [],
@@ -1197,7 +1201,7 @@ export function Analytics() {
 				{/* Compact Header */}
 				<div className="sticky top-0 bg-surface-1 z-10 px-4 py-3 border-b border-secondary">
 					<div className="flex items-center justify-between">
-						<h1 className="text-xl font-bold text-white">Analytics Hub</h1>
+						<h1 className="text-xl font-bold text-foreground">Analytics Hub</h1>
 						<div className="flex items-center gap-2">
 							<Select value={timePeriod} onValueChange={setTimePeriod}>
 								<SelectTrigger className="w-20 h-8 text-sm bg-surface-2 border-secondary">
@@ -1213,7 +1217,7 @@ export function Analytics() {
 							</Select>
 							<button
 								type="button"
-								className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-white transition-colors"
+								className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
 								onClick={() => {
 									const rows = mobileVolumeData.map((d) =>
 										[d.date, d.volume].join(","),
@@ -1306,7 +1310,7 @@ export function Analytics() {
 								onClick={() => setActiveTab(tab.value)}
 								className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
 									activeTab === tab.value
-										? "text-white border-primary"
+										? "text-foreground border-primary"
 										: "text-muted-foreground border-transparent"
 								}`}
 							>
@@ -1393,7 +1397,9 @@ export function Analytics() {
 					{/* Header */}
 					<div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 						<div>
-							<h1 className="text-display-2 mb-2 text-white">Analytics Hub</h1>
+							<h1 className="text-display-2 mb-2 text-foreground">
+								Analytics Hub
+							</h1>
 							<p className="text-muted-foreground">
 								Comprehensive insights into your training
 							</p>
@@ -1402,7 +1408,7 @@ export function Analytics() {
 							<Select value={timePeriod} onValueChange={setTimePeriod}>
 								<SelectTrigger
 									aria-label="Time period"
-									className="w-32 bg-surface-2 border-secondary text-white"
+									className="w-32 bg-surface-2 border-secondary text-foreground"
 								>
 									<SelectValue />
 								</SelectTrigger>
@@ -1495,7 +1501,7 @@ export function Analytics() {
 												</span>
 												<span className="text-primary">{stat.icon}</span>
 											</div>
-											<div className="text-2xl text-white mb-1">
+											<div className="text-2xl text-foreground mb-1">
 												{stat.value}
 											</div>
 											<div className="flex items-center gap-2">

@@ -125,7 +125,7 @@ export function Community() {
 			<div className="block md:hidden">
 				{/* Mobile Header */}
 				<header className="flex items-center justify-between px-4 py-4 border-b border-secondary">
-					<h1 className="text-2xl font-bold text-white">Community</h1>
+					<h1 className="text-2xl font-bold text-foreground">Community</h1>
 				</header>
 
 				{/* Mobile Tabs */}
@@ -170,7 +170,7 @@ export function Community() {
 										onClick={() => setSort(opt.value as "hot" | "top" | "new")}
 										className={
 											sort === opt.value
-												? "bg-primary text-white border-0 text-xs px-3 h-7"
+												? "bg-primary text-foreground border-0 text-xs px-3 h-7"
 												: "border-secondary text-muted-foreground text-xs px-3 h-7"
 										}
 									>
@@ -270,7 +270,9 @@ export function Community() {
 				<PageShell>
 					{/* Desktop Header */}
 					<div className="mb-8">
-						<h1 className="text-display-2 mb-2 text-white">Community Hub</h1>
+						<h1 className="text-display-2 mb-2 text-foreground">
+							Community Hub
+						</h1>
 						<p className="text-muted-foreground">
 							Discover, share, and connect with fellow athletes
 						</p>
@@ -309,7 +311,7 @@ export function Community() {
 								>
 									<SelectTrigger
 										aria-label="Sort order"
-										className="w-[120px] bg-surface-2 border-secondary text-white"
+										className="w-[120px] bg-surface-2 border-secondary text-foreground"
 									>
 										<SelectValue />
 									</SelectTrigger>
@@ -347,7 +349,7 @@ export function Community() {
 									<button
 										type="button"
 										onClick={() => refetch()}
-										className="px-4 py-2 text-sm font-medium rounded-lg bg-primary hover:bg-primary/90 text-white transition-colors"
+										className="px-4 py-2 text-sm font-medium rounded-lg bg-primary hover:bg-primary/90 text-foreground transition-colors"
 									>
 										Retry
 									</button>

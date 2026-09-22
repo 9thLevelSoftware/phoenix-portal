@@ -44,7 +44,7 @@ export function PageErrorFallback({
 		<div className="min-h-[50vh] flex items-center justify-center p-8">
 			<div className="text-center max-w-md">
 				<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
-				<h2 className="text-xl font-semibold text-white mb-2">
+				<h2 className="text-xl font-semibold text-foreground mb-2">
 					{chunkError ? "New version available" : "Something went wrong"}
 				</h2>
 				<p className="text-muted-foreground mb-6 text-sm">

@@ -352,7 +352,7 @@ export function CycleBuilder() {
 							variant="ghost"
 							size="sm"
 							onClick={handleCancel}
-							className="text-muted-foreground hover:text-white"
+							className="text-muted-foreground hover:text-foreground"
 						>
 							<ChevronLeft className="w-5 h-5 mr-1" />
 							Cancel
@@ -413,7 +413,7 @@ export function CycleBuilder() {
 					animate={{ opacity: 1, y: 0 }}
 				>
 					<Card className="p-6 bg-surface-2 border-secondary">
-						<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
+						<h2 className="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
 							<Calendar className="w-5 h-5 text-primary" />
 							Cycle Details
 						</h2>
@@ -504,7 +504,7 @@ export function CycleBuilder() {
 				>
 					<Card className="p-6 bg-surface-2 border-secondary">
 						<div className="flex items-center justify-between mb-6">
-							<h2 className="text-xl font-semibold text-white flex items-center gap-2">
+							<h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
 								<Dumbbell className="w-5 h-5 text-primary" />
 								Workout Schedule
 							</h2>
@@ -634,7 +634,7 @@ export function CycleBuilder() {
 					transition={{ delay: 0.3 }}
 				>
 					<Card className="p-6 bg-surface-2 border-secondary">
-						<h2 className="text-xl font-semibold text-white mb-6">
+						<h2 className="text-xl font-semibold text-foreground mb-6">
 							Week at a Glance
 						</h2>
 
@@ -784,7 +784,7 @@ function DayCard({
 				{day.type === "workout" && day.routineName ? (
 					<div className="text-center space-y-2">
 						<Dumbbell className="w-6 h-6 text-primary mx-auto" />
-						<div className="font-semibold text-white text-sm">
+						<div className="font-semibold text-foreground text-sm">
 							{day.routineName}
 						</div>
 						<div className="text-xs text-muted-foreground">
@@ -843,7 +843,7 @@ function DayEditorPanel({
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
 			<div className="flex items-center justify-between mb-6">
-				<h3 className="text-lg font-semibold text-white">
+				<h3 className="text-lg font-semibold text-foreground">
 					Day {day.dayNumber} Configuration
 				</h3>
 				<Button variant="ghost" size="sm" onClick={onClose}>
@@ -860,7 +860,7 @@ function DayEditorPanel({
 							</Label>
 							<div className="flex items-center gap-2">
 								<div className="flex-1 p-3 bg-background border border-secondary rounded-lg">
-									<div className="font-semibold text-white">
+									<div className="font-semibold text-foreground">
 										{day.routineName}
 									</div>
 									<div className="text-sm text-muted-foreground">
@@ -1098,7 +1098,7 @@ function ProgressionRules({
 }) {
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
-			<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
+			<h2 className="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
 				<Settings className="w-5 h-5 text-primary" />
 				Progression Rules
 			</h2>
@@ -1240,7 +1240,7 @@ function ProgressionRules({
 				<div className="border-t border-secondary pt-6">
 					<div className="flex items-center justify-between mb-4">
 						<div>
-							<Label className="text-white text-base">Deload Week</Label>
+							<Label className="text-foreground text-base">Deload Week</Label>
 							<p className="text-xs text-muted-foreground">
 								Periodically reduce intensity for recovery
 							</p>
@@ -1334,7 +1334,7 @@ function PreviewModal({
 		<Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
 			<DialogContent className="bg-surface-2 border-secondary max-w-2xl max-h-[80vh] overflow-y-auto">
 				<DialogHeader>
-					<DialogTitle className="text-white text-xl">
+					<DialogTitle className="text-foreground text-xl">
 						{cycle.name || "Untitled Cycle"}
 					</DialogTitle>
 					<DialogDescription>
@@ -1347,7 +1347,7 @@ function PreviewModal({
 					<div className="grid grid-cols-3 gap-4">
 						<div className="p-3 bg-background rounded-lg border border-secondary text-center">
 							<div className="text-sm text-muted-foreground">Duration</div>
-							<div className="text-2xl font-bold text-white">
+							<div className="text-2xl font-bold text-foreground">
 								{cycle.duration}
 							</div>
 							<div className="text-xs text-muted-foreground">days</div>
@@ -1389,7 +1389,7 @@ function PreviewModal({
 									{day.type === "workout" ? (
 										<>
 											<Dumbbell className="w-3 h-3 text-primary mx-auto my-1" />
-											<div className="text-white truncate text-[10px]">
+											<div className="text-foreground truncate text-[10px]">
 												{day.routineName || "TBD"}
 											</div>
 										</>
@@ -1407,14 +1407,14 @@ function PreviewModal({
 							Progression
 						</h4>
 						<div className="p-3 bg-background rounded-lg border border-secondary space-y-1">
-							<div className="text-sm text-white">
+							<div className="text-sm text-foreground">
 								Type:{" "}
 								<span className="text-primary capitalize">
 									{cycle.progression.type}
 								</span>
 							</div>
 							{cycle.progression.type !== "manual" && (
-								<div className="text-sm text-white">
+								<div className="text-sm text-foreground">
 									Amount:{" "}
 									<span className="text-primary">
 										{cycle.progression.amount}
@@ -1422,13 +1422,13 @@ function PreviewModal({
 									</span>
 								</div>
 							)}
-							<div className="text-sm text-white">
+							<div className="text-sm text-foreground">
 								Every:{" "}
 								<span className="text-primary">
 									{cycle.progression.frequency} week(s)
 								</span>
 							</div>
-							<div className="text-sm text-white">
+							<div className="text-sm text-foreground">
 								Trigger:{" "}
 								<span className="text-primary">
 									{cycle.progression.trigger.replace(/_/g, " ")}
@@ -1444,19 +1444,19 @@ function PreviewModal({
 								Deload Schedule
 							</h4>
 							<div className="p-3 bg-background rounded-lg border border-secondary space-y-1">
-								<div className="text-sm text-white">
+								<div className="text-sm text-foreground">
 									Every{" "}
 									<span className="text-primary">
 										{cycle.deload.frequency} weeks
 									</span>
 								</div>
-								<div className="text-sm text-white">
+								<div className="text-sm text-foreground">
 									Intensity:{" "}
 									<span className="text-primary">
 										{cycle.deload.intensity}% of normal
 									</span>
 								</div>
-								<div className="text-sm text-white">
+								<div className="text-sm text-foreground">
 									Volume:{" "}
 									<span className="text-primary">
 										{cycle.deload.volume}% of normal

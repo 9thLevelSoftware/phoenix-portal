@@ -40,8 +40,10 @@ export function DeleteConfirmDialog({
 						<div className="space-y-2 text-sm text-muted-foreground">
 							<p>
 								This will permanently delete{" "}
-								<span className="font-medium text-white">"{itemName}"</span> and
-								remove it from your mobile app on the next sync.
+								<span className="font-medium text-foreground">
+									"{itemName}"
+								</span>{" "}
+								and remove it from your mobile app on the next sync.
 							</p>
 							{isActive && itemType === "cycle" && (
 								<p className="text-amber-400">

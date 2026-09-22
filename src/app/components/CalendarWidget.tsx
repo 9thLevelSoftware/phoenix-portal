@@ -86,7 +86,9 @@ export function CalendarWidget({
 				>
 					<ChevronLeft className="h-4 w-4" />
 				</Button>
-				<span className="text-sm font-medium text-white">{monthLabel}</span>
+				<span className="text-sm font-medium text-foreground">
+					{monthLabel}
+				</span>
 				<Button
 					variant="ghost"
 					size="icon"
@@ -138,7 +140,7 @@ export function CalendarWidget({
 							className={cn(
 								"h-8 w-full rounded text-xs font-medium transition-colors motion-reduce:transition-none relative",
 								"hover:bg-secondary focus:outline-none focus:ring-1 focus:ring-primary",
-								selected && "bg-primary text-white",
+								selected && "bg-primary text-foreground",
 								today && !selected && "ring-1 ring-primary/50",
 								locked && "opacity-40 cursor-not-allowed",
 							)}

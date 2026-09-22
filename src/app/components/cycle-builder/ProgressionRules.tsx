@@ -43,14 +43,14 @@ export function ProgressionRules({
 				onClick={() => setIsExpanded(!isExpanded)}
 				className="w-full flex items-center justify-between mb-6 group"
 			>
-				<h2 className="text-xl font-semibold text-white flex items-center gap-2">
+				<h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
 					<TrendingUp className="w-5 h-5 text-primary" />
 					Progression Rules
 				</h2>
 				{isExpanded ? (
-					<ChevronUp className="w-5 h-5 text-muted-foreground group-hover:text-white transition-colors" />
+					<ChevronUp className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
 				) : (
-					<ChevronDown className="w-5 h-5 text-muted-foreground group-hover:text-white transition-colors" />
+					<ChevronDown className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
 				)}
 			</button>
 
@@ -84,7 +84,7 @@ export function ProgressionRules({
 						{/* Percentage Settings */}
 						{progressionType === "percentage" && (
 							<div className="space-y-4">
-								<h3 className="font-semibold text-white">
+								<h3 className="font-semibold text-foreground">
 									Percentage Increase Settings
 								</h3>
 
@@ -242,7 +242,7 @@ export function ProgressionRules({
 						{/* Fixed Weight Settings */}
 						{progressionType === "fixed" && (
 							<div className="space-y-4">
-								<h3 className="font-semibold text-white">
+								<h3 className="font-semibold text-foreground">
 									Fixed Weight Increase Settings
 								</h3>
 
@@ -366,7 +366,9 @@ export function ProgressionRules({
 						{/* Manual Settings */}
 						{progressionType === "manual" && (
 							<div className="space-y-4">
-								<h3 className="font-semibold text-white">Manual Progression</h3>
+								<h3 className="font-semibold text-foreground">
+									Manual Progression
+								</h3>
 								<p className="text-muted-foreground">
 									Weights will not automatically increase between cycles. You
 									can manually adjust weights in each workout.
@@ -385,7 +387,7 @@ export function ProgressionRules({
 
 					{/* Deload Configuration */}
 					<div className="pt-6 border-t border-secondary">
-						<h3 className="font-semibold text-white mb-4">Deload Weeks</h3>
+						<h3 className="font-semibold text-foreground mb-4">Deload Weeks</h3>
 
 						<div className="flex items-center gap-2 mb-4">
 							<Switch
@@ -509,7 +511,7 @@ function ProgressionTypeCard({
 			}`}
 		>
 			<div className="text-center">
-				<div className="font-semibold text-white mb-2">{title}</div>
+				<div className="font-semibold text-foreground mb-2">{title}</div>
 				<div className="text-sm text-muted-foreground">
 					{isSelected ? "● Selected" : "○"}
 				</div>
@@ -535,7 +537,7 @@ function TriggerOption({
 				onChange={onClick}
 				className="mt-1"
 			/>
-			<span className="text-white">{label}</span>
+			<span className="text-foreground">{label}</span>
 		</label>
 	);
 }

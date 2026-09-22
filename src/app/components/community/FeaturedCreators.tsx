@@ -71,7 +71,7 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 						<button
 							type="button"
 							onClick={() => scroll("left")}
-							className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-surface-2 border border-secondary flex items-center justify-center text-muted-foreground hover:text-white transition-colors"
+							className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-surface-2 border border-secondary flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
 							aria-label="Scroll left"
 						>
 							<ChevronLeft className="w-4 h-4" />
@@ -84,7 +84,7 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 						<button
 							type="button"
 							onClick={() => scroll("right")}
-							className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-surface-2 border border-secondary flex items-center justify-center text-muted-foreground hover:text-white transition-colors"
+							className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-surface-2 border border-secondary flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
 							aria-label="Scroll right"
 						>
 							<ChevronRight className="w-4 h-4" />
@@ -122,12 +122,12 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 													alt={creator.display_name}
 												/>
 											)}
-											<AvatarFallback className="bg-primary text-white text-sm">
+											<AvatarFallback className="bg-primary text-foreground text-sm">
 												{getInitials(creator.display_name)}
 											</AvatarFallback>
 										</Avatar>
 									</div>
-									<span className="text-[11px] text-muted-foreground max-w-16 truncate group-hover:text-white transition-colors">
+									<span className="text-[11px] text-muted-foreground max-w-16 truncate group-hover:text-foreground transition-colors">
 										{creator.display_name}
 									</span>
 								</button>

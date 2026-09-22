@@ -86,7 +86,7 @@ function StatCard({
 		<div className="bg-surface-2 rounded-lg p-3 flex flex-col gap-1">
 			<span className="text-[11px] text-muted-foreground">{label}</span>
 			<span
-				className={`text-sm font-semibold tabular-nums ${valueClass ?? "text-white"}`}
+				className={`text-sm font-semibold tabular-nums ${valueClass ?? "text-foreground"}`}
 			>
 				{value}
 			</span>
@@ -219,7 +219,7 @@ export function ExerciseDeepDive({
 									"text-left px-3 py-2 rounded-r-md text-[11px] leading-tight transition-colors cursor-pointer",
 									isActive
 										? "bg-primary/15 border-l-2 border-primary text-primary font-medium"
-										: "text-muted-foreground hover:text-white border-l-2 border-transparent",
+										: "text-muted-foreground hover:text-foreground border-l-2 border-transparent",
 								].join(" ")}
 							>
 								<div className="truncate">{ex.name}</div>
@@ -248,7 +248,7 @@ export function ExerciseDeepDive({
 								<span className="text-muted-foreground">
 									{profile.primary.displayName ?? profile.primary.group}
 								</span>
-								<span className="text-white font-medium">100%</span>
+								<span className="text-foreground font-medium">100%</span>
 							</span>
 							{/* Secondaries */}
 							{profile.secondary.map((s, i) => (
@@ -263,7 +263,7 @@ export function ExerciseDeepDive({
 									<span className="text-muted-foreground">
 										{s.displayName ?? s.group}
 									</span>
-									<span className="text-white font-medium">
+									<span className="text-foreground font-medium">
 										{Math.round(s.activation * 100)}%
 									</span>
 								</span>
@@ -287,7 +287,7 @@ export function ExerciseDeepDive({
 											"text-[10px] px-2 py-0.5 rounded transition-colors",
 											timeRange === r
 												? "bg-primary/20 text-primary"
-												: "text-muted-foreground hover:text-white",
+												: "text-muted-foreground hover:text-foreground",
 										].join(" ")}
 									>
 										{r}
@@ -409,7 +409,7 @@ export function ExerciseDeepDive({
 									? "text-emerald-400"
 									: delta !== null && delta < 0
 										? "text-red-400"
-										: "text-white"
+										: "text-foreground"
 							}
 						/>
 						<StatCard label="Sessions" value={sessionCount} />
@@ -428,7 +428,7 @@ export function ExerciseDeepDive({
 										key={phase}
 										className="rounded-full border border-secondary bg-muted/10 px-2 py-1 text-[10px] text-muted-foreground"
 									>
-										{phase}: <span className="text-white">{count}</span>
+										{phase}: <span className="text-foreground">{count}</span>
 									</span>
 								);
 							})}

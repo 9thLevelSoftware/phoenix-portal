@@ -246,10 +246,10 @@ function ConsistencyRing({ score }: { score: number }) {
 	const offset = circumference - (score / 100) * circumference;
 	const color =
 		score > 80
-			? PHOENIX.forgeGreen
+			? PHOENIX().forgeGreen
 			: score >= 50
-				? PHOENIX.gold
-				: PHOENIX.flameRed;
+				? PHOENIX().gold
+				: PHOENIX().flameRed;
 
 	return (
 		<svg
@@ -264,7 +264,7 @@ function ConsistencyRing({ score }: { score: number }) {
 				cy="34"
 				r={radius}
 				fill="none"
-				stroke={PHOENIX.moltenSteel}
+				stroke={PHOENIX().moltenSteel}
 				strokeWidth="5"
 			/>
 			<circle
@@ -363,7 +363,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 					<div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
 						<Dumbbell className="w-10 h-10 text-primary" />
 					</div>
-					<h3 className="text-xl font-semibold text-white mb-2">
+					<h3 className="text-xl font-semibold text-foreground mb-2">
 						No summary data yet
 					</h3>
 					<p className="text-muted-foreground max-w-sm mx-auto">
@@ -405,7 +405,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 								Total Volume
 							</span>
 						</div>
-						<div className="text-2xl font-semibold text-white mb-2">
+						<div className="text-2xl font-semibold text-foreground mb-2">
 							{summary.totalVolume > 1000
 								? `${(summary.totalVolume / 1000).toFixed(1)}K`
 								: summary.totalVolume}{" "}
@@ -419,7 +419,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 											<Line
 												type="monotone"
 												dataKey="volume"
-												stroke={PHOENIX.ember}
+												stroke={PHOENIX().ember}
 												strokeWidth={2}
 												dot={false}
 												t
@@ -460,7 +460,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 							</div>
 							<span className="text-sm text-muted-foreground">Frequency</span>
 						</div>
-						<div className="text-2xl font-semibold text-white mb-2">
+						<div className="text-2xl font-semibold text-foreground mb-2">
 							{summary.workoutDays}{" "}
 							<span className="text-sm text-muted-foreground">
 								of {summary.targetDays} target
@@ -473,7 +473,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 										<BarChart data={summary.dailyWorkouts}>
 											<Bar
 												dataKey="sessions"
-												fill={PHOENIX.gold}
+												fill={PHOENIX().gold}
 												radius={[2, 2, 0, 0]}
 												animationDuration={800}
 												animationEasing="ease-out"
@@ -516,7 +516,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 								Overall Progress Records
 							</span>
 						</div>
-						<div className="text-2xl font-semibold text-white mb-2">
+						<div className="text-2xl font-semibold text-foreground mb-2">
 							{summary.prs.length}{" "}
 							<span className="text-sm text-muted-foreground">records hit</span>
 						</div>
@@ -565,10 +565,10 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 									style={{
 										color:
 											summary.consistencyScore > 80
-												? PHOENIX.forgeGreen
+												? PHOENIX().forgeGreen
 												: summary.consistencyScore >= 50
-													? PHOENIX.gold
-													: PHOENIX.flameRed,
+													? PHOENIX().gold
+													: PHOENIX().flameRed,
 									}}
 								>
 									{summary.consistencyScore}%
@@ -592,7 +592,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 					transition={{ delay: 0.4 }}
 				>
 					<Card className="p-5 bg-surface-2 border-secondary">
-						<h4 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
+						<h4 className="text-lg font-medium text-foreground mb-4 flex items-center gap-2">
 							<Zap className="w-5 h-5 text-accent" />
 							Highlights
 						</h4>
@@ -601,7 +601,7 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 								<div className="flex items-start gap-3">
 									<Target className="w-4 h-4 text-primary mt-0.5 shrink-0" />
 									<div>
-										<span className="text-white text-sm">
+										<span className="text-foreground text-sm">
 											Best session by volume:{" "}
 										</span>
 										<span className="text-primary text-sm font-medium">
@@ -619,7 +619,9 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 								<div className="flex items-start gap-3">
 									<TrendingUp className="w-4 h-4 text-success mt-0.5 shrink-0" />
 									<div>
-										<span className="text-white text-sm">Most improved: </span>
+										<span className="text-foreground text-sm">
+											Most improved:{" "}
+										</span>
 										<span className="text-success text-sm font-medium">
 											{summary.mostImprovedExercise} (+
 											{summary.mostImprovedAmount}kg)
@@ -631,7 +633,9 @@ export function SummaryReport({ userId }: SummaryReportProps) {
 								<div className="flex items-start gap-3">
 									<Flame className="w-4 h-4 text-accent mt-0.5 shrink-0" />
 									<div>
-										<span className="text-white text-sm">Longest streak: </span>
+										<span className="text-foreground text-sm">
+											Longest streak:{" "}
+										</span>
 										<span className="text-accent text-sm font-medium">
 											{summary.longestStreak} consecutive days
 										</span>

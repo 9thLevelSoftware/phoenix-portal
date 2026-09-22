@@ -279,7 +279,7 @@ export function AppSidebar() {
 							className="sidebar-avatar-hover flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
 						>
 							<Avatar className="h-8 w-8 shrink-0 ring-2 ring-primary/40">
-								<AvatarFallback className="bg-primary text-white text-xs font-semibold">
+								<AvatarFallback className="bg-primary text-foreground text-xs font-semibold">
 									{initials}
 								</AvatarFallback>
 							</Avatar>
@@ -295,8 +295,8 @@ export function AppSidebar() {
 											<span className="flex items-center gap-1 text-xs text-muted-foreground">
 												<Flame
 													className="h-3 w-3"
-													color={PHOENIX.ember}
-													fill={PHOENIX.ember}
+													color={PHOENIX().ember}
+													fill={PHOENIX().ember}
 												/>
 												{streak}
 											</span>

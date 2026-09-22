@@ -126,8 +126,8 @@ function PowerOutputInner({
 
 						const isPeak = highlightPeak && i === peakIndex;
 						const barColor = isPeak
-							? CHART_COLORS.secondary
-							: CHART_COLORS.primary;
+							? CHART_COLORS().secondary
+							: CHART_COLORS().primary;
 						const barOpacity = highlightPeak && !isPeak ? 0.6 : 1;
 
 						return (
@@ -163,7 +163,9 @@ function PowerOutputInner({
 									x={barX + barWidth / 2}
 									y={barY - 6}
 									textAnchor="middle"
-									fill={isPeak ? CHART_COLORS.secondary : CHART_COLORS.axisText}
+									fill={
+										isPeak ? CHART_COLORS().secondary : CHART_COLORS().axisText
+									}
 									fontSize={10}
 									fontWeight={isPeak ? 700 : 500}
 								>
@@ -178,34 +180,34 @@ function PowerOutputInner({
 						scale={xScale}
 						label="Rep"
 						labelProps={{
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.label,
 							textAnchor: "middle",
 						}}
 						tickLabelProps={() => ({
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.axis,
 							textAnchor: "middle" as const,
 						})}
-						stroke={CHART_COLORS.gridLine}
-						tickStroke={CHART_COLORS.gridLine}
+						stroke={CHART_COLORS().gridLine}
+						tickStroke={CHART_COLORS().gridLine}
 					/>
 
 					<AxisLeft
 						scale={yScale}
 						label="Power (W)"
 						labelProps={{
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.label,
 							textAnchor: "middle",
 						}}
 						tickLabelProps={() => ({
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.axis,
 							textAnchor: "end" as const,
 						})}
-						stroke={CHART_COLORS.gridLine}
-						tickStroke={CHART_COLORS.gridLine}
+						stroke={CHART_COLORS().gridLine}
+						tickStroke={CHART_COLORS().gridLine}
 						numTicks={5}
 					/>
 				</Group>

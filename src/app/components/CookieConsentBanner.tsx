@@ -38,9 +38,9 @@ export function CookieConsentBanner() {
 			>
 				<div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
 					<p className="text-sm text-secondary-foreground text-center sm:text-left">
-						We use <span className="font-semibold text-white">Sentry</span> for
-						error tracking to improve app reliability. No personal workout data
-						is collected. See our{" "}
+						We use <span className="font-semibold text-foreground">Sentry</span>{" "}
+						for error tracking to improve app reliability. No personal workout
+						data is collected. See our{" "}
 						<Link
 							to="/privacy"
 							className="text-primary hover:text-accent underline"
@@ -53,7 +53,7 @@ export function CookieConsentBanner() {
 						<Button
 							variant="outline"
 							onClick={handleReject}
-							className="min-w-[100px] border-secondary text-white"
+							className="min-w-[100px] border-secondary text-foreground"
 						>
 							Reject
 						</Button>

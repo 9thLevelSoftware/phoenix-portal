@@ -56,19 +56,19 @@ export default function MobileOverviewTab({
 								>
 									<stop
 										offset="5%"
-										stopColor={PHOENIX.ember}
+										stopColor={PHOENIX().ember}
 										stopOpacity={0.3}
 									/>
 									<stop
 										offset="95%"
-										stopColor={PHOENIX.ember}
+										stopColor={PHOENIX().ember}
 										stopOpacity={0}
 									/>
 								</linearGradient>
 							</defs>
 							<XAxis
 								dataKey="date"
-								stroke={PHOENIX.ashGray}
+								stroke={PHOENIX().ashGray}
 								tickLine={false}
 								axisLine={false}
 								tick={{
@@ -77,7 +77,7 @@ export default function MobileOverviewTab({
 								}}
 							/>
 							<YAxis
-								stroke={PHOENIX.ashGray}
+								stroke={PHOENIX().ashGray}
 								tickFormatter={(value) => `${value / 1000}k`}
 								tickLine={false}
 								axisLine={false}
@@ -90,7 +90,7 @@ export default function MobileOverviewTab({
 							<Area
 								type="monotone"
 								dataKey="volume"
-								stroke={PHOENIX.ember}
+								stroke={PHOENIX().ember}
 								strokeWidth={2}
 								fill="url(#mobileVolumeGradient)"
 								animationDuration={800}

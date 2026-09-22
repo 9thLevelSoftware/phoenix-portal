@@ -17,16 +17,15 @@ export interface ConsistencyCalendarProps {
 const CELL_SIZE = 10;
 const CELL_GAP = 2;
 const STEP = CELL_SIZE + CELL_GAP;
-const EMBER = PHOENIX.ember;
 const BG_EMPTY = "var(--surface-3)";
 const DAY_LABELS_WIDTH = 24;
 const TOP_LABEL_HEIGHT = 18;
 
-function getIntensity(count: number): string {
+function getIntensity(count: number, ember: string): string {
 	if (count === 0) return BG_EMPTY;
-	if (count === 1) return `${EMBER}66`; // 40% opacity
-	if (count === 2) return `${EMBER}B3`; // 70% opacity
-	return EMBER; // 100%
+	if (count === 1) return `${ember}66`; // 40% opacity
+	if (count === 2) return `${ember}B3`; // 70% opacity
+	return ember; // 100%
 }
 
 interface StreakResult {
@@ -100,6 +99,7 @@ export function ConsistencyCalendar({
 	workoutDates,
 	weeks = 52,
 }: ConsistencyCalendarProps) {
+	const phoenix = PHOENIX();
 	const [hoveredCell, setHoveredCell] = useState<{
 		date: Date;
 		count: number;
@@ -183,7 +183,7 @@ export function ConsistencyCalendar({
 							key={i}
 							x={DAY_LABELS_WIDTH + ml.col * STEP}
 							y={12}
-							fill={PHOENIX.ashGray}
+							fill={PHOENIX().ashGray}
 							fontSize={9}
 							fontFamily="Inter, system-ui, sans-serif"
 						>
@@ -198,7 +198,7 @@ export function ConsistencyCalendar({
 							key={row}
 							x={16}
 							y={TOP_LABEL_HEIGHT + row * STEP + CELL_SIZE - 1}
-							fill={PHOENIX.ashGray}
+							fill={PHOENIX().ashGray}
 							fontSize={8}
 							textAnchor="end"
 							fontFamily="Inter, system-ui, sans-serif"
@@ -225,7 +225,7 @@ export function ConsistencyCalendar({
 									width={CELL_SIZE}
 									height={CELL_SIZE}
 									rx={2}
-									fill={getIntensity(cell.count)}
+									fill={getIntensity(cell.count, phoenix.ember)}
 									style={{ cursor: "pointer" }}
 									onMouseEnter={(e) => {
 										setHoveredCell({
@@ -259,7 +259,9 @@ export function ConsistencyCalendar({
 							{format(hoveredCell.date, "MMM d, yyyy")}
 						</div>
 						<div
-							style={{ color: hoveredCell.count > 0 ? EMBER : PHOENIX.ashGray }}
+							style={{
+								color: hoveredCell.count > 0 ? phoenix.ember : phoenix.ashGray,
+							}}
 						>
 							{hoveredCell.count === 0
 								? "No workouts"
@@ -275,7 +277,7 @@ export function ConsistencyCalendar({
 					<Flame className="w-4 h-4 text-primary" />
 					<span>
 						Current Streak:{" "}
-						<span className="font-semibold text-white">
+						<span className="font-semibold text-foreground">
 							{streaks.currentStreak} day
 							{streaks.currentStreak !== 1 ? "s" : ""}
 						</span>
@@ -283,7 +285,7 @@ export function ConsistencyCalendar({
 				</div>
 				<div>
 					Longest:{" "}
-					<span className="font-semibold text-white">
+					<span className="font-semibold text-foreground">
 						{streaks.longestStreak} day{streaks.longestStreak !== 1 ? "s" : ""}
 					</span>
 				</div>
@@ -292,7 +294,12 @@ export function ConsistencyCalendar({
 			{/* Legend */}
 			<div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
 				<span>Less</span>
-				{[BG_EMPTY, `${EMBER}66`, `${EMBER}B3`, EMBER].map((color, i) => (
+				{[
+					BG_EMPTY,
+					`${phoenix.ember}66`,
+					`${phoenix.ember}B3`,
+					phoenix.ember,
+				].map((color, i) => (
 					<div
 						// biome-ignore lint/suspicious/noArrayIndexKey: static legend color list never reorders
 						key={i}

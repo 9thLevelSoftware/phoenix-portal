@@ -20,7 +20,9 @@ export function CommunityPercentileAtlas({
 		<section className="space-y-4">
 			<div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
 				<div>
-					<h3 className="text-xl text-white">Community Percentile Atlas</h3>
+					<h3 className="text-xl text-foreground">
+						Community Percentile Atlas
+					</h3>
 					<p className="text-sm text-muted-foreground">
 						Top-percentile context from participating Phoenix users.
 					</p>

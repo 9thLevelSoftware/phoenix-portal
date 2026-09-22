@@ -42,7 +42,7 @@ export function WhatsNewBanner({ onDismiss }: WhatsNewBannerProps) {
 							<div className="flex items-start gap-3">
 								<Sparkles className="size-5 shrink-0 text-[var(--accent)] mt-0.5" />
 								<div>
-									<h3 className="text-sm font-semibold text-white mb-2">
+									<h3 className="text-sm font-semibold text-foreground mb-2">
 										What's New in v1.1
 									</h3>
 									<ul className="space-y-1">
@@ -61,7 +61,7 @@ export function WhatsNewBanner({ onDismiss }: WhatsNewBannerProps) {
 							<Button
 								variant="ghost"
 								size="icon"
-								className="shrink-0 min-w-[44px] min-h-[44px] text-[var(--muted-foreground)] hover:text-white"
+								className="shrink-0 min-w-[44px] min-h-[44px] text-[var(--muted-foreground)] hover:text-foreground"
 								onClick={handleDismiss}
 								aria-label="Dismiss what's new banner"
 							>

@@ -106,13 +106,13 @@ export default function PerformanceTab({
 
 				{/* Training Efficiency */}
 				<Card className="p-6 bg-surface-2 border-secondary">
-					<h3 className="text-xl text-white mb-4">Training Efficiency</h3>
+					<h3 className="text-xl text-foreground mb-4">Training Efficiency</h3>
 					<div className="grid grid-cols-2 gap-4">
 						<div className="rounded-lg bg-muted/20 p-4">
 							<p className="text-sm text-muted-foreground mb-1">
 								Volume / Minute
 							</p>
-							<p className="text-2xl font-bold text-white">
+							<p className="text-2xl font-bold text-foreground">
 								{volumeComparison?.current
 									? (() => {
 											const totalVol = volumeComparison.current.reduce(
@@ -134,7 +134,7 @@ export default function PerformanceTab({
 							<p className="text-sm text-muted-foreground mb-1">
 								Avg Session Duration
 							</p>
-							<p className="text-2xl font-bold text-white">
+							<p className="text-2xl font-bold text-foreground">
 								{volumeComparison?.current &&
 								volumeComparison.current.length > 0
 									? `${Math.round(

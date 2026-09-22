@@ -25,14 +25,14 @@ export function QualityBadge({ qualityResult, repNumber }: QualityBadgeProps) {
 					className={`
             flex flex-col items-center justify-center
             w-14 h-14 rounded-lg
-            text-white font-semibold
+            text-foreground font-semibold
             transition-colors cursor-pointer
             ${isLowQuality ? "bg-amber-600/80 hover:bg-amber-600" : "bg-primary/90 hover:bg-primary"}
           `}
 					aria-label={`Rep ${repNumber} quality: ${score}`}
 				>
 					<span className="text-lg leading-none">{score}</span>
-					<span className="text-[10px] text-white/70 mt-0.5">
+					<span className="text-[10px] text-foreground/70 mt-0.5">
 						Rep {repNumber}
 					</span>
 				</button>
