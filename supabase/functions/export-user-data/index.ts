@@ -24,9 +24,6 @@ import {
  * needs no trailing empty page. (PR 37 R-8: the probe replaced a per-page
  * exact count of the remaining rows, which rescanned the rest of a large
  * table on every page and made a long export quadratic.)
- * is derived from an exact count of the remaining rows, not from the page
- * length, so a PostgREST `max_rows` below the requested limit cannot end the
- * export early.
  */
 
 export const EXPORT_RATE_LIMIT = { maxRequests: 600, windowSeconds: 3600 } as const;
@@ -204,7 +201,6 @@ async function queryPage(
     ? `${columns.join(',')},${ownership.parentTable}!${ownership.fkColumn}!inner(${ownership.parentColumn})`
     : columns.join(',');
   let query = admin.from(entry.table).select(select);
-  let query = admin.from(entry.table).select(select, { count: 'exact' });
   query = ownership.kind === 'parent'
     ? query.eq(`${ownership.parentTable}.${ownership.parentColumn}`, userId)
     : query.eq(ownership.column, userId);
@@ -215,7 +211,6 @@ async function queryPage(
   }
   for (const column of keyColumns) query = query.order(column, { ascending: true });
   return await query.limit(limit);
-  return await query.limit(USER_DATA_PAGE_SIZE);
 }
 
 export async function readExportPage(
@@ -231,7 +226,6 @@ export async function readExportPage(
     result = await queryPage(admin, entry, userId, cursor, entry.columns);
   }
   const { data, error } = result;
-  const { data, error, count } = result;
 
   if (error) {
     if (isMissingRelation(error) && entry.mayBeAbsent) {
@@ -260,17 +254,6 @@ export async function readExportPage(
   const probe = await queryPage(admin, entry, userId, lastKey, entry.keyColumns, 1);
   if (probe.error) return { ok: false, reason: 'query_failed', error: probe.error };
   const nextCursor = (probe.data ?? []).length > 0 ? lastKey : null;
-  // `count` is the number of rows after the cursor (the filters ignore the
-  // limit), so more pages remain exactly when it exceeds this page.
-  if (typeof count !== 'number') {
-    return { ok: false, reason: 'query_failed', error: { message: 'count missing' } };
-  }
-  let nextCursor: ExportCursor | null = null;
-  if (rows.length > 0 && count > rows.length) {
-    const last = raw[raw.length - 1];
-    nextCursor = {};
-    for (const column of entry.keyColumns) nextCursor[column] = last[column] as CursorValue;
-  }
   return { ok: true, rows, nextCursor, tableMissing: false };
 }
 

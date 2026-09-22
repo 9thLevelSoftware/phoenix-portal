@@ -5,6 +5,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mocks
+//
+// One shared `@/lib/supabase` factory: `vi.mock` is per-module-path and the
+// last registration wins, so the `from` capability (notes UPDATE) and the
+// `rpc` capability (tombstone delete) must live in a single mock. The
+// AuthProvider factory is likewise one: the notes suite's richer user is a
+// superset of the delete suite's (that test never reads `user.id`).
 // ---------------------------------------------------------------------------
 
 const mockChain = {
@@ -12,9 +18,10 @@ const mockChain = {
 };
 
 const from = vi.fn(() => mockChain);
+const rpc = vi.fn();
 
 vi.mock("@/lib/supabase", () => ({
-	supabase: { from },
+	supabase: { from, rpc },
 }));
 
 vi.mock("@/providers/AuthProvider", () => ({
@@ -38,6 +45,19 @@ function createWrapper() {
 	});
 	return ({ children }: { children: ReactNode }) => (
 		<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+	);
+}
+
+/** The delete suite's own wrapper, kept so that describe stays self-contained. */
+function wrapper({ children }: { children: ReactNode }) {
+	return (
+		<QueryClientProvider
+			client={
+				new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+			}
+		>
+			{children}
+		</QueryClientProvider>
 	);
 }
 
@@ -97,24 +117,12 @@ describe("useSaveSessionNotes", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(mockChain.update).toHaveBeenCalledWith({ notes: null });
-const rpc = vi.fn();
-vi.mock("@/lib/supabase", () => ({ supabase: { rpc } }));
-vi.mock("@/providers/AuthProvider", () => ({
-	useAuth: () => ({ user: { id: "user-1" } }),
-}));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+	});
+});
 
-function wrapper({ children }: { children: ReactNode }) {
-	return (
-		<QueryClientProvider
-			client={
-				new QueryClient({ defaultOptions: { mutations: { retry: false } } })
-			}
-		>
-			{children}
-		</QueryClientProvider>
-	);
-}
+// ---------------------------------------------------------------------------
+// useDeleteWorkout
+// ---------------------------------------------------------------------------
 
 describe("useDeleteWorkout", () => {
 	beforeEach(() => vi.clearAllMocks());

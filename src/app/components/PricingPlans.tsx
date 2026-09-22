@@ -839,10 +839,16 @@ export function PricingPlans() {
 				<Button variant="outline" className="w-full" disabled>
 					<Loader2 className="w-4 h-4 mr-2 animate-spin" />
 					Refreshing your plan…
+				</Button>
+			);
+		}
+
 		// Payment for this exact price was received but isn't active yet; a
 		// second checkout here would charge the user twice.
 		if (activePendingActivation?.priceId === priceId) {
+			return (
 				<Button className={`w-full ${tierConfig.buttonClass}`} disabled>
+					<Loader2 className="w-4 h-4 mr-2 animate-spin" />
 					Activating...
 				</Button>
 			);
@@ -928,9 +934,15 @@ export function PricingPlans() {
 								"Update payment"
 							)}
 						</Button>
+					</div>
+				)}
+
 				{activePendingActivation && (
+					<div
+						role="status"
 						data-testid="checkout-activation-pending"
 						className="max-w-2xl mx-auto mb-8 flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-white"
+					>
 						<Loader2 className="w-4 h-4 shrink-0 animate-spin text-primary" />
 						<span>
 							Payment received — activation can take a minute. This page updates

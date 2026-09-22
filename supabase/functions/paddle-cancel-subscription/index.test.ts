@@ -123,46 +123,6 @@ function buildHandler(
   db: FakeDb,
   calls: PaddleCall[],
   cancelResponse?: () => Response,
-function fakeAdminClient(
-  row: { paddle_subscription_id: string | null; status: string } | null,
-  updates: unknown[],
-) {
-  const subscriptions = {
-    select: () => subscriptions,
-    eq: (..._args: unknown[]) => subscriptions,
-    maybeSingle: () => Promise.resolve({ data: row, error: null }),
-    update: (values: unknown) => {
-      updates.push(values);
-      return subscriptions;
-    },
-    then: undefined,
-  };
-  // `.update(...).eq(...)` is awaited: make the final eq() thenable.
-  const updateChain = {
-    ...subscriptions,
-    eq: () => Promise.resolve({ error: null }),
-  };
-  return {
-    from: () => ({
-      ...subscriptions,
-      update: (values: unknown) => {
-        updates.push(values);
-        return updateChain;
-      },
-    }),
-    rpc: (name: string) =>
-      Promise.resolve(
-        name === "check_rate_limit"
-          ? { data: { allowed: true, remaining: 2, retry_after_seconds: null }, error: null }
-          : { data: null, error: null },
-      ),
-  } as unknown as SupabaseClient;
-}
-
-function buildHandler(
-  row: { paddle_subscription_id: string | null; status: string } | null,
-  calls: PaddleCall[],
-  updates: unknown[],
 ) {
   return createPaddleCancelSubscriptionHandler({
     createAuthClient: () => ({
@@ -171,7 +131,6 @@ function buildHandler(
       },
     } as unknown as Pick<SupabaseClient, "auth">),
     createAdminClient: () => fakeAdminClient(db),
-    createAdminClient: () => fakeAdminClient(row, updates),
     fetch: (input: URL | Request | string, init?: RequestInit) => {
       calls.push({
         url: typeof input === "string" ? input : input.toString(),
@@ -182,7 +141,6 @@ function buildHandler(
         cancelResponse?.() ??
           new Response(JSON.stringify(canceledSubscriptionBody()), { status: 200 }),
       );
-      return Promise.resolve(new Response(JSON.stringify({ data: {} }), { status: 200 }));
     },
     env: { get: (key: string) => ENV[key] },
     now: () => NOW,
@@ -220,11 +178,6 @@ Deno.test("paddle-cancel-subscription: active cancels at the end of the billing 
         ),
         { status: 200 },
       ),
-  const updates: unknown[] = [];
-  const handler = buildHandler(
-    { paddle_subscription_id: "sub_1", status: "active" },
-    calls,
-    updates,
   );
 
   const response = await handler(cancelRequest());
@@ -248,9 +201,6 @@ Deno.test("paddle-cancel-subscription: active cancels at the end of the billing 
   assertEquals(db.rpcCalls[0].p_last_event_occurred_at, "2026-05-17T11:59:00Z");
   assertEquals(db.rpcCalls[0].p_last_event_id, "cancel:sub_1:2026-05-17T11:59:00Z");
   assertEquals(db.row?.cancel_at_period_end, true);
-  assertEquals(updates, [
-    { cancel_at_period_end: true, updated_at: NOW.toISOString() },
-  ]);
 });
 
 Deno.test("paddle-cancel-subscription: past_due cancels immediately", async () => {
@@ -268,12 +218,6 @@ Deno.test("paddle-cancel-subscription: past_due cancels immediately", async () =
     rpcCalls: [],
   };
   const handler = buildHandler(db, calls);
-  const updates: unknown[] = [];
-  const handler = buildHandler(
-    { paddle_subscription_id: "sub_1", status: "past_due" },
-    calls,
-    updates,
-  );
 
   const response = await handler(cancelRequest());
 
@@ -363,9 +307,6 @@ Deno.test("paddle-cancel-subscription: a cancel response for another subscriptio
   assertEquals((await response.json()).success, true);
   assertEquals(db.rpcCalls.length, 0);
   assertEquals(db.row?.cancel_at_period_end, false);
-  assertEquals(updates, [
-    { status: "canceled", cancel_at_period_end: false, updated_at: NOW.toISOString() },
-  ]);
 });
 
 Deno.test("paddle-cancel-subscription: nothing to cancel for canceled or missing rows", async () => {
@@ -379,8 +320,6 @@ Deno.test("paddle-cancel-subscription: nothing to cancel for canceled or missing
     const calls: PaddleCall[] = [];
     const db: FakeDb = { row, clock: null, rpcCalls: [] };
     const handler = buildHandler(db, calls);
-    const updates: unknown[] = [];
-    const handler = buildHandler(row, calls, updates);
 
     const response = await handler(cancelRequest());
 
@@ -388,6 +327,5 @@ Deno.test("paddle-cancel-subscription: nothing to cancel for canceled or missing
     assertEquals(await response.json(), { error: "No active subscription found" });
     assertEquals(calls.length, 0);
     assertEquals(db.rpcCalls.length, 0);
-    assertEquals(updates.length, 0);
   }
 });

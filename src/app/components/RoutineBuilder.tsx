@@ -86,15 +86,6 @@ const WIRE_MODE_DESCRIPTIONS: Record<WireMode, string> = {
 	ECHO: "Alternating intensity echo sets",
 };
 
-const WIRE_MODE_DESCRIPTIONS: Record<WireMode, string> = {
-	OLD_SCHOOL: "Traditional resistance training",
-	PUMP: "High-rep hypertrophy focused training",
-	TUT: "Time under tension for muscle growth",
-	TUT_BEAST: "Extended time under tension with slow eccentrics",
-	ECCENTRIC_ONLY: "Negative-only reps for maximum muscle damage",
-	ECHO: "Alternating intensity echo sets",
-};
-
 interface Exercise {
 	id: string;
 	name: string;

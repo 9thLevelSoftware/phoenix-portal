@@ -64,7 +64,6 @@ class FakeDb implements PaddleWebhooksDbClient {
     this.row = row;
   }
 
-  from(_table: "subscriptions") {
   from(table: "subscriptions"): SubscriptionsTableQuery;
   from(table: "subscription_events"): SubscriptionEventsTableQuery;
   from(
@@ -95,8 +94,6 @@ class FakeDb implements PaddleWebhooksDbClient {
 
   rpc(_fn: "apply_subscription_event", args: Record<string, unknown>) {
     this.rpcCalls.push(args);
-    if (this.rpcError) return Promise.resolve({ data: null, error: this.rpcError });
-    if (this.forceNotApplied) return Promise.resolve({ data: false, error: null });
     if (this.failRpcFrom !== null && this.rpcCalls.length >= this.failRpcFrom) {
       return Promise.resolve({ data: null, error: { message: "deadlock detected" } });
     }
@@ -148,7 +145,6 @@ class FakeDb implements PaddleWebhooksDbClient {
   }
 }
 
-function makeHandler(db: FakeDb, envOverrides: Record<string, string> = {}) {
 interface PaddleCall {
   url: string;
   method: string;
@@ -182,8 +178,6 @@ function makeHandler(
 
 async function subscriptionEvent(overrides: {
   eventId?: string;
-  occurredAt?: string;
-  priceId?: string;
   eventType?: string;
   occurredAt?: string;
   priceId?: string;
@@ -197,12 +191,6 @@ async function subscriptionEvent(overrides: {
     : overrides.cdSig;
   return JSON.stringify({
     event_id: overrides.eventId ?? "evt_01",
-    event_type: "subscription.updated",
-    occurred_at: overrides.occurredAt ?? "2026-09-18T11:59:00.000Z",
-    data: {
-      id: "sub_01",
-      customer_id: "ctm_01",
-      status: "active",
     event_type: overrides.eventType ?? "subscription.updated",
     occurred_at: overrides.occurredAt ?? "2026-09-18T11:59:00.000Z",
     data: {
