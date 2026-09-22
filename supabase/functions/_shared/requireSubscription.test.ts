@@ -47,9 +47,19 @@ function fakeClient(
   } as unknown as SupabaseClient;
 }
 
-function row(tier: string, status: string, currentPeriodEnd: string | null = FUTURE) {
+function row(
+  tier: string,
+  status: string,
+  currentPeriodEnd: string | null = FUTURE,
+  cancelAtPeriodEnd = false,
+) {
   return {
-    data: { tier, status, current_period_end: currentPeriodEnd },
+    data: {
+      tier,
+      status,
+      current_period_end: currentPeriodEnd,
+      cancel_at_period_end: cancelAtPeriodEnd,
+    },
     error: null,
   };
 }
@@ -217,4 +227,43 @@ for (const { userTier, minimumTier, allowed } of ORDERING_CASES) {
 Deno.test("requireSubscription allows an entitled trialing row at its tier", async () => {
   const outcome = await gate(row("FLAME", "trialing"), "FLAME");
   assertEquals(outcome, { allowed: true, tier: "FLAME" });
+});
+
+Deno.test("requireSubscription applies no renewal grace to a subscription scheduled to cancel", async () => {
+  // Pins the pass-through at requireSubscription.ts:108
+  // (`{ cancelAtPeriodEnd: Boolean(subscription?.cancel_at_period_end), now }`).
+  // The predicate itself is pinned by tests/fixtures/entitlement-cases.json
+  // ("active-cancel-scheduled-period-end-minus-1s-no-grace"); what was unpinned
+  // is that this gate hands the column over at all — every other row here left
+  // it unset, so dropping the pass-through changed no outcome.
+  //
+  // The two rows differ only in `cancel_at_period_end`. One hour past the
+  // period end is inside the 48h renewal grace for a row that will renew and
+  // outside it for one that will not, so the second must deny.
+  const now = new Date("2026-07-16T02:00:00.000Z");
+  const justEnded = "2026-07-16T01:00:00.000Z";
+
+  const renewing = await requireSubscription(
+    fakeClient(row("EMBER", "active", justEnded, false)),
+    USER_ID,
+    "EMBER",
+    CORS,
+    now,
+  );
+  assertEquals(renewing, { allowed: true, tier: "EMBER" });
+
+  const cancelling = await requireSubscription(
+    fakeClient(row("EMBER", "active", justEnded, true)),
+    USER_ID,
+    "EMBER",
+    CORS,
+    now,
+  );
+  assertEquals(cancelling.allowed, false);
+  if (cancelling.allowed) return;
+  assertEquals(cancelling.tier, "FREE");
+  assertEquals(cancelling.response.status, 402);
+  const body = await cancelling.response.json();
+  assertEquals(body.error, "subscription_required");
+  assertEquals(body.currentTier, "FREE");
 });
