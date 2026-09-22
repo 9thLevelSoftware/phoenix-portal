@@ -107,12 +107,25 @@ async function requestPage(
   return await query;
 }
 
+/** Shared across the worker pool: one chunk's failure stops everyone else. */
+type ChunkControl = {
+  /** True once a *different* chunk owns the failure (see reportFailure). */
+  stopped(): boolean;
+  /**
+   * Record that this chunk has failed. Ownership goes to the **lowest** index
+   * that has recorded one, so a later failure in an earlier chunk takes over
+   * from a later chunk already bisecting ("the failure reported is the
+   * lowest-index chunk that recorded one").
+   */
+  reportFailure(): void;
+};
+
 /** `null` means the fetch was stopped because another chunk already failed. */
 async function fetchOneChunk(
   supabase: PagedFromClient,
   options: FetchByParentIdsOptions,
   parentIds: readonly string[],
-  stopped: () => boolean,
+  control: ChunkControl,
 ): Promise<PagedFetchResult | null> {
   if (parentIds.length === 0) {
     return { ok: true, rows: [] };
@@ -123,23 +136,50 @@ async function fetchOneChunk(
   const collected: Record<string, unknown>[] = [];
 
   while (true) {
-    if (stopped()) return null;
-    const { data, error } = await requestPage(
-      supabase,
-      options,
-      parentIds,
-      offset,
-    );
+    if (control.stopped()) return null;
+    let data: Record<string, unknown>[] | null;
+    let error: PostgrestErrorLike | null;
+    try {
+      ({ data, error } = await requestPage(
+        supabase,
+        options,
+        parentIds,
+        offset,
+      ));
+    } catch (err) {
+      control.reportFailure();
+      throw err;
+    }
 
     if (error) {
+      // Record the failure the moment a request errors, not when this chunk's
+      // fetch finally returns. Otherwise the bisection below (2·log2(n)
+      // sequential round-trips) leaves the failure unrecorded for its whole
+      // duration and idle workers claim more chunks meanwhile — which is
+      // exactly the "after a failure no new request is started" rule.
+      // `control.stopped()` is false for the chunk that owns the failure, so
+      // its own bisection still runs to isolate the bad parent.
+      control.reportFailure();
       if (parentIds.length > 1) {
+        // Only the chunk that owns the failure may bisect. A later failure in
+        // a higher-index chunk must not spend 2·log2(n) more requests when a
+        // lower-index chunk has already decided the result — it reports its
+        // own error and the caller takes the lowest-index one.
+        if (control.stopped()) {
+          return { ok: false, kind: "error", entity: options.entity, error };
+        }
         // Halve and retry each half from the start, so one bad parent in a
         // 100-id chunk costs about 2·log2(100) ≈ 14 requests, not 100.
         const middle = Math.ceil(parentIds.length / 2);
         const merged: Record<string, unknown>[] = [];
         for (const half of [parentIds.slice(0, middle), parentIds.slice(middle)]) {
-          const result = await fetchOneChunk(supabase, options, half, stopped);
-          if (result === null || !result.ok) return result;
+          const result = await fetchOneChunk(supabase, options, half, control);
+          if (result === null) {
+            // Stopped mid-bisection by a lower-index failure taking over.
+            // Report this request's error rather than dropping it.
+            return { ok: false, kind: "error", entity: options.entity, error };
+          }
+          if (!result.ok) return result;
           merged.push(...result.rows);
         }
         return { ok: true, rows: merged };
@@ -183,21 +223,33 @@ export async function fetchAllByParentIds(
   const chunks = chunkIds(parentIds, PARENT_ID_CHUNK_SIZE);
   const results: (PagedFetchResult | undefined)[] = new Array(chunks.length);
   let next = 0;
-  let failed = false;
-  const stopped = () => failed;
+  /** Index of the first chunk that recorded a failure, or -1. */
+  let failureOwner = -1;
   const worker = async () => {
-    while (!failed && next < chunks.length) {
+    // `failureOwner === -1` rather than a per-result check: a chunk records its
+    // failure as soon as a request errors (see fetchOneChunk), so by the time
+    // it returns an error result the pool has already stopped claiming work.
+    while (failureOwner === -1 && next < chunks.length) {
       const index = next++;
+      // A chunk keeps bisecting after its *own* failure (to isolate the bad
+      // parent) but nothing belonging to another chunk starts once any chunk
+      // has failed — not a new chunk, not further pages or halves.
+      const control: ChunkControl = {
+        stopped: () => failureOwner !== -1 && failureOwner !== index,
+        reportFailure: () => {
+          if (failureOwner === -1 || index < failureOwner) failureOwner = index;
+        },
+      };
       let result: PagedFetchResult | null;
       try {
-        result = await fetchOneChunk(supabase, options, chunks[index], stopped);
+        result = await fetchOneChunk(supabase, options, chunks[index], control);
       } catch (error) {
-        failed = true;
+        control.reportFailure();
         throw error;
       }
       if (result === null) return;
       results[index] = result;
-      if (!result.ok) failed = true;
+      if (!result.ok) control.reportFailure();
     }
   };
   await Promise.all(
