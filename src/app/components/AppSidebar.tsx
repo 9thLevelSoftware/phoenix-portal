@@ -8,6 +8,7 @@ import {
 	History,
 	LayoutDashboard,
 	Link2,
+	Palette,
 	Repeat,
 	Trophy,
 	User,
@@ -21,6 +22,9 @@ import {
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuSeparator,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "@/app/components/ui/dropdown-menu";
 import {
@@ -43,6 +47,7 @@ import { profileOptions } from "@/queries/profile";
 import { useUIStore } from "@/stores/useUIStore";
 import { LocalProfileFilter } from "./LocalProfileFilter";
 import { PhoenixLogo } from "./PhoenixLogo";
+import { ThemeToggle } from "./ThemeToggle";
 import { TierBadge } from "./TierBadge";
 
 // ---------------------------------------------------------------------------
@@ -264,6 +269,9 @@ export function AppSidebar() {
 			{/* ----------------------------------------------------------------- */}
 			<SidebarFooter className="gap-1 pb-3 group-data-[collapsible=icon]:px-0">
 				<SidebarSeparator className="sidebar-separator-phoenix" />
+				<div className="flex justify-center py-1 group-data-[collapsible=icon]:hidden">
+					<ThemeToggle />
+				</div>
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
 						<button
@@ -323,6 +331,15 @@ export function AppSidebar() {
 								Subscription
 							</NavLink>
 						</DropdownMenuItem>
+						<DropdownMenuSub>
+							<DropdownMenuSubTrigger className="cursor-pointer">
+								<Palette className="mr-2 h-4 w-4" />
+								Theme
+							</DropdownMenuSubTrigger>
+							<DropdownMenuSubContent>
+								<ThemeToggle />
+							</DropdownMenuSubContent>
+						</DropdownMenuSub>
 						<DropdownMenuSeparator />
 						<DropdownMenuItem
 							onClick={() => signOut()}
