@@ -11,20 +11,17 @@ import {
   scanJsonArrayElementSpans,
   scanTopLevelJsonObject,
 } from "../_shared/profilePreferenceContract.ts";
-import { createMobileSyncPushHandler } from "./index.ts";
 import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
-import { SYNC_LWW_ENABLED } from "../_shared/flags.ts";
-import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
-import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
-import { SYNC_LWW_ENABLED } from "../_shared/flags.ts";
-import { SYNC_LWW_ENABLED as SYNC_LWW_ENABLED_IN_TEST } from "../_shared/flags.ts";
+import {
+  SYNC_LWW_ENABLED,
+  SYNC_LWW_ENABLED as SYNC_LWW_ENABLED_IN_TEST,
+} from "../_shared/flags.ts";
 import {
   broadcastSyncComplete,
   createMobileSyncPushHandler,
   localProfilesPushChangesRows,
 } from "./index.ts";
-import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 
 interface ByteGoldens {
   version: number;
@@ -41,6 +38,75 @@ type RpcBehavior = (
   name: string,
   args: Record<string, unknown>,
 ) => Promise<unknown>;
+
+/**
+ * The `upsert_<entity>_lww(p_rows jsonb)` RPCs used by the push handler when
+ * SYNC_LWW_ENABLED=true (migration 20260419120000_lww_upsert_functions.sql).
+ */
+const LWW_UPSERT_RPCS = new Set([
+  "upsert_workout_session_lww",
+  "upsert_routine_lww",
+  "upsert_training_cycle_lww",
+  "upsert_rpg_attributes_lww",
+  "upsert_gamification_stats_lww",
+  "upsert_external_activity_lww",
+]);
+
+/**
+ * Faithful default double for those RPCs: each one returns exactly one
+ * `{id, accepted, server_updated_at}` row per element of `p_rows`. The
+ * generic `{ data: [], error: null }` fallback is NOT that contract — the
+ * handler correctly reads "no row for this id" as "rejected", so with the
+ * generic fallback every flag-on push silently rejects everything and skips
+ * all child writes. Accept every row here (the non-conflict case), so a test
+ * that is not about stale pushes asserts the same thing under both values of
+ * SYNC_LWW_ENABLED. A test that wants a rejection supplies its own
+ * `rpcBehavior`.
+ */
+function lwwUpsertDouble(
+  name: string,
+  args: Record<string, unknown>,
+): { data: unknown; error: unknown } | null {
+  if (!LWW_UPSERT_RPCS.has(name)) return null;
+  const rows = (args.p_rows ?? []) as Array<Record<string, unknown>>;
+  return {
+    data: rows.map((row) => ({
+      // rpg_attributes / gamification_stats are keyed by user_id.
+      id: row.id ?? row.user_id,
+      accepted: true,
+      server_updated_at: row.updated_at ?? null,
+    })),
+    error: null,
+  };
+}
+
+/**
+ * Faithful default double for `merge_training_cycles_from_push` (Design K /
+ * KD-6): one `{id, accepted, structure_applied, server_updated_at,
+ * client_updated_at}` row per element of `p_cycles`. Like `lwwUpsertDouble`,
+ * the generic `{ data: [], error: null }` terminal is NOT that contract — the
+ * handler reads "no row for this id" as "rejected", so with the generic
+ * fallback every cycle push is silently rejected and `acknowledgedCycleIds`
+ * stays empty. Accept every row here (the non-conflict case); a test that
+ * wants a rejection or a stale structure supplies its own `rpcBehavior`.
+ */
+function mergeCycleDouble(
+  name: string,
+  args: Record<string, unknown>,
+): { data: unknown; error: unknown } | null {
+  if (name !== "merge_training_cycles_from_push") return null;
+  const rows = (args.p_cycles ?? []) as Array<Record<string, unknown>>;
+  return {
+    data: rows.map((row) => ({
+      id: row.id,
+      accepted: true,
+      structure_applied: true,
+      server_updated_at: (row.updated_at as string | null) ?? null,
+      client_updated_at: (row.updated_at as string | null) ?? null,
+    })),
+    error: null,
+  };
+}
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -420,11 +486,20 @@ function streamingRawRequest(
   });
 }
 
-type TableResultValue = { data: unknown; error: unknown; count?: number };
-/** A fixed result, or one chosen from the query's `.eq()` filters. */
-type TableResult =
-  | TableResultValue
-  | ((eqFilters: Record<string, unknown>) => TableResultValue);
+type QueryOperation = {
+  name: string;
+  args: unknown[];
+};
+
+/** An operation list that also carries `.eq()` filters as string keys. */
+type QueryContext = QueryOperation[] & Record<string, unknown>;
+type TerminalResultValue = { data: unknown; error: unknown; count?: number };
+type TerminalResult =
+  | TerminalResultValue
+  | ((context: QueryContext) => TerminalResultValue);
+/** Older name for {@link TerminalResult}; kept so either spelling compiles. */
+type TableResult = TerminalResult;
+type TableResultValue = TerminalResultValue;
 const DEFAULT_SUBSCRIPTION_RESULT = {
   data: {
     tier: "EMBER",
@@ -433,25 +508,17 @@ const DEFAULT_SUBSCRIPTION_RESULT = {
   },
   error: null,
 };
-interface QueryOperation {
-  name: string;
-  args: unknown[];
-}
 
-type QueryContext = QueryOperation[] & Record<string, unknown>;
-type TerminalResultValue = { data: unknown; error: unknown; count?: number };
-type TerminalResult =
-  | TerminalResultValue
-  | ((context: QueryContext) => TerminalResultValue);
-
+/**
+ * A query builder that accepts any chain and resolves to `terminalResult`.
+ * Parameter order is the superset every `from()` call site uses:
+ * write hook, terminal, write-error, ownership probe (hook + rows), chain hook,
+ * terminal resolver, subscription stub, then the optional per-call hook.
+ */
 function permissiveQuery(
   table: string,
   onWrite: (method: string, args: unknown[]) => void,
   terminalResult: TerminalResult = {
-  terminalResult: TableResult = {
-  terminalResult: TerminalResult = {
-  onCall: (method: string, args: unknown[]) => void,
-  terminalResult: { data: unknown; error: unknown; count?: number } = {
     data: [],
     error: null,
     count: 0,
@@ -467,7 +534,6 @@ function permissiveQuery(
 ): Record<string, unknown> {
   const query: Record<string, unknown> = {};
   let ownershipProbe = false;
-  const eqFilters: Record<string, unknown> = {};
   let injectedWriteError: unknown = null;
   const chainMethods = [
     "select",
@@ -488,31 +554,16 @@ function permissiveQuery(
     "delete",
     "returns",
   ];
-  const operations: QueryOperation[] = [];
-  for (const method of chainMethods) {
-    query[method] = (...args: unknown[]) => {
-      operations.push({ name: method, args });
   const operations = [] as unknown as QueryContext;
   for (const method of chainMethods) {
     query[method] = (...args: unknown[]) => {
-      if (method === "neq") ownershipProbe = true;
-      if (method === "eq") eqFilters[String(args[0])] = args[1];
-      if (["insert", "upsert", "update", "delete"].includes(method)) {
-        onWrite(method, args);
-      if (["insert", "upsert", "update", "delete"].includes(method)) {
-        onWrite(method, args);
+      operations.push({ name: method, args });
+      onCall?.(method, args);
       onChain(method, args);
       if (method === "neq") {
         ownershipProbe = true;
         onProbe();
       }
-      if (["insert", "upsert", "update", "delete"].includes(method)) {
-        onWrite(method, args);
-        onWrite(method);
-      onCall?.(method, args);
-      operations.push({ name: method, args });
-      onCall(method, args);
-      if (method === "neq") ownershipProbe = true;
       if (method === "eq") operations[String(args[0])] = args[1];
       if (["insert", "upsert", "update", "delete"].includes(method)) {
         onWrite(method, args);
@@ -533,17 +584,12 @@ function permissiveQuery(
     reject?: (reason: unknown) => unknown,
   ) =>
     Promise.resolve(
-      ownershipProbe
-        ? { data: [], error: null, count: 0 }
-        : typeof terminalResult === "function"
-        ? terminalResult(eqFilters)
       injectedWriteError
         ? { data: null, error: injectedWriteError }
         : ownershipProbe
         ? { data: probeResult, error: null, count: probeResult.length }
         : resolveTerminal
         ? resolveTerminal()
-        ? { data: [], error: null, count: 0 }
         : typeof terminalResult === "function"
         ? terminalResult(operations)
         : terminalResult,
@@ -551,14 +597,6 @@ function permissiveQuery(
   return query;
 }
 
-interface QueryOperation {
-  name: string;
-  args: unknown[];
-}
-
-type TerminalResult =
-  | { data: unknown; error: unknown; count?: number }
-  | ((operations: QueryOperation[]) => { data: unknown; error: unknown });
 /** Every chained call made on one `from("exercise_catalog")` query. */
 interface CatalogQuery {
   calls: Array<{ method: string; args: unknown[] }>;
@@ -594,29 +632,35 @@ interface PushHarness {
   adminRpcCalls: Array<{ name: string; args: Record<string, unknown> }>;
   adminFromCalls: string[];
   adminWriteCalls: Array<{ table: string; method: string }>;
-  adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
-  adminWritePayloads: Array<{ table: string; method: string; payload: unknown }>;
-  adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
+  /** Superset record: tests read either `.args` or `.payload` (`args[0]`). */
+  adminWriteArgs: Array<WriteRecord>;
+  adminWritePayloads: Array<WriteRecord>;
+  adminQueryCalls: Array<WriteRecord>;
   ownershipProbeTables: string[];
   catalogQueries: CatalogQuery[];
-  adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }>;
-  adminWritePayloads: Array<{ table: string; method: string; args: unknown[] }>;
-  adminQueryCalls: Array<{ table: string; method: string; args: unknown[] }>;
   loggerCalls: unknown[][];
   operationEvents: string[];
   channelCalls: Array<{ topic: string; config?: Record<string, unknown> }>;
   broadcastPayloads: unknown[];
   /** Every admin query builder with its chained calls and arguments. */
   adminQueries: AdminQueryRecord[];
+  httpSendCalls: Array<{ event: string; payload: unknown; timeout?: number }>;
+  setAuthCalls: { value: number };
+  subscribeCalls: { value: number };
+  removeChannelCalls: { value: number };
 }
 
 interface AdminQueryRecord {
   table: string;
   calls: Array<{ method: string; args: unknown[] }>;
-  httpSendCalls: Array<{ event: string; payload: unknown; timeout?: number }>;
-  setAuthCalls: { value: number };
-  subscribeCalls: { value: number };
-  removeChannelCalls: { value: number };
+}
+
+/** One recorded write/query; `payload` is `args[0]` for the callers that want the body. */
+interface WriteRecord {
+  table: string;
+  method: string;
+  args: unknown[];
+  payload: unknown;
 }
 
 function makeHarness(
@@ -626,16 +670,14 @@ function makeHarness(
     fromError?: unknown;
     httpSendBehavior?: () => Promise<unknown>;
     rpcBehavior?: RpcBehavior;
-    /** Result of the get_personal_record_identity_candidates probe RPC. */
-    sessionHierarchyResult?: { data: unknown; error: unknown };
-    personalRecordsResult?: { data: unknown; error: unknown };
+    personalRecordsResult?: TerminalResult;
+    localProfilesResult?: TerminalResult;
+    preferenceProfilesResult?: TerminalResult;
     syncLwwEnabled?: boolean;
     catalogRows?: unknown[];
-    tableResults?: Record<string, TableResult>;
-    syncLwwEnabled?: boolean;
-    catalogRows?: unknown[];
-    /** Terminal result for non-write queries on a table (e.g. catalog rows). */
-    tableResults?: Record<string, { data: unknown; error: unknown }>;
+    /** Terminal result for reads/writes on these tables (e.g. probes); a
+     * function receives the chained operations (select/in/... with args). */
+    tableResults?: Record<string, TerminalResult>;
     /** Error injected into a write, keyed `table:method` (e.g. `routines:delete`). */
     writeErrors?: Record<string, unknown>;
     foreignOwnedTables?: string[];
@@ -644,18 +686,8 @@ function makeHarness(
       query: CatalogQuery,
     ) => { data: unknown; error: unknown } | undefined;
     subscriptionResult?: { data: unknown; error: unknown };
-    /** Error injected into a write, keyed `table:method` (e.g. `routines:delete`). */
-    writeErrors?: Record<string, unknown>;
     /** Real clients for chosen tables (real-SQL tests); others stay mocked. */
     tableClients?: Record<string, { from(table: string): unknown }>;
-    /**
-     * Terminal result for reads/writes on these tables (e.g. probes); a
-     * function receives the chained operations (select/in/... with args).
-     */
-    tableResults?: Record<string, TerminalResult>;
-    localProfilesResult?: { data: unknown; error: unknown };
-    preferenceProfilesResult?: { data: unknown; error: unknown };
-    syncLwwEnabled?: boolean;
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -665,22 +697,11 @@ function makeHarness(
     [];
   const adminFromCalls: string[] = [];
   const adminWriteCalls: Array<{ table: string; method: string }> = [];
-  const adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }> =
-    [];
-  const adminWritePayloads: Array<
-    { table: string; method: string; payload: unknown }
-  > = [];
-  const adminWriteArgs: Array<
-    { table: string; method: string; args: unknown[] }
-  > = [];
+  const adminWriteArgs: WriteRecord[] = [];
+  const adminWritePayloads: WriteRecord[] = [];
+  const adminQueryCalls: WriteRecord[] = [];
   const ownershipProbeTables: string[] = [];
   const catalogQueries: CatalogQuery[] = [];
-  const adminWriteArgs: Array<{ table: string; method: string; args: unknown[] }> =
-    [];
-  const adminWritePayloads: Array<
-    { table: string; method: string; args: unknown[] }
-  > = [];
-  const adminQueryCalls: Array<{ table: string; method: string; args: unknown[] }> = [];
   const loggerCalls: unknown[][] = [];
   const operationEvents: string[] = [];
   const channelCalls: Array<{ topic: string; config?: Record<string, unknown> }> =
@@ -703,53 +724,31 @@ function makeHarness(
     from(table: string) {
       if (options.fromError !== undefined) throw options.fromError;
       adminFromCalls.push(table);
-      return permissiveQuery(table, (method, args) => {
+      const realClient = options.tableClients?.[table];
+      if (realClient) return realClient.from(table);
       const record: AdminQueryRecord = { table, calls: [] };
       adminQueries.push(record);
       const catalogQuery: CatalogQuery | null = table === "exercise_catalog"
         ? { calls: [] }
         : null;
       if (catalogQuery) catalogQueries.push(catalogQuery);
-      return permissiveQuery(table, (method, args) => {
-        adminWriteCalls.push({ table, method });
-        adminWriteArgs.push({ table, method, args });
-        adminWritePayloads.push({ table, method, payload: args[0] });
-        operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records"
-        ? options.personalRecordsResult
-        : options.tableResults?.[table]);
-      return permissiveQuery(table, (method) => {
-        adminWriteCalls.push({ table, method });
-        adminWriteArgs.push({ table, method, args });
-        operationEvents.push(`write:${table}:${method}`);
-      }, table === "personal_records"
-        ? options.personalRecordsResult
-        : options.tableResults?.[table]);
-        : table === "exercise_catalog" && options.catalogRows
-        ? { data: options.catalogRows, error: null }
-        : undefined,
-      return permissiveQuery(
-        table,
-        (method) => {
-          adminWriteCalls.push({ table, method });
-      const realClient = options.tableClients?.[table];
-      if (realClient) return realClient.from(table);
-      const record: AdminQueryRecord = { table, calls: [] };
-      adminQueries.push(record);
       return permissiveQuery(
         table,
         (method, args) => {
           adminWriteCalls.push({ table, method });
-          adminWriteArgs.push({ table, method, args });
+          adminWriteArgs.push({ table, method, args, payload: args[0] });
+          adminWritePayloads.push({ table, method, args, payload: args[0] });
           operationEvents.push(`write:${table}:${method}`);
         },
         table === "personal_records"
           ? options.personalRecordsResult
+          : table === "local_profiles"
+          ? options.localProfilesResult
+          : table === "local_profile_preferences"
+          ? options.preferenceProfilesResult
           : table === "exercise_catalog" && options.catalogRows
           ? { data: options.catalogRows, error: null }
           : options.tableResults?.[table],
-          : options.tableResults?.[table],
-      );
         (method) => options.writeErrors?.[`${table}:${method}`],
         () => ownershipProbeTables.push(table),
         (options.foreignOwnedTables ?? []).includes(table)
@@ -764,22 +763,11 @@ function makeHarness(
             options.catalogBehavior!(catalogQuery) ??
               { data: [], error: null, count: 0 }
           : undefined,
-        options.subscriptionResult);
-        (method, args) => record.calls.push({ method, args }),
+        options.subscriptionResult,
+        (method, args) => {
+          adminQueryCalls.push({ table, method, args, payload: args[0] });
+        },
       );
-      return permissiveQuery(table, (method, args) => {
-        adminWriteCalls.push({ table, method });
-        adminWritePayloads.push({ table, method, args });
-        operationEvents.push(`write:${table}:${method}`);
-      }, (method, args) => {
-        adminQueryCalls.push({ table, method, args });
-      }, table === "personal_records"
-        ? options.personalRecordsResult
-        : table === "local_profiles"
-        ? options.localProfilesResult
-        : table === "local_profile_preferences"
-        ? options.preferenceProfilesResult
-        : undefined);
     },
     async rpc(name: string, args: Record<string, unknown> = {}) {
       adminRpcCalls.push({ name, args });
@@ -790,18 +778,13 @@ function makeHarness(
           error: null,
         };
       }
-      if (name === "upsert_workout_sessions_with_components") {
-        if (options.sessionHierarchyResult) return options.sessionHierarchyResult;
-        return {
-          data: ((args.p_rows as Array<{ id: string; updated_at?: string }>) ?? []).map((row) => ({
-            id: row.id,
-            accepted: true,
-            server_updated_at: row.updated_at ?? null,
-          })),
-          error: null,
-        };
+      if (options.rpcBehavior) {
+        // `undefined` means "this stub does not model that RPC" — fall through
+        // to the harness defaults below instead of answering with an empty
+        // result the real RPC would never return.
+        const overridden = await options.rpcBehavior(name, args);
+        if (overridden !== undefined) return overridden;
       }
-      if (options.rpcBehavior) return await options.rpcBehavior(name, args);
       if (
         name === "get_personal_record_identity_candidates" &&
         options.personalRecordsResult
@@ -812,16 +795,11 @@ function makeHarness(
         // Real function returns rows inserted or changed; with an empty store
         // every distinct row is a fresh insert.
         return { data: (args.p_rows as unknown[]).length, error: null };
-      if (name === "upsert_training_cycles_with_days_lww") {
-        return {
-          data: ((args.p_rows as Array<{ id: string; updated_at?: string }>) ?? []).map((row) => ({
-            id: row.id,
-            accepted: true,
-            server_updated_at: row.updated_at ?? null,
-          })),
-          error: null,
-        };
       }
+      const lww = lwwUpsertDouble(name, args);
+      if (lww) return lww;
+      const merge = mergeCycleDouble(name, args);
+      if (merge) return merge;
       if (name === "mutate_local_profile_preference_section") {
         const section = String(args.p_section);
         return {
@@ -894,9 +872,6 @@ function makeHarness(
     logOperationalFailure: ((...args: unknown[]) => loggerCalls.push(args)),
     syncLwwEnabled: options.syncLwwEnabled,
     now: options.now ?? (() => 1_784_167_200_000),
-    now: () => 1_784_167_200_000,
-    syncLwwEnabled: options.syncLwwEnabled,
-    syncLwwEnabled: options.syncLwwEnabled ?? false,
   } as never);
 
   return {
@@ -909,11 +884,8 @@ function makeHarness(
     adminWriteCalls,
     adminWriteArgs,
     adminWritePayloads,
-    adminWriteArgs,
     ownershipProbeTables,
     catalogQueries,
-    adminWriteArgs,
-    adminWritePayloads,
     adminQueryCalls,
     loggerCalls,
     operationEvents,
@@ -1134,20 +1106,28 @@ Deno.test("omitted recovery source preferences survive recovery and the next ord
   }
 });
 
-Deno.test("cycles always use the LWW parent gate before writing children", async () => {
+// Was "cycles always use the LWW parent gate before writing children" against
+// the retired `upsert_training_cycles_with_days_lww`. Design K (KD-6) is
+// `merge_training_cycles_from_push`, which IS the parent gate and the child
+// write in one transaction, so the property carried forward becomes: a
+// rejected cycle's days ride only inside that gated merge and are never
+// written as a separate `cycle_days` statement that could outlive it.
+Deno.test("cycles gate the parent and its days in one merge RPC; a rejected cycle writes no days", async () => {
   const harness = makeHarness(undefined, {
     rpcBehavior: async (name) => {
-      if (name === "upsert_training_cycles_with_days_lww") {
+      if (name === "merge_training_cycles_from_push") {
         return {
           data: [{
             id: CYCLE_ID,
             accepted: false,
+            structure_applied: false,
             server_updated_at: "2026-09-20T13:00:00.000Z",
+            client_updated_at: "2026-09-20T12:00:00.000Z",
           }],
           error: null,
         };
       }
-      return { data: [], error: null };
+      return undefined;
     },
   });
   const body = validNestedRelationshipBody();
@@ -1157,27 +1137,46 @@ Deno.test("cycles always use the LWW parent gate before writing children", async
 
   assertEquals(response.status, 200);
   assertEquals((await response.clone().json()).acknowledgedCycleIds, []);
-  assert(harness.adminRpcCalls.some((call) =>
-    call.name === "upsert_training_cycles_with_days_lww"
-  ));
+  const mergeCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "merge_training_cycles_from_push"
+  );
+  assertEquals(mergeCalls.length, 1);
+  // Days ride inside the merge row — there is no separate child write that
+  // could race the parent gate.
+  const rows = mergeCalls[0].args.p_cycles as Array<Record<string, unknown>>;
+  assert(Array.isArray(rows[0].days));
   assertEquals(
     harness.adminWriteCalls.filter((call) => call.table === "cycle_days"),
     [],
   );
 });
 
-Deno.test("session parent gate and component replacement use one atomic RPC", async () => {
+// Was "session parent gate and component replacement use one atomic RPC"
+// against `upsert_workout_sessions_with_components` plus a "never
+// `replace_session_components`" check. Design K splits that into the LWW
+// parent gate (`upsert_workout_session_lww`) and ONE atomic
+// `replace_session_children` covering every child table including
+// `exercise_progress`. Properties carried forward: a rejected parent gets no
+// component replacement at all, and the replacement is never decomposed into
+// per-table child writes.
+Deno.test("a rejected session parent gets no component replacement and no per-table child writes", async () => {
   const body = validNestedRelationshipBody();
   body.routines = [];
   body.cycles = [];
   const harness = makeHarness(undefined, {
-    sessionHierarchyResult: {
-      data: [{
-        id: SESSION_ID,
-        accepted: false,
-        server_updated_at: "2026-09-20T13:00:00.000Z",
-      }],
-      error: null,
+    syncLwwEnabled: true,
+    rpcBehavior: async (name) => {
+      if (name === "upsert_workout_session_lww") {
+        return {
+          data: [{
+            id: SESSION_ID,
+            accepted: false,
+            server_updated_at: "2026-09-20T13:00:00.000Z",
+          }],
+          error: null,
+        };
+      }
+      return undefined;
     },
   });
   const response = await harness.handler(requestFromBody(body));
@@ -1194,20 +1193,24 @@ Deno.test("session parent gate and component replacement use one atomic RPC", as
     id: SESSION_ID,
     serverUpdatedAt: "2026-09-20T13:00:00.000Z",
   }]);
-  const hierarchyCalls = harness.adminRpcCalls.filter((call) =>
-    call.name === "upsert_workout_sessions_with_components"
-  );
-  assertEquals(hierarchyCalls.length, 1);
+  // No component replacement for a rejected parent, and never a per-table
+  // child write (including exercise_progress) standing in for one.
   assertEquals(
-    harness.adminRpcCalls.filter((call) => call.name === "replace_session_components"),
+    harness.adminRpcCalls.filter((call) => call.name === "replace_session_children"),
     [],
   );
   assertEquals(
-    harness.adminWriteCalls.filter((call) => call.table === "exercise_progress"),
+    harness.adminWriteCalls.filter((call) =>
+      ["exercises", "sets", "rep_summaries", "rep_telemetry", "exercise_progress"]
+        .includes(call.table)
+    ),
     [],
   );
 });
 
+// Design K (KD-6) carries the cycles, their days and the presence bits on ONE
+// `merge_training_cycles_from_push` row per cycle (`p_cycles[i].days`), not the
+// retired `upsert_training_cycles_with_days_lww` `p_rows` / `p_days` pair.
 Deno.test("accepted workout and cycle parents return exact committed receipts", async () => {
   const body = validNestedRelationshipBody();
   body.routines = [];
@@ -1237,10 +1240,10 @@ Deno.test("accepted workout and cycle parents return exact committed receipts", 
   assertEquals(responseBody.acknowledgedWorkoutSessionIds, [SESSION_ID]);
   assertEquals(responseBody.acknowledgedCycleIds, [CYCLE_ID]);
   const cycleCall = harness.adminRpcCalls.find((call) =>
-    call.name === "upsert_training_cycles_with_days_lww"
+    call.name === "merge_training_cycles_from_push"
   );
-  const parentRows = cycleCall?.args.p_rows as Array<Record<string, unknown>>;
-  const dayRows = cycleCall?.args.p_days as Array<Record<string, unknown>>;
+  const parentRows = cycleCall?.args.p_cycles as Array<Record<string, unknown>>;
+  const dayRows = parentRows[0].days as Array<Record<string, unknown>>;
   assertEquals(parentRows[0].progression_settings_present, true);
   assertEquals(parentRows[0].progression_settings, null);
   assertEquals(parentRows[0].progress_state_present, true);
@@ -1265,9 +1268,9 @@ Deno.test("legacy non-null progression settings remain authoritative without a p
 
   assertEquals(response.status, 200, JSON.stringify(responseBody));
   const cycleCall = harness.adminRpcCalls.find((call) =>
-    call.name === "upsert_training_cycles_with_days_lww"
+    call.name === "merge_training_cycles_from_push"
   );
-  const parentRows = cycleCall?.args.p_rows as Array<Record<string, unknown>>;
+  const parentRows = cycleCall?.args.p_cycles as Array<Record<string, unknown>>;
   assertEquals(parentRows[0].progression_settings, { type: "wave", amount: 3 });
   assertEquals("progression_settings_present" in parentRows[0], false);
 
@@ -1277,13 +1280,18 @@ Deno.test("legacy non-null progression settings remain authoritative without a p
   const missingResponseBody = await json(missingResponse);
   assertEquals(missingResponse.status, 200, JSON.stringify(missingResponseBody));
   const missingCall = missingHarness.adminRpcCalls.find((call) =>
-    call.name === "upsert_training_cycles_with_days_lww"
+    call.name === "merge_training_cycles_from_push"
   );
-  const missingRows = missingCall?.args.p_rows as Array<Record<string, unknown>>;
+  const missingRows = missingCall?.args.p_cycles as Array<Record<string, unknown>>;
   assertEquals(missingRows[0].progression_settings, null);
   assertEquals("progression_settings_present" in missingRows[0], false);
 });
 
+// Was asserting `upsert_workout_sessions_with_components`'s `p_component_ids`.
+// Design K filters blocked components out of the rows handed to
+// `replace_session_children`, so the property under test (a tombstoned
+// component is dropped while its sibling under the same parent survives) is
+// that RPC's `p_exercises` / `p_sets`. The probe shape is unchanged.
 Deno.test("component tombstone filters only the named exercise under a grouped parent", async () => {
   const body = validNestedRelationshipBody();
   body.routines = [];
@@ -1312,7 +1320,7 @@ Deno.test("component tombstone filters only the named exercise under a grouped p
       if (name === "get_blocked_workout_component_ids") {
         return { data: [{ component_id: blocked.id }], error: null };
       }
-      return { data: [], error: null };
+      return undefined;
     },
   });
 
@@ -1320,14 +1328,18 @@ Deno.test("component tombstone filters only the named exercise under a grouped p
   const responseBody = await json(response);
   assertEquals(response.status, 200, JSON.stringify(responseBody));
 
-  const hierarchyCall = harness.adminRpcCalls.find((call) =>
-    call.name === "upsert_workout_sessions_with_components"
+  const replaceCall = harness.adminRpcCalls.find((call) =>
+    call.name === "replace_session_children"
   );
-  assertEquals(hierarchyCall?.args.p_component_ids, [siblingId]);
+  // The parent session itself is not blocked, so it is still replaced.
+  assertEquals(replaceCall?.args.p_session_ids, [session.id]);
   assertEquals(
-    (hierarchyCall?.args.p_exercises as Array<{ id: string }>).map((row) => row.id),
+    (replaceCall?.args.p_exercises as Array<{ id: string }>).map((row) => row.id),
     [siblingId],
   );
+  // The blocked exercise's sets never reach the replace either (the sibling
+  // carries none of its own).
+  assertEquals(replaceCall?.args.p_sets, []);
   const componentProbe = harness.adminRpcCalls.find((call) =>
     call.name === "get_blocked_workout_component_ids"
   );
@@ -1371,35 +1383,34 @@ Deno.test("grouped workout tombstone probes use portalSessionId not the local se
   ]);
 });
 
-Deno.test("clocked cycle deletions return exact accepted ids and legacy ids never hard-delete", async () => {
+// Was "clocked cycle deletions return exact accepted ids and legacy ids never
+// hard-delete" against `delete_training_cycles_lww`. Design K has no clocked
+// delete form: `deletedCycleIds` is an explicit id list that is hard-deleted
+// after an ownership check (CASCADE takes cycle_days), and the ids come back
+// exactly in `acknowledgedDeletedCycleIds`. The "legacy ids never hard-delete"
+// rule belonged to the clocked RPC and is inverted here; the anti-resurrection
+// property it guarded lives in the `skippedDeleted` tests below.
+Deno.test("cycle deletions return the exact acknowledged ids and never write cycle_days", async () => {
   const deletedId = "30000000-0000-4000-8000-000000000011";
-  const legacyId = "30000000-0000-4000-8000-000000000012";
-  const harness = makeHarness(undefined, {
-    rpcBehavior: async (name) => {
-      if (name === "delete_training_cycles_lww") {
-        return {
-          data: [{ id: deletedId, accepted: true, server_updated_at: "2026-09-20T12:00:00Z" }],
-          error: null,
-        };
-      }
-      return { data: [], error: null };
-    },
-  });
+  const otherId = "30000000-0000-4000-8000-000000000012";
+  const harness = makeHarness();
   const response = await harness.handler(requestFromBody({
     ...validPushBody(),
-    deletedCycleIds: [legacyId],
-    deletedCycles: [{ id: deletedId, updatedAt: "2026-09-20T12:00:00Z" }],
+    deletedCycleIds: [deletedId, otherId],
   }));
   const body = await json(response);
 
   assertEquals(response.status, 200, JSON.stringify(body));
-  assertEquals(body.acknowledgedDeletedCycleIds, [deletedId]);
+  assertEquals(body.acknowledgedDeletedCycleIds, [deletedId, otherId]);
   assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
-  assert(harness.adminRpcCalls.some((call) => call.name === "delete_training_cycles_lww"));
+  // Design K hard-deletes the cycles scoped by user_id and lets CASCADE take
+  // cycle_days — there is never a separate cycle_days delete racing the parent.
+  const deletes = writeQueries(harness, "training_cycles", "delete");
+  assertEquals(deletes.length, 1);
+  assertEquals(callArgs(deletes[0]!, "in")[1], [deletedId, otherId]);
+  assertEquals(callArgs(deletes[0]!, "eq"), ["user_id", VALID_USER_ID]);
   assertEquals(
-    harness.adminWriteCalls.filter((call) =>
-      call.table === "training_cycles" && call.method === "delete"
-    ),
+    harness.adminWriteCalls.filter((call) => call.table === "cycle_days"),
     [],
   );
 });
@@ -1669,10 +1680,23 @@ Deno.test("subscription gate: the same body from an EMBER user is written with 2
   const body = await json(response);
   assertEquals(response.status, 200, JSON.stringify(body));
   assertEquals(harness.loggerCalls, []);
+  // Design K's write path also probes blocked workout ids (no component
+  // probe here: `singleSessionPushBody` sends no exercises), runs the
+  // fail-open gamification recompute on every push, and broadcasts once
+  // something committed. The earlier list stopped at the child swap.
+  // Only the third step is flag-dependent: flag-on routes sessions through
+  // `upsert_workout_session_lww`, flag-off through a PostgREST upsert. Both
+  // are the same Design K write of the session parent, before the child swap.
   assertEquals(harness.operationEvents, [
     "rpc:check_rate_limit",
-    "write:workout_sessions:upsert",
+    "rpc:get_blocked_workout_session_ids",
+    SYNC_LWW_ENABLED
+      ? "rpc:upsert_workout_session_lww"
+      : "write:workout_sessions:upsert",
     "rpc:replace_session_children",
+    "rpc:recompute_gamification_stats",
+    "realtime:setAuth",
+    "realtime:httpSend",
   ]);
 });
 
@@ -2634,7 +2658,14 @@ for (
 
 Deno.test("allProfiles push broadcasts when stored profiles cannot be read", async () => {
   const harness = makeHarness(undefined, {
-    localProfilesResult: { data: null, error: { message: "timeout" } },
+    // Only the change-detection SELECT fails; the upsert must still land
+    // (a failed upsert is a legitimate 503 — never write sessions
+    // profile-unscoped). `localProfilesResult` is the terminal for every
+    // `from("local_profiles")` chain, so it has to branch on the chain.
+    localProfilesResult: (ops: QueryContext) =>
+      (ops as QueryOperation[]).some((op) => op.name === "select")
+        ? { data: null, error: { message: "timeout" } }
+        : { data: null, error: null },
   });
   const warnings = captureWarnings();
   let response: Response;
@@ -2816,6 +2847,10 @@ function badgePushBody(): Record<string, unknown> {
   };
 }
 
+// Was "broadcasts private sync_complete with { syncTime } only": the HTTP
+// path is a superset of that assertion set (same private channel, same
+// one-call count, and httpSendCalls' payload is exactly `{ syncTime }`), so
+// the "only" property is covered here and the two titles collapsed.
 Deno.test("broadcasts private sync_complete with { syncTime } once over HTTP", async () => {
   const harness = makeHarness();
   const response = await harness.handler(
@@ -2947,9 +2982,6 @@ for (
         currentStreak: 1,
         totalTimeSeconds: 60,
       },
-    }],
-    ["clocked cycle tombstone", {
-      deletedCycles: [{ id: CYCLE_ID, updatedAt: "2026-09-20T12:00:00.000Z" }],
     }],
     ["ownership transfer", {
       ownershipTransfers: [{
@@ -3317,11 +3349,10 @@ Deno.test("cycle delete failure returns retryable 503 and no sync_complete", asy
 });
 
 Deno.test("routine exercise orphan cleanup failure returns retryable 503", async () => {
+  // Design K cleans orphans with a direct `routine_exercises` delete (index.ts
+  // "Remove orphan exercises"), not the retired `cleanup_routine_exercise_orphans`
+  // RPC, so the injectable failure is the delete.
   const harness = makeHarness(undefined, {
-    rpcBehavior: (name) =>
-      name === "cleanup_routine_exercise_orphans"
-        ? Promise.resolve({ data: null, error: INJECTED_DB_ERROR })
-        : Promise.resolve({ data: [], error: null }),
     writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
   });
   const response = await harness.handler(
@@ -3384,10 +3415,8 @@ const CATALOG_RESULT = {
   error: null,
 };
 
-Deno.test("VBT insert failure keeps 200 and reports failed.assessments", async () => {
-  const harness = makeHarness(undefined, {
-    tableResults: { exercise_catalog: CATALOG_RESULT },
-    writeErrors: { "vbt_assessments:insert": INJECTED_DB_ERROR },
+// Was "VBT insert failure…": e0570a79 made the VBT push an idempotent upsert,
+// so the write-method-specific failure case is the upsert one.
 Deno.test("VBT upsert failure keeps 200 and reports failed.assessments", async () => {
   const harness = makeHarness(undefined, {
     tableResults: { exercise_catalog: CATALOG_RESULT },
@@ -3409,7 +3438,6 @@ Deno.test("VBT upsert failure keeps 200 and reports failed.assessments", async (
 
 Deno.test("successful push reports an empty failed map", async () => {
   const harness = makeHarness(undefined, {
-    tableResults: { exercise_catalog: CATALOG_RESULT },
     tableResults: {
       exercise_catalog: CATALOG_RESULT,
       // What `.upsert(...).select('id')` returns: the rows actually inserted.
@@ -3428,9 +3456,6 @@ Deno.test("successful push reports an empty failed map", async () => {
     externalActivities: [],
   });
   // The client id used for failure reporting must never reach PostgREST.
-  const inserts = writeQueries(harness, "vbt_assessments", "insert");
-  assertEquals(inserts.length, 1);
-  const rows = callArgs(inserts[0]!, "insert")[0] as Array<
   const upserts = writeQueries(harness, "vbt_assessments", "upsert");
   assertEquals(upserts.length, 1);
   const rows = callArgs(upserts[0]!, "upsert")[0] as Array<
@@ -3639,30 +3664,30 @@ Deno.test("a failed tombstone delete chunk stops at that chunk with a retryable 
   assertEquals(writeQueries(harness, "routines", "delete").length, 1);
 });
 
+// Was the `cleanup_routine_exercise_orphans` RPC-args assertion (a25a5d87 /
+// PR #137). 78120b43 / PR #167 replaced that RPC with a direct delete, and the
+// empty-exercise routine takes the delete-all branch (no `not in` filter).
 Deno.test("orphan cleanup failure for a routine with no exercises returns retryable 503", async () => {
   const body = validNestedRelationshipBody();
   const routines = body.routines as Array<Record<string, unknown>>;
   routines[0] = { ...routines[0], exerciseCount: 0, exercises: [] };
   const harness = makeHarness(undefined, {
-    rpcBehavior: (name) =>
-      name === "cleanup_routine_exercise_orphans"
-        ? Promise.resolve({ data: null, error: INJECTED_DB_ERROR })
-        : Promise.resolve({ data: [], error: null }),
+    writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
   });
   const response = await harness.handler(requestFromBody(body));
   await assertPartialWriteRetry(harness, response);
-  const cleanup = harness.adminRpcCalls.find((call) =>
-    call.name === "cleanup_routine_exercise_orphans"
-  );
-  assert(cleanup);
-  assertEquals(cleanup.args, {
-    p_user_id: VALID_USER_ID,
-    p_routine_id: ROUTINE_ID,
-    p_keep_ids: [],
-  });
+  const deletes = writeQueries(harness, "routine_exercises", "delete");
+  assertEquals(deletes.length, 1);
+  // The delete-all branch: no `not in` filter.
+  assert(!deletes[0]!.calls.some((call) => call.method === "not"));
+  assertEquals(callArgs(deletes[0]!, "eq"), ["routine_id", ROUTINE_ID]);
 });
 
-Deno.test("orphan cleanup keeps hundreds of exercise ids in the RPC body", async () => {
+// Was "…in the RPC body" asserting `cleanup_routine_exercise_orphans`
+// `p_keep_ids`. Design K carries the same keep-set in the delete's `not in`
+// filter, so the property under test (a 500-id keep set is not lost) is the
+// filter's contents.
+Deno.test("orphan cleanup keeps hundreds of exercise ids in the delete filter", async () => {
   const body = validNestedRelationshipBody();
   const routines = body.routines as Array<Record<string, unknown>>;
   const routine = routines[0]!;
@@ -3676,25 +3701,13 @@ Deno.test("orphan cleanup keeps hundreds of exercise ids in the RPC body", async
   const responseBody = await json(response);
   assertEquals(response.status, 200, JSON.stringify(responseBody));
 
-  const cleanup = harness.adminRpcCalls.find((call) =>
-    call.name === "cleanup_routine_exercise_orphans"
-  );
-  assert(cleanup);
-  assertEquals(cleanup.args.p_routine_id, ROUTINE_ID);
-  assertEquals(cleanup.args.p_keep_ids, exerciseIds);
-  assertEquals(
-    writeQueries(harness, "routine_exercises", "delete").length,
-    0,
-  );
-    writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
-  });
-  const response = await harness.handler(requestFromBody(body));
-  await assertPartialWriteRetry(harness, response);
   const deletes = writeQueries(harness, "routine_exercises", "delete");
   assertEquals(deletes.length, 1);
-  // The delete-all branch: no `not in` filter.
-  assert(!deletes[0]!.calls.some((call) => call.method === "not"));
-  assertEquals(callArgs(deletes[0]!, "eq"), ["routine_id", ROUTINE_ID]);
+  const notArgs = callArgs(deletes[0]!, "not");
+  assertEquals(notArgs[0], "id");
+  assertEquals(notArgs[1], "in");
+  const listed = String(notArgs[2]).replace(/^\(|\)$/g, "").split(",");
+  assertEquals(listed, exerciseIds);
 });
 
 Deno.test("routine_exercises upsert failure returns the same retryable 503", async () => {
@@ -3735,9 +3748,9 @@ Deno.test("retrying the identical payload after a 503 succeeds and replays the s
   // to the steps the first attempt never reached.
   const secondWrites = harness.adminWriteCalls.slice(firstWrites.length);
   assertEquals(secondWrites.slice(0, firstWrites.length), firstWrites);
+  // Cycles go through merge_training_cycles_from_push (Design K / 78120b43),
+  // not a direct training_cycles upsert.
   assert(
-    secondWrites.slice(firstWrites.length).some((call) =>
-      call.table === "training_cycles" && call.method === "upsert"
     harness.adminRpcCalls.slice(firstRpcCallCount).some((call) =>
       call.name === "merge_training_cycles_from_push"
     ),
@@ -3808,9 +3821,19 @@ Deno.test("signature upsert failure reports only attempted signature ids", async
 const EXTERNAL_ACTIVITY_ID = "00000000-0000-4000-8000-000000000073";
 
 Deno.test("external activity upsert failure reports failed.externalActivities with no ack", async () => {
-  const harness = makeHarness(undefined, {
-    writeErrors: { "external_activities:upsert": INJECTED_DB_ERROR },
-  });
+  // Flag-off fails the PostgREST upsert; flag-on fails the LWW RPC. Same claim
+  // either way: a failed write lands in `failed.externalActivities` and is
+  // never acked. (Was: a PostgREST-only `writeErrors` injection, which the
+  // flag-on path never reaches — `upsert_external_activity_lww` is an RPC, so
+  // the double accepted and the test saw `upserted: 1`.)
+  const harness = makeHarness(undefined, SYNC_LWW_ENABLED
+    ? {
+      rpcBehavior: async (name: string) =>
+        name === "upsert_external_activity_lww"
+          ? { data: null, error: INJECTED_DB_ERROR }
+          : undefined,
+    }
+    : { writeErrors: { "external_activities:upsert": INJECTED_DB_ERROR } });
   const response = await harness.handler(requestFromBody({
     ...validPushBody(),
     profileId: "default",
@@ -3821,6 +3844,21 @@ Deno.test("external activity upsert failure reports failed.externalActivities wi
       provider: "test-provider",
       name: "Upsert fails",
       startedAt: "2026-07-11T12:00:00.000Z",
+    }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.externalActivitiesUpserted, 0);
+  assertEquals(body.externalActivityKeys, []);
+  assertEquals(body.failed, {
+    phaseStatistics: [],
+    exerciseSignatures: [],
+    assessments: [],
+    externalActivities: [EXTERNAL_ACTIVITY_ID],
+  });
+});
+
 Deno.test("external activity synced_at is server time, never the client's syncedAt", async () => {
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody({
@@ -3839,21 +3877,31 @@ Deno.test("external activity synced_at is server time, never the client's synced
   const body = await json(response);
 
   assertEquals(response.status, 200, JSON.stringify(body));
-  assertEquals(body.externalActivitiesUpserted, 0);
-  assertEquals(body.externalActivityKeys, []);
+  // This is the success path. The failure-shaped block that used to sit here
+  // (`upserted: 0`, `keys: []`, `failed.externalActivities: [EXTERNAL_-
+  // ACTIVITY_ID]`) was spliced in from the sibling "upsert failure reports
+  // failed.externalActivities with no ack" test, which owns that claim — and
+  // whose body id (…073) is not even this test's (…0e1). The claim here is
+  // the clock: `synced_at` is server time and `started_at` is preserved.
+  assertEquals(body.externalActivitiesUpserted, 1);
   assertEquals(body.failed, {
     phaseStatistics: [],
     exerciseSignatures: [],
     assessments: [],
-    externalActivities: [EXTERNAL_ACTIVITY_ID],
+    externalActivities: [],
   });
-  assertEquals(response.status, 200);
   assertEquals(body.syncTime, "2026-07-16T02:00:00.000Z");
-  const upserts = harness.adminWritePayloads.filter((call) =>
-    call.table === "external_activities" && call.method === "upsert"
-  );
-  assertEquals(upserts.length, 1);
-  const rows = upserts[0].args[0] as Array<Record<string, unknown>>;
+  // Flag-off writes through PostgREST; flag-on goes through
+  // `upsert_external_activity_lww`. Both carry the same `activityRows`, so
+  // both must show the server clock. (Was: a PostgREST-only `upserts.length
+  // === 1` assert, which cannot hold on the flag-on write path.)
+  const rows = SYNC_LWW_ENABLED
+    ? (harness.adminRpcCalls.find((call) =>
+      call.name === "upsert_external_activity_lww"
+    )!.args.p_rows as Array<Record<string, unknown>>)
+    : (harness.adminWritePayloads.filter((call) =>
+      call.table === "external_activities" && call.method === "upsert"
+    )[0].payload as Array<Record<string, unknown>>);
   assertEquals(rows.length, 1);
   assertEquals(rows[0].synced_at, "2026-07-16T02:00:00.000Z");
   assertEquals(rows[0].started_at, "2020-01-01T00:00:00.000Z");
@@ -4937,16 +4985,15 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): an older build's cycle is sent
   assertEquals(response.status, 200, JSON.stringify(await json(response)));
   const [sent] = mergedCycles(harness);
   assertEquals(sent.base_updated_at, null);
-  // LWW compares updated_at; without LWW the merge inserts now().
-  if (SYNC_LWW_ENABLED) {
-    assertEquals(typeof sent.updated_at, "string");
-  } else {
-    assertEquals(sent.updated_at, null);
-  }
   // Undated-push rule (R-1/R-7, NF-15): an omitted updatedAt is dated at
   // receipt under BOTH flag values, so the merge never sees null and a NOT
-  // NULL updated_at column can never be handed one.
-  assertEquals(typeof sent.updated_at, "string");
+  // NULL updated_at column can never be handed one. Receipt is `pushReceivedAt`.
+  // Was: `if (SYNC_LWW_ENABLED) typeof sent.updated_at === "string" else
+  // sent.updated_at === null` ("without LWW the merge inserts now()"). That
+  // branch is the older era and directly contradicted the rule asserted one
+  // statement later; this test is a union splice of the two eras. Keep the
+  // newer one, and pin the clock rather than only its type.
+  assertEquals(sent.updated_at, "2026-07-16T02:00:00.000Z");
 });
 
 Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycles whose structure was applied`, async () => {
@@ -4962,12 +5009,14 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycle
       {
         // Portal edited after the device's base: config merged, structure
         // kept. The device must pull before advancing its base.
+        // Was: this object's `client_updated_at` tail was split off into a
+        // bare `{ client_updated_at }` element with no `id` and no `accepted`,
+        // so the handler read it as `!row.accepted` and pushed a second
+        // rejection with `id: undefined`. The tail belongs on this row.
         id: MERGE_CYCLE_2_ID,
         accepted: true,
         server_updated_at: "2026-07-16T02:00:01+00:00",
         structure_applied: false,
-      },
-      {
         client_updated_at: "2026-07-16T01:50:01+00:00",
       },
       {
@@ -4996,7 +5045,6 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): cycleVersions lists only cycle
   assertEquals(body.cyclesUpserted, 2);
   assertEquals((body.rejections as Record<string, unknown>).cycles, [{
     id: MERGE_CYCLE_3_ID,
-    serverUpdatedAt: "2026-07-16T02:00:02+00:00",
     serverUpdatedAt: "2026-07-16T01:50:02+00:00",
   }]);
 });
@@ -5011,7 +5059,12 @@ Deno.test("cycle merge: a push without cycles reports empty cycleVersions and ma
   assertEquals(mergedCycles(harness), []);
 });
 
-Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): a merge RPC error is a retryable 500`, async () => {
+// Was "…is a retryable 500" with `{ error: "Internal server error" }`. PR 22
+// made the merge transactional: an RPC error rolls back only the merge and
+// leaves earlier writes in place, so it is a partial write and answers 503
+// `partial_write_retry` so the device retries rather than treating it as a
+// permanent failure.
+Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): a merge RPC error is a retryable 503 partial write`, async () => {
   const harness = makeHarness(undefined, {
     rpcBehavior: cycleMergeRpcBehavior(() => [], {
       name: "PostgrestError",
@@ -5022,8 +5075,11 @@ Deno.test(`cycle merge (LWW=${SYNC_LWW_ENABLED}): a merge RPC error is a retryab
     requestFromBody(oldBuildRoutineAndCycleBody()),
   );
 
-  assertEquals(response.status, 500);
-  assertEquals(await json(response), { error: "Internal server error" });
+  assertEquals(response.status, 503);
+  assertEquals(await json(response), {
+    error: "Sync temporarily unavailable",
+    code: "partial_write_retry",
+  });
   assertEquals(harness.broadcastPayloads, []);
 });
 
@@ -5673,21 +5729,6 @@ Deno.test("flag-off keeps the rejection response contract for stats and rpg", as
   assertEquals(payload.rejections?.gamificationStats ?? [], expected);
   assertEquals(payload.rejections?.rpgAttributes ?? [], expected);
 });
-
-interface LocalIntegrationEnvironment {
-  url: string;
-  anonKey: string;
-  serviceRoleKey: string;
-}
-
-const localIntegrationEnvironment: LocalIntegrationEnvironment | null = (() => {
-  const url = Deno.env.get("SUPABASE_URL");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  return url && anonKey && serviceRoleKey
-    ? { url, anonKey, serviceRoleKey }
-    : null;
-})();
 
 interface LocalIntegrationFixture {
   admin: SupabaseClient;
@@ -6827,6 +6868,10 @@ Deno.test({
       }
     } finally {
       await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
 Deno.test({
   name:
     "integration: pushed external activity stores server synced_at so a later pull cursor still sees it",
@@ -6959,232 +7004,6 @@ Deno.test({
           );
         }
       }
-    }
-  },
-});
-
-// ---------------------------------------------------------------------------
-// PR 24 (F-069): an edited or re-pushed session refreshes its
-// exercise_progress rows inside replace_session_children (p_progress).
-// ---------------------------------------------------------------------------
-
-interface ProgressRowSnapshot {
-  exercise_name: string;
-  max_weight_kg: number;
-  estimated_1rm_kg: number;
-  total_volume_kg: number;
-  local_profile_id: string | null;
-}
-
-async function progressRowsForSession(
-  fixture: LocalIntegrationFixture,
-  sessionId: string,
-): Promise<ProgressRowSnapshot[]> {
-  const rows = await fixture.admin.from("exercise_progress")
-    .select(
-      "exercise_name,max_weight_kg,estimated_1rm_kg,total_volume_kg,local_profile_id",
-    )
-    .eq("session_id", sessionId)
-    .order("exercise_name");
-  if (rows.error) throw new Error("progress verification query failed");
-  return (rows.data as Array<Record<string, unknown>>).map((row) => ({
-    exercise_name: String(row.exercise_name),
-    max_weight_kg: Number(row.max_weight_kg),
-    estimated_1rm_kg: Number(row.estimated_1rm_kg),
-    total_volume_kg: Number(row.total_volume_kg),
-    local_profile_id: row.local_profile_id as string | null,
-  }));
-}
-
-Deno.test({
-  name:
-    "integration: handler re-push refreshes exercise_progress after a weight edit and drops a removed exercise's row",
-  ignore: localIntegrationEnvironment === null,
-  fn: async () => {
-    const fixture = await createLocalIntegrationFixture();
-    try {
-      const subscription = await fixture.admin.from("subscriptions").insert({
-        user_id: fixture.ownerId,
-        tier: "INFERNO",
-        status: "active",
-        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
-      });
-      if (subscription.error) {
-        throw new Error("subscription fixture creation failed");
-      }
-
-      // Custom (name-only) exercises: A has no mobile estimate, so the
-      // hybrid fallback runs; B ships estimatedOneRepMaxKg, stored verbatim.
-      const sessionId = crypto.randomUUID();
-      const exerciseA = crypto.randomUUID();
-      const exerciseB = crypto.randomUUID();
-      const buildBody = (
-        exercises: Array<{
-          id: string;
-          name: string;
-          weightKg: number;
-          estimate?: number;
-        }>,
-      ) => ({
-        ...validPushBody(),
-        profileId: fixture.profileId,
-        sessions: [{
-          id: sessionId,
-          userId: fixture.ownerId,
-          name: "PR24 session",
-          startedAt: "2026-09-18T10:00:00.000Z",
-          updatedAt: new Date().toISOString(),
-          exercises: exercises.map((exercise, index) => ({
-            id: exercise.id,
-            sessionId,
-            exerciseId: null,
-            name: exercise.name,
-            orderIndex: index,
-            ...(exercise.estimate === undefined
-              ? {}
-              : { estimatedOneRepMaxKg: exercise.estimate }),
-            sets: [{
-              id: crypto.randomUUID(),
-              exerciseId: exercise.id,
-              setNumber: 1,
-              targetReps: 10,
-              actualReps: 10,
-              weightKg: exercise.weightKg,
-              workoutMode: "OLD_SCHOOL",
-              repSummaries: [],
-            }],
-          })),
-        }],
-      });
-
-      const handler = makeRealSqlPushHandler(fixture);
-      const first = await handler(requestFromBody(buildBody([
-        { id: exerciseA, name: "PR24 Custom Row A", weightKg: 20 },
-        { id: exerciseB, name: "PR24 Custom Row B", weightKg: 40, estimate: 50 },
-      ])));
-      assertEquals(first.status, 200, await first.text());
-      assertEquals(await progressRowsForSession(fixture, sessionId), [
-        {
-          exercise_name: "PR24 Custom Row A",
-          max_weight_kg: 20,
-          estimated_1rm_kg: 26.67,
-          total_volume_kg: 200,
-          local_profile_id: fixture.profileId,
-        },
-        {
-          exercise_name: "PR24 Custom Row B",
-          max_weight_kg: 40,
-          estimated_1rm_kg: 50,
-          total_volume_kg: 400,
-          local_profile_id: fixture.profileId,
-        },
-      ]);
-
-      // Edit: A's weight 20 -> 30 (fallback 1RM 40), B's mobile estimate
-      // 50 -> 55. Before PR 24 the stale first-push rows were kept.
-      const edited = await handler(requestFromBody(buildBody([
-        { id: exerciseA, name: "PR24 Custom Row A", weightKg: 30 },
-        { id: exerciseB, name: "PR24 Custom Row B", weightKg: 44, estimate: 55 },
-      ])));
-      const editedBody = await json(edited);
-      assertEquals(edited.status, 200, JSON.stringify(editedBody));
-      assertEquals(editedBody.exerciseProgressInserted, 2);
-      assertEquals(await progressRowsForSession(fixture, sessionId), [
-        {
-          exercise_name: "PR24 Custom Row A",
-          max_weight_kg: 30,
-          estimated_1rm_kg: 40,
-          total_volume_kg: 300,
-          local_profile_id: fixture.profileId,
-        },
-        {
-          exercise_name: "PR24 Custom Row B",
-          max_weight_kg: 44,
-          estimated_1rm_kg: 55,
-          total_volume_kg: 440,
-          local_profile_id: fixture.profileId,
-        },
-      ]);
-
-      // Remove exercise B: its progress row goes, A's stays.
-      const removed = await handler(requestFromBody(buildBody([
-        { id: exerciseA, name: "PR24 Custom Row A", weightKg: 30 },
-      ])));
-      assertEquals(removed.status, 200, await removed.text());
-      assertEquals(await progressRowsForSession(fixture, sessionId), [
-        {
-          exercise_name: "PR24 Custom Row A",
-          max_weight_kg: 30,
-          estimated_1rm_kg: 40,
-          total_volume_kg: 300,
-          local_profile_id: fixture.profileId,
-        },
-      ]);
-    } finally {
-      await cleanupLocalIntegrationFixture(fixture);
-    }
-  },
-});
-
-Deno.test({
-  name:
-    "integration: the old 6-named-argument replace_session_children call still resolves and leaves exercise_progress untouched",
-  ignore: localIntegrationEnvironment === null,
-  fn: async () => {
-    const fixture = await createLocalIntegrationFixture();
-    try {
-      const sessionId = await createTelemetrySession(fixture);
-      const stored = await fixture.admin.from("exercise_progress").insert({
-        user_id: fixture.ownerId,
-        exercise_name: "PR24 Stored Progress",
-        session_id: sessionId,
-        max_weight_kg: 25,
-        estimated_1rm_kg: 33.33,
-      });
-      if (stored.error) throw new Error("progress fixture creation failed");
-
-      // Exactly today's shipping call shape (six named arguments, no
-      // p_progress): must not be ambiguous (PGRST203) after the migration.
-      const exerciseId = crypto.randomUUID();
-      const oldCall = await fixture.admin.rpc("replace_session_children", {
-        p_user_id: fixture.ownerId,
-        p_session_ids: [sessionId],
-        p_exercises: [{
-          id: exerciseId,
-          session_id: sessionId,
-          user_id: fixture.ownerId,
-          name: "PR24 Stored Progress",
-          exercise_id: null,
-          muscle_group: "General",
-          order_index: 0,
-        }],
-        p_sets: [],
-        p_rep_summaries: [],
-        p_rep_telemetry: [],
-      });
-      assertEquals(oldCall.error, null);
-      assertEquals((oldCall.data as Record<string, unknown>).exercises, 1);
-      assertEquals(
-        (await progressRowsForSession(fixture, sessionId)).map((row) =>
-          row.max_weight_kg
-        ),
-        [25],
-      );
-
-      // With p_progress = [] the session's progress is cleared.
-      const newCall = await fixture.admin.rpc("replace_session_children", {
-        p_user_id: fixture.ownerId,
-        p_session_ids: [sessionId],
-        p_exercises: [],
-        p_sets: [],
-        p_rep_summaries: [],
-        p_rep_telemetry: [],
-        p_progress: [],
-      });
-      assertEquals(newCall.error, null);
-      assertEquals(await progressRowsForSession(fixture, sessionId), []);
-    } finally {
-      await cleanupLocalIntegrationFixture(fixture);
     }
   },
 });
@@ -7551,12 +7370,15 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
   }
 
   assertEquals(offset, 729);
+  // Design K: one `replace_session_children` per batch; its `p_exercises`
+  // carries the same per-batch component ids the retired
+  // `upsert_workout_sessions_with_components` `p_component_ids` did.
   const replaceCalls = harness.adminRpcCalls.filter((call) =>
-    call.name === "upsert_workout_sessions_with_components"
+    call.name === "replace_session_children"
   );
   assertEquals(replaceCalls.length, 3);
   assertEquals(
-    replaceCalls[0].args.p_component_ids,
+    (replaceCalls[0].args.p_exercises as Array<{ id: string }>).map((row) => row.id),
     allSessions.slice(0, 243).flatMap((session) => session.exercises.map((exercise) => exercise.id)),
   );
   const secondBatchExercises = replaceCalls[1].args.p_exercises as Array<Record<string, unknown>>;
@@ -7570,171 +7392,7 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
   );
 });
 
-Deno.test("PR 24: exercise_progress rows ride in replace_session_children as p_progress, with no separate progress read or write", async () => {
-  const harness = makeHarness(undefined, {
-    catalogRows: [{
-      id: "pr24-lat-pulldown",
-      name: "Lat Pulldown",
-      display_name: "Lat Pulldown",
-      aliases: [],
-      user_id: null,
-      is_custom: false,
-      archived: false,
-    }],
-    rpcBehavior: async (name) =>
-      name === "replace_session_children"
-        ? { data: { exercise_progress: 2 }, error: null }
-        : { data: [], error: null },
-  });
-  const exercise = (
-    id: string,
-    setId: string,
-    name: string,
-    weightKg: number,
-    extra: Record<string, unknown> = {},
-  ) => ({
-    id,
-    sessionId: SESSION_ID,
-    name,
-    exerciseId: null,
-    muscleGroup: "Back",
-    ...extra,
-    sets: [{
-      id: setId,
-      exerciseId: id,
-      setNumber: 1,
-      targetReps: 10,
-      actualReps: 10,
-      weightKg,
-    }],
-  });
-  const body = validPushBody();
-  body.sessions = [{
-    id: SESSION_ID,
-    userId: VALID_USER_ID,
-    startedAt: "2026-01-20T10:00:00.000Z",
-    updatedAt: "2026-01-20T10:30:00.000Z",
-    workoutMode: "OLD_SCHOOL",
-    exercises: [
-      exercise(
-        "00000000-0000-4000-8000-000000002401",
-        "00000000-0000-4000-8000-000000002501",
-        "PR24 Custom A",
-        30,
-      ),
-      exercise(
-        "00000000-0000-4000-8000-000000002402",
-        "00000000-0000-4000-8000-000000002502",
-        "PR24 Custom B",
-        40,
-        { estimatedOneRepMaxKg: 55.555 },
-      ),
-      // Same identity as A in the same session: the first row wins, as before.
-      exercise(
-        "00000000-0000-4000-8000-000000002403",
-        "00000000-0000-4000-8000-000000002503",
-        "PR24 Custom A",
-        90,
-      ),
-      // Catalog branch: same catalog id under two different names is one
-      // identity (id:<catalog id>); the first row wins.
-      exercise(
-        "00000000-0000-4000-8000-000000002404",
-        "00000000-0000-4000-8000-000000002504",
-        "Lat Pulldown (wide)",
-        50,
-        { exerciseId: "pr24-lat-pulldown" },
-      ),
-      exercise(
-        "00000000-0000-4000-8000-000000002405",
-        "00000000-0000-4000-8000-000000002505",
-        "Lat Pulldown (close)",
-        70,
-        { exerciseId: "pr24-lat-pulldown" },
-      ),
-    ],
-  }];
 
-  const response = await harness.handler(requestFromBody(body));
-  const responseBody = await json(response);
-
-  assertEquals(response.status, 200, JSON.stringify(responseBody));
-  const replaceCalls = harness.adminRpcCalls.filter((call) =>
-    call.name === "replace_session_children"
-  );
-  assertEquals(replaceCalls.length, 1);
-  assertEquals(replaceCalls[0].args.p_session_ids, [SESSION_ID]);
-  const progress = replaceCalls[0].args.p_progress as Array<
-    Record<string, unknown>
-  >;
-  assertEquals(
-    progress.map((row) => ({
-      session_id: row.session_id,
-      user_id: row.user_id,
-      exercise_name: row.exercise_name,
-      exercise_id: row.exercise_id,
-      max_weight_kg: row.max_weight_kg,
-      estimated_1rm_kg: row.estimated_1rm_kg,
-    })),
-    [
-      {
-        session_id: SESSION_ID,
-        user_id: VALID_USER_ID,
-        exercise_name: "PR24 Custom A",
-        exercise_id: null,
-        max_weight_kg: 30,
-        // Hybrid fallback (Brzycki at 10 reps), rounded to 2dp.
-        estimated_1rm_kg: 40,
-      },
-      {
-        session_id: SESSION_ID,
-        user_id: VALID_USER_ID,
-        exercise_name: "PR24 Custom B",
-        exercise_id: null,
-        max_weight_kg: 40,
-        // Mobile estimate stored verbatim, never rounded.
-        estimated_1rm_kg: 55.555,
-      },
-      {
-        session_id: SESSION_ID,
-        user_id: VALID_USER_ID,
-        exercise_name: "Lat Pulldown (wide)",
-        exercise_id: "pr24-lat-pulldown",
-        max_weight_kg: 50,
-        estimated_1rm_kg: 66.67,
-      },
-    ],
-  );
-  // The response reports the count the RPC returns, not the rows sent (3):
-  // the stub returns 2 to prove the value comes from the RPC result.
-  assertEquals(responseBody.exerciseProgressInserted, 2);
-  assertEquals(
-    harness.adminFromCalls.filter((table) => table === "exercise_progress"),
-    [],
-  );
-});
-
-Deno.test("PR 24: an accepted session with no progress rows still sends p_progress as an empty array", async () => {
-  const harness = makeHarness();
-  const body = validPushBody();
-  body.sessions = [{
-    id: SESSION_ID,
-    userId: VALID_USER_ID,
-    startedAt: "2026-01-20T10:00:00.000Z",
-    updatedAt: "2026-01-20T10:30:00.000Z",
-    workoutMode: "OLD_SCHOOL",
-    exercises: [],
-  }];
-
-  const response = await harness.handler(requestFromBody(body));
-
-  assertEquals(response.status, 200);
-  const replaceCalls = harness.adminRpcCalls.filter((call) =>
-    call.name === "replace_session_children"
-  );
-  assertEquals(replaceCalls.length, 1);
-  assertEquals(replaceCalls[0].args.p_progress, []);
-});
 
 // PR 58 (F-073, F-039): each client-supplied primary key is probed for
 // ownership exactly once, in the up-front directOwnerChecks pass.
@@ -7761,10 +7419,21 @@ Deno.test("push probes each ownership table exactly once for a nested payload", 
       `${table} ownership probes`,
     );
   }
+  // Design K (KD-6) sends days nested on the merge row (`p_cycles[i].days`):
+  // `merge_training_cycles_from_push` upserts them by (cycle_id, day_number)
+  // and orphan-prunes in one transaction, so the handler never opens
+  // `cycle_days` itself. The claim under test is unchanged — cycle_days is
+  // never id-probed — only the mechanism moved into the RPC.
+  // Was: `adminFromCalls.filter(... === "cycle_days").length === 2` (the
+  // handler-side upsert + orphan prune of the retired Design R path).
   assertEquals(
     harness.adminFromCalls.filter((table) => table === "cycle_days").length,
-    2,
-    "cycle_days is only upserted by (cycle_id, day_number) and orphan-pruned, never id-probed",
+    0,
+    "cycle_days is only upserted by (cycle_id, day_number) and orphan-pruned inside the merge RPC, never id-probed",
+  );
+  assert(
+    harness.adminRpcCalls.some((call) => call.name === "merge_training_cycles_from_push"),
+    "the nested days ride on merge_training_cycles_from_push",
   );
 });
 
@@ -7896,217 +7565,8 @@ Deno.test("a library row wins a name tie with the caller's custom row", async ()
   );
 });
 
-Deno.test("PR 24: with LWW on, a rejected session is in neither p_session_ids nor p_progress, so its stored progress is kept", async () => {
-  const acceptedId = "00000000-0000-4000-8000-000000002610";
-  const rejectedId = "00000000-0000-4000-8000-000000002620";
-  const harness = makeHarness(undefined, {
-    syncLwwEnabled: true,
-    rpcBehavior: async (name) => {
-      if (name === "upsert_workout_session_lww") {
-        return {
-          data: [
-            { id: acceptedId, accepted: true, server_updated_at: null },
-            {
-              id: rejectedId,
-              accepted: false,
-              server_updated_at: "2026-01-21T00:00:00.000Z",
-            },
-          ],
-          error: null,
-        };
-      }
-      if (name === "replace_session_children") {
-        return { data: { exercise_progress: 1 }, error: null };
-      }
-      return { data: [], error: null };
-    },
-  });
-  const session = (id: string, suffix: string) => ({
-    id,
-    userId: VALID_USER_ID,
-    startedAt: "2026-01-20T10:00:00.000Z",
-    updatedAt: "2026-01-20T10:30:00.000Z",
-    workoutMode: "OLD_SCHOOL",
-    exercises: [{
-      id: `00000000-0000-4000-8000-0000000027${suffix}`,
-      sessionId: id,
-      name: `PR24 LWW ${suffix}`,
-      exerciseId: null,
-      muscleGroup: "Back",
-      sets: [{
-        id: `00000000-0000-4000-8000-0000000028${suffix}`,
-        exerciseId: `00000000-0000-4000-8000-0000000027${suffix}`,
-        setNumber: 1,
-        targetReps: 10,
-        actualReps: 10,
-        weightKg: 30,
-      }],
-    }],
-  });
-  const body = validPushBody();
-  body.sessions = [session(acceptedId, "10"), session(rejectedId, "20")];
 
-  const response = await harness.handler(requestFromBody(body));
-  const responseBody = await json(response);
 
-  assertEquals(response.status, 200, JSON.stringify(responseBody));
-  assertEquals(
-    (responseBody.rejections as Record<string, unknown>).sessions,
-    [{ id: rejectedId, serverUpdatedAt: "2026-01-21T00:00:00.000Z" }],
-  );
-  const replaceCalls = harness.adminRpcCalls.filter((call) =>
-    call.name === "replace_session_children"
-  );
-  assertEquals(replaceCalls.length, 1);
-  assertEquals(replaceCalls[0].args.p_session_ids, [acceptedId]);
-  assertEquals(
-    (replaceCalls[0].args.p_progress as Array<Record<string, unknown>>).map(
-      (row) => row.session_id,
-    ),
-    [acceptedId],
-  );
-  assertEquals(responseBody.exerciseProgressInserted, 1);
-});
-
-// ---------------------------------------------------------------------------
-// PR 28 (FP-4): per-exercise cable count rides in p_exercises as cable_count.
-// Optional and nested (KD-2): today's mobile shape sends nothing -> NULL.
-// ---------------------------------------------------------------------------
-
-function cableCountSession(
-  sessionId: string,
-  exercises: Array<{ suffix: string; extra?: Record<string, unknown> }>,
-) {
-  return {
-    id: sessionId,
-    userId: VALID_USER_ID,
-    startedAt: "2026-01-20T10:00:00.000Z",
-    updatedAt: "2026-01-20T10:30:00.000Z",
-    workoutMode: "OLD_SCHOOL",
-    exercises: exercises.map(({ suffix, extra }, index) => ({
-      id: `00000000-0000-4000-8000-0000000029${suffix}`,
-      sessionId,
-      name: `PR28 Custom ${suffix}`,
-      exerciseId: null,
-      muscleGroup: "Back",
-      orderIndex: index,
-      ...(extra ?? {}),
-      sets: [{
-        id: `00000000-0000-4000-8000-0000000030${suffix}`,
-        exerciseId: `00000000-0000-4000-8000-0000000029${suffix}`,
-        setNumber: 1,
-        targetReps: 10,
-        actualReps: 10,
-        weightKg: 30,
-      }],
-    })),
-  };
-}
-
-for (const syncLwwEnabled of [false, true]) {
-  Deno.test(`PR 28: cableCount is sent to replace_session_children as cable_count; absent or null is NULL (LWW ${syncLwwEnabled ? "on" : "off"})`, async () => {
-    const harness = makeHarness(undefined, {
-      syncLwwEnabled,
-      rpcBehavior: async (name) => {
-        if (name === "upsert_workout_session_lww") {
-          return {
-            data: [{ id: SESSION_ID, accepted: true, server_updated_at: null }],
-            error: null,
-          };
-        }
-        return { data: [], error: null };
-      },
-    });
-    const body = validPushBody();
-    body.sessions = [cableCountSession(SESSION_ID, [
-      { suffix: "01", extra: { cableCount: 1 } },
-      { suffix: "02", extra: { cableCount: 2 } },
-      // Today's mobile shape: no cableCount key at all.
-      { suffix: "03" },
-      { suffix: "04", extra: { cableCount: null } },
-    ])];
-
-    const response = await harness.handler(requestFromBody(body));
-
-    assertEquals(response.status, 200, await response.text());
-    const replaceCalls = harness.adminRpcCalls.filter((call) =>
-      call.name === "replace_session_children"
-    );
-    assertEquals(replaceCalls.length, 1);
-    assertEquals(
-      (replaceCalls[0].args.p_exercises as Array<Record<string, unknown>>).map(
-        (row) => [row.name, row.cable_count],
-      ),
-      [
-        ["PR28 Custom 01", 1],
-        ["PR28 Custom 02", 2],
-        ["PR28 Custom 03", null],
-        ["PR28 Custom 04", null],
-      ],
-    );
-  });
-}
-
-for (const bad of [0, 3, 1.5, "2", true]) {
-  Deno.test(`PR 28: cableCount ${JSON.stringify(bad)} is a 400 before any privileged write`, async () => {
-    const harness = makeHarness();
-    const body = validPushBody();
-    body.sessions = [cableCountSession(SESSION_ID, [
-      { suffix: "11", extra: { cableCount: bad } },
-    ])];
-
-    const response = await harness.handler(requestFromBody(body));
-
-    assertEquals(response.status, 400);
-    assertEquals(harness.adminConstructionCount.value, 0);
-    assertEquals(harness.adminRpcCalls, []);
-  });
-}
-
-Deno.test({
-  name:
-    "integration: handler push stores exercises.cable_count and pull returns cableCount (1 stays 1, absent stays null)",
-  ignore: localIntegrationEnvironment === null,
-  fn: async () => {
-    const fixture = await createLocalIntegrationFixture();
-    try {
-      const subscription = await fixture.admin.from("subscriptions").insert({
-        user_id: fixture.ownerId,
-        tier: "INFERNO",
-        status: "active",
-        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
-      });
-      if (subscription.error) {
-        throw new Error("subscription fixture creation failed");
-      }
-
-      const sessionId = crypto.randomUUID();
-      const singleCable = crypto.randomUUID();
-      const unknownCable = crypto.randomUUID();
-      const exercise = (
-        id: string,
-        name: string,
-        orderIndex: number,
-        extra: Record<string, unknown>,
-      ) => ({
-        id,
-        sessionId,
-        exerciseId: null,
-        name,
-        orderIndex,
-        ...extra,
-        sets: [{
-          id: crypto.randomUUID(),
-          exerciseId: id,
-  const replace = harness.adminRpcCalls.find((call) =>
-    call.name === "replace_session_children"
-  );
-  assert(replace);
-  assertEquals(
-    (replace.args.p_exercises as Array<Record<string, unknown>>)[0].exercise_id,
-    "zz-library-bench",
-  );
-});
 
 Deno.test("a failed public catalog fetch is not cached", async () => {
   let failPublic = true;
@@ -8200,6 +7660,47 @@ interface CatalogIntegrationFixture {
 async function createCatalogIntegrationFixture(): Promise<
   CatalogIntegrationFixture
 > {
+  assert(localIntegrationEnvironment);
+  const admin = createClient(
+    localIntegrationEnvironment.url,
+    localIntegrationEnvironment.serviceRoleKey,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const suffix = crypto.randomUUID();
+  const createdUserIds: string[] = [];
+  try {
+    for (const role of ["owner", "other"]) {
+      const created = await admin.auth.admin.createUser({
+        email: `pr58-${role}-${suffix}@example.invalid`,
+        email_confirm: true,
+      });
+      if (created.error || !created.data.user) {
+        throw new Error(`${role} fixture creation failed`);
+      }
+      createdUserIds.push(created.data.user.id);
+    }
+    const subscription = await admin.from("subscriptions").insert({
+      user_id: createdUserIds[0],
+      tier: "EMBER",
+      status: "active",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+    });
+    if (subscription.error) {
+      throw new Error(`subscription fixture failed: ${subscription.error.message}`);
+    }
+    return {
+      admin,
+      ownerId: createdUserIds[0],
+      otherUserId: createdUserIds[1],
+      suffix,
+    };
+  } catch (error) {
+    for (const userId of createdUserIds) {
+      await admin.auth.admin.deleteUser(userId);
+    }
+    throw error;
+  }
+}
 // ---------------------------------------------------------------------------
 // KD-4 real-SQL: routine/cycle tombstones through the real push handler.
 // Every table write goes to the local stack (no query doubles); only the
@@ -8252,25 +7753,11 @@ async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
   const suffix = crypto.randomUUID();
-  const createdUserIds: string[] = [];
-  try {
-    for (const role of ["owner", "other"]) {
-      const created = await admin.auth.admin.createUser({
-        email: `pr58-${role}-${suffix}@example.invalid`,
-        email_confirm: true,
-      });
-      if (created.error || !created.data.user) {
-        throw new Error(`${role} fixture creation failed`);
-      }
-      createdUserIds.push(created.data.user.id);
-    }
-    const subscription = await admin.from("subscriptions").insert({
-      user_id: createdUserIds[0],
   const email = `pr16-owner-${suffix}@example.invalid`;
-  const tempUserPass = `pw-${suffix}`;
+  const password = `pw-${suffix}`;
   const owner = await admin.auth.admin.createUser({
     email,
-    password: tempUserPass,
+    password,
     email_confirm: true,
   });
   if (owner.error || !owner.data.user) {
@@ -8284,21 +7771,8 @@ async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
       status: "active",
       current_period_end: "2099-01-01T00:00:00.000Z",
     });
-    if (subscription.error) {
-      throw new Error(`subscription fixture failed: ${subscription.error.message}`);
-    }
-    return {
-      admin,
-      ownerId: createdUserIds[0],
-      otherUserId: createdUserIds[1],
-      suffix,
-    };
-  } catch (error) {
-    for (const userId of createdUserIds) {
-      await admin.auth.admin.deleteUser(userId);
-    }
     if (subscription.error) throw new Error("subscription fixture failed");
-    return { admin, ownerId, email, password: tempUserPass };
+    return { admin, ownerId, email, password };
   } catch (error) {
     await deleteTombstonePushFixture(admin, [ownerId]);
     throw error;
@@ -8381,7 +7855,41 @@ function realPushHandler(
   fixture: CatalogIntegrationFixture,
   now: () => number = () => Date.now(),
 ): (request: Request) => Promise<Response> {
-/** Real admin client for every query; only the broadcast is stubbed. */
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      const admin = Object.create(fixture.admin) as SupabaseClient;
+      Object.assign(admin, {
+        channel() {
+          return {
+            subscribe(callback: (status: string) => void) {
+              callback("SUBSCRIBED");
+              return {};
+            },
+            async send() {
+              return "ok";
+            },
+          };
+        },
+        async removeChannel() {
+          return "ok";
+        },
+      });
+      return admin;
+    },
+    logOperationalFailure() {},
+    now,
+  });
+}
+
 function realTombstonePushHandler(
   fixture: TombstonePushFixture,
 ): (request: Request) => Promise<Response> {
@@ -8400,6 +7908,27 @@ function realTombstonePushHandler(
         },
       };
     },
+    async removeChannel() {
+      return "ok";
+    },
+  };
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      return client;
+    },
+    logOperationalFailure: () => {},
+    now: () => Date.now(),
+  } as never);
+}
 // Real-SQL gamification derivation (PR 25). These run the handler against the
 // local Supabase stack, so the counters come out of the migrations and not a
 // double. The flag is read at module load, so both SYNC_LWW_ENABLED values are
@@ -8438,31 +7967,13 @@ function makeRealSqlHandler(
       };
     },
     createAdminClient() {
-      return client;
-    },
-    logOperationalFailure: () => {},
-      const admin = Object.create(fixture.admin) as SupabaseClient;
-      Object.assign(admin, {
-        channel() {
-          return {
-            subscribe(callback: (status: string) => void) {
-              callback("SUBSCRIBED");
-              return {};
-            },
-            async send() {
-              return "ok";
-            },
-          };
-        },
-        async removeChannel() {
-          return "ok";
-        },
-      });
       return admin;
     },
-    logOperationalFailure() {},
-    now,
-  });
+    logOperationalFailure(value: { name: string }) {
+      console.error(value);
+    },
+    now: () => Date.now(),
+  } as never);
 }
 
 // Real SQL, but the realtime broadcast is recorded instead of opening a
@@ -8491,15 +8002,20 @@ function realGatePushHandler(
     },
   });
   return createMobileSyncPushHandler({
-      return client;
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.userId } }, error: null };
+          },
+        },
+      };
     },
-    logOperationalFailure: () => {},
+    createAdminClient() {
       return admin;
     },
-    logOperationalFailure(value: { name: string }) {
-      console.error(value);
-    },
-    now: () => Date.now(),
+    logOperationalFailure: () => {},
+    now: () => 1_784_167_200_000,
   } as never);
 }
 
@@ -8645,7 +8161,6 @@ async function routineCount(
 
 Deno.test({
   name:
-    "integration: handler push stores exercises.cable_count and pull returns cableCount (1 stays 1, absent stays null)",
     `integration: tombstones (LWW=${SYNC_LWW_ENABLED}) old-build push of a portal-deleted routine is 200, skipped, not re-created, day NULL`,
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
@@ -9369,7 +8884,6 @@ Deno.test({
         progression_settings: stored.progression_settings,
         deload_settings: stored.deload_settings,
         template_id: stored.template_id,
-        updated_at: new Date(String(stored.updated_at)).toISOString(),
         // PR 21: the pushed updatedAt is the LWW key; updated_at (pull
         // cursor) is the server clock (NF-12).
         client_updated_at: new Date(String(stored.client_updated_at)).toISOString(),
@@ -9389,9 +8903,6 @@ Deno.test({
         progression_settings: { frequencyCycles: "2" },
         deload_settings: null,
         template_id: "template_18",
-        updated_at: "2026-07-02T09:30:00.000Z",
-        portal_edited_at: null,
-      });
         client_updated_at: "2026-07-02T09:30:00.000Z",
         portal_edited_at: null,
       });
@@ -9456,6 +8967,7 @@ function lwwClockPush(
       exercises: [],
     }],
   };
+}
 async function entitleLocalIntegrationFixture(
   fixture: LocalIntegrationFixture,
 ): Promise<void> {
@@ -9529,121 +9041,10 @@ async function storedStats(
 Deno.test({
   name:
     "integration: VBT push is idempotent on the timestamptz value and the unique index exists",
-    "integration: derived counters follow the stored sessions while the device keeps its own",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
     const fixture = await createLocalIntegrationFixture();
     try {
-      const subscription = await fixture.admin.from("subscriptions").insert({
-        user_id: fixture.ownerId,
-        tier: "INFERNO",
-        status: "active",
-        current_period_end: new Date(Date.now() + 86_400_000).toISOString(),
-      });
-      if (subscription.error) {
-        throw new Error("subscription fixture creation failed");
-      }
-
-      const sessionId = crypto.randomUUID();
-      const singleCable = crypto.randomUUID();
-      const unknownCable = crypto.randomUUID();
-      const exercise = (
-        id: string,
-        name: string,
-        orderIndex: number,
-        extra: Record<string, unknown>,
-      ) => ({
-        id,
-        sessionId,
-        exerciseId: null,
-        name,
-        orderIndex,
-        ...extra,
-        sets: [{
-          id: crypto.randomUUID(),
-          exerciseId: id,
-          setNumber: 1,
-          targetReps: 10,
-          actualReps: 10,
-          weightKg: 20,
-          workoutMode: "OLD_SCHOOL",
-          repSummaries: [],
-        }],
-      });
-      const body = {
-        ...validPushBody(),
-        profileId: fixture.profileId,
-        sessions: [{
-          id: sessionId,
-          userId: fixture.ownerId,
-          name: "PR28 session",
-          startedAt: "2026-09-18T10:00:00.000Z",
-          updatedAt: new Date().toISOString(),
-          exercises: [
-            exercise(singleCable, "PR28 Single Cable Row", 0, { cableCount: 1 }),
-            // Today's mobile shape: no cableCount key.
-            exercise(unknownCable, "PR28 Unknown Cable Row", 1, {}),
-          ],
-        }],
-      };
-
-      const pushed = await makeRealSqlPushHandler(fixture)(
-        requestFromBody(body),
-      );
-      assertEquals(pushed.status, 200, await pushed.text());
-
-      const stored = await fixture.admin.from("exercises")
-        .select("id,cable_count")
-        .eq("session_id", sessionId);
-      if (stored.error) throw new Error("exercise verification failed");
-      const storedById = new Map(
-        (stored.data as Array<{ id: string; cable_count: number | null }>)
-          .map((row) => [row.id, row.cable_count]),
-      );
-      assertEquals(storedById.get(singleCable), 1);
-      assertEquals(storedById.get(unknownCable), null);
-
-      const pull = createMobileSyncPullHandler({
-        createAuthClient() {
-          return {
-            auth: {
-              async getUser() {
-                return { data: { user: { id: fixture.ownerId } }, error: null };
-              },
-            },
-          };
-        },
-        createAdminClient() {
-          return fixture.admin;
-        },
-        logOperationalFailure: () => {},
-        now: () => Date.now(),
-      } as never);
-      const pulled = await pull(requestFromBody({
-        deviceId: "pr28-device",
-        lastSync: 0,
-        profileId: fixture.profileId,
-        pageSize: 75,
-        knownEntityIds: {
-          sessionIds: [],
-          routineIds: [],
-          cycleIds: [],
-          badgeIds: [],
-          personalRecordIds: [],
-        },
-      }));
-      const pulledBody = await json(pulled);
-      assertEquals(pulled.status, 200, JSON.stringify(pulledBody));
-      const session = (pulledBody.sessions as Array<Record<string, unknown>>)
-        .find((row) => row.id === sessionId);
-      assert(session, "pushed session is pulled back");
-      assertEquals(
-        (session.exercises as Array<Record<string, unknown>>).map((row) => [
-          row.id,
-          row.cableCount,
-        ]),
-        [[singleCable, 1], [unknownCable, null]],
-      );
       const authBehavior: AuthBehavior = async () => ({
         data: { user: { id: fixture.ownerId } },
         error: null,
@@ -9745,6 +9146,19 @@ Deno.test({
       });
       assertEquals(duplicate.error?.code, "23505");
       assertEquals(await vbtCount(), 3);
+    } finally {
+      await cleanupLocalIntegrationFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "integration: derived counters follow the stored sessions while the device keeps its own",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createLocalIntegrationFixture();
+    try {
       await entitleLocalIntegrationFixture(fixture);
       const handler = makeRealSqlHandler(fixture);
       const sessionIds = [
@@ -9812,7 +9226,7 @@ Deno.test({
 
       // A crafted push with no sessions. R-3/R-11: the null key must NOT be
       // read as consent, so even the device-reported shadow columns are left
-      // alone — and nothing it claims reaches a derived counter.
+      // alone â€” and nothing it claims reaches a derived counter.
       const crafted = await handler(requestFromBody(derivedSessionBody(
         fixture,
         [],
@@ -10082,14 +9496,13 @@ function realPullHandlerFor(
       return {
         auth: {
           async getUser() {
-            return { data: { user: { id: fixture.userId } }, error: null };
             return { data: { user: { id: fixture.ownerId } }, error: null };
           },
         },
       };
     },
     createAdminClient() {
-      return admin;
+      return fixture.admin;
     },
     logOperationalFailure: () => {},
     now: () => 1_784_167_200_000,
@@ -10125,84 +9538,6 @@ function catalogProbeSession(
           weightKg: 20,
           workoutMode: "OLD_SCHOOL",
           repSummaries: [],
-        }],
-      });
-      const body = {
-        ...validPushBody(),
-        profileId: fixture.profileId,
-        sessions: [{
-          id: sessionId,
-          userId: fixture.ownerId,
-          name: "PR28 session",
-          startedAt: "2026-09-18T10:00:00.000Z",
-          updatedAt: new Date().toISOString(),
-          exercises: [
-            exercise(singleCable, "PR28 Single Cable Row", 0, { cableCount: 1 }),
-            // Today's mobile shape: no cableCount key.
-            exercise(unknownCable, "PR28 Unknown Cable Row", 1, {}),
-          ],
-        }],
-      };
-
-      const pushed = await makeRealSqlPushHandler(fixture)(
-        requestFromBody(body),
-      );
-      assertEquals(pushed.status, 200, await pushed.text());
-
-      const stored = await fixture.admin.from("exercises")
-        .select("id,cable_count")
-        .eq("session_id", sessionId);
-      if (stored.error) throw new Error("exercise verification failed");
-      const storedById = new Map(
-        (stored.data as Array<{ id: string; cable_count: number | null }>)
-          .map((row) => [row.id, row.cable_count]),
-      );
-      assertEquals(storedById.get(singleCable), 1);
-      assertEquals(storedById.get(unknownCable), null);
-
-      const pull = createMobileSyncPullHandler({
-        createAuthClient() {
-          return {
-            auth: {
-              async getUser() {
-                return { data: { user: { id: fixture.ownerId } }, error: null };
-              },
-            },
-          };
-        },
-        createAdminClient() {
-          return fixture.admin;
-        },
-        logOperationalFailure: () => {},
-        now: () => Date.now(),
-      } as never);
-      const pulled = await pull(requestFromBody({
-        deviceId: "pr28-device",
-        lastSync: 0,
-        profileId: fixture.profileId,
-        pageSize: 75,
-        knownEntityIds: {
-          sessionIds: [],
-          routineIds: [],
-          cycleIds: [],
-          badgeIds: [],
-          personalRecordIds: [],
-        },
-      }));
-      const pulledBody = await json(pulled);
-      assertEquals(pulled.status, 200, JSON.stringify(pulledBody));
-      const session = (pulledBody.sessions as Array<Record<string, unknown>>)
-        .find((row) => row.id === sessionId);
-      assert(session, "pushed session is pulled back");
-      assertEquals(
-        (session.exercises as Array<Record<string, unknown>>).map((row) => [
-          row.id,
-          row.cableCount,
-        ]),
-        [[singleCable, 1], [unknownCable, null]],
-      );
-    } finally {
-      await cleanupLocalIntegrationFixture(fixture);
           isPr: false,
         }],
       };
@@ -10250,11 +9585,6 @@ async function insertCustomCatalogRow(
   if (inserted.error) {
     throw new Error(`custom catalog fixture failed: ${inserted.error.message}`);
   }
-      return fixture.admin;
-    },
-    logOperationalFailure: () => {},
-    now: () => Date.now(),
-  } as never);
 }
 
 Deno.test({
@@ -10427,6 +9757,12 @@ Deno.test({
       ]);
     } finally {
       await cleanupCatalogIntegrationFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
     `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) a push that omits updatedAt is dated at receipt and never stores a null clock (NF-15 / R-1)`,
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
@@ -10764,6 +10100,8 @@ Deno.test({
     }
   },
 });
+Deno.test({
+  name:
     `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) the flag-off PostgREST upsert cannot move a row to another owner (R-13)`,
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
@@ -10857,10 +10195,13 @@ Deno.test("PR 24: exercise_progress rows ride in replace_session_children as p_p
       is_custom: false,
       archived: false,
     }],
+    // Only `replace_session_children` is modelled here; everything else (the
+    // LWW upserts in particular) falls through to the harness defaults, so
+    // this test asserts the same thing under both values of SYNC_LWW_ENABLED.
     rpcBehavior: async (name) =>
       name === "replace_session_children"
         ? { data: { exercise_progress: 2 }, error: null }
-        : { data: [], error: null },
+        : undefined,
   });
   const exercise = (
     id: string,
