@@ -23,8 +23,6 @@
  *     ends paging only when a one-row probe after the page's last key finds
  *     nothing, so a PostgREST `max_rows` below `USER_DATA_PAGE_SIZE` cannot
  *     end paging early (and no per-page count rescans large tables).
- *     computes the end of paging from an exact row count, so a PostgREST
- *     `max_rows` below `USER_DATA_PAGE_SIZE` cannot end paging early.
  *   - `tableMissing: true` (HTTP 200, no rows) is returned only for
  *     `mayBeAbsent` entries whose relation does not exist in that database.
  *     The client MUST record every such table in the export (e.g. "N tables
@@ -157,11 +155,14 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"challenge_updates",
 			"profile_visible",
 			"leaderboard_participation",
+			// PR 76 (20260920007600) supplies the DDL for these three, which were
+			// prod-only drift columns before it.
+			"digest_frequency",
+			"digest_last_sent_at",
+			"feature_flags",
 		],
-		optionalColumns: ["digest_frequency", "digest_last_sent_at", "feature_flags"],
 		purge: "cascade",
 		note: "profiles.id is the auth user id (FK, ON DELETE CASCADE); user_id is a generated copy. stripe_customer_id is exported deliberately (PR 37 R-13): it is the user's own billing identifier, not a credential.",
-		note: "profiles.id is the auth user id (FK, ON DELETE CASCADE); user_id is a generated copy.",
 	},
 	owned("subscriptions", "cascade", [
 		"id",
@@ -180,9 +181,10 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"price_id",
 		"last_event_occurred_at",
 	],
-	{ note: "Billing-provider ids (paddle_customer_id, paddle_subscription_id, price_id, last_event_id) are exported deliberately (PR 37 R-13): they are the user's own identifiers, not credentials, and are useless without the server-side provider API key." },
+	{
+		note: "Billing-provider ids (paddle_customer_id, paddle_subscription_id, price_id, last_event_id) are exported deliberately (PR 37 R-13): they are the user's own identifiers, not credentials, and are useless without the server-side provider API key.",
+	},
 	),
-	]),
 	owned(
 		"subscription_events",
 		"explicit",
@@ -206,11 +208,12 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"subscription_created_at",
 			"subscription_updated_at",
 			"row_snapshot",
+			// PR 44: why the subscription guard applied or ignored the event.
+			"note",
 		],
 		{
 			mayBeAbsent: true,
 			note: "Billing audit trail (R-31: exported and purged). No FK to auth.users (prod-evidence.md); DDL captured by PR 2. Billing-provider ids (paddle_customer_id, paddle_subscription_id, price_id, last_event_id) are exported deliberately (PR 37 R-13): they are the user's own identifiers, not credentials, and are useless without the server-side provider API key.",
-			note: "Billing audit trail (R-31: exported and purged). No FK to auth.users (prod-evidence.md); DDL captured by PR 2.",
 		},
 	),
 	owned("deletion_requests", "cascade", [
@@ -221,6 +224,14 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"cancelled_at",
 		"executed_at",
 		"status",
+		// PR 32: audit of the cancelled request this one replaced.
+		"previous_requested_at",
+		"previous_cancelled_at",
+		"rerequest_count",
+		// PR 35: purge-worker state on the user's own erasure request.
+		"claimed_at",
+		"needs_support_reason",
+		"last_attempt_at",
 	]),
 	owned("user_onboarding", "cascade", [
 		"id",
@@ -377,6 +388,9 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"session_id",
 		"exercise_id",
 		"deleted_at",
+		// PR 57: push path that produced the row (set_derived | dedicated);
+		// NULL on rows predating 20260920005700.
+		"source",
 	]),
 	owned("exercise_progress", "cascade", [
 		"id",
@@ -492,7 +506,6 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			// PR 21 (KD-5): the device LWW key.
 			"client_updated_at",
 		],
-		{ optionalColumns: ["created_at"] },
 	),
 	{
 		table: "routine_exercises",
@@ -552,6 +565,8 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"last_used_at",
 		"progression_settings",
 		"deload_settings",
+		// PR 76 / sync-reliability: where the cycle has progressed to.
+		"progress_state",
 		"updated_at",
 		"local_profile_id",
 		"template_id",
@@ -581,6 +596,90 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"rest_override",
 			"notes",
 			"rest_type",
+			"echo_level",
+			"eccentric_load_percent",
+		],
+		purge: "cascade",
+	},
+	// The five tables 20260920120000 (sync reliability contract) adds. All are
+	// owned by a user via `user_id` and all cascade-purge with auth.users(id).
+	// `source_profile_id` / `target_profile_id` / `profile_id` are the user's
+	// own *local* profile ids (the same family already exported as
+	// `local_profiles`), not other auth users — exporting them leaks nothing.
+	// Same class as `sync_tombstones`: soft-delete / ownership bookkeeping the
+	// user authored by using the product.
+	{
+		table: "profile_ownership_claims",
+		ownership: byUserId,
+		keyColumns: ["entity_type", "entity_id"],
+		columns: [
+			"entity_type",
+			"entity_id",
+			"user_id",
+			"target_profile_id",
+			"mutation_id",
+			"claimed_at",
+		],
+		purge: "cascade",
+	},
+	{
+		table: "profile_ownership_events",
+		ownership: byUserId,
+		keyColumns: ["mutation_id"],
+		columns: [
+			"mutation_id",
+			"user_id",
+			"source_profile_id",
+			"target_profile_id",
+			"target_profile_name",
+			"target_profile_color_index",
+			"workout_session_ids",
+			"routine_ids",
+			"cycle_ids",
+			"personal_record_ids",
+			"transferred_at",
+		],
+		purge: "cascade",
+	},
+	{
+		table: "profile_ownership_transfers",
+		ownership: byUserId,
+		keyColumns: ["mutation_id"],
+		columns: [
+			"mutation_id",
+			"user_id",
+			"request_hash",
+			"source_profile_id",
+			"target_profile_id",
+			"workout_session_ids",
+			"routine_ids",
+			"cycle_ids",
+			"personal_record_ids",
+			"transferred_at",
+		],
+		purge: "cascade",
+	},
+	{
+		table: "training_cycle_deletion_tombstones",
+		ownership: byUserId,
+		keyColumns: ["cycle_id"],
+		columns: ["user_id", "cycle_id", "deleted_at"],
+		purge: "cascade",
+	},
+	{
+		table: "workout_deletion_tombstones",
+		ownership: byUserId,
+		keyColumns: ["mutation_id"],
+		columns: [
+			"mutation_id",
+			"user_id",
+			"request_hash",
+			"profile_id",
+			"scope",
+			"portal_session_id",
+			"component_session_id",
+			"deleted_at",
+			"recorded_at",
 		],
 		purge: "cascade",
 	},
@@ -611,12 +710,12 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"created_at",
 			"updated_at",
 			"exercise_id",
-		],
 			"predicted_completion_date",
 			// PR 30 (KD-8): whether the target is a per-cable or total load.
 			"target_basis",
-		{ optionalColumns: ["last_snapshot_at"] },
-		{ optionalColumns: ["last_snapshot_at", "predicted_completion_date"] },
+			// PR 76 (20260920007600) supplies the DDL for this one.
+			"last_snapshot_at",
+		],
 	),
 	owned(
 		"goal_snapshots",
@@ -708,6 +807,15 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"updated_at",
 		"pr_count",
 		"best_streak",
+		// PR 25: device-reported lifetime counters kept verbatim alongside the
+		// server-derived columns; mobile-sync-pull serves these, not the derived ones.
+		"last_workout_at",
+		"device_total_workouts",
+		"device_total_reps",
+		"device_total_volume_kg",
+		"device_total_time_seconds",
+		"device_current_streak",
+		"device_longest_streak",
 	]),
 	owned("rpg_attributes", "cascade", [
 		"id",
@@ -721,7 +829,24 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"level",
 		"experience_points",
 		"updated_at",
+		// PR 25: last-workout date carried by the write that set this row.
+		"last_workout_at",
 	]),
+	// PR 56: leaderboard values and ranks per participating profile, rebuilt
+	// every 15 minutes by refresh_leaderboard_snapshots(). These are the user's
+	// own rows. RLS is service_role-only (a direct PostgREST read would expose
+	// the whole opted-in roster), but export-user-data reads with the service
+	// role. An opt-out trigger deletes the user's rows immediately.
+	owned(
+		"leaderboard_snapshots",
+		"cascade",
+		["metric", "period", "user_id", "value", "rank", "computed_at"],
+		{
+			keyColumns: ["metric", "period"],
+			mayBeAbsent: true,
+			note: "Created by 20260920005600; may be absent until that migration is applied everywhere. purge cascade via profiles(id) ON DELETE CASCADE.",
+		},
+	),
 	owned("user_insights", "cascade", [
 		"id",
 		"user_id",
@@ -851,6 +976,10 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"last_sync_at",
 			"status",
 			"error_message",
+			// PR 50: resumable provider-backfill window and chain start.
+			"backfill_before",
+			"backfill_after",
+			"backfill_started_at",
 		],
 		{
 			note: "Connection metadata only; credentials live in oauth_tokens (EXCLUDED).",

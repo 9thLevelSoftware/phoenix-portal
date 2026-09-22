@@ -1,11 +1,13 @@
-import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
-import { Analytics, toWeeklyVolumeSeries } from "../Analytics";
-import { Analytics, selectInsightsFeed } from "../Analytics";
+import {
+	Analytics,
+	selectInsightsFeed,
+	toWeeklyVolumeSeries,
+} from "../Analytics";
 import { InsightsFeed, LOCAL_INSIGHTS_LABEL } from "../InsightsFeed";
 
 const bodyMapLoader = vi.hoisted(() => ({
@@ -165,6 +167,9 @@ describe("toWeeklyVolumeSeries", () => {
 		);
 		// "2026-03-02" must not slip to Mar 1 in negative-offset zones.
 		expect(row.date).toBe("Mar 2");
+	});
+});
+
 // KD-14: the feed is a fresh server batch OR the browser fallback, never a
 // mix. `selectInsightsFeed` is the whole rule; these tests render its output
 // so "shows only X" is asserted against the DOM, not just the array.

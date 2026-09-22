@@ -79,7 +79,6 @@ describe("routine mode wire contract", () => {
 		WIRE_MODES,
 	)("builder option %s survives save and pull as a wire name", (wire) => {
 		const [row] = toRoutineExerciseRows([builderExercise(wire)]);
-		const [row] = toRoutineExerciseRows("routine-1", [builderExercise(wire)]);
 		const pulled = pullRoutineExerciseDtoMode(row);
 
 		expect(pulled).toBe(wire);
@@ -99,7 +98,6 @@ describe("routine mode wire contract", () => {
 		["Power", "OLD_SCHOOL"],
 	])("writer normalizes legacy value %s to %s", (legacy, wire) => {
 		const [row] = toRoutineExerciseRows([builderExercise(legacy)]);
-		const [row] = toRoutineExerciseRows("routine-1", [builderExercise(legacy)]);
 		expect(row.mode).toBe(wire);
 	});
 
@@ -107,9 +105,6 @@ describe("routine mode wire contract", () => {
 		expect(() => toRoutineExerciseRows([builderExercise("eccentric")])).toThrow(
 			/Unknown workout mode/,
 		);
-		expect(() =>
-			toRoutineExerciseRows("routine-1", [builderExercise("eccentric")]),
-		).toThrow(/Unknown workout mode/);
 		expect(toWireMode("NEW_FANCY_MODE")).toBeNull();
 	});
 

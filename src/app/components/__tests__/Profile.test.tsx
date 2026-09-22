@@ -1,5 +1,4 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SubscriptionTier } from "@/hooks/useSubscription";
 import { renderWithProviders } from "@/test/test-utils";
@@ -110,6 +109,8 @@ describe("Profile", () => {
 		expect(screen.getAllByText("1.5K kg per cable").length).toBeGreaterThan(0);
 		expect(screen.queryByText(/99\.0K/)).not.toBeInTheDocument();
 		mockData.enabled = false;
+	});
+
 	it("tells a past_due subscriber their payment failed DURING the retry window", () => {
 		// `isStale` stays false for a past_due row until
 		// PAST_DUE_REFRESH_AFTER_DAYS past the period end — precisely the

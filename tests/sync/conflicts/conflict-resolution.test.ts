@@ -1,11 +1,20 @@
 /**
- * Conflict Resolution — harness/fixture smoke
+ * Conflict Resolution — multi-device sync behaviour against the mock Edge
  *
- * These cases run against the in-memory mock in
- * `tests/sync/helpers/mock-edge-functions.ts`, which has no user scoping, no
- * profile scoping, no LWW and no per-row delta. They therefore prove that the
- * fixtures and the push/pull harness round-trip a multi-device shaped payload
- * — nothing about the server's conflict semantics.
+ * Two halves live in this file:
+ *
+ * 1. "harness/fixture smoke (mock Edge)" cases run against the in-memory mock
+ *    in `tests/sync/helpers/mock-edge-functions.ts`, which has no user scoping,
+ *    no profile scoping, no LWW and no per-row delta. They prove that the
+ *    fixtures and the push/pull harness round-trip a multi-device shaped
+ *    payload — nothing about the server's conflict semantics.
+ *
+ * 2. The "Conflict Resolution Integration Tests" scenarios are older cases
+ *    whose assertions describe mock behaviour or assert only `success`. PR 185
+ *    (515570ae) retired them on those grounds; they are present here only
+ *    because a union merge had already interleaved them into this file and no
+ *    test may be deleted to make a repair pass. Do not treat a green run of
+ *    them as evidence about the server.
  *
  * Server conflict semantics live in the real-handler suites:
  * - LWW accept/reject: `supabase/functions/mobile-sync-push/index.test.ts`
@@ -19,12 +28,13 @@
  *   "real lastSync with empty known ids uses every id RPC and no
  *   timestamp-only table read")
  *
- * Do not add assertions here that restate mock behaviour. See
- * `tests/sync/BASELINE.md` for the list of invariants this suite cannot prove.
+ * See `tests/sync/BASELINE.md` for the list of invariants this suite cannot
+ * prove. Do not add assertions here that restate mock behaviour.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	type BadgeDto,
 	callPullEndpoint,
 	callPushEndpoint,
 	createMinimalPushPayload,
@@ -38,12 +48,123 @@ import { resetMockStore } from "../helpers/mock-edge-functions";
 // Configure longer timeout for integration tests
 vi.setConfig({ testTimeout: 30000 });
 
-describe("Conflict Resolution harness/fixture smoke (mock Edge)", () => {
+describe("Conflict Resolution Integration Tests", () => {
 	let testUser: { id: string; email: string; accessToken: string };
 
 	beforeEach(async () => {
 		resetMockStore();
 		testUser = await createTestUser();
+	});
+
+	describe("Scenario 1: Multi-Device Concurrent Routine Edit", () => {
+		/**
+		 * Per CONFLICT-RESOLUTION-DESIGN.md:
+		 * Device A and B both edit the same routine while offline.
+		 * Device A syncs first, then Device B syncs.
+		 * Result: Device B's version wins (TIMESTAMP-BASED LWW).
+		 *
+		 * NOTE: The mock edge function doesn't fully implement LWW,
+		 * so this test validates the expected behavior pattern.
+		 */
+		it("should handle concurrent routine edits with LWW", async () => {
+			// SETUP: Create a routine that both devices have
+			const routineId = generateTestId();
+			const baseRoutine: RoutineDto = {
+				id: routineId,
+				userId: testUser.id,
+				name: "Push Day",
+				description: "Original description",
+				exerciseCount: 1,
+				estimatedDuration: 30,
+				timesCompleted: 0,
+				isFavorite: false,
+				exercises: [
+					{
+						id: generateTestId(),
+						routineId,
+						name: "Bench Press",
+						muscleGroup: "Chest",
+						sets: 3,
+						reps: 10,
+						weight: 50,
+						restSeconds: 90,
+						mode: "OLD_SCHOOL",
+						orderIndex: 0,
+					},
+				],
+			};
+
+			// Initial push
+			const initialPayload = createMinimalPushPayload(testUser.id, {
+				routines: [baseRoutine],
+			});
+			await callPushEndpoint(initialPayload, testUser.accessToken);
+
+			// DEVICE A: Edits routine (adds an exercise)
+			const deviceARoutine: RoutineDto = {
+				...baseRoutine,
+				name: "Push Day - Device A Edit",
+				description: "Device A modified this",
+				exerciseCount: 2,
+				exercises: [
+					...baseRoutine.exercises,
+					{
+						id: generateTestId(),
+						routineId,
+						name: "Incline Press",
+						muscleGroup: "Chest",
+						sets: 3,
+						reps: 10,
+						weight: 45,
+						restSeconds: 90,
+						mode: "OLD_SCHOOL",
+						orderIndex: 1,
+					},
+				],
+			};
+
+			const deviceAPayload = createMinimalPushPayload(testUser.id, {
+				routines: [deviceARoutine],
+			});
+			const deviceAResult = await callPushEndpoint(
+				deviceAPayload,
+				testUser.accessToken,
+			);
+			expect(deviceAResult.success).toBe(true);
+
+			// DEVICE B: Edits routine (changes weight) - happens after Device A
+			const deviceBRoutine: RoutineDto = {
+				...baseRoutine,
+				name: "Push Day - Device B Edit",
+				description: "Device B modified this",
+				exercises: [
+					{
+						...baseRoutine.exercises[0],
+						weight: 55, // Changed weight
+					},
+				],
+			};
+
+			const deviceBPayload = createMinimalPushPayload(testUser.id, {
+				routines: [deviceBRoutine],
+			});
+			const deviceBResult = await callPushEndpoint(
+				deviceBPayload,
+				testUser.accessToken,
+			);
+			expect(deviceBResult.success).toBe(true);
+
+			// VERIFY: Pull should return the latest version (Device B's edit)
+			const pullResult = await callPullEndpoint(0, testUser.accessToken);
+			expect(pullResult.success).toBe(true);
+
+			const pulledRoutine = pullResult.data!.routines.find(
+				(r) => r.id === routineId,
+			);
+			expect(pulledRoutine).toBeDefined();
+			// The last push wins in the mock - this validates the expected pattern
+			expect(pulledRoutine!.name).toBe("Push Day - Device B Edit");
+		});
 	});
 
 	describe("Scenario 2: Offline Device Long-Duration Sync", () => {
@@ -94,7 +215,6 @@ describe("Conflict Resolution harness/fixture smoke (mock Edge)", () => {
 		});
 	});
 
-	describe("Scenario 5: Session routine snapshot round-trip", () => {
 	describe("Scenario 3: Timestamp Edge Cases", () => {
 		it("should handle identical timestamps (last sync wins)", async () => {
 			// Two routines with the same updatedAt timestamp
@@ -186,17 +306,81 @@ describe("Conflict Resolution harness/fixture smoke (mock Edge)", () => {
 
 	describe("Scenario 4: Badge Union Merge", () => {
 		/**
-		 * A session carries a denormalised `routineName` snapshot so that it
-		 * still reads correctly once the routine is gone. This case checks the
-		 * snapshot survives push/pull.
-		 *
-		 * It does NOT cover deletes: the mock has no delete path, so the
-		 * previous "when routine is deleted" half of this case pulled twice
-		 * without deleting anything and asserted the same value both times.
-		 * Routine/cycle delete propagation is PR 16's `sync_tombstones` work
-		 * (not on this branch) — see BASELINE.md "Not proven here".
+		 * Per CONFLICT-RESOLUTION-DESIGN.md:
+		 * Device A has badges [FIRST_WORKOUT, WEEK_WARRIOR]
+		 * Device B has badges [FIRST_WORKOUT, PR_KING]
+		 * After sync, both devices should have all unique badges.
 		 */
-		it("round-trips the session routineName snapshot", async () => {
+		it("should preserve all unique badges across devices (union merge)", async () => {
+			// DEVICE A: Pushes its badges
+			const deviceABadges: BadgeDto[] = [
+				{
+					id: generateTestId(),
+					badgeId: "FIRST_WORKOUT",
+					badgeName: "First Workout",
+					badgeDescription: "Complete your first workout",
+					badgeTier: "bronze",
+					earnedAt: "2026-01-15T10:00:00.000Z",
+				},
+				{
+					id: generateTestId(),
+					badgeId: "WEEK_WARRIOR",
+					badgeName: "Week Warrior",
+					badgeDescription: "7-day workout streak",
+					badgeTier: "silver",
+					earnedAt: "2026-01-22T10:00:00.000Z",
+				},
+			];
+
+			const deviceAPayload = createMinimalPushPayload(testUser.id, {
+				badges: deviceABadges,
+			});
+			await callPushEndpoint(deviceAPayload, testUser.accessToken);
+
+			// DEVICE B: Pushes its badges (overlapping FIRST_WORKOUT)
+			const deviceBBadges: BadgeDto[] = [
+				{
+					id: generateTestId(),
+					badgeId: "FIRST_WORKOUT", // Same as Device A
+					badgeName: "First Workout",
+					badgeDescription: "Complete your first workout",
+					badgeTier: "bronze",
+					earnedAt: "2026-01-15T10:00:00.000Z",
+				},
+				{
+					id: generateTestId(),
+					badgeId: "PR_KING",
+					badgeName: "PR King",
+					badgeDescription: "Set 10 personal records",
+					badgeTier: "silver",
+					earnedAt: "2026-02-01T10:00:00.000Z",
+				},
+			];
+
+			const deviceBPayload = createMinimalPushPayload(testUser.id, {
+				badges: deviceBBadges,
+			});
+			await callPushEndpoint(deviceBPayload, testUser.accessToken);
+
+			// PULL: Should return union of all unique badges
+			// NOTE: The mock stores badges additively, matching union behavior
+			const pullResult = await callPullEndpoint(0, testUser.accessToken);
+
+			// In a full implementation, we'd expect 3 unique badges:
+			// FIRST_WORKOUT, WEEK_WARRIOR, PR_KING
+			// The mock may return all pushed badges; we verify the pattern
+			expect(pullResult.success).toBe(true);
+			// At minimum, we should have badges from both devices
+		});
+	});
+
+	describe("Scenario 5: Cross-Entity Integrity", () => {
+		/**
+		 * Per CONFLICT-RESOLUTION-DESIGN.md:
+		 * A routine can be soft-deleted while sessions reference it.
+		 * Sessions should retain their routineId/routineName snapshot.
+		 */
+		it("should preserve session routine reference when routine is deleted", async () => {
 			// Create a routine and a session that references it
 			const routineId = generateTestId();
 			const sessionId = generateTestId();
@@ -243,7 +427,6 @@ describe("Conflict Resolution harness/fixture smoke (mock Edge)", () => {
 			);
 			expect(pulledSession).toBeDefined();
 			expect(pulledSession!.routineName).toBe("Leg Day");
-			expect(pulledSession!.routineSessionId).toBe(routineId);
 
 			// Soft-delete the routine by not including it in next sync
 			// (In real implementation, this would set deletedAt on the routine)
@@ -320,6 +503,69 @@ describe("Conflict Resolution harness/fixture smoke (mock Edge)", () => {
 			// The mock may not enforce this, but the test validates the expected pattern
 			expect(pullResult.success).toBe(true);
 			expect(pullResult.data!.cycles.length).toBeGreaterThanOrEqual(1);
+		});
+	});
+
+	describe("Scenario 5: Session routine snapshot round-trip", () => {
+		/**
+		 * A session carries a denormalised `routineName` snapshot so that it
+		 * still reads correctly once the routine is gone. This case checks the
+		 * snapshot survives push/pull.
+		 *
+		 * It does NOT cover deletes: the mock has no delete path, so the
+		 * previous "when routine is deleted" half of this case pulled twice
+		 * without deleting anything and asserted the same value both times.
+		 * Routine/cycle delete propagation is PR 16's `sync_tombstones` work
+		 * (not on this branch) — see BASELINE.md "Not proven here".
+		 */
+		it("round-trips the session routineName snapshot", async () => {
+			// Create a routine and a session that references it
+			const routineId = generateTestId();
+			const sessionId = generateTestId();
+
+			const routine: RoutineDto = {
+				id: routineId,
+				userId: testUser.id,
+				name: "Leg Day",
+				description: "Legs workout",
+				exerciseCount: 0,
+				estimatedDuration: 45,
+				timesCompleted: 5,
+				isFavorite: true,
+				exercises: [],
+			};
+
+			const session: SessionDto = {
+				id: sessionId,
+				userId: testUser.id,
+				name: "Leg Day Session",
+				startedAt: new Date().toISOString(),
+				durationSeconds: 2700,
+				totalVolume: 8000,
+				setCount: 12,
+				exerciseCount: 3,
+				prCount: 1,
+				routineName: "Leg Day", // References the routine by name
+				workoutMode: "OLD_SCHOOL",
+				routineSessionId: routineId,
+				exercises: [],
+			};
+
+			// Push both
+			const initialPayload = createMinimalPushPayload(testUser.id, {
+				routines: [routine],
+				sessions: [session],
+			});
+			await callPushEndpoint(initialPayload, testUser.accessToken);
+
+			// Verify session exists with routine reference
+			const pullBefore = await callPullEndpoint(0, testUser.accessToken);
+			const pulledSession = pullBefore.data!.sessions.find(
+				(s) => s.id === sessionId,
+			);
+			expect(pulledSession).toBeDefined();
+			expect(pulledSession!.routineName).toBe("Leg Day");
+			expect(pulledSession!.routineSessionId).toBe(routineId);
 		});
 	});
 });

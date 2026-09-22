@@ -28,23 +28,6 @@ const responseHeaders = {
   "Content-Type": "application/json",
 };
 
-/** The slice of the service-role client this handler uses. */
-export interface PaddleWebhooksDbClient {
-  from(table: "subscriptions"): {
-    select(columns: string): {
-      eq(column: "user_id", value: string): {
-        maybeSingle(): PromiseLike<{
-          data: {
-            last_event_id?: string | null;
-            last_event_occurred_at?: string | null;
-            tier?: string | null;
-            paddle_subscription_id?: string | null;
-          } | null;
-          error: unknown;
-        }>;
-      };
-    };
-  };
 /** The stored subscription columns this handler reads. */
 export interface StoredSubscriptionRow {
   last_event_id?: string | null;
@@ -63,12 +46,16 @@ export interface SubscriptionsTableQuery {
         data: StoredSubscriptionRow | null;
         error: unknown;
       }>;
+    };
+  };
 }
 
 export interface SubscriptionEventsTableQuery {
   insert(values: Record<string, unknown>): PromiseLike<{ error: unknown }>;
 }
 
+/** The slice of the service-role client this handler uses. */
+export interface PaddleWebhooksDbClient {
   from(table: "subscriptions"): SubscriptionsTableQuery;
   from(table: "subscription_events"): SubscriptionEventsTableQuery;
   rpc(
@@ -82,6 +69,8 @@ export interface PaddleWebhooksDependencies {
   createAdminClient(): PaddleWebhooksDbClient;
   /** Clock for the signature replay window (ms since epoch). */
   now(): number;
+  /** Paddle API fetch (used to look for a second live subscription). */
+  fetch: typeof fetch;
 }
 
 function defaultPaddleWebhooksDependencies(): PaddleWebhooksDependencies {
@@ -98,12 +87,14 @@ function defaultPaddleWebhooksDependencies(): PaddleWebhooksDependencies {
     now() {
       return Date.now();
     },
-  };
-  /** Paddle API fetch (used to look for a second live subscription). */
-  fetch: typeof fetch;
     fetch: (input, init) => fetch(input, init),
+  };
+}
+
+
 /** Cap on the webhook's one outbound Paddle call. */
 const PADDLE_LISTING_TIMEOUT_MS = 10_000;
+
 /**
  * The customer's other live Paddle subscriptions, newest first.
  *
@@ -143,6 +134,7 @@ async function listLiveCustomerSubscriptions(
   const url =
     `${baseUrl}/subscriptions?customer_id=${encodeURIComponent(customerId)}` +
     `&status=${PADDLE_LIVE_STATUS_FILTER}&order_by=-created_at`;
+
   let response: Response;
   try {
     response = await fetchImpl(url, {
@@ -213,7 +205,6 @@ export function createPaddleWebhooksHandler(
 
 async function paddleWebhooksHandler(
   req: Request,
-  { env, createAdminClient, now }: PaddleWebhooksDependencies,
   { env, createAdminClient, now, fetch: fetchImpl }: PaddleWebhooksDependencies,
 ): Promise<Response> {
   // Only accept POST
