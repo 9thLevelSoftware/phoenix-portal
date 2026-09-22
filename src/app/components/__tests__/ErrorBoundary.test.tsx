@@ -1,6 +1,6 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ReactNode, useState } from "react";
+import { type ReactElement, type ReactNode, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
@@ -87,7 +87,9 @@ describe("ErrorBoundary + PageErrorFallback", () => {
 	});
 
 	it("shows 'New version available' for chunk load errors", () => {
-		function ChunkErrorComponent() {
+		// Declared to return `ReactElement` — a bare `never` (from the throw) is
+		// not a valid JSX component return type.
+		function ChunkErrorComponent(): ReactElement {
 			throw new Error(
 				"Failed to fetch dynamically imported module: https://phoenix-portal.com/assets/WorkoutHistory-Dwz9vD3g.js",
 			);
@@ -116,7 +118,7 @@ describe("ErrorBoundary + PageErrorFallback", () => {
 	});
 
 	it("shows an offline message (and does not auto-reload) for chunk errors while offline", () => {
-		function ChunkErrorComponent() {
+		function ChunkErrorComponent(): ReactElement {
 			throw new Error(
 				"Failed to fetch dynamically imported module: https://phoenix-portal.com/assets/FAQ-abc123.js",
 			);

@@ -46,7 +46,9 @@ type RpcBehavior = (
 const LWW_UPSERT_RPCS = new Set([
   "upsert_workout_session_lww",
   "upsert_routine_lww",
-  "upsert_training_cycle_lww",
+  // Training cycles always go through `merge_training_cycles_from_push`
+  // (KD-6), which gates the parent and its days in one call. There is no
+  // per-row cycle LWW upsert for this set to model.
   "upsert_rpg_attributes_lww",
   "upsert_gamification_stats_lww",
   "upsert_external_activity_lww",
@@ -154,6 +156,7 @@ function validPushBody(): Record<string, unknown> {
     deletedRoutineIds: [],
     cycles: [],
     deletedCycleIds: [],
+    deletedCycles: [],
     rpgAttributes: null,
     badges: [],
     gamificationStats: null,
@@ -1383,36 +1386,142 @@ Deno.test("grouped workout tombstone probes use portalSessionId not the local se
   ]);
 });
 
-// Was "clocked cycle deletions return exact accepted ids and legacy ids never
-// hard-delete" against `delete_training_cycles_lww`. Design K has no clocked
-// delete form: `deletedCycleIds` is an explicit id list that is hard-deleted
-// after an ownership check (CASCADE takes cycle_days), and the ids come back
-// exactly in `acknowledgedDeletedCycleIds`. The "legacy ids never hard-delete"
-// rule belonged to the clocked RPC and is inverted here; the anti-resurrection
-// property it guarded lives in the `skippedDeleted` tests below.
-Deno.test("cycle deletions return the exact acknowledged ids and never write cycle_days", async () => {
+// docs/sync-reliability-contract.md: cycle deletions come in two shapes.
+// Clocked (`deletedCycles`) carries the deleting device's `updatedAt` and is
+// ordered against the stored LWW key. Legacy (`deletedCycleIds`) has no usable
+// clock and older store builds still send it. Do not generalise one shape's
+// rules onto the other.
+Deno.test("clocked cycle deletion that wins is acknowledged and hard-deletes the parent", async () => {
   const deletedId = "30000000-0000-4000-8000-000000000011";
-  const otherId = "30000000-0000-4000-8000-000000000012";
-  const harness = makeHarness();
+  const harness = makeHarness(undefined, {
+    tableResults: {
+      training_cycles: {
+        data: [{ id: deletedId, client_updated_at: "2026-09-20T12:00:00.000Z" }],
+        error: null,
+      },
+    },
+  });
   const response = await harness.handler(requestFromBody({
     ...validPushBody(),
-    deletedCycleIds: [deletedId, otherId],
+    deletedCycles: [{ id: deletedId, updatedAt: "2026-09-20T13:00:00.000Z" }],
   }));
   const body = await json(response);
 
   assertEquals(response.status, 200, JSON.stringify(body));
-  assertEquals(body.acknowledgedDeletedCycleIds, [deletedId, otherId]);
+  assertEquals(body.acknowledgedDeletedCycleIds, [deletedId]);
   assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
-  // Design K hard-deletes the cycles scoped by user_id and lets CASCADE take
-  // cycle_days — there is never a separate cycle_days delete racing the parent.
+  // CASCADE takes cycle_days — there is never a separate cycle_days delete
+  // racing the parent.
   const deletes = writeQueries(harness, "training_cycles", "delete");
   assertEquals(deletes.length, 1);
-  assertEquals(callArgs(deletes[0]!, "in")[1], [deletedId, otherId]);
+  assertEquals(callArgs(deletes[0]!, "in")[1], [deletedId]);
   assertEquals(callArgs(deletes[0]!, "eq"), ["user_id", VALID_USER_ID]);
   assertEquals(
     harness.adminWriteCalls.filter((call) => call.table === "cycle_days"),
     [],
   );
+});
+
+Deno.test("clocked cycle deletion that loses to a newer server row is a rejection and keeps the server copy", async () => {
+  const deletedId = "30000000-0000-4000-8000-000000000011";
+  const storedClock = "2026-09-20T13:00:00.000Z";
+  const harness = makeHarness(undefined, {
+    tableResults: {
+      training_cycles: {
+        data: [{ id: deletedId, client_updated_at: storedClock }],
+        error: null,
+      },
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedCycles: [{ id: deletedId, updatedAt: "2026-09-20T12:00:00.000Z" }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.acknowledgedDeletedCycleIds, []);
+  assertEquals((body.rejections as { cycles: unknown[] }).cycles, [
+    { id: deletedId, serverUpdatedAt: storedClock },
+  ]);
+  assertEquals(writeQueries(harness, "training_cycles", "delete"), []);
+  assertEquals(writeQueries(harness, "sync_tombstones", "upsert"), []);
+});
+
+Deno.test("legacy deletedCycleIds never hard-delete: a present row is a rejection, an absent id is silent", async () => {
+  const existingId = "30000000-0000-4000-8000-000000000011";
+  const absentId = "30000000-0000-4000-8000-000000000012";
+  const storedClock = "2026-09-20T12:00:00.000Z";
+  const harness = makeHarness(undefined, {
+    tableResults: {
+      training_cycles: {
+        data: [{ id: existingId, client_updated_at: storedClock }],
+        error: null,
+      },
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedCycleIds: [existingId, absentId],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.acknowledgedDeletedCycleIds, []);
+  assertEquals((body.rejections as { cycles: unknown[] }).cycles, [
+    { id: existingId, serverUpdatedAt: storedClock },
+  ]);
+  assertEquals(writeQueries(harness, "training_cycles", "delete"), []);
+  assertEquals(writeQueries(harness, "sync_tombstones", "upsert"), []);
+});
+
+Deno.test("clocked cycle deletion of an already-absent id records a tombstone and is acknowledged", async () => {
+  const absentId = "30000000-0000-4000-8000-000000000013";
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedCycles: [{ id: absentId, updatedAt: "2026-09-20T13:00:00.000Z" }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.acknowledgedDeletedCycleIds, [absentId]);
+  assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
+  // No row to hard-delete; the tombstone is what stops the next stale upload
+  // from recreating the cycle.
+  assertEquals(writeQueries(harness, "training_cycles", "delete"), []);
+  const tombstoneUpserts = writeQueries(harness, "sync_tombstones", "upsert");
+  assertEquals(tombstoneUpserts.length, 1);
+  assertEquals(callArgs(tombstoneUpserts[0]!, "upsert")[0], [{
+    user_id: VALID_USER_ID,
+    entity: "cycle",
+    entity_id: absentId,
+    deleted_at: "2026-07-16T02:00:00.000Z",
+  }]);
+});
+
+Deno.test("an id named by both a clocked and a legacy delete is handled only by the clocked gate", async () => {
+  const deletedId = "30000000-0000-4000-8000-000000000011";
+  const harness = makeHarness(undefined, {
+    tableResults: {
+      training_cycles: {
+        data: [{ id: deletedId, client_updated_at: "2026-09-20T12:00:00.000Z" }],
+        error: null,
+      },
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedCycles: [{ id: deletedId, updatedAt: "2026-09-20T13:00:00.000Z" }],
+    deletedCycleIds: [deletedId],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.acknowledgedDeletedCycleIds, [deletedId]);
+  // The legacy list must not also produce a rejection for the same id.
+  assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
+  assertEquals(writeQueries(harness, "training_cycles", "delete").length, 1);
 });
 
 Deno.test("byte golden metadata and raw lexemes remain exact", () => {
@@ -2958,7 +3067,13 @@ Deno.test("empty push writes nothing and does not broadcast", async () => {
 for (
   const [label, body] of [
     ["routine tombstone", { deletedRoutineIds: [ROUTINE_ID] }],
-    ["cycle tombstone", { deletedCycleIds: [CYCLE_ID] }],
+    // Clocked: a winning delete of an id the server no longer holds records
+    // the tombstone and is acknowledged, so portal data changed and the
+    // broadcast fires. A legacy `deletedCycleIds` absent-id is a silent
+    // no-op and would not broadcast.
+    ["cycle tombstone", {
+      deletedCycles: [{ id: CYCLE_ID, updatedAt: "2026-09-20T13:00:00.000Z" }],
+    }],
     ["rpg attributes", {
       rpgAttributes: {
         userId: VALID_USER_ID,
@@ -3340,11 +3455,38 @@ Deno.test("routine delete failure returns retryable 503 and no sync_complete", a
 Deno.test("cycle delete failure returns retryable 503 and no sync_complete", async () => {
   const harness = makeHarness(undefined, {
     writeErrors: { "training_cycles:delete": INJECTED_DB_ERROR },
+    tableResults: {
+      training_cycles: {
+        data: [{ id: CYCLE_ID, client_updated_at: "2026-09-20T12:00:00.000Z" }],
+        error: null,
+      },
+    },
   });
+  // Clocked delete of a present row with a stale LWW key: it wins and takes
+  // the hard-delete path, which is where the injected failure lands.
   const response = await harness.handler(requestFromBody({
     ...validPushBody(),
-    deletedCycleIds: [CYCLE_ID],
+    deletedCycles: [{ id: CYCLE_ID, updatedAt: "2026-09-20T13:00:00.000Z" }],
   }));
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("session children replace failure returns a retryable 503 partial write", async () => {
+  // The parent `workout_sessions` rows are already committed when
+  // `replace_session_children` runs, so a failure there IS a cross-step
+  // partial write. A bare 500 would let mobile advance `lastSync` and drop
+  // the children for good — it must be a retryable 503.
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => {
+      if (name === "replace_session_children") {
+        return { data: null, error: INJECTED_DB_ERROR };
+      }
+      return undefined;
+    },
+  });
+  const response = await harness.handler(
+    requestFromBody(validNestedRelationshipBody()),
+  );
   await assertPartialWriteRetry(harness, response);
 });
 
@@ -3625,17 +3767,33 @@ function manyIds(prefix: string, count: number): string[] {
   );
 }
 
-Deno.test("routine and cycle tombstone deletes are chunked at 100 ids", async () => {
+Deno.test("routine and clocked cycle deletes are chunked at 100 ids", async () => {
   const routineIds = manyIds("8a00", 250);
   const cycleIds = manyIds("8b00", 201);
-  const harness = makeHarness();
+  const harness = makeHarness(undefined, {
+    // Every probed cycle is present with a stale LWW key, so each clocked
+    // delete wins and takes the hard-delete path.
+    tableResults: {
+      training_cycles: {
+        data: cycleIds.map((id) => ({
+          id,
+          client_updated_at: "2026-09-20T12:00:00.000Z",
+        })),
+        error: null,
+      },
+    },
+  });
   const response = await harness.handler(requestFromBody({
     ...validPushBody(),
     deletedRoutineIds: routineIds,
-    deletedCycleIds: cycleIds,
+    deletedCycles: cycleIds.map((id) => ({
+      id,
+      updatedAt: "2026-09-20T13:00:00.000Z",
+    })),
   }));
 
   assertEquals(response.status, 200);
+  assertEquals((await json(response)).acknowledgedDeletedCycleIds, cycleIds);
   const cases: Array<[string, string[], number[]]> = [
     ["routines", routineIds, [100, 100, 50]],
     ["training_cycles", cycleIds, [100, 100, 1]],
@@ -3650,6 +3808,37 @@ Deno.test("routine and cycle tombstone deletes are chunked at 100 ids", async ()
     }
   }
   assertEquals(harness.broadcastPayloads.length, 1);
+});
+
+Deno.test("clocked deletes of already-absent cycles chunk the tombstone upsert at 100 ids", async () => {
+  const cycleIds = manyIds("8b00", 201);
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedCycles: cycleIds.map((id) => ({
+      id,
+      updatedAt: "2026-09-20T13:00:00.000Z",
+    })),
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.acknowledgedDeletedCycleIds, cycleIds);
+  // No server row to hard-delete; the tombstone is what stops the next stale
+  // upload from recreating the cycle.
+  assertEquals(writeQueries(harness, "training_cycles", "delete"), []);
+  const upserts = writeQueries(harness, "sync_tombstones", "upsert");
+  const chunks = upserts.map((query) =>
+    callArgs(query, "upsert")[0] as Array<{ entity_id: string }>
+  );
+  assertEquals(chunks.map((chunk) => chunk.length), [100, 100, 1]);
+  assertEquals(chunks.flat().map((row) => row.entity_id), cycleIds);
+  for (const query of upserts) {
+    assertEquals(
+      callArgs(query, "upsert")[1],
+      { onConflict: "user_id,entity,entity_id" },
+    );
+  }
 });
 
 Deno.test("a failed tombstone delete chunk stops at that chunk with a retryable 503", async () => {
@@ -8279,9 +8468,20 @@ Deno.test({
       const ids = freshTombstoneIds();
       await seedRoutineAndCycle(fixture, ids);
 
-      const deleteBody = { ...validPushBody(), deletedCycleIds: [ids.cycleId] };
+      // Clocked delete: the legacy `deletedCycleIds` form never writes a
+      // tombstone, so the anti-resurrection path it must exercise needs the
+      // clocked form.
+      const deleteBody = {
+        ...validPushBody(),
+        deletedCycles: [{
+          id: ids.cycleId,
+          updatedAt: new Date().toISOString(),
+        }],
+      };
       const deleted = await handler(requestFromBody(deleteBody));
-      assertEquals(deleted.status, 200, JSON.stringify(await json(deleted)));
+      const deletedPayload = await json(deleted);
+      assertEquals(deleted.status, 200, JSON.stringify(deletedPayload));
+      assertEquals(deletedPayload.acknowledgedDeletedCycleIds, [ids.cycleId]);
       const tombstone = await fixture.admin.from("sync_tombstones")
         .select("entity, entity_id")
         .eq("user_id", fixture.ownerId);

@@ -34,8 +34,12 @@ export async function fetchSetTelemetry(
 		TelemetryCursor
 	>(
 		(after, limit) => {
+			// `from` cannot take the union of two table names and still type
+			// `.select` / `.eq` (the column set collapses to `never`). Both
+			// tables carry the same chart columns, so name one and let the
+			// other ride the identical chain.
 			let query = supabase
-				.from(source)
+				.from(source as "rep_telemetry")
 				.select(TELEMETRY_CHART_COLUMNS)
 				.eq("set_id", setId);
 			if (after) {

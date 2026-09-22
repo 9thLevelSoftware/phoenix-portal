@@ -16,13 +16,14 @@ function buildChain(terminal: { data: unknown; error: unknown }) {
 }
 
 let chain: ReturnType<typeof buildChain>;
-const fromFn = vi.fn(() => chain);
+// Declared with a parameter so `mockImplementation((table) => …)` matches.
+const fromFn = vi.fn((_table?: string) => chain);
 const rpcFn = vi.fn();
 const rpcSelectFn = vi.fn();
 
 vi.mock("@/lib/supabase", () => ({
 	supabase: {
-		from: (...args: unknown[]) => fromFn(...args),
+		from: (table?: string) => fromFn(table),
 		rpc: (...args: unknown[]) => rpcFn(...args),
 	},
 }));
@@ -94,7 +95,7 @@ describe("volumeTrendOptions", () => {
 
 		const { volumeTrendOptions } = await import("../analytics");
 		const opts = volumeTrendOptions("user-1", "all", "profile-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(rpcFn).toHaveBeenCalledTimes(1);
 		expect(rpcFn).toHaveBeenCalledWith("session_volume_buckets", {
@@ -114,7 +115,7 @@ describe("volumeTrendOptions", () => {
 	it("omits the profile argument instead of passing null", async () => {
 		mockRpc({ data: [], error: null });
 		const { volumeTrendOptions } = await import("../analytics");
-		await volumeTrendOptions("user-1", "12w").queryFn?.({} as never);
+		await volumeTrendOptions("user-1", "12w").queryFn!({} as never);
 
 		const args = rpcFn.mock.calls[0][1] as Record<string, unknown>;
 		expect(args).not.toHaveProperty("p_profile_id");
@@ -125,7 +126,7 @@ describe("volumeTrendOptions", () => {
 		mockRpc({ data: null, error: { message: "query failed" } });
 		const { volumeTrendOptions } = await import("../analytics");
 		const opts = volumeTrendOptions("user-1");
-		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
+		await expect(opts.queryFn!({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "query failed" }),
 		);
 	});
@@ -134,7 +135,7 @@ describe("volumeTrendOptions", () => {
 		mockRpc({ data: [], error: null });
 		const { volumeTrendOptions } = await import("../analytics");
 		const opts = volumeTrendOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toEqual([]);
 	});
 });
@@ -182,7 +183,7 @@ describe("muscleGroupOptions", () => {
 
 		const { muscleGroupOptions } = await import("../analytics");
 		const opts = muscleGroupOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		// Must NOT collapse to a single "General" bucket
 		expect(result.some((r: { name: string }) => r.name === "General")).toBe(
@@ -212,7 +213,7 @@ describe("muscleGroupOptions", () => {
 
 		const { muscleGroupOptions } = await import("../analytics");
 		const opts = muscleGroupOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result).toEqual(
 			expect.arrayContaining([
@@ -245,7 +246,7 @@ describe("muscleGroupOptions", () => {
 
 		const { muscleGroupOptions } = await import("../analytics");
 		const opts = muscleGroupOptions("user-1", "profile-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(rpcFn).toHaveBeenCalledTimes(1);
 		expect(rpcFn).toHaveBeenCalledWith("exercise_frequency", {
@@ -263,7 +264,7 @@ describe("muscleGroupOptions", () => {
 	it("omits the profile argument instead of passing null", async () => {
 		mockRpc({ data: [], error: null });
 		const { muscleGroupOptions } = await import("../analytics");
-		await muscleGroupOptions("user-1", null).queryFn?.({} as never);
+		await muscleGroupOptions("user-1", null).queryFn!({} as never);
 		expect(rpcFn).toHaveBeenCalledWith("exercise_frequency", {});
 	});
 
@@ -271,7 +272,7 @@ describe("muscleGroupOptions", () => {
 		mockRpc({ data: null, error: { message: "rpc failed" } });
 		const { muscleGroupOptions } = await import("../analytics");
 		await expect(
-			muscleGroupOptions("user-1").queryFn?.({} as never),
+			muscleGroupOptions("user-1").queryFn!({} as never),
 		).rejects.toEqual(expect.objectContaining({ message: "rpc failed" }));
 	});
 
@@ -279,7 +280,7 @@ describe("muscleGroupOptions", () => {
 		mockRpc({ data: [], error: null });
 		const { muscleGroupOptions } = await import("../analytics");
 		const opts = muscleGroupOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toEqual([]);
 	});
 });
@@ -325,10 +326,8 @@ describe("strengthProgressOptions", () => {
 		});
 
 		const { strengthProgressOptions } = await import("../analytics");
-		const result = await strengthProgressOptions(
-			"user-1",
-			"profile-1",
-		).queryFn?.({} as never);
+		const result = await strengthProgressOptions("user-1", "profile-1")
+			.queryFn!({} as never);
 
 		expect(rpcFn).toHaveBeenCalledTimes(1);
 		expect(rpcFn).toHaveBeenCalledWith("personal_record_history", {
@@ -343,7 +342,7 @@ describe("strengthProgressOptions", () => {
 	it("omits the profile argument instead of passing null", async () => {
 		mockRpc({ data: [], error: null });
 		const { strengthProgressOptions } = await import("../analytics");
-		await strengthProgressOptions("user-1", null).queryFn?.({} as never);
+		await strengthProgressOptions("user-1", null).queryFn!({} as never);
 		expect(rpcFn).toHaveBeenCalledWith("personal_record_history", {
 			p_limit: 1000,
 		});
@@ -370,7 +369,7 @@ describe("strengthProgressOptions", () => {
 		});
 		const { strengthProgressOptions } = await import("../analytics");
 		const opts = strengthProgressOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result[0].exercise_name).toBe("Bayesian Curl (Handles)");
 	});
@@ -411,7 +410,7 @@ describe("strengthProgressOptions", () => {
 		});
 
 		const { strengthProgressOptions } = await import("../analytics");
-		const result = await strengthProgressOptions("user-1").queryFn?.(
+		const result = await strengthProgressOptions("user-1").queryFn!(
 			{} as never,
 		);
 
@@ -425,7 +424,7 @@ describe("strengthProgressOptions", () => {
 		mockRpc({ data: [], error: null });
 		const { strengthProgressOptions } = await import("../analytics");
 		const opts = strengthProgressOptions("user-1");
-		await opts.queryFn?.({} as never);
+		await opts.queryFn!({} as never);
 		// exercise_progress has no workout_phase, so this chart keeps reading
 		// personal_records — with the catalog embed on the RPC result.
 		expect(rpcSelectFn).toHaveBeenCalledWith(
@@ -437,7 +436,7 @@ describe("strengthProgressOptions", () => {
 		mockRpc({ data: null, error: { message: "query error" } });
 		const { strengthProgressOptions } = await import("../analytics");
 		const opts = strengthProgressOptions("user-1");
-		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
+		await expect(opts.queryFn!({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "query error" }),
 		);
 	});
@@ -462,7 +461,7 @@ describe("phaseStatisticsTrendOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { phaseStatisticsTrendOptions } = await import("../analytics");
 		const opts = phaseStatisticsTrendOptions("user-1", "4w", "profile-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result).toEqual([]);
 		expect(fromFn).toHaveBeenCalledWith("session_phase_statistics");
@@ -507,7 +506,7 @@ describe("vbtAssessmentsOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { vbtAssessmentsOptions } = await import("../analytics");
 		const opts = vbtAssessmentsOptions("user-1", "squat");
-		await expect(opts.queryFn?.({} as never)).resolves.toEqual([]);
+		await expect(opts.queryFn!({} as never)).resolves.toEqual([]);
 		expect(fromFn).toHaveBeenCalledWith("vbt_assessments");
 	});
 
@@ -518,7 +517,7 @@ describe("vbtAssessmentsOptions", () => {
 		});
 		const { vbtAssessmentsOptions } = await import("../analytics");
 		const opts = vbtAssessmentsOptions("user-1", "squat");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toHaveLength(1);
 	});
 });
@@ -568,7 +567,7 @@ describe("volumeComparisonOptions", () => {
 
 		const { volumeComparisonOptions } = await import("../analytics");
 		const opts = volumeComparisonOptions("user-1", "4w");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result.current).toHaveLength(1);
 		expect(result.previous).toHaveLength(1);

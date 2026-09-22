@@ -39,7 +39,6 @@ import {
 	useSubscription,
 } from "@/hooks/useSubscription";
 import { cancelSuccessMessage } from "@/lib/paddle";
-import { openCheckout } from "@/lib/paddle-client";
 import {
 	CheckoutSigningError,
 	openCheckout,
@@ -82,10 +81,12 @@ interface PlanChangeIntent {
 
 interface UpdateSubscriptionResponse {
 	success?: boolean;
-	action?: "switch" | "uncancel";
-	code?: "checkout_required" | "payment_past_due";
+	// Full vocabulary the handler can return: `update_payment` / `refresh`
+	// come from the past-due and stale paths, `switch` / `uncancel` from a
+	// plan write. `code` covers both the 409 payment body and the 200
+	// refresh-required body.
 	action?: "switch" | "uncancel" | "update_payment" | "refresh";
-	code?: "checkout_required" | "refresh_required";
+	code?: "checkout_required" | "payment_past_due" | "refresh_required";
 	/** Paddle transaction that updates the card (action: "update_payment"). */
 	transactionId?: string;
 	error?: string;

@@ -195,13 +195,16 @@ describe("useCreateGoal", () => {
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(capturedPayload).not.toBeNull();
-		expect(capturedPayload?.exercise_name).toBe("Squat");
-		expect(capturedPayload?.exercise_id).toBe("catalog-squat");
-		expect(capturedPayload?.deadline).toBe("2026-06-01");
-		expect(capturedPayload?.period).toBe("monthly");
+		// `not.toBeNull()` narrows the CFA-collapsed `null` initializer to
+		// `NonNullable<null>`; restate the declared type so the field reads work.
+		const payload = capturedPayload as Record<string, unknown> | null;
+		expect(payload?.exercise_name).toBe("Squat");
+		expect(payload?.exercise_id).toBe("catalog-squat");
+		expect(payload?.deadline).toBe("2026-06-01");
+		expect(payload?.period).toBe("monthly");
 		// KD-8 / deploy-order independence: the column has no default and a
 		// NULL basis is taken to mean a pre-PR-30 client (halved server-side).
-		expect(capturedPayload?.target_basis).toBe("per_cable");
+		expect(payload?.target_basis).toBe("per_cable");
 	});
 
 	it("always states the per-cable target basis on insert", async () => {
@@ -231,7 +234,8 @@ describe("useCreateGoal", () => {
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		expect(capturedPayload?.target_basis).toBe("per_cable");
+		const payload = capturedPayload as Record<string, unknown> | null;
+		expect(payload?.target_basis).toBe("per_cable");
 	});
 });
 
@@ -304,10 +308,11 @@ describe("useUpdateGoal", () => {
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		expect(capturedPayload?.exercise_name).toBe("Deadlift");
-		expect(capturedPayload?.exercise_id).toBeNull();
+		const payload = capturedPayload as Record<string, unknown> | null;
+		expect(payload?.exercise_name).toBe("Deadlift");
+		expect(payload?.exercise_id).toBeNull();
 		// No target_value in this update, so the basis is not restated.
-		expect(capturedPayload).not.toHaveProperty("target_basis");
+		expect(payload).not.toHaveProperty("target_basis");
 	});
 
 	it("states the per-cable target basis whenever it writes a target", async () => {
@@ -336,8 +341,9 @@ describe("useUpdateGoal", () => {
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		expect(capturedPayload?.target_value).toBe(42);
-		expect(capturedPayload?.target_basis).toBe("per_cable");
+		const payload = capturedPayload as Record<string, unknown> | null;
+		expect(payload?.target_value).toBe(42);
+		expect(payload?.target_basis).toBe("per_cable");
 	});
 
 	it("shows user-friendly error on update failure", async () => {
