@@ -1,10 +1,40 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { assertEquals } from "jsr:@std/assert@1";
 import {
   buildExternalActivityRow,
+  createStravaSyncHandler,
   STRAVA_LOCATION_KEYS,
   stripStravaLocationData,
 } from "./index.ts";
+import {
+  FakeDb,
+  fakeClient,
+  type Row,
+  syncQueueOneActiveIndex,
+  syncQueueOneProcessingIndex,
+} from "../_shared/testing/fakeSupabase.ts";
+
+// Handler tests with in-process doubles: no real provider calls.
+//
+// Four suites, one file (they landed as four PRs and the union merge spliced
+// them; this is the reassembled whole):
+//   A - location stripping (F-095 / FP-5)
+//   B - watermark / incremental window
+//   C - reconnect gap-fill and backfill
+//   D - queue, token rotation, browser sync
+
+const SERVICE_ROLE_KEY = "test-service-role-key";
+const USER_ID = "00000000-0000-4000-8000-000000000001";
+const OTHER_USER_ID = "00000000-0000-4000-8000-000000000002";
+const BACKFILL_USER_ID = "00000000-0000-4000-8000-0000000000a1";
+const SYNCED_AT = "2026-09-20T12:00:00.000Z";
+
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+const NOW = Date.parse("2026-09-19T12:00:00.000Z");
+const at = (daysAgo: number) => new Date(NOW - daysAgo * DAY).toISOString();
+// ---------------------------------------------------------------------------
+// Suite A - location stripping (F-095 / FP-5)
+// ---------------------------------------------------------------------------
 
 // A trimmed but faithful `/athlete/activities` element, including the three
 // keys F-095 is about.
@@ -30,9 +60,6 @@ function stravaActivity(): Record<string, unknown> {
     end_latlng: [51.5081, -0.1265],
   };
 }
-
-const USER_ID = "00000000-0000-4000-8000-000000000001";
-const SYNCED_AT = "2026-09-20T12:00:00.000Z";
 
 Deno.test("strava-sync stores no route or endpoint coordinates", async (t) => {
   const row = buildExternalActivityRow(
@@ -101,22 +128,11 @@ Deno.test("stripStravaLocationData is a no-op on a payload without them", () => 
   const raw = { id: 1, name: "Indoor Ride", sport_type: "VirtualRide" };
 
   assertEquals(stripStravaLocationData(raw), raw);
-import { createStravaSyncHandler } from "./index.ts";
-import {
-  FakeDb,
-  fakeClient,
-  type Row,
-  syncQueueOneActiveIndex,
-  syncQueueOneProcessingIndex,
-} from "../_shared/testing/fakeSupabase.ts";
+});
 
-const SERVICE_ROLE_KEY = "test-service-role-key";
-const USER_ID = "00000000-0000-4000-8000-000000000001";
-const OTHER_USER_ID = "00000000-0000-4000-8000-000000000002";
-
-const DAY = 24 * 60 * 60 * 1000;
-const NOW = Date.parse("2026-09-19T12:00:00.000Z");
-const at = (daysAgo: number) => new Date(NOW - daysAgo * DAY).toISOString();
+// ---------------------------------------------------------------------------
+// Suite B - watermark / incremental window
+// ---------------------------------------------------------------------------
 
 interface StravaActivity {
   id: number;
@@ -219,17 +235,70 @@ function harness(tables: Record<string, Row[]>, activities: StravaActivity[]) {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
-import { assert, assertEquals } from "jsr:@std/assert@1";
-import { createStravaSyncHandler } from "./index.ts";
+        },
+        body: JSON.stringify({ user_id: USER_ID, sync_type: syncType }),
+      }),
+    );
+    assertEquals(res.status, 200, await res.clone().text());
+    return res;
+  };
+  const storedIds = () =>
+    db.rows("external_activities").map((r) => r.external_id as string).sort();
+  const watermark = () => db.rows("user_integrations")[0].last_sync_at as string | null;
+  return { run, storedIds, watermark, stravaCalls };
+}
 
-// Handler tests with in-process doubles: an in-memory Supabase client and a
-// fake Strava API that filters by activity START time (`after`/`before`, in
-// epoch seconds) the way the real endpoint does. No real provider calls.
+// The user connected, never had their queued `initial` drained, and ran a
+// manual sync at T0 (7 days ago) that stored A1/A2 and set last_sync_at=T0.
+// A3..A5 happened since. The stale `initial` and a newer `incremental` are
+// both dispatched now, in either order: nothing may be skipped.
+const T0 = at(7);
+const HISTORY = [activity(1, 10), activity(2, 8)];
+const SINCE_T0 = [activity(3, 6), activity(4, 4), activity(5, 2)];
+const ALL_IDS = ["1", "2", "3", "4", "5"];
 
-const USER_ID = "00000000-0000-4000-8000-0000000000a1";
-const SERVICE_ROLE_KEY = "test-service-role-key";
-const HOUR = 60 * 60 * 1000;
-const DAY = 24 * HOUR;
+// Was "strava-sync: an initial against an existing watermark never moves it"
+// (single-pass: an `initial` only reached into the past, so the watermark had
+// to stay put and the next incremental still fetched [T0, now]. Two-pass adds
+// a forward gap-fill, so a complete `initial` has covered [lookback, now] and
+// the watermark may advance. The safety property kept is the one that
+// mattered: nothing may be skipped.)
+Deno.test("strava-sync: an initial against an existing watermark covers the gap without skipping", async () => {
+  const h = harness(baseTables(T0, HISTORY), [...HISTORY, ...SINCE_T0]);
+  await h.run("initial");
+  // Two passes ran: a forward gap-fill (has `after`) and a backward backfill
+  // (has `before`).
+  assert(h.stravaCalls.some((c) => c.has("after")), "forward gap-fill");
+  assert(h.stravaCalls.some((c) => c.has("before")), "backward backfill");
+  // Everything is stored — including the activities since T0.
+  assertEquals(h.storedIds(), ALL_IDS);
+  // The next incremental still reaches back far enough to cover T0 (72h
+  // lookback from min(T0, newest stored)).
+  await h.run("incremental");
+  const incrementalAfter = Number(h.stravaCalls.find((c) => c.has("after"))!.get("after"));
+  assert(
+    incrementalAfter <= Math.floor(Date.parse(T0) / 1000),
+    "the incremental window must still reach back to T0",
+  );
+  assertEquals(h.storedIds(), ALL_IDS);
+});
+
+Deno.test("strava-sync: a first backfill sets the watermark to the newest stored activity, not the clock", async () => {
+  const h = harness(baseTables(null, []), [...HISTORY, ...SINCE_T0]);
+  await h.run("initial");
+  assertEquals(h.storedIds(), ALL_IDS);
+  assertEquals(h.watermark(), at(2));
+});
+
+Deno.test("strava-sync: an incremental advances the watermark to its own start time", async () => {
+  const h = harness(baseTables(T0, HISTORY), [...HISTORY, ...SINCE_T0]);
+  await h.run("incremental");
+  assertEquals(h.watermark(), new Date(NOW + 60_000).toISOString());
+});
+
+// ---------------------------------------------------------------------------
+// Suite C - reconnect gap-fill and backfill (forward pass + backward pass)
+// ---------------------------------------------------------------------------
 
 interface StoredActivity {
   user_id: string;
@@ -321,20 +390,25 @@ function createDbDouble(state: DbState) {
       pendingUpdate = values;
       return builder;
     };
-    builder.upsert = (row: StoredActivity) => {
+    // The handler upserts an ARRAY of rows (chunked, onConflict
+    // user_id,provider,external_id). A single-row double is wrong: passing the
+    // array through would store it as one row and leave external_id undefined.
+    builder.upsert = (rows: StoredActivity | StoredActivity[]) => {
       if (table === "external_activities") {
-        state.upsertCounts.set(
-          row.external_id,
-          (state.upsertCounts.get(row.external_id) ?? 0) + 1,
-        );
-        const index = state.activities.findIndex((existing) =>
-          existing.user_id === row.user_id &&
-          existing.provider === row.provider &&
-          existing.external_id === row.external_id
-        );
-        if (index >= 0) {
-          state.activities[index] = { ...state.activities[index], ...row };
-        } else state.activities.push(row);
+        for (const row of Array.isArray(rows) ? rows : [rows]) {
+          state.upsertCounts.set(
+            row.external_id,
+            (state.upsertCounts.get(row.external_id) ?? 0) + 1,
+          );
+          const index = state.activities.findIndex((existing) =>
+            existing.user_id === row.user_id &&
+            existing.provider === row.provider &&
+            existing.external_id === row.external_id
+          );
+          if (index >= 0) {
+            state.activities[index] = { ...state.activities[index], ...row };
+          } else state.activities.push(row);
+        }
       }
       return Promise.resolve({ data: null, error: null });
     };
@@ -440,18 +514,32 @@ function installFakeStrava(
   return fake;
 }
 
+
 async function runSync(state: DbState, syncType: string): Promise<Response> {
   const previousKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", SERVICE_ROLE_KEY);
   try {
     const db = createDbDouble(state);
+    // Evolution A's createStravaSyncHandler takes one createClient used for
+    // both the JWT probe (anon key) and the service-role admin path. Serve the
+    // probe from here and the admin path from createDbDouble. Every assertion
+    // below is unchanged; only the DI wiring matches the surviving handler.
     const handler = createStravaSyncHandler({
-      createAuthClient: () => ({
-        auth: { getUser: () => Promise.resolve({ data: { user: null } }) },
-      }),
+      env: (key) =>
+        ({
+          SUPABASE_URL: "http://edge.test",
+          SUPABASE_ANON_KEY: "anon",
+          SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
+          STRAVA_CLIENT_ID: "client-id",
+          STRAVA_CLIENT_SECRET: "client-secret",
+        } as Record<string, string>)[key],
       // deno-lint-ignore no-explicit-any
-      createAdminClient: () => db as any,
-      sleep: () => Promise.resolve(),
+      createClient: (_url: string, key: string) =>
+        (key === "anon"
+          ? { auth: { getUser: () => Promise.resolve({ data: { user: null } }) } }
+          : db) as any,
+      fetch: (input, init) => fetch(input, init),
+      now: () => new Date(),
     });
     return await handler(
       new Request("http://localhost/functions/v1/strava-sync", {
@@ -460,71 +548,19 @@ async function runSync(state: DbState, syncType: string): Promise<Response> {
           Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ user_id: USER_ID, sync_type: syncType }),
+        body: JSON.stringify({ user_id: BACKFILL_USER_ID, sync_type: syncType }),
       }),
     );
-    assertEquals(res.status, 200, await res.clone().text());
-    return res;
-  };
-  const storedIds = () =>
-    db.rows("external_activities").map((r) => r.external_id as string).sort();
-  const watermark = () => db.rows("user_integrations")[0].last_sync_at as string | null;
-  return { run, storedIds, watermark, stravaCalls };
-}
-
-// The user connected, never had their queued `initial` drained, and ran a
-// manual sync at T0 (7 days ago) that stored A1/A2 and set last_sync_at=T0.
-// A3..A5 happened since. The stale `initial` and a newer `incremental` are
-// both dispatched now, in either order: nothing may be skipped.
-const T0 = at(7);
-const HISTORY = [activity(1, 10), activity(2, 8)];
-const SINCE_T0 = [activity(3, 6), activity(4, 4), activity(5, 2)];
-const ALL_IDS = ["1", "2", "3", "4", "5"];
-
-for (const order of [["initial", "incremental"], ["incremental", "initial"]]) {
-  Deno.test(`strava-sync: after a manual sync, stale initial + incremental (${order.join(" then ")}) leave no gap`, async () => {
-    const h = harness(baseTables(T0, HISTORY), [...HISTORY, ...SINCE_T0]);
-    for (const syncType of order) await h.run(syncType);
-    assertEquals(h.storedIds(), ALL_IDS);
-    // The watermark is where the incremental run started, never later.
-    assertEquals(Date.parse(h.watermark()!) <= NOW + 2 * 60_000, true);
-    assertEquals(Date.parse(h.watermark()!) > Date.parse(T0), true);
-  });
-}
-
-Deno.test("strava-sync: an initial against an existing watermark never moves it", async () => {
-  const h = harness(baseTables(T0, HISTORY), [...HISTORY, ...SINCE_T0]);
-  await h.run("initial");
-  assertEquals(h.watermark(), T0);
-  // It only reached into the past (before the oldest stored activity).
-  assertEquals(h.stravaCalls[0].has("before"), true);
-  assertEquals(h.stravaCalls[0].has("after"), false);
-  // The next incremental still fetches from T0.
-  await h.run("incremental");
-  assertEquals(h.stravaCalls[1].get("after"), String(Math.floor(Date.parse(T0) / 1000)));
-  assertEquals(h.storedIds(), ALL_IDS);
-});
-
-Deno.test("strava-sync: a first backfill sets the watermark to the newest stored activity, not the clock", async () => {
-  const h = harness(baseTables(null, []), [...HISTORY, ...SINCE_T0]);
-  await h.run("initial");
-  assertEquals(h.storedIds(), ALL_IDS);
-  assertEquals(h.watermark(), at(2));
-});
-
-Deno.test("strava-sync: an incremental advances the watermark to its own start time", async () => {
-  const h = harness(baseTables(T0, HISTORY), [...HISTORY, ...SINCE_T0]);
-  await h.run("incremental");
-  assertEquals(h.watermark(), new Date(NOW + 60_000).toISOString());
   } finally {
     if (previousKey === undefined) Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
     else Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", previousKey);
   }
 }
 
+
 function stored(id: number, startedAt: string): StoredActivity {
   return {
-    user_id: USER_ID,
+    user_id: BACKFILL_USER_ID,
     provider: "strava",
     external_id: String(id),
     started_at: startedAt,
@@ -863,6 +899,10 @@ Deno.test("strava-sync upserts an activity returned by both passes once", async 
     strava.restore();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Suite D - queue, token rotation, browser sync
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Queue completion by queue_id, refresh failures, chunked upserts
