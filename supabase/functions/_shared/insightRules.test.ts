@@ -14,6 +14,15 @@ interface FixtureCase {
   expected: TrainingInsight[];
 }
 
+// Golden fixture. Three `description` keys in insight-cases.json were
+// spliced twice each by a `merge=union` (balanced-progress-kg,
+// balanced-progress-lbs, volume-record-and-legacy-pr-shape); `JSON.parse`
+// keeps the last of a duplicate key, so the old non-cable string was winning
+// while `formatPerCableWeight` produced the per-cable one.
+// Was `"225 kg (up 10 kg from 215 kg)."`, `"496.0 lbs (up 22.0 lbs from
+// 474.0 lbs)."` and `"180 kg."` — collapsed onto the per-cable forms
+// (KD-8: a weight PR has no cable count, so it is labelled per cable and no
+// total is shown). The duplicate keys are gone; the goldens are single-valued.
 const fixture: { cases: FixtureCase[] } = JSON.parse(
   await Deno.readTextFile(
     new URL('../../../tests/fixtures/insight-cases.json', import.meta.url),

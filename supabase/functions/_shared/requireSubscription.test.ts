@@ -111,9 +111,20 @@ function silenceConsoleError(): () => void {
 Deno.test("requireSubscription looks up the caller's own subscriptions row", async () => {
   const lookups: LookupRecord[] = [];
   await requireSubscription(fakeClient(row("EMBER", "active"), lookups), USER_ID, "EMBER", CORS);
+  // Was `"tier, status, current_period_end"` — two evolutions of this one
+  // assertion, unioned in the merge. The 4-column read is the landed one:
+  // `cancel_at_period_end` is read because the shared entitlement predicate
+  // uses it to decide whether the 48h renewal grace applies
+  // (subscriptionEntitlement.ts: `graceMs = status === 'active' &&
+  // !options.cancelAtPeriodEnd ? GRACE_MS : 0`). Dropping it would grant the
+  // grace to a subscription already scheduled to cancel at period end.
+  //
+  // The product rule this test is named for is the `eq`: the lookup is scoped
+  // to the caller's own row (FP-2). That assertion is unchanged — only the
+  // column list of that one row moved.
   assertEquals(lookups, [{
     table: "subscriptions",
-    select: "tier, status, current_period_end",
+    select: "tier, status, current_period_end, cancel_at_period_end",
     eq: ["user_id", USER_ID],
   }]);
 });
