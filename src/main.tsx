@@ -5,6 +5,7 @@ import { CookieConsentBanner } from "./app/components/CookieConsentBanner";
 import { getConsentStatus } from "./lib/consent";
 import { AuthProvider } from "./providers/AuthProvider";
 import { QueryProvider } from "./providers/QueryProvider";
+import { ThemeProvider } from "./providers/ThemeProvider";
 import "./styles/index.css";
 
 // Initialize Sentry lazily — only fetched for users who have consented
@@ -30,9 +31,11 @@ const root = createRoot(document.getElementById("root")!, {
 root.render(
 	<BrowserRouter>
 		<QueryProvider>
-			<AuthProvider>
-				<App />
-			</AuthProvider>
+			<ThemeProvider>
+				<AuthProvider>
+					<App />
+				</AuthProvider>
+			</ThemeProvider>
 		</QueryProvider>
 		<CookieConsentBanner />
 	</BrowserRouter>,
