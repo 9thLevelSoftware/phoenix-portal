@@ -101,6 +101,75 @@
   --semantic-neutral: #4a4a56;
 }
 
+:root[data-theme='light'] {
+  --background: #fbfbfc;
+  --foreground: #101014;
+  --card: #ffffff;
+  --card-foreground: #101014;
+  --popover: #ffffff;
+  --popover-foreground: #101014;
+  --primary: #c2410c;
+  --primary-foreground: #ffffff;
+  --secondary: #ececf1;
+  --secondary-foreground: #101014;
+  --muted: #d4d4dc;
+  --muted-foreground: #4a4a56;
+  --muted-hover: #c4c4cc;
+  --hover-surface: #ececf1;
+  --disabled-foreground: #a0a0ac;
+  --accent: #b45309;
+  --accent-foreground: #ffffff;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  --success: #047857;
+  --success-foreground: #ffffff;
+  --warning: #b45309;
+  --warning-foreground: #101014;
+  --border: #e2e2ea;
+  --input: rgba(226, 226, 234, 0.6);
+  --input-background: rgba(255, 255, 255, 0.8);
+
+  --sidebar: rgba(255, 255, 255, 0.9);
+  --sidebar-foreground: #101014;
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(217, 78, 31, 0.08);
+  --sidebar-accent-foreground: var(--primary);
+  --sidebar-border: #e2e2ea;
+  --sidebar-ring: var(--primary);
+  --sidebar-group-label: #6b7280;
+
+  --surface-0: #fbfbfc;
+  --surface-1: #ffffff;
+  --surface-2: #f4f4f7;
+  --surface-3: #ececf1;
+  --surface-overlay: rgba(255, 255, 255, 0.95);
+
+  --shadow-sm: 0 1px 2px rgba(15, 15, 25, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 15, 25, 0.08);
+  --shadow-lg: 0 8px 24px rgba(15, 15, 25, 0.1);
+
+  --icon-default: var(--foreground);
+  --icon-muted: var(--muted-foreground);
+  --icon-accent: var(--primary);
+  --icon-success: var(--success);
+  --icon-warning: var(--warning);
+  --icon-danger: var(--destructive);
+
+  --semantic-positive: var(--success);
+  --semantic-caution: var(--warning);
+  --semantic-info: #2563eb;
+  --semantic-negative: var(--destructive);
+  --semantic-neutral: #6b7280;
+
+  /* Data-viz colors must stay brandable but readable on white: */
+  --cable-a: #d94e1f;
+  --cable-b: #2563eb;
+  --signal-ok: #047857;
+  --signal-warn: #b45309;
+  --signal-danger: #b91c1c;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
