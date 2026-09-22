@@ -162,7 +162,11 @@ describe("KD-24 route × TIER_PRICING matrix", () => {
 		);
 		expect(sessionReplay).not.toMatch(/requiredTier="/);
 		expect(FEATURE_MIN_TIER.sessionReplay).toBe("FLAME");
-		expect(sessionReplay).toMatch(/requiredTier="FLAME"/);
+		// Was one more assertion, `toMatch(/requiredTier="FLAME"/)` — the
+		// pre-matrix form of the same gate, and it directly contradicts
+		// `not.toMatch(/requiredTier="/)` two lines up. The page gate reads
+		// FEATURE_MIN_TIER.sessionReplay; the constant is FLAME. Collapsed
+		// onto the landed form.
 		// Force curves / VBT / ROM / SRA are INFERNO; session replay without
 		// them stays FLAME.
 		expect(performanceTab).toMatch(

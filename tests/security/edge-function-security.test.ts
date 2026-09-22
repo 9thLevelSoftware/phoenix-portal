@@ -529,7 +529,13 @@ describe("Paddle webhook security helpers", () => {
 		);
 
 		const webhookDup = webhook.indexOf("findCrossTierDuplicatePriceIds(");
-		const webhookApply = webhook.indexOf("apply_subscription_event");
+		// Was `indexOf("apply_subscription_event")` — that hits the
+		// PaddleWebhooksDbClient type annotation near the top of the file, so
+		// it asserted the interface is declared before the guard rather than
+		// that the guard runs before the RPC. Anchor on the invocation.
+		const webhookApply = webhook.search(
+			/supabase\.rpc\(\s*"apply_subscription_event"/,
+		);
 		expect(webhookDup).toBeGreaterThan(-1);
 		expect(webhookApply).toBeGreaterThan(webhookDup);
 		expect(webhook).toMatch(/Billing configuration invalid/);
@@ -816,8 +822,30 @@ describe("SPA -> Edge _shared import boundary", () => {
 	// into dist/. Pin the boundary to the reviewed shared modules, none of which
 	// may contain a server-only token.
 	const SPA_REACHABLE_SHARED_MODULES = [
+		// Reviewed 2026-09-22 for KD-14 / F-059: the browser fallback for the
+		// Analytics feed runs the SAME rule engine the edge runs, via the
+		// `src/lib/insights.ts` re-export facade. Forking the rules would put
+		// the two runtimes out of step and is pinned red by
+		// `tests/fixtures/insight-cases.json`, which both `insightRules.test.ts`
+		// and `src/lib/__tests__/insights.test.ts` read. Checked against every
+		// predicate in the test below: no `Deno` global, no
+		// `SERVICE_ROLE|_SECRET|API_KEY|createClient`, and no relative `./`
+		// imports into other _shared modules — it is a pure, self-contained
+		// rules module with no secrets and no client construction. This is a
+		// REVIEW list, not an "anything goes" list: do not add another module
+		// here without checking the same three things.
 		"billingAction.ts",
+		"insightRules.ts",
 		"subscriptionEntitlement.ts",
+		// Reviewed 2026-09-22 for R-31 / PR 37 R-15: the single source of
+		// truth for where a user's data lives. `src/lib/export/data-export.ts`
+		// imports only `USER_DATA_EXPORT_TABLES` (a flat `string[]` of table
+		// and source names) so the client-side export asks for exactly the
+		// tables `export-user-data` serves — the file's own deploy-order note
+		// is that a divergence makes every export fail. It is pure data and
+		// two lookup helpers with ZERO import statements, so it cannot
+		// re-open the door; it passes every predicate the test below checks.
+		"userDataManifest.ts",
 		"workoutModes.ts",
 	];
 

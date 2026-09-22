@@ -89,7 +89,7 @@ export function DangerZone() {
 
 	const requestDeletion = useRequestDeletion(userId);
 	const cancelDeletion = useCancelDeletion(userId);
-	const executeDeletion = useExecuteDeletion();
+	const executeDeletion = useExecuteDeletion(userId);
 
 	const [showRequestDialog, setShowRequestDialog] = useState(false);
 	const [showExecuteDialog, setShowExecuteDialog] = useState(false);
