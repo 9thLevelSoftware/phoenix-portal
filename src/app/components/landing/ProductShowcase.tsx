@@ -103,7 +103,7 @@ function RecoveryPanel() {
 						cx="24"
 						cy="24"
 						r={radius}
-						stroke="var(--semantic-positive, #10B981)"
+						stroke="var(--semantic-positive, var(--success))"
 						strokeWidth="4"
 						fill="none"
 						strokeDasharray={circumference}

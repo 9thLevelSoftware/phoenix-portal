@@ -20,11 +20,11 @@ export interface VolumeLandmarksProps {
 // --- Constants ---
 
 const STATUS_COLORS: Record<VolumeStatus, string> = {
-	below_mev: "#F59E0B",
-	between_mev_mav: "#60A5FA",
-	in_mav: "#10B981",
-	above_mav: "#60A5FA",
-	above_mrv: "#DC2626",
+	below_mev: "var(--accent)",
+	between_mev_mav: "var(--cable-b)",
+	in_mav: "var(--success)",
+	above_mav: "var(--cable-b)",
+	above_mrv: "var(--destructive)",
 };
 
 const VOLUME_SIGNAL_TYPES = new Set(["volume_above_mrv", "volume_below_mev"]);
@@ -32,7 +32,7 @@ const VOLUME_SIGNAL_TYPES = new Set(["volume_above_mrv", "volume_below_mev"]);
 // --- Helpers ---
 
 function getBarColor(status: VolumeStatus | null): string {
-	if (!status) return "#60A5FA";
+	if (!status) return "var(--cable-b)";
 	return STATUS_COLORS[status];
 }
 
@@ -42,7 +42,7 @@ interface RecommendationCalloutProps {
 
 function RecommendationCallout({ recommendation }: RecommendationCalloutProps) {
 	const isCritical = recommendation.priority === "critical";
-	const borderColor = isCritical ? "#DC2626" : "#F59E0B";
+	const borderColor = isCritical ? "var(--destructive)" : "var(--accent)";
 	const bgColor = isCritical ? "rgba(220,38,38,0.08)" : "rgba(245,158,11,0.08)";
 
 	return (
@@ -121,28 +121,28 @@ export function VolumeLandmarks({
 						<span className="flex items-center gap-1.5">
 							<span
 								className="inline-block w-2 h-2 rounded-full"
-								style={{ backgroundColor: "#F59E0B" }}
+								style={{ backgroundColor: "var(--accent)" }}
 							/>
 							Below MEV
 						</span>
 						<span className="flex items-center gap-1.5">
 							<span
 								className="inline-block w-2 h-2 rounded-full"
-								style={{ backgroundColor: "#60A5FA" }}
+								style={{ backgroundColor: "var(--cable-b)" }}
 							/>
 							MEV → MAV
 						</span>
 						<span className="flex items-center gap-1.5">
 							<span
 								className="inline-block w-2 h-2 rounded-full"
-								style={{ backgroundColor: "#10B981" }}
+								style={{ backgroundColor: "var(--success)" }}
 							/>
 							In MAV (optimal)
 						</span>
 						<span className="flex items-center gap-1.5">
 							<span
 								className="inline-block w-2 h-2 rounded-full"
-								style={{ backgroundColor: "#DC2626" }}
+								style={{ backgroundColor: "var(--destructive)" }}
 							/>
 							Above MRV
 						</span>
@@ -236,7 +236,7 @@ export function VolumeLandmarks({
 										{isOptimal && (
 											<CheckCircle
 												className="w-4 h-4"
-												style={{ color: "#10B981" }}
+												style={{ color: "var(--success)" }}
 												aria-label="Optimal volume"
 											/>
 										)}

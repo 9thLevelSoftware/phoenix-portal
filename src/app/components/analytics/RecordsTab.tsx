@@ -76,7 +76,7 @@ function getMuscleGroupColor(muscleGroup: string): string {
 		Back: "bg-success",
 		Legs: "bg-chart-2",
 		Arms: "bg-warning",
-		Core: "bg-[#8B5CF6]",
+		Core: "bg-[var(--chart-5)]",
 	};
 	return colors[muscleGroup] ?? "bg-muted";
 }

@@ -105,8 +105,8 @@ export function LiftosaurConnect({
 		<Card className="border-border/50">
 			<CardHeader>
 				<div className="flex items-center gap-3">
-					<div className="flex items-center justify-center size-10 rounded-lg bg-[#8B5CF6]/10">
-						<Dumbbell className="size-5 text-[#8B5CF6]" />
+					<div className="flex items-center justify-center size-10 rounded-lg bg-[var(--chart-5)]/10">
+						<Dumbbell className="size-5 text-[var(--chart-5)]" />
 					</div>
 					<div className="flex-1">
 						<CardTitle className="text-base">Liftosaur</CardTitle>

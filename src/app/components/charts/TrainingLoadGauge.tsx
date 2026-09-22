@@ -61,14 +61,14 @@ export function TrainingLoadGauge({ score, zone }: TrainingLoadGaugeProps) {
 						size: 12,
 						itemStyle: {
 							color: zoneColor,
-							borderColor: "#1a1a1a",
+							borderColor: "var(--surface-1)",
 							borderWidth: 2,
 						},
 					},
 					detail: {
 						valueAnimation: true,
 						formatter: "{value}",
-						color: "#ffffff",
+						color: "var(--primary-foreground)",
 						fontSize: 28,
 						fontWeight: 700,
 						offsetCenter: [0, "-10%"],

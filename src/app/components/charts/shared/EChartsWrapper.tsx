@@ -17,6 +17,7 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import { useEffect, useRef } from "react";
+import { getThemeTokens, withAlpha } from "@/lib/theme-tokens";
 import { PHOENIX_ECHARTS_THEME } from "./EChartsTheme";
 
 // Register required components (tree-shakeable)
@@ -37,6 +38,8 @@ echarts.use([
 
 // Register theme once
 echarts.registerTheme("phoenix", PHOENIX_ECHARTS_THEME);
+
+const themeTokens = getThemeTokens();
 
 /**
  * Shared ECharts wrapper with Phoenix theme, responsive sizing, and loading state.
@@ -78,8 +81,8 @@ export function EChartsWrapper({
 			showLoading={loading}
 			loadingOption={{
 				text: "",
-				color: "#FF6B35",
-				maskColor: "rgba(13, 13, 13, 0.8)",
+				color: themeTokens.primary,
+				maskColor: withAlpha(themeTokens.background, 0.8),
 			}}
 			onEvents={onEvents}
 			notMerge

@@ -138,7 +138,7 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 	INFERNO: {
 		icon: Crown,
 		accentBorder: "border-accent",
-		accentBg: "from-accent/10 to-[#B45309]/10",
+		accentBg: "from-accent/10 to-[var(--warning)]/10",
 		accentText: "text-accent",
 		buttonClass: "bg-accent hover:bg-accent/90 text-black border-0",
 	},

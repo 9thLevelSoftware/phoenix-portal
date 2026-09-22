@@ -80,8 +80,10 @@ describe("SubscriptionGate", () => {
 				<p>Protected</p>
 			</SubscriptionGate>,
 		);
-		// Skeleton renders as a div with rounded-lg and bg-[#1a1a1a] classes
-		const skeleton = container.querySelector(".rounded-lg.bg-\\[\\#1a1a1a\\]");
+		// Skeleton uses the active surface token for its background.
+		const skeleton = container.querySelector(
+			'[class*="bg-[var(--surface-1)]"]',
+		);
 		expect(skeleton).toBeInTheDocument();
 		expect(screen.queryByText("Protected")).not.toBeInTheDocument();
 	});

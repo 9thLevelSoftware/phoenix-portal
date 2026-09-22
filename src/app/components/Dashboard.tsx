@@ -589,9 +589,9 @@ export function Dashboard() {
 									animate={{
 										scale: [1, 1.1, 1],
 										filter: [
-											"drop-shadow(0 0 10px #FF6B35)",
-											"drop-shadow(0 0 20px #DC2626)",
-											"drop-shadow(0 0 10px #FF6B35)",
+											"drop-shadow(0 0 10px var(--primary))",
+											"drop-shadow(0 0 20px var(--destructive))",
+											"drop-shadow(0 0 10px var(--primary))",
 										],
 									}}
 									transition={{
@@ -908,9 +908,9 @@ export function Dashboard() {
 										animate={{
 											scale: [1, 1.1, 1],
 											filter: [
-												"drop-shadow(0 0 10px #FF6B35)",
-												"drop-shadow(0 0 20px #DC2626)",
-												"drop-shadow(0 0 10px #FF6B35)",
+												"drop-shadow(0 0 10px var(--primary))",
+												"drop-shadow(0 0 20px var(--destructive))",
+												"drop-shadow(0 0 10px var(--primary))",
 											],
 										}}
 										transition={{

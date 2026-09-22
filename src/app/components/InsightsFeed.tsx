@@ -18,19 +18,19 @@ export interface InsightsFeedProps {
 
 const TYPE_CONFIG = {
 	success: {
-		color: "#10B981",
+		color: "var(--success)",
 		Icon: TrendingUp,
 	},
 	warning: {
-		color: "#F59E0B",
+		color: "var(--accent)",
 		Icon: AlertTriangle,
 	},
 	info: {
-		color: "#3B82F6",
+		color: "var(--cable-b)",
 		Icon: Info,
 	},
 	achievement: {
-		color: "#FF6B35",
+		color: "var(--primary)",
 		Icon: Trophy,
 	},
 } as const;
@@ -117,7 +117,9 @@ export function InsightsFeed({ insights, loading = false }: InsightsFeedProps) {
 												className="text-xs font-medium"
 												style={{
 													color:
-														insight.metric.delta >= 0 ? "#10B981" : "#EF4444",
+														insight.metric.delta >= 0
+															? "var(--success)"
+															: "var(--destructive)",
 												}}
 											>
 												{insight.metric.delta >= 0 ? "+" : ""}

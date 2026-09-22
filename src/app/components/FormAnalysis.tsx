@@ -21,9 +21,9 @@ interface SubMetric {
 }
 
 function getStatusColor(score: number): string {
-	if (score >= 80) return "#10B981";
-	if (score >= 60) return "#F59E0B";
-	return "#EF4444";
+	if (score >= 80) return "var(--success)";
+	if (score >= 60) return "var(--accent)";
+	return "var(--destructive)";
 }
 
 function getSubMetricDescription(name: string, score: number): string {
@@ -163,7 +163,7 @@ export function FormAnalysis({ reps }: FormAnalysisProps) {
 								cy={50}
 								r={RING_RADIUS}
 								fill="none"
-								stroke="#27272a"
+								stroke="var(--border)"
 								strokeWidth={8}
 							/>
 							{/* Progress arc */}
@@ -250,7 +250,11 @@ export function FormAnalysis({ reps }: FormAnalysisProps) {
 			{recommendations.length > 0 && (
 				<div
 					className="rounded-xl border p-4"
-					style={{ borderColor: "#FF6B3566", backgroundColor: "#FF6B350D" }}
+					style={{
+						borderColor: "color-mix(in srgb, var(--primary) 40%, transparent)",
+						backgroundColor:
+							"color-mix(in srgb, var(--primary) 5%, transparent)",
+					}}
 				>
 					<p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
 						Recommendations
@@ -262,7 +266,7 @@ export function FormAnalysis({ reps }: FormAnalysisProps) {
 								className="flex items-start gap-2 text-sm text-foreground"
 							>
 								<span
-									className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[#FF6B35]"
+									className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[var(--primary)]"
 									aria-hidden="true"
 								/>
 								{rec}

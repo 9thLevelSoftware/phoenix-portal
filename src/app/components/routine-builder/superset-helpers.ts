@@ -10,10 +10,10 @@ export interface SupersetGroup {
 }
 
 export const SUPERSET_COLORS = [
-	{ id: "A", color: "#6366F1", name: "Indigo" },
-	{ id: "B", color: "#EC4899", name: "Pink" },
-	{ id: "C", color: "#10B981", name: "Green" },
-	{ id: "D", color: "#F59E0B", name: "Amber" },
+	{ id: "A", color: "var(--chart-5)", name: "Indigo" },
+	{ id: "B", color: "var(--chart-5)", name: "Pink" },
+	{ id: "C", color: "var(--success)", name: "Green" },
+	{ id: "D", color: "var(--accent)", name: "Amber" },
 ];
 
 // Add these state variables to RoutineBuilder component:

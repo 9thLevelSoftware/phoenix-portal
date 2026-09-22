@@ -223,7 +223,7 @@ export function StrongConnect({
 						onClick={() => onChange("kg")}
 						className={
 							value === "kg"
-								? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
+								? "bg-[var(--chart-5)] hover:bg-[var(--chart-5)]/90 text-white border-0"
 								: ""
 						}
 					>
@@ -236,7 +236,7 @@ export function StrongConnect({
 						onClick={() => onChange("lbs")}
 						className={
 							value === "lbs"
-								? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
+								? "bg-[var(--chart-5)] hover:bg-[var(--chart-5)]/90 text-white border-0"
 								: ""
 						}
 					>
@@ -256,8 +256,8 @@ export function StrongConnect({
 		<Card className="border-border/50">
 			<CardHeader>
 				<div className="flex items-center gap-3">
-					<div className="flex items-center justify-center size-10 rounded-lg bg-[#5856D6]/10">
-						<Dumbbell className="size-5 text-[#5856D6]" />
+					<div className="flex items-center justify-center size-10 rounded-lg bg-[var(--chart-5)]/10">
+						<Dumbbell className="size-5 text-[var(--chart-5)]" />
 					</div>
 					<div>
 						<CardTitle className="text-base">Strong</CardTitle>
@@ -311,7 +311,7 @@ export function StrongConnect({
 							onClick={handleExport}
 							disabled={isExporting}
 							size="sm"
-							className="bg-[#5856D6] hover:bg-[#5856D6]/90 text-white"
+							className="bg-[var(--chart-5)] hover:bg-[var(--chart-5)]/90 text-white"
 						>
 							{isExporting ? (
 								"Exporting..."
@@ -387,7 +387,7 @@ export function StrongConnect({
 										onClick={handleImport}
 										disabled={isImporting}
 										size="sm"
-										className="bg-[#5856D6] hover:bg-[#5856D6]/90 text-white"
+										className="bg-[var(--chart-5)] hover:bg-[var(--chart-5)]/90 text-white"
 									>
 										{isImporting
 											? "Importing..."

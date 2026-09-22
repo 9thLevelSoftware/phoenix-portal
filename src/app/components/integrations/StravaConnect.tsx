@@ -57,7 +57,7 @@ export function StravaConnect({
 		<Button
 			onClick={handleConnect}
 			disabled={isRedirecting}
-			className="bg-[#FC4C02] hover:bg-[#FC4C02]/90 text-white"
+			className="bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-white"
 		>
 			{isRedirecting ? (
 				<>

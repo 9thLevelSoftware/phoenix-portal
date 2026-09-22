@@ -16,7 +16,7 @@ const COLOR_BALANCED = PHOENIX.forgeGreen; // Forge Green
 const COLOR_IMBALANCED = PHOENIX.flameRed; // Flame Red
 const COLOR_AXIS = PHOENIX.ashGray;
 const COLOR_THRESHOLD = PHOENIX.gold; // Gold for threshold lines
-const COLOR_TEXT = "#D1D5DB";
+const COLOR_TEXT = "var(--foreground)";
 
 // -- Types --
 export interface AsymmetryGaugeProps {
@@ -255,9 +255,9 @@ function PerRepChart({
 					left={tooltipLeft}
 					top={tooltipTop}
 					style={{
-						background: "#1F2937",
+						background: "var(--surface-3)",
 						color: COLOR_TEXT,
-						border: "1px solid #374151",
+						border: "1px solid var(--border)",
 						borderRadius: 6,
 						padding: "8px 12px",
 						fontSize: 12,

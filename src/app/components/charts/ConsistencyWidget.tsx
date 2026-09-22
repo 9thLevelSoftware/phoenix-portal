@@ -39,7 +39,7 @@ function ProgressRing({
 				cy={cy}
 				r={radius}
 				fill="none"
-				stroke="#1F2937"
+				stroke="var(--surface-3)"
 				strokeWidth={strokeWidth}
 			/>
 			{/* Progress arc */}
@@ -93,7 +93,7 @@ export function ConsistencyWidget({
 						<ProgressRing
 							sessions={current}
 							target={target}
-							color="#FF6B35"
+							color="var(--primary)"
 							radius={outerRadius}
 							strokeWidth={strokeWidth}
 							cx={cx}
@@ -103,7 +103,7 @@ export function ConsistencyWidget({
 						<ProgressRing
 							sessions={lastWeek}
 							target={target}
-							color="#F59E0B"
+							color="var(--accent)"
 							radius={middleRadius}
 							strokeWidth={strokeWidth}
 							cx={cx}
@@ -113,7 +113,7 @@ export function ConsistencyWidget({
 						<ProgressRing
 							sessions={twoWeeksAgo}
 							target={target}
-							color="#10B981"
+							color="var(--success)"
 							radius={innerRadius}
 							strokeWidth={strokeWidth}
 							cx={cx}
@@ -139,16 +139,16 @@ export function ConsistencyWidget({
 			{/* Ring legend */}
 			<div className="flex justify-center gap-3 text-[10px] text-muted-foreground">
 				<span className="flex items-center gap-1">
-					<span className="inline-block w-2 h-2 rounded-full bg-[#FF6B35]" />
+					<span className="inline-block w-2 h-2 rounded-full bg-[var(--primary)]" />
 					This week
 				</span>
 				<span className="flex items-center gap-1">
-					<span className="inline-block w-2 h-2 rounded-full bg-[#F59E0B]" />
+					<span className="inline-block w-2 h-2 rounded-full bg-[var(--accent)]" />
 					Last week
 				</span>
 				<span className="flex items-center gap-1">
-					<span className="inline-block w-2 h-2 rounded-full bg-[#10B981]" />2
-					weeks ago
+					<span className="inline-block w-2 h-2 rounded-full bg-[var(--success)]" />
+					2 weeks ago
 				</span>
 			</div>
 
@@ -163,7 +163,7 @@ export function ConsistencyWidget({
 					</span>
 				</div>
 				<div className="flex flex-col items-center rounded-lg bg-muted/40 px-2 py-2 text-center">
-					<span className="text-base font-bold text-[#FF6B35] leading-none">
+					<span className="text-base font-bold text-[var(--primary)] leading-none">
 						{Math.round(hitRate)}%
 					</span>
 					<span className="text-[10px] text-muted-foreground mt-0.5 leading-tight">

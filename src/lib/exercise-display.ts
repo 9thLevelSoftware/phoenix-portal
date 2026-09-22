@@ -8,7 +8,7 @@
  * than as a scary "Unknown Exercise".
  *
  * See: PortalSyncAdapter.kt (`name = session.exerciseName ?: "Unknown Exercise"`)
- * and the removal of Just Lift auto-detection in mobile PR #435.
+ * and the removal of Just Lift auto-detection in mobile PR 435.
  */
 
 /** The raw placeholder mobile writes for an untagged Just Lift exercise. */

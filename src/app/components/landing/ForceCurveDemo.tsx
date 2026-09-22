@@ -83,8 +83,8 @@ const bisectTime = bisector<DataPoint, number>((d) => d.time).left;
 // Axis style constants
 // ---------------------------------------------------------------------------
 
-const AXIS_TEXT_COLOR = "#9CA3AF";
-const GRID_LINE_COLOR = "#1A1A2E";
+const AXIS_TEXT_COLOR = "var(--muted-foreground)";
+const GRID_LINE_COLOR = "var(--surface-3)";
 const AXIS_FONT_SIZE = 10;
 const LABEL_FONT_SIZE = 11;
 
@@ -276,13 +276,13 @@ export function Chart({ width, height }: { width: number; height: number }) {
 							position: "absolute",
 							top: tooltipTop - 60,
 							left: tooltipLeft + 12,
-							backgroundColor: "#1A1A2E",
-							border: "1px solid #2D2D44",
+							backgroundColor: "var(--surface-3)",
+							border: "1px solid var(--border)",
 							borderRadius: 6,
 							padding: "6px 10px",
 							fontSize: 12,
 							lineHeight: 1.4,
-							color: "#fff",
+							color: "var(--primary-foreground)",
 							pointerEvents: "none",
 							boxShadow: "0 4px 12px rgba(0, 0, 0, 0.4)",
 							whiteSpace: "nowrap",

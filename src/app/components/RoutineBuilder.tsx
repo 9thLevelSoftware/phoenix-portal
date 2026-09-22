@@ -52,7 +52,12 @@ import { profileOptions } from "@/queries/profile";
 import { routineDetailOptions } from "@/queries/routines";
 import { formatEquipment } from "@/schemas/transforms";
 
-const SUPERSET_COLORS = ["#6366F1", "#EC4899", "#10B981", "#F59E0B"] as const;
+const SUPERSET_COLORS = [
+	"var(--chart-5)",
+	"var(--chart-5)",
+	"var(--success)",
+	"var(--accent)",
+] as const;
 
 interface Exercise {
 	id: string;

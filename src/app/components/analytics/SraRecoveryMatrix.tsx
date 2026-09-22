@@ -16,10 +16,10 @@ export interface SraRecoveryMatrixProps {
 // --- Constants ---
 
 const STATUS_COLORS: Record<SraStatus, string> = {
-	FATIGUED: "#DC2626",
-	RECOVERING: "#F59E0B",
-	RECOVERED: "#10B981",
-	SUPERCOMPENSATED: "#60A5FA",
+	FATIGUED: "var(--destructive)",
+	RECOVERING: "var(--accent)",
+	RECOVERED: "var(--success)",
+	SUPERCOMPENSATED: "var(--cable-b)",
 };
 
 const STATUS_LABELS: Record<SraStatus, string> = {
@@ -49,7 +49,7 @@ function getRecoIcon(signal: string) {
 		return (
 			<Zap
 				className="w-4 h-4"
-				style={{ color: "#60A5FA" }}
+				style={{ color: "var(--cable-b)" }}
 				aria-hidden="true"
 			/>
 		);
@@ -58,7 +58,7 @@ function getRecoIcon(signal: string) {
 		return (
 			<CheckCircle
 				className="w-4 h-4"
-				style={{ color: "#10B981" }}
+				style={{ color: "var(--success)" }}
 				aria-hidden="true"
 			/>
 		);
@@ -67,16 +67,16 @@ function getRecoIcon(signal: string) {
 	return (
 		<AlertTriangle
 			className="w-4 h-4"
-			style={{ color: "#F59E0B" }}
+			style={{ color: "var(--accent)" }}
 			aria-hidden="true"
 		/>
 	);
 }
 
 function getRecoBorderColor(signal: string): string {
-	if (signal === "sra_supercompensated") return "#60A5FA";
-	if (signal === "sra_recovered") return "#10B981";
-	return "#F59E0B";
+	if (signal === "sra_supercompensated") return "var(--cable-b)";
+	if (signal === "sra_recovered") return "var(--success)";
+	return "var(--accent)";
 }
 
 function getRecoBgColor(signal: string): string {

@@ -282,7 +282,7 @@ function RoutineGrid({
 												className="text-muted-foreground hover:text-accent transition-colors"
 											>
 												<Heart
-													className={`w-5 h-5 ${favorite ? "fill-[#F59E0B] text-accent" : ""}`}
+													className={`w-5 h-5 ${favorite ? "fill-[var(--accent)] text-accent" : ""}`}
 												/>
 											</button>
 										</TooltipTrigger>

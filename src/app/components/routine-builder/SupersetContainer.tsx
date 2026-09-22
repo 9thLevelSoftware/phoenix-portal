@@ -49,9 +49,9 @@ export function SupersetContainer({
 			style={{
 				borderLeftColor: colorHex,
 				backgroundColor: `${colorHex}08`,
-				borderTop: "1px solid #374151",
-				borderRight: "1px solid #374151",
-				borderBottom: "1px solid #374151",
+				borderTop: "1px solid var(--border)",
+				borderRight: "1px solid var(--border)",
+				borderBottom: "1px solid var(--border)",
 			}}
 		>
 			{/* Superset Header */}

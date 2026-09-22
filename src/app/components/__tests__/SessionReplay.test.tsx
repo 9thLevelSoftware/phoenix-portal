@@ -195,9 +195,9 @@ describe("SessionReplay", () => {
 	it("shows loading skeletons while data loads", () => {
 		setupSubscription("FLAME");
 		const { container } = renderWithProviders(<SessionReplay />);
-		// Skeleton uses bg-[#1a1a1a] class from custom Skeleton component
+		// Skeleton uses the active surface token for its background.
 		const skeletons = container.querySelectorAll(
-			".rounded-lg.bg-\\[\\#1a1a1a\\]",
+			'[class*="bg-[var(--surface-1)]"]',
 		);
 		expect(skeletons.length).toBeGreaterThan(0);
 	});

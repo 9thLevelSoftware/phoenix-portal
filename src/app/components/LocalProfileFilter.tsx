@@ -11,14 +11,14 @@ import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 // Profile color palette (indexes 0-7 match mobile's ProfileSidePanel color array)
 const PROFILE_COLORS = [
-	"#FF6B35", // Ember (0)
-	"#3B82F6", // Blue (1)
-	"#10B981", // Green (2)
-	"#F59E0B", // Gold (3)
-	"#8B5CF6", // Purple (4)
-	"#EC4899", // Pink (5)
-	"#14B8A6", // Teal (6)
-	"#F97316", // Orange (7)
+	"var(--primary)", // Ember (0)
+	"var(--cable-b)", // Blue (1)
+	"var(--success)", // Green (2)
+	"var(--accent)", // Gold (3)
+	"var(--chart-5)", // Purple (4)
+	"var(--chart-5)", // Pink (5)
+	"var(--success)", // Teal (6)
+	"var(--primary)", // Orange (7)
 ];
 
 interface LocalProfileFilterProps {

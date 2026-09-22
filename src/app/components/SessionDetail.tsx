@@ -78,7 +78,7 @@ export function SessionDetail() {
 			Back: "bg-success",
 			Legs: "bg-chart-2",
 			Arms: "bg-warning",
-			Core: "bg-[#8B5CF6]",
+			Core: "bg-[var(--chart-5)]",
 		};
 		return colors[muscleGroup] || "bg-muted";
 	};
@@ -646,7 +646,7 @@ export function SessionDetail() {
 																key={set.set_number}
 																className={`border-b border-secondary/50 ${
 																	set.is_pr
-																		? "border-l-4 border-l-[#F59E0B]"
+																		? "border-l-4 border-l-[var(--accent)]"
 																		: ""
 																}`}
 															>

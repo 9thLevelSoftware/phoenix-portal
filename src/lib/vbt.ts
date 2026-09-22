@@ -3,6 +3,10 @@
 // Supports both simplified 5-zone (mobile) and Dr. Mann VBT zones
 // ============================================================
 
+import { getThemeTokens } from "./theme-tokens";
+
+const tokens = getThemeTokens();
+
 // --- Simplified Zone System (Mobile) ---
 
 export type SimplifiedVbtZone =
@@ -29,7 +33,7 @@ export const SIMPLIFIED_ZONES: SimplifiedZoneInfo[] = [
 	{
 		zone: "GRIND",
 		label: "Grind",
-		color: "#DC2626", // Flame Red
+		color: tokens.danger, // Flame Red
 		minVelocity: 0,
 		maxVelocity: 0.25,
 		description: "Slow controlled movement, heavy resistance",
@@ -37,7 +41,7 @@ export const SIMPLIFIED_ZONES: SimplifiedZoneInfo[] = [
 	{
 		zone: "SLOW",
 		label: "Slow",
-		color: "#F59E0B", // Gold
+		color: tokens.accent, // Gold
 		minVelocity: 0.25,
 		maxVelocity: 0.5,
 		description: "Controlled tempo, moderate resistance",
@@ -45,7 +49,7 @@ export const SIMPLIFIED_ZONES: SimplifiedZoneInfo[] = [
 	{
 		zone: "MODERATE",
 		label: "Moderate",
-		color: "#FF6B35", // Ember
+		color: tokens.primary, // Ember
 		minVelocity: 0.5,
 		maxVelocity: 0.75,
 		description: "Steady pace, challenging resistance",
@@ -53,7 +57,7 @@ export const SIMPLIFIED_ZONES: SimplifiedZoneInfo[] = [
 	{
 		zone: "FAST",
 		label: "Fast",
-		color: "#10B981", // Forge Green
+		color: tokens.success, // Forge Green
 		minVelocity: 0.75,
 		maxVelocity: 1.0,
 		description: "Quick movement, lighter resistance",
@@ -61,7 +65,7 @@ export const SIMPLIFIED_ZONES: SimplifiedZoneInfo[] = [
 	{
 		zone: "EXPLOSIVE",
 		label: "Explosive",
-		color: "#3B82F6", // Blue
+		color: tokens.cableB, // Blue
 		minVelocity: 1.0,
 		maxVelocity: Infinity,
 		description: "Maximum velocity, explosive power",
@@ -105,7 +109,7 @@ export const MANN_ZONES: MannZoneInfo[] = [
 	{
 		zone: "absolute-strength",
 		label: "Absolute Strength",
-		color: "#DC2626",
+		color: tokens.danger,
 		minVelocity: 0,
 		maxVelocity: 0.5,
 		description: "Maximum force production, heavy grinding reps",
@@ -113,7 +117,7 @@ export const MANN_ZONES: MannZoneInfo[] = [
 	{
 		zone: "accelerative-strength",
 		label: "Accelerative Strength",
-		color: "#FF6B35",
+		color: tokens.primary,
 		minVelocity: 0.5,
 		maxVelocity: 0.75,
 		description: "Heavy with intent to accelerate",
@@ -121,7 +125,7 @@ export const MANN_ZONES: MannZoneInfo[] = [
 	{
 		zone: "strength-speed",
 		label: "Strength-Speed",
-		color: "#F59E0B",
+		color: tokens.accent,
 		minVelocity: 0.75,
 		maxVelocity: 1.0,
 		description: "Moderate load moved with speed",
@@ -129,7 +133,7 @@ export const MANN_ZONES: MannZoneInfo[] = [
 	{
 		zone: "speed-strength",
 		label: "Speed-Strength",
-		color: "#10B981",
+		color: tokens.success,
 		minVelocity: 1.0,
 		maxVelocity: 1.3,
 		description: "Light load, emphasis on velocity",
@@ -137,7 +141,7 @@ export const MANN_ZONES: MannZoneInfo[] = [
 	{
 		zone: "starting-strength",
 		label: "Starting Strength",
-		color: "#3B82F6",
+		color: tokens.cableB,
 		minVelocity: 1.3,
 		maxVelocity: Infinity,
 		description: "Explosive movement from dead stop",

@@ -243,7 +243,7 @@ export function ExerciseDeepDive({
 							<span className="flex items-center gap-1.5 text-[11px]">
 								<span
 									className="w-2.5 h-2.5 rounded-full shrink-0"
-									style={{ backgroundColor: "#DC2626" }}
+									style={{ backgroundColor: "var(--destructive)" }}
 								/>
 								<span className="text-muted-foreground">
 									{profile.primary.displayName ?? profile.primary.group}
@@ -258,7 +258,7 @@ export function ExerciseDeepDive({
 								>
 									<span
 										className="w-2.5 h-2.5 rounded-full shrink-0"
-										style={{ backgroundColor: "#F59E0B" }}
+										style={{ backgroundColor: "var(--accent)" }}
 									/>
 									<span className="text-muted-foreground">
 										{s.displayName ?? s.group}
@@ -321,38 +321,38 @@ export function ExerciseDeepDive({
 												>
 													<stop
 														offset="5%"
-														stopColor="#FF6B35"
+														stopColor="var(--primary)"
 														stopOpacity={0.35}
 													/>
 													<stop
 														offset="95%"
-														stopColor="#FF6B35"
+														stopColor="var(--primary)"
 														stopOpacity={0}
 													/>
 												</linearGradient>
 											</defs>
 											<XAxis
 												dataKey="date"
-												tick={{ fontSize: 9, fill: "#888894" }}
+												tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
 												axisLine={false}
 												tickLine={false}
 												interval="preserveStartEnd"
 											/>
 											<YAxis
-												tick={{ fontSize: 9, fill: "#888894" }}
+												tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
 												axisLine={false}
 												tickLine={false}
 												width={40}
 											/>
 											<Tooltip
 												contentStyle={{
-													backgroundColor: "#0a0a10",
-													border: "1px solid #374151",
+													backgroundColor: "var(--surface-1)",
+													border: "1px solid var(--border)",
 													borderRadius: 6,
 													fontSize: 11,
 												}}
-												labelStyle={{ color: "#e0e0e8" }}
-												itemStyle={{ color: "#FF6B35" }}
+												labelStyle={{ color: "var(--foreground)" }}
+												itemStyle={{ color: "var(--primary)" }}
 												formatter={(v: number) =>
 													unit === "lbs"
 														? `${v.toFixed(1)} lbs`
@@ -362,11 +362,11 @@ export function ExerciseDeepDive({
 											<Area
 												type="monotone"
 												dataKey="oneRM"
-												stroke="#FF6B35"
+												stroke="var(--primary)"
 												strokeWidth={2}
 												fill={`url(#${gradientId})`}
 												dot={false}
-												activeDot={{ r: 4, fill: "#FF6B35" }}
+												activeDot={{ r: 4, fill: "var(--primary)" }}
 											/>
 										</AreaChart>
 									</ResponsiveContainer>

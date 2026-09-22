@@ -206,15 +206,15 @@ export default function BodyTab({
 						gender="male"
 						scale={1.5}
 						border="none"
-						defaultFill="#2a2a2a"
-						defaultStroke="#444"
+						defaultFill="var(--border)"
+						defaultStroke="var(--border)"
 						defaultStrokeWidth={0.5}
 						colors={[
-							"#FF6B3520",
-							"#FF6B3550",
-							"#FF6B3580",
-							"#FF6B35B0",
-							"#FF6B35",
+							"color-mix(in srgb, var(--primary) 13%, transparent)",
+							"color-mix(in srgb, var(--primary) 31%, transparent)",
+							"color-mix(in srgb, var(--primary) 50%, transparent)",
+							"color-mix(in srgb, var(--primary) 69%, transparent)",
+							"var(--primary)",
 						]}
 						onBodyPartPress={(part) => {
 							if (part.slug) {
@@ -227,15 +227,19 @@ export default function BodyTab({
 					/>
 				</div>
 				<div className="flex justify-center gap-1 mt-4">
-					{["#FF6B3520", "#FF6B3550", "#FF6B3580", "#FF6B35B0", "#FF6B35"].map(
-						(c) => (
-							<div
-								key={c}
-								className="w-10 h-2 rounded"
-								style={{ backgroundColor: c }}
-							/>
-						),
-					)}
+					{[
+						"color-mix(in srgb, var(--primary) 13%, transparent)",
+						"color-mix(in srgb, var(--primary) 31%, transparent)",
+						"color-mix(in srgb, var(--primary) 50%, transparent)",
+						"color-mix(in srgb, var(--primary) 69%, transparent)",
+						"var(--primary)",
+					].map((c) => (
+						<div
+							key={c}
+							className="w-10 h-2 rounded"
+							style={{ backgroundColor: c }}
+						/>
+					))}
 				</div>
 				<div className="flex justify-between text-xs text-muted-foreground mt-1 px-4">
 					<span>Low volume</span>

@@ -375,9 +375,9 @@ const MUSCLE_GROUP_COLORS_MOBILE: Record<string, string> = {
 	Chest: PHOENIX.ember,
 	Back: PHOENIX.gold,
 	Legs: PHOENIX.forgeGreen,
-	Shoulders: "#6366F1",
-	Arms: "#EC4899",
-	Core: "#8B5CF6",
+	Shoulders: "var(--chart-5)",
+	Arms: "var(--chart-5)",
+	Core: "var(--chart-5)",
 };
 
 interface MobileStatCardProps {
@@ -913,7 +913,7 @@ export function Analytics() {
 						formatter: sorted[0]?.name ?? "",
 						fontSize: 14,
 						fontWeight: 600,
-						color: "#fff",
+						color: "var(--primary-foreground)",
 					},
 					emphasis: {
 						label: {

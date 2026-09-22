@@ -3,17 +3,21 @@
  * Shared across all premium analytics chart components.
  */
 
+import { getThemeTokens } from "@/lib/theme-tokens";
+
+const tokens = getThemeTokens();
+
 export const CHART_COLORS = {
-	primary: "#FF6B35", // Ember
-	secondary: "#F59E0B", // Gold
-	danger: "#DC2626", // Flame Red
-	success: "#10B981", // Forge Green
-	accent: "#3B82F6", // Blue
-	background: "#0D0D0D",
-	gridLine: "#1A1A2E",
-	axisText: "#9CA3AF",
-	tooltipBg: "#1A1A2E",
-	tooltipBorder: "#2D2D44",
+	primary: tokens.primary,
+	secondary: tokens.accent,
+	danger: tokens.danger,
+	success: tokens.success,
+	accent: tokens.cableB,
+	background: tokens.background,
+	gridLine: tokens.surface3,
+	axisText: tokens.mutedForeground,
+	tooltipBg: tokens.surface3,
+	tooltipBorder: tokens.border,
 } as const;
 
 export const CHART_MARGINS = {
@@ -24,20 +28,12 @@ export const CHART_MARGINS = {
 } as const;
 
 /**
- * 10 distinguishable colors for multi-rep overlays.
- * Ordered by visual distinctiveness on dark backgrounds.
+ * Distinguishable colors for multi-rep overlays, resolved from the active
+ * theme so Recharts receives concrete values instead of CSS variable names.
  */
 export const REP_COLORS: string[] = [
-	"#FF6B35", // Ember
-	"#F59E0B", // Gold
-	"#10B981", // Green
-	"#3B82F6", // Blue
-	"#8B5CF6", // Purple
-	"#EC4899", // Pink
-	"#06B6D4", // Cyan
-	"#FB923C", // Orange-light
-	"#F87171", // Red-light
-	"#14B8A6", // Teal
+	...tokens.chartPalette,
+	...tokens.chartPalette,
 ];
 
 export const FONT_SIZES = {

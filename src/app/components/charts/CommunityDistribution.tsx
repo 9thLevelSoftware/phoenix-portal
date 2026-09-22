@@ -131,8 +131,11 @@ export function CommunityDistribution({
 					data: leftPoints,
 					smooth: true,
 					symbol: "none",
-					lineStyle: { color: "#4B5563", width: 1.5 },
-					areaStyle: { color: "#4B556322" },
+					lineStyle: { color: "var(--muted-foreground)", width: 1.5 },
+					areaStyle: {
+						color:
+							"color-mix(in srgb, var(--muted-foreground) 13%, transparent)",
+					},
 					silent: true,
 					z: 1,
 				},

@@ -42,9 +42,15 @@ describe("ThemeToggle", () => {
 			</ThemeProvider>,
 		);
 
-		expect(screen.getByRole("button", { name: /light theme/i })).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: /dark theme/i })).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: /system theme/i })).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /light theme/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /dark theme/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /system theme/i }),
+		).toBeInTheDocument();
 	});
 
 	it("persists the selected theme", async () => {

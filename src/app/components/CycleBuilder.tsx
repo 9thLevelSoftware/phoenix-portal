@@ -771,7 +771,7 @@ function DayCard({
 				onClick={onClick}
 				className={`p-4 ${
 					day.type === "workout"
-						? "bg-gradient-to-br from-primary/10 to-chart-2/5 border-l-4 border-l-[#FF6B35]"
+						? "bg-gradient-to-br from-primary/10 to-chart-2/5 border-l-4 border-l-[var(--primary)]"
 						: "bg-gradient-to-br from-secondary/20 to-background border-secondary"
 				}`}
 			>

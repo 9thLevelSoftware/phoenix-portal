@@ -31,11 +31,20 @@ import {
 
 function getRankIcon(rank: number) {
 	if (rank === 1)
-		return <Crown className="size-5 text-[#F59E0B]" aria-label="1st place" />;
+		return (
+			<Crown className="size-5 text-[var(--accent)]" aria-label="1st place" />
+		);
 	if (rank === 2)
-		return <Medal className="size-5 text-[#9CA3AF]" aria-label="2nd place" />;
+		return (
+			<Medal
+				className="size-5 text-[var(--muted-foreground)]"
+				aria-label="2nd place"
+			/>
+		);
 	if (rank === 3)
-		return <Award className="size-5 text-[#CD7F32]" aria-label="3rd place" />;
+		return (
+			<Award className="size-5 text-[var(--accent)]" aria-label="3rd place" />
+		);
 	return (
 		<span className="flex size-5 items-center justify-center text-xs font-bold text-muted-foreground">
 			{rank}
@@ -44,9 +53,10 @@ function getRankIcon(rank: number) {
 }
 
 function getRankBg(rank: number): string {
-	if (rank === 1) return "bg-[#F59E0B]/10 border-[#F59E0B]/30";
-	if (rank === 2) return "bg-[#9CA3AF]/10 border-[#9CA3AF]/30";
-	if (rank === 3) return "bg-[#CD7F32]/10 border-[#CD7F32]/30";
+	if (rank === 1) return "bg-[var(--accent)]/10 border-[var(--accent)]/30";
+	if (rank === 2)
+		return "bg-[var(--muted-foreground)]/10 border-[var(--muted-foreground)]/30";
+	if (rank === 3) return "bg-[var(--accent)]/10 border-[var(--accent)]/30";
 	return "bg-card border-border";
 }
 
@@ -246,31 +256,31 @@ function GlobalRankings({
 		{
 			key: "workoutCount",
 			title: "Most Workouts",
-			icon: <Trophy className="size-4 text-[#F59E0B]" />,
+			icon: <Trophy className="size-4 text-[var(--accent)]" />,
 			metricLabel: "count",
 		},
 		{
 			key: "longestStreak",
 			title: "Longest Streak",
-			icon: <Award className="size-4 text-[#FF6B35]" />,
+			icon: <Award className="size-4 text-[var(--primary)]" />,
 			metricLabel: "streak",
 		},
 		{
 			key: "currentStreak",
 			title: "Current Streak",
-			icon: <Shield className="size-4 text-[#10B981]" />,
+			icon: <Shield className="size-4 text-[var(--success)]" />,
 			metricLabel: "streak",
 		},
 		{
 			key: "prCount",
 			title: "Phase-Aware PRs",
-			icon: <Medal className="size-4 text-[#9CA3AF]" />,
+			icon: <Medal className="size-4 text-[var(--muted-foreground)]" />,
 			metricLabel: "count",
 		},
 		{
 			key: "exerciseMastery",
 			title: "Exercise Mastery",
-			icon: <Crown className="size-4 text-[#F59E0B]" />,
+			icon: <Crown className="size-4 text-[var(--accent)]" />,
 			metricLabel: "mastery",
 		},
 	];
@@ -342,7 +352,7 @@ function WeeklyChallengeTab({
 			<motion.div
 				initial={{ opacity: 0, y: -8 }}
 				animate={{ opacity: 1, y: 0 }}
-				className="rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 to-[#F59E0B]/10 p-4"
+				className="rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 to-[var(--accent)]/10 p-4"
 			>
 				<div className="flex flex-wrap items-center justify-between gap-2">
 					<div>
@@ -421,27 +431,27 @@ const METRIC_META: Record<
 	},
 	workoutCount: {
 		label: "Workout Count",
-		icon: <Trophy className="size-4 text-[#F59E0B]" />,
+		icon: <Trophy className="size-4 text-[var(--accent)]" />,
 		unit: "sessions",
 	},
 	longestStreak: {
 		label: "Longest Streak",
-		icon: <Award className="size-4 text-[#FF6B35]" />,
+		icon: <Award className="size-4 text-[var(--primary)]" />,
 		unit: "days",
 	},
 	currentStreak: {
 		label: "Current Streak",
-		icon: <Shield className="size-4 text-[#10B981]" />,
+		icon: <Shield className="size-4 text-[var(--success)]" />,
 		unit: "days",
 	},
 	prCount: {
 		label: "Phase-Aware PRs",
-		icon: <Medal className="size-4 text-[#9CA3AF]" />,
+		icon: <Medal className="size-4 text-[var(--muted-foreground)]" />,
 		unit: "PRs",
 	},
 	exerciseMastery: {
 		label: "Exercise Mastery",
-		icon: <Crown className="size-4 text-[#F59E0B]" />,
+		icon: <Crown className="size-4 text-[var(--accent)]" />,
 		unit: "score",
 	},
 };

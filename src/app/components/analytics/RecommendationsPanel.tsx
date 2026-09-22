@@ -24,10 +24,10 @@ export interface RecommendationsPanelProps {
 const MAX_INITIAL = 8;
 
 const PRIORITY_COLORS: Record<Recommendation["priority"], string> = {
-	critical: "#DC2626",
-	actionable: "#F59E0B",
-	info: "#60A5FA",
-	positive: "#10B981",
+	critical: "var(--destructive)",
+	actionable: "var(--accent)",
+	info: "var(--cable-b)",
+	positive: "var(--success)",
 };
 
 const PRIORITY_BG_COLORS: Record<Recommendation["priority"], string> = {
@@ -173,7 +173,7 @@ export function RecommendationsPanel({
 							<div className="flex items-center gap-3 py-6 text-sm text-muted-foreground">
 								<CheckCircle
 									className="w-5 h-5 shrink-0"
-									style={{ color: "#10B981" }}
+									style={{ color: "var(--success)" }}
 									aria-hidden="true"
 								/>
 								All looking good — keep up the consistent training!

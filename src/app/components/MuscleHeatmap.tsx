@@ -281,7 +281,7 @@ export function MuscleHeatmap({ muscleVolumes }: MuscleHeatmapProps) {
 									d={path}
 									fill={volume > 0 ? EMBER : "none"}
 									fillOpacity={volume > 0 ? opacity : 0}
-									stroke={volume > 0 ? EMBER : "#4B5563"}
+									stroke={volume > 0 ? EMBER : "var(--muted-foreground)"}
 									strokeWidth={isHovered ? 2 : 1}
 									strokeOpacity={volume > 0 ? 0.8 : 0.4}
 									style={{ cursor: "pointer", transition: "all 0.2s" }}
@@ -337,7 +337,7 @@ export function MuscleHeatmap({ muscleVolumes }: MuscleHeatmapProps) {
 						top: tooltipPos.y - 10,
 						background: "var(--surface-2)",
 						color: "var(--secondary-foreground)",
-						border: "1px solid #374151",
+						border: "1px solid var(--border)",
 						whiteSpace: "nowrap",
 					}}
 				>

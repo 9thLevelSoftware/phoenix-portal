@@ -86,7 +86,7 @@ export function DayCard({
 			>
 				<Card
 					onClick={onClick}
-					className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/5 border-l-4 border-l-[#FF6B35] border-r border-t border-b border-secondary hover:border-primary/50 transition-all"
+					className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/5 border-l-4 border-l-[var(--primary)] border-r border-t border-b border-secondary hover:border-primary/50 transition-all"
 				>
 					<div className="text-center mb-3">
 						<div className="text-sm font-semibold text-muted-foreground">

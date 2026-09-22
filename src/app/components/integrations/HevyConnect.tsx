@@ -273,8 +273,8 @@ export function HevyConnect({
 		<Card className="border-border/50">
 			<CardHeader>
 				<div className="flex items-center gap-3">
-					<div className="flex items-center justify-center size-10 rounded-lg bg-[#2563EB]/10">
-						<Dumbbell className="size-5 text-[#2563EB]" />
+					<div className="flex items-center justify-center size-10 rounded-lg bg-[var(--cable-b)]/10">
+						<Dumbbell className="size-5 text-[var(--cable-b)]" />
 					</div>
 					<div>
 						<CardTitle className="text-base">Hevy</CardTitle>
@@ -323,7 +323,7 @@ export function HevyConnect({
 							onClick={handleExport}
 							disabled={isExporting}
 							size="sm"
-							className="bg-[#2563EB] hover:bg-[#2563EB]/90 text-white"
+							className="bg-[var(--cable-b)] hover:bg-[var(--cable-b)]/90 text-white"
 						>
 							{isExporting ? (
 								"Exporting..."

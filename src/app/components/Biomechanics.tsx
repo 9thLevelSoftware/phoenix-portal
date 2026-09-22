@@ -426,13 +426,13 @@ export function BiomechanicsContent({
 													style={{
 														backgroundColor:
 															parseFloat(avgAsymmetry) <= 10
-																? "#10B98120"
-																: "#DC262620",
+																? "color-mix(in srgb, var(--success) 13%, transparent)"
+																: "color-mix(in srgb, var(--destructive) 13%, transparent)",
 														color:
 															parseFloat(avgAsymmetry) <= 10
 																? PHOENIX.forgeGreen
 																: PHOENIX.flameRed,
-														border: `1px solid ${parseFloat(avgAsymmetry) <= 10 ? "#10B98140" : "#DC262640"}`,
+														border: `1px solid ${parseFloat(avgAsymmetry) <= 10 ? "color-mix(in srgb, var(--success) 25%, transparent)" : "color-mix(in srgb, var(--destructive) 25%, transparent)"}`,
 													}}
 												>
 													Session Average: {avgAsymmetry}% asymmetry

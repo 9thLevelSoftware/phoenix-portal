@@ -46,7 +46,7 @@ function TrendSvg({
 			<polyline
 				points={coordinates.join(" ")}
 				fill="none"
-				stroke="#FF6B35"
+				stroke="var(--primary)"
 				strokeWidth="3"
 				strokeLinecap="round"
 				strokeLinejoin="round"
@@ -60,7 +60,7 @@ function TrendSvg({
 						cx={x}
 						cy={y}
 						r="4"
-						fill="#FF6B35"
+						fill="var(--primary)"
 					/>
 				);
 			})}

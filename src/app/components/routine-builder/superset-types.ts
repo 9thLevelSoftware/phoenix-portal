@@ -42,10 +42,10 @@ export const SUPERSET_COLOR_MAP: Record<
 	SupersetColor,
 	{ hex: string; label: string }
 > = {
-	indigo: { hex: "#6366F1", label: "A" },
-	pink: { hex: "#EC4899", label: "B" },
-	green: { hex: "#10B981", label: "C" },
-	amber: { hex: "#F59E0B", label: "D" },
+	indigo: { hex: "var(--chart-5)", label: "A" },
+	pink: { hex: "var(--chart-5)", label: "B" },
+	green: { hex: "var(--success)", label: "C" },
+	amber: { hex: "var(--accent)", label: "D" },
 };
 
 export function getNextSupersetColor(

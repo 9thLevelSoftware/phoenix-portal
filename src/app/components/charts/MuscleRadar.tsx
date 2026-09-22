@@ -36,7 +36,7 @@ export function MuscleRadar({ currentData, previousData }: MuscleRadarProps) {
 						value: MUSCLE_GROUPS.map((m) => previousData[m] ?? 0),
 						name: "Previous Period",
 						lineStyle: {
-							color: "#6B7280",
+							color: "var(--muted-foreground)",
 							type: "dashed",
 							width: 1.5,
 						},
@@ -44,7 +44,7 @@ export function MuscleRadar({ currentData, previousData }: MuscleRadarProps) {
 							color: "transparent",
 						},
 						itemStyle: {
-							color: "#6B7280",
+							color: "var(--muted-foreground)",
 						},
 					},
 				],
@@ -97,8 +97,8 @@ export function MuscleRadar({ currentData, previousData }: MuscleRadarProps) {
 					color: CHART_COLORS.axisText,
 					fontSize: 11,
 				},
-				axisLine: { lineStyle: { color: "#333" } },
-				splitLine: { lineStyle: { color: "#2a2a2a" } },
+				axisLine: { lineStyle: { color: "var(--border)" } },
+				splitLine: { lineStyle: { color: "var(--border)" } },
 				splitArea: { areaStyle: { color: ["transparent"] } },
 			},
 			series,

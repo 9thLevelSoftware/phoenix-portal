@@ -18,7 +18,7 @@ const CELL_SIZE = 10;
 const CELL_GAP = 2;
 const STEP = CELL_SIZE + CELL_GAP;
 const EMBER = PHOENIX.ember;
-const BG_EMPTY = "#1A1A2E";
+const BG_EMPTY = "var(--surface-3)";
 const DAY_LABELS_WIDTH = 24;
 const TOP_LABEL_HEIGHT = 18;
 
@@ -249,9 +249,9 @@ export function ConsistencyCalendar({
 						style={{
 							left: hoveredCell.x + 12,
 							top: hoveredCell.y - 40,
-							background: "#1F2937",
+							background: "var(--surface-3)",
 							color: "var(--secondary-foreground)",
-							border: "1px solid #374151",
+							border: "1px solid var(--border)",
 							whiteSpace: "nowrap",
 						}}
 					>
