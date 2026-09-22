@@ -67,6 +67,44 @@ type FunctionOverrides = {
 	>;
 };
 
+type GeneratedTables = GeneratedPublic["Tables"];
+
+/**
+ * 20260920003500_due_deletion_cron.sql adds three columns to
+ * `deletion_requests` (`claimed_at`, `needs_support_reason`,
+ * `last_attempt_at`) that the generated types predate. Until
+ * `npm run gen:types:local` is re-run against a stack with that migration,
+ * the Danger Zone cannot `SELECT needs_support_reason` — which is the only
+ * way to tell a parked purge (KD-11: `process_due` skips it) from a normal
+ * grace expiry, and getting that wrong offers a "Delete Now" that is
+ * guaranteed to fail again.
+ */
+type DueDeletionClaimColumns = {
+	claimed_at: string | null;
+	needs_support_reason: string | null;
+	last_attempt_at: string | null;
+};
+
+type WithExtraColumns<
+	Name extends keyof GeneratedTables,
+	Extra extends Record<string, unknown>,
+> = Omit<GeneratedTables[Name], "Row" | "Insert" | "Update"> & {
+	Row: GeneratedTables[Name]["Row"] & Extra;
+	Insert: GeneratedTables[Name]["Insert"] & {
+		[K in keyof Extra]?: Extra[K];
+	};
+	Update: GeneratedTables[Name]["Update"] & {
+		[K in keyof Extra]?: Extra[K];
+	};
+};
+
+type TableOverrides = {
+	deletion_requests: WithExtraColumns<
+		"deletion_requests",
+		DueDeletionClaimColumns
+	>;
+};
+
 export type Database = Omit<GeneratedDatabase, "public"> & {
 	// PostgREST version of the hosted project (it was emitted by the
 	// generator when the types came from the live project; `gen types
@@ -74,9 +112,10 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
 	__InternalSupabase: {
 		PostgrestVersion: "14.1";
 	};
-	public: Omit<GeneratedPublic, "Functions"> & {
+	public: Omit<GeneratedPublic, "Functions" | "Tables"> & {
 		Functions: Omit<GeneratedFunctions, keyof FunctionOverrides> &
 			FunctionOverrides;
+		Tables: Omit<GeneratedTables, keyof TableOverrides> & TableOverrides;
 	};
 };
 

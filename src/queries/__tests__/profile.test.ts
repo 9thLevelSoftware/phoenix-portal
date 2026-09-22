@@ -169,16 +169,6 @@ describe("profileStatsOptions", () => {
 					pr_count: 1100,
 				},
 			],
-	it("computes stats with per-cable volume and streak", async () => {
-		const sessions = [
-			{ started_at: "2026-03-15T08:00:00Z", total_volume: 500 },
-			{ started_at: "2026-03-16T08:00:00Z", total_volume: 600 },
-			{ started_at: "2026-03-17T08:00:00Z", total_volume: 400 },
-		];
-
-		const sessionsChain = buildChain({ data: sessions, error: null });
-		const personalRecordsChain = buildChain({
-			data: null,
 			error: null,
 		});
 
@@ -204,6 +194,42 @@ describe("profileStatsOptions", () => {
 		tz.mockRestore();
 	});
 
+	// Was "computes stats with per-cable volume and streak" — the client-side
+	// parent summed an ascending `workout_sessions` list and walked streaks
+	// here (and needed a `computeBestStreak` helper the merge left declared
+	// nowhere, which is why every test in this describe threw ReferenceError).
+	// F-034 moved that arithmetic into `profile_workout_stats`;
+	// `analytics_rpcs.test.sql` pins the per-cable sum and the streak there.
+	// What this declaration still owns is the KD-8 identity on the way out
+	// and that the client never recomputes.
+	it("reports the aggregate's per-cable volume and streak unchanged", async () => {
+		mockRpc({
+			data: [
+				{
+					total_workouts: 3,
+					// 500+600+400 as the aggregate sums it, per cable (KD-8).
+					total_volume: 1500,
+					best_streak: 3,
+					pr_count: 5,
+				},
+			],
+			error: null,
+		});
+
+		const { profileStatsOptions } = await import("../profile");
+		const result = await profileStatsOptions("user-1").queryFn?.({} as never);
+
+		expect(result.totalWorkouts).toBe(3);
+		// total_volume is per cable, as stored — never doubled (KD-8).
+		expect(result.totalVolume).toBe(1500);
+		// 3 consecutive days = streak of 3
+		expect(result.bestStreak).toBe(3);
+		expect(result.prCount).toBe(5);
+		// The parent used to read `workout_sessions` and `personal_records`
+		// here (`is("deleted_at", null)` on the PR count). It must not.
+		expect(fromFn).not.toHaveBeenCalled();
+	});
+
 	it("omits the profile argument instead of passing null", async () => {
 		mockRpc({ data: [], error: null });
 		const { profileStatsOptions } = await import("../profile");
@@ -211,16 +237,11 @@ describe("profileStatsOptions", () => {
 		expect(rpcFn).toHaveBeenCalledWith("profile_workout_stats", {
 			p_tz: "UTC",
 		});
-		expect(result.totalWorkouts).toBe(3);
-		// total_volume is per cable, summed as stored (KD-8): 500+600+400
-		expect(result.totalVolume).toBe(1500);
-		// 3 consecutive days = streak of 3
-		expect(result.bestStreak).toBe(3);
-		expect(result.prCount).toBe(5);
-		expect(personalRecordsChain.is).toHaveBeenCalledWith("deleted_at", null);
 	});
 
-	it("returns zeros when user has no sessions", async () => {
+	// Was "returns zeros when user has no sessions" — there is no session
+	// read left to be empty. An aggregate that returns no row is the case.
+	it("returns zeros when the aggregate returns no row", async () => {
 		mockRpc({ data: [], error: null });
 
 		const { profileStatsOptions } = await import("../profile");
