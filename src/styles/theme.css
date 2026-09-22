@@ -4,19 +4,19 @@
 
   /* Signal palette — instrument panel */
   --phoenix-black: #06060a;
-  --phoenix-ember: #FF6B35;
-  --phoenix-flame-red: #DC2626;
-  --phoenix-gold: #F59E0B;
+  --phoenix-ember: #ff6b35;
+  --phoenix-flame-red: #dc2626;
+  --phoenix-gold: #f59e0b;
   --phoenix-molten-steel: #374151;
-  --phoenix-ash-gray: #6B7280;
-  --phoenix-forge-green: #10B981;
-  --phoenix-flame-yellow: #FBBF24;
-  --phoenix-crimson: #EF4444;
+  --phoenix-ash-gray: #6b7280;
+  --phoenix-forge-green: #10b981;
+  --phoenix-flame-yellow: #fbbf24;
+  --phoenix-crimson: #ef4444;
   --phoenix-white: #e0e0e8;
-  --phoenix-light-gray: #E5E7EB;
+  --phoenix-light-gray: #e5e7eb;
 
   /* Signal-specific */
-  --cable-a: #FF6B35;
+  --cable-a: #ff6b35;
   --cable-b: #6ba3f7;
   --signal-ok: #00e676;
   --signal-warn: #ffab00;
@@ -28,7 +28,7 @@
   --card-foreground: #e0e0e8;
   --popover: #0e0e14;
   --popover-foreground: #e0e0e8;
-  --primary: #FF6B35;
+  --primary: #ff6b35;
   --primary-foreground: #06060a;
   --secondary: #1a1a24;
   --secondary-foreground: #e0e0e8;
@@ -37,10 +37,10 @@
   --muted-hover: #5a5a66;
   --hover-surface: #1a1a24;
   --disabled-foreground: #5a5a66;
-  --accent: #F59E0B;
+  --accent: #f59e0b;
   --accent-foreground: #06060a;
   --destructive: #ff5252;
-  --destructive-foreground: #FFFFFF;
+  --destructive-foreground: #ffffff;
   --success: #00e676;
   --success-foreground: #06060a;
   --warning: #ffab00;
@@ -49,12 +49,12 @@
   --input: rgba(26, 26, 36, 0.5);
   --input-background: rgba(26, 26, 36, 0.5);
   --switch-background: #1a1a24;
-  --ring: #FF6B35;
+  --ring: #ff6b35;
 
   /* Chart colors — Signal palette */
-  --chart-1: #FF6B35;
+  --chart-1: #ff6b35;
   --chart-2: #6ba3f7;
-  --chart-3: #F59E0B;
+  --chart-3: #f59e0b;
   --chart-4: #00e676;
   --chart-5: #7c4dff;
 
@@ -65,12 +65,12 @@
 
   --sidebar: rgba(6, 6, 10, 0.95);
   --sidebar-foreground: #e0e0e8;
-  --sidebar-primary: #FF6B35;
+  --sidebar-primary: #ff6b35;
   --sidebar-primary-foreground: #06060a;
   --sidebar-accent: rgba(255, 107, 53, 0.1);
-  --sidebar-accent-foreground: #FF6B35;
+  --sidebar-accent-foreground: #ff6b35;
   --sidebar-border: #1a1a24;
-  --sidebar-ring: #FF6B35;
+  --sidebar-ring: #ff6b35;
   --sidebar-group-label: #4a4a56;
 
   /* Surface layers — deeper, more contrast */
@@ -100,7 +100,6 @@
   --semantic-negative: #ff5252;
   --semantic-neutral: #4a4a56;
 }
-
 
 @theme inline {
   --color-background: var(--background);
@@ -286,7 +285,9 @@
 
   /* Phoenix sidebar hover — matching ember tint, readable primary text (non-active items only) */
   [data-sidebar="menu-button"] {
-    transition: background 150ms ease, color 150ms ease;
+    transition:
+      background 150ms ease,
+      color 150ms ease;
   }
   [data-sidebar="menu-button"]:not([data-active="true"]):hover {
     background: rgba(255, 107, 53, 0.12) !important;
@@ -363,13 +364,13 @@
   }
 
   h4 {
-    font-size: 1rem;        /* 16px — base, Inter */
+    font-size: 1rem; /* 16px — base, Inter */
     font-weight: 500;
     line-height: 1.4;
   }
 
   p {
-    line-height: 1.4;       /* Book: 1.2-1.4em for body (was 1.5) */
+    line-height: 1.4; /* Book: 1.2-1.4em for body (was 1.5) */
   }
 
   label {
@@ -393,7 +394,7 @@
   /* Eyebrow / stat label treatment — Inter uppercase, wide-tracked */
   .eyebrow {
     font-weight: 450;
-    font-size: 0.688rem;   /* 11px */
+    font-size: 0.688rem; /* 11px */
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
@@ -425,8 +426,13 @@
 
   /* Signal pulse — for live status indicators only */
   @keyframes signal-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
   }
 
   .animate-signal-pulse {
@@ -437,7 +443,6 @@
   .border-secondary {
     border-color: var(--border) !important;
   }
-
 }
 
 @layer utilities {
@@ -481,7 +486,9 @@
     border: 1px solid var(--border);
     background: var(--surface-2);
     box-shadow: var(--shadow-sm);
-    transition: border-color 200ms ease, box-shadow 200ms ease;
+    transition:
+      border-color 200ms ease,
+      box-shadow 200ms ease;
     border-radius: var(--radius-md);
   }
   .card-landing-feature:hover {
@@ -510,7 +517,9 @@
     width: 0;
     height: 1px;
     background: var(--primary);
-    transition: width 200ms ease, left 200ms ease;
+    transition:
+      width 200ms ease,
+      left 200ms ease;
   }
 
   .nav-link-landing:hover::after,
@@ -635,7 +644,7 @@
   }
 
   .text-primary {
-    color: #FF6B35 !important;
+    color: #ff6b35 !important;
   }
 
   /* ---- Print-only elements ---- */
