@@ -23,9 +23,22 @@ function orderedExercises(exercises: RoutineExerciseSnapshot[]) {
 	return [...exercises].sort((a, b) => a.order_index - b.order_index);
 }
 
+/**
+ * Per-set arrays arrive either as JSON arrays or, from mobile, as a JSON
+ * string holding one (per_set_echo_levels is stored as a jsonb string scalar
+ * since 20260920007600). Accept both; anything else renders as no values.
+ */
 function asPrimitiveArray(value: unknown): Array<string | number | boolean> {
-	return Array.isArray(value)
-		? value.filter((item): item is string | number | boolean =>
+	let list = value;
+	if (typeof value === "string") {
+		try {
+			list = JSON.parse(value);
+		} catch {
+			return [];
+		}
+	}
+	return Array.isArray(list)
+		? list.filter((item): item is string | number | boolean =>
 				["string", "number", "boolean"].includes(typeof item),
 			)
 		: [];
@@ -86,7 +99,9 @@ function perSetRows(exercise: RoutineExerciseSnapshot, unit: WeightUnit) {
 	const rest = asPrimitiveArray(exercise.per_set_rest).map((value) =>
 		typeof value === "number" ? `${value}s` : String(value),
 	);
-	const echoLevels = asPrimitiveArray(exercise.per_set_echo_levels).map(String);
+	const echoLevels = asPrimitiveArray(exercise.per_set_echo_levels).map(
+		(value) => echoLevelLabel(String(value)),
+	);
 
 	return [
 		weights.length ? `Weights per cable: ${weights.join(", ")}` : null,

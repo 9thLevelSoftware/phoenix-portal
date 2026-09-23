@@ -355,6 +355,34 @@ describe("useSubscription effective tier", () => {
 // to prevent. These drive the REAL hook against stored rows.
 // ---------------------------------------------------------------------------
 
+// NF-35: a period that runs out writes nothing, so no Realtime event arrives.
+describe("useSubscription entitlement boundary", () => {
+	beforeEach(() => {
+		mockSubscriptionError = null;
+		mockSubscriptionRow = null;
+	});
+
+	it("drops to FREE when a trial ends, with no refetch or Realtime event", async () => {
+		mockSubscriptionRow = {
+			tier: "FLAME",
+			status: "trialing",
+			price_id: "pri_flame_monthly",
+			current_period_end: new Date(Date.now() + 1500).toISOString(),
+			cancel_at_period_end: false,
+		};
+
+		const { result } = renderHook(() => useSubscription(), {
+			wrapper: createWrapper(),
+		});
+
+		await waitFor(() => expect(result.current.tier).toBe("FLAME"));
+		await waitFor(() => expect(result.current.tier).toBe("FREE"), {
+			timeout: 6000,
+		});
+		expect(result.current.isEntitled).toBe(false);
+	}, 10_000);
+});
+
 describe("useSubscription billing action", () => {
 	beforeEach(() => {
 		mockSubscriptionError = null;

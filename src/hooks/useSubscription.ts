@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import {
 	getEffectiveSubscriptionTier,
 	isStaleActiveSubscription,
+	nextEntitlementChangeAt,
 	type SubscriptionStatus,
 	type SubscriptionTier,
 } from "@/lib/subscription-entitlement";
@@ -123,6 +124,11 @@ async function fetchSubscription(userId: string) {
 	};
 }
 
+/** Fire just after the boundary so `now` is past it on the re-render. */
+const BOUNDARY_SLACK_MS = 1000;
+/** Largest delay setTimeout honours (2^31 - 1 ms, about 24.8 days). */
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
 export function useSubscription(): SubscriptionData {
 	const { user } = useAuth();
 	const queryClient = useQueryClient();
@@ -136,6 +142,10 @@ export function useSubscription(): SubscriptionData {
 		queryFn: () => fetchSubscription(user?.id ?? ""),
 		enabled: !!user,
 		staleTime: 5 * 60 * 1000, // 5 minutes
+		// The app disables focus refetch globally; the gate opts back in. It is
+		// one small row, and returning from Paddle's billing pages is exactly
+		// when a changed plan must show (NF-35).
+		refetchOnWindowFocus: true,
 		// Preserve the last-known entitlement across transient refetch errors so a
 		// momentary network/Supabase failure doesn't silently downgrade the user —
 		// but ONLY for the same user. `keepPreviousData` would also carry a row
@@ -180,6 +190,38 @@ export function useSubscription(): SubscriptionData {
 			supabase.removeChannel(channel);
 		};
 	}, [user, queryClient]);
+
+	// A period that simply runs out writes nothing, so Realtime never fires and
+	// the tier below (computed against "now" at render) would stay paid until
+	// something else re-rendered. Re-render and refetch at the next instant the
+	// derived state can change (NF-35). The re-render moves `nextChangeAt` on
+	// to the following boundary, which re-runs the effect.
+	const [, forceBoundaryRender] = useState(0);
+	const nextChangeAt = data
+		? nextEntitlementChangeAt(data.status, data.currentPeriodEnd, {
+				updatedAt: "updatedAt" in data ? data.updatedAt : null,
+			})
+		: null;
+	useEffect(() => {
+		if (!user || nextChangeAt === null) return;
+		let timer: ReturnType<typeof setTimeout>;
+		const arm = () => {
+			const remaining = nextChangeAt - Date.now();
+			// setTimeout caps at ~24.8 days; re-arm until the boundary is in range.
+			if (remaining > MAX_TIMEOUT_MS) {
+				timer = setTimeout(arm, MAX_TIMEOUT_MS);
+				return;
+			}
+			timer = setTimeout(() => {
+				forceBoundaryRender((count) => count + 1);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+			}, Math.max(remaining, 0) + BOUNDARY_SLACK_MS);
+		};
+		arm();
+		return () => clearTimeout(timer);
+	}, [user, nextChangeAt, queryClient]);
 
 	// Missing data defaults to FREE for the typed fields, but consumers MUST
 	// check `isError` first. Mapping `data?.tier ?? "FREE"` into an upgrade
