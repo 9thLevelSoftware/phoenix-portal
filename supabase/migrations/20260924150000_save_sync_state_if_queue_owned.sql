@@ -5,7 +5,8 @@
 -- disconnect (which cancels the row) or a lease reclaim could land, and the
 -- stale run then marked a disconnected integration connected again.
 --
--- The queue row is locked FOR UPDATE, so a concurrent cancel/reclaim waits
+-- The integration row and then the queue row are locked FOR UPDATE (the
+-- order disconnect_integration uses), so a concurrent cancel/reclaim waits
 -- for this transaction or has already committed (and then the row is not
 -- `processing`). A run without a queue row (p_queue_id NULL) always saves.
 -- Only the listed state keys are written; any other key is ignored.
@@ -33,6 +34,12 @@ BEGIN
     RAISE EXCEPTION 'save_sync_state_if_queue_owned: user, provider and a state object are required'
       USING ERRCODE = '22023';
   END IF;
+
+  -- Lock order matches disconnect_integration (user_integrations, then
+  -- sync_queue), so a concurrent disconnect and save cannot deadlock.
+  PERFORM 1 FROM public.user_integrations i
+    WHERE i.user_id = p_user_id AND i.provider = p_provider
+    FOR UPDATE;
 
   IF p_queue_id IS NOT NULL THEN
     PERFORM 1
