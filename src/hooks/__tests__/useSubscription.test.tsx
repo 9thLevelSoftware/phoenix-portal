@@ -7,6 +7,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	boundaryTimerStep,
 	type SubscriptionStatus,
 	type SubscriptionTier,
 	useSubscription,
@@ -385,6 +386,20 @@ describe("useSubscription entitlement boundary", () => {
 		});
 		expect(result.current.isEntitled).toBe(false);
 	}, 10_000);
+});
+
+describe("boundaryTimerStep", () => {
+	const MAX = 2_147_483_647;
+	it("never schedules a final delay past the setTimeout cap", () => {
+		// Within the slack of the cap: re-arm, never a final timer over the cap.
+		expect(boundaryTimerStep(MAX - 500)).toEqual({
+			rearm: true,
+			delay: MAX - 1000,
+		});
+		expect(boundaryTimerStep(MAX - 1000)).toEqual({ rearm: false, delay: MAX });
+		expect(boundaryTimerStep(5000)).toEqual({ rearm: false, delay: 6000 });
+		expect(boundaryTimerStep(-10)).toEqual({ rearm: false, delay: 1000 });
+	});
 });
 
 // NF-35 review: returning from Paddle must refetch even while the row is fresh.
