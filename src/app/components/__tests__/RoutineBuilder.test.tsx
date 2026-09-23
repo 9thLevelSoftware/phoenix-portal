@@ -900,10 +900,16 @@ describe("RoutineBuilder", () => {
 		for (const name of screen.getAllByText("Triceps Pushdown")) {
 			await user.click(name);
 		}
+		// The selection bar's button stays disabled until both selections have
+		// re-rendered. Clicking it earlier is a silent no-op on a slow runner,
+		// which left no superset group at all, so wait for it to enable first.
+		await screen.findByText("exercises selected");
 		const createButtons = screen.getAllByRole("button", {
 			name: "Create Superset",
 		});
-		await user.click(createButtons[createButtons.length - 1]);
+		const barCreateButton = createButtons[createButtons.length - 1];
+		await waitFor(() => expect(barCreateButton).toBeEnabled());
+		await user.click(barCreateButton);
 
 		// The group's inline border lands on the re-render after the click;
 		// reading it once raced a slow CI runner (undefined), so wait for it.
