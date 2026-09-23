@@ -116,6 +116,22 @@ function nonNegIntDefault(fallback: number) {
 		.transform((v: number | null | undefined) => v ?? fallback);
 }
 
+// NF-37/C10 (1970 session repair): a session's durationSeconds is computed
+// on-device (often `now - startedAt`), and a phone-side Int sum that wraps
+// (e.g. a race with the epoch-zero startedAt bug) can go negative. Rejecting
+// the whole push for one negative field would 400 an otherwise-valid batch
+// permanently (mobile treats 400 as terminal), so this field alone accepts
+// negatives at ingress and the handler normalizes them to 0 and reports the
+// change under `clamped`, exactly like every other outlier
+// (mobile-sync-push/index.ts, normalizeNegativeSessionDurations). Every other
+// durationSeconds field (routines, cycles, external activities) keeps the
+// strict non-negative rule above.
+const sessionDurationSecondsField = z
+	.number()
+	.int()
+	.nullish()
+	.transform((v: number | null | undefined) => v ?? 0);
+
 // Helper: coerce missing (undefined/null) to [] for backward compat, but
 // reject a non-array non-null value (object/string/number) with a 400 and a
 // field path. Silently dropping a mis-typed sync section is dangerous because
@@ -216,7 +232,9 @@ const sessionSchema = z.object({
 	startedAt: datetimeWithDefault(() => new Date().toISOString()),
 	updatedAt: nullableDatetime(),
 	// DB NOT-NULL-DEFAULT numeric columns: coerce nullish → 0.
-	durationSeconds: nonNegIntDefault(0),
+	// durationSeconds: see sessionDurationSecondsField above — negative
+	// values are accepted here and normalized to 0 in the handler.
+	durationSeconds: sessionDurationSecondsField,
 	totalVolume: nonNegNumberDefault(0),
 	setCount: nonNegIntDefault(0),
 	exerciseCount: nonNegIntDefault(0),

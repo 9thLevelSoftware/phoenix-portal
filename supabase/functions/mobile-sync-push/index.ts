@@ -205,12 +205,177 @@ function chunked<T>(items: readonly T[], size: number): T[][] {
 }
 
 /**
+ * C10 (1970 session repair). `pushPayloadSchema` accepts a negative session
+ * `durationSeconds` (see `sessionDurationSecondsField`) instead of 400ing the
+ * whole batch: a phone-side Int sum that wraps negative is not something the
+ * device can retry its way out of. This normalizes it to 0 in place and
+ * reports the change under `clamped`, using the same shape as
+ * `clampSessionOutliers` below.
+ *
+ * MUST run before `repairEpochZeroSessionStarts`: that repair reads
+ * `durationSeconds` to decide whether it is a plausible Unix-seconds
+ * timestamp, and a negative number is never plausible, but leaving it
+ * negative would still be wrong to store.
+ */
+export function normalizeNegativeSessionDurations(
+  sessions: Array<{ id: string; durationSeconds?: number | null }>,
+): ClampedField[] {
+  const clamped: ClampedField[] = [];
+  for (const session of sessions) {
+    const duration = session.durationSeconds;
+    if (typeof duration === 'number' && duration < 0) {
+      session.durationSeconds = 0;
+      clamped.push({
+        entity: 'session',
+        id: session.id,
+        field: 'durationSeconds',
+        original: duration,
+        clamped: 0,
+      });
+    }
+  }
+  return clamped;
+}
+
+/**
+ * C10 (1970 session repair, docs/sync-reliability-contract.md "Epoch-zero
+ * session repair"). Root cause: a mobile save raced a reset that set the
+ * workout start time to 0L, so the phone pushed `startedAt` = epoch and
+ * `durationSeconds` = `now - 0` (i.e. the save time as Unix seconds).
+ *
+ * MUST run after `normalizeNegativeSessionDurations` (needs a non-negative
+ * `durationSeconds`) and MUST run before `clampSessionOutliers` (which caps
+ * `durationSeconds` at `PUSH_OUTLIER_LIMITS.sessionDurationSeconds`; clamping
+ * first would destroy the Unix-seconds evidence this repair looks for).
+ *
+ * Mirrors the production repair rules approved for
+ * `20260926100000_repair_epoch_zero_sessions.sql` (see that migration's
+ * header), except the ingest threshold is "before 2000-01-01" (matching the
+ * migration's WHERE clause) while the migration's first group additionally
+ * requires an EXACT epoch-zero `started_at` — a pushed `startedAt` just
+ * before 2000 with no plausible duration cannot be distinguished from a
+ * genuinely bad clock, so it always falls to the client-clock fallback here.
+ */
+export const EPOCH_ZERO_SESSION_REPAIR = {
+  /** 2000-01-01T00:00:00Z. Below this, startedAt cannot be real device wall-clock time. */
+  minPlausibleStartedAtMs: Date.parse('2000-01-01T00:00:00Z'),
+  /** Same floor, in Unix seconds, for reading durationSeconds as a timestamp. */
+  minPlausibleUnixSeconds: 946_684_800,
+  /** A session run this long without evidence is not treated as plausible. */
+  maxPlausibleDurationSeconds: 86_400,
+} as const;
+
+export type RepairedField = {
+  entity: 'session';
+  id: string;
+  field: 'startedAt' | 'durationSeconds';
+  original: number | string;
+  repaired: number | string;
+};
+
+/** Repairs epoch-zero/pre-2000 session `startedAt` values in place. */
+export function repairEpochZeroSessionStarts(
+  sessions: Array<{
+    id: string;
+    startedAt?: string | null;
+    durationSeconds?: number | null;
+    updatedAt?: string | null;
+  }>,
+  receivedAt: string,
+): RepairedField[] {
+  const repaired: RepairedField[] = [];
+  const receivedMs = Date.parse(receivedAt);
+  const maxPlausibleUnixSeconds = Math.floor(receivedMs / 1000) + 86_400;
+  for (const session of sessions) {
+    const startedAt = session.startedAt;
+    if (typeof startedAt !== 'string') continue;
+    const startedMs = Date.parse(startedAt);
+    if (
+      Number.isNaN(startedMs) ||
+      startedMs >= EPOCH_ZERO_SESSION_REPAIR.minPlausibleStartedAtMs
+    ) {
+      continue;
+    }
+    const duration = session.durationSeconds;
+    const isDurationPlausibleUnixSeconds =
+      typeof duration === 'number' &&
+      duration >= EPOCH_ZERO_SESSION_REPAIR.minPlausibleUnixSeconds &&
+      duration <= maxPlausibleUnixSeconds;
+    // A pre-2000 updatedAt is as corrupt as the start, and it becomes the
+    // row's LWW key (client_updated_at): replace it with the receipt time on
+    // every repair path, so no 1970-era edit can beat the repaired row.
+    const updatedMs = typeof session.updatedAt === 'string' ? Date.parse(session.updatedAt) : Number.NaN;
+    const updatedAtPlausible = Number.isFinite(updatedMs) &&
+      updatedMs >= EPOCH_ZERO_SESSION_REPAIR.minPlausibleUnixSeconds * 1000;
+    if (isDurationPlausibleUnixSeconds) {
+      const repairedStartedAt = new Date(duration * 1000).toISOString();
+      session.startedAt = repairedStartedAt;
+      session.durationSeconds = 0;
+      if (typeof session.updatedAt === 'string' && !updatedAtPlausible) session.updatedAt = receivedAt;
+      repaired.push({
+        entity: 'session',
+        id: session.id,
+        field: 'startedAt',
+        original: startedAt,
+        repaired: repairedStartedAt,
+      });
+      repaired.push({
+        entity: 'session',
+        id: session.id,
+        field: 'durationSeconds',
+        original: duration as number,
+        repaired: 0,
+      });
+      continue;
+    }
+    // No plausible duration to recover the date from: fall back to the
+    // pushing device's own clock (its updatedAt), or receipt time when the
+    // DTO carries none — identical to the undated-push rule (KD-5) applied
+    // to client_updated_at below.
+    // An updatedAt that is itself before the plausibility threshold is as
+    // corrupt as the start it would replace: use the receipt time then.
+    const fallbackStartedAt = updatedAtPlausible ? (session.updatedAt as string) : receivedAt;
+    session.startedAt = fallbackStartedAt;
+    // The rejected updatedAt is also this row's LWW key (client_updated_at):
+    // replace it too, or any other device's 1970-era edit could beat the
+    // repaired row.
+    if (fallbackStartedAt === receivedAt && session.updatedAt !== undefined && session.updatedAt !== null) {
+      session.updatedAt = receivedAt;
+    }
+    repaired.push({
+      entity: 'session',
+      id: session.id,
+      field: 'startedAt',
+      original: startedAt,
+      repaired: fallbackStartedAt,
+    });
+    if (
+      typeof duration === 'number' &&
+      duration > EPOCH_ZERO_SESSION_REPAIR.maxPlausibleDurationSeconds
+    ) {
+      session.durationSeconds = 0;
+      repaired.push({
+        entity: 'session',
+        id: session.id,
+        field: 'durationSeconds',
+        original: duration,
+        repaired: 0,
+      });
+    }
+  }
+  return repaired;
+}
+
+/**
  * NF-37 push limits (docs/sync-reliability-contract.md, "Outlier limits").
  * A value past one of these is not a workout a person can do; it is a
  * corrupt or mis-scaled field. The push stores the limit instead and reports
  * the change under `clamped`. It never answers 400: mobile treats a 400 as
  * permanent and would strand the whole batch. Values under the limits but
  * still implausible are winsorized at rank time by the leaderboard instead.
+ * MUST run after `normalizeNegativeSessionDurations` and
+ * `repairEpochZeroSessionStarts` (see those functions' docs for why order
+ * matters).
  */
 export const PUSH_OUTLIER_LIMITS = {
   /** Per cable (KD-8), for the whole session. */
@@ -2316,8 +2481,19 @@ async function mobileSyncPushHandler(
     // carries no `updatedAt`. Used under BOTH SYNC_LWW_ENABLED values so the
     // stored LWW key is identical whichever way the flag is set.
     const pushReceivedAt = new Date(dependencies.now()).toISOString();
+    // C10: negative durationSeconds -> 0, then the epoch-zero/pre-2000
+    // startedAt repair, then NF-37's outlier clamp. Order is load-bearing —
+    // see the three functions' docs.
+    const negativeDurationRepairs = normalizeNegativeSessionDurations(payload.sessions ?? []);
+    const epochRepaired = repairEpochZeroSessionStarts(payload.sessions ?? [], pushReceivedAt);
+    if (epochRepaired.length > 0) {
+      console.warn(`Repaired ${epochRepaired.length} epoch-zero/pre-2000 session field(s)`);
+    }
     // NF-37: clamp impossible session values before anything reads them.
-    const clamped = clampSessionOutliers(payload.sessions ?? [], pushReceivedAt);
+    const clamped = [
+      ...negativeDurationRepairs,
+      ...clampSessionOutliers(payload.sessions ?? [], pushReceivedAt),
+    ];
     if (clamped.length > 0) {
       console.warn(`Clamped ${clamped.length} outlier session field(s)`);
     }
@@ -4261,6 +4437,10 @@ async function mobileSyncPushHandler(
         // sent, for committed sessions only (a rejected session kept the
         // stored row). Additive; older builds ignore it.
         clamped: clamped.filter((c) => acceptedSessionIds?.has(c.id) ?? false),
+        // C10: session startedAt/durationSeconds rewritten by the epoch-zero
+        // repair, for committed sessions only (same rule as `clamped`).
+        // Additive; older builds ignore it.
+        repaired: epochRepaired.filter((r) => acceptedSessionIds?.has(r.id) ?? false),
         ...(preferenceEnvelope.present ? { profilePreferencesAccepted: true } : {}),
         canonicalProfilePreferenceSections,
         profilePreferenceRejections,
