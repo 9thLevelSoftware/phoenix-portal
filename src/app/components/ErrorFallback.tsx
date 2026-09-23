@@ -1,19 +1,25 @@
-import { AlertCircle, RefreshCw } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { AlertCircle, Copy, RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { FallbackProps } from "react-error-boundary";
+import { useNavigate } from "react-router";
+import { toast } from "sonner";
 import { Button } from "@/app/components/ui/button";
 
 /**
  * Detects chunk/module load failures caused by a new deployment
  * invalidating previously-hashed asset filenames.
  */
-function isChunkLoadError(error: Error): boolean {
-	const msg = error.message?.toLowerCase() ?? "";
+function isChunkLoadError(error: unknown): boolean {
+	const msg =
+		error instanceof Error
+			? (error.message?.toLowerCase() ?? "")
+			: String(error).toLowerCase();
+	const errorName = error instanceof Error ? error.name : "";
 	return (
 		msg.includes("failed to fetch dynamically imported module") ||
 		msg.includes("loading chunk") ||
 		msg.includes("loading css chunk") ||
-		(error.name === "TypeError" && msg.includes("failed to fetch"))
+		(errorName === "TypeError" && msg.includes("failed to fetch"))
 	);
 }
 
@@ -23,7 +29,11 @@ export function PageErrorFallback({
 	error,
 	resetErrorBoundary,
 }: FallbackProps) {
+	const navigate = useNavigate();
+	const [errorId] = useState(() => crypto.randomUUID());
 	const hasAutoReloaded = useRef(false);
+	const errorMessage =
+		error instanceof Error ? error.message : "Unknown application error";
 
 	useEffect(() => {
 		if (!isChunkLoadError(error)) return;
@@ -50,27 +60,42 @@ export function PageErrorFallback({
 				<p className="text-muted-foreground mb-6 text-sm">
 					{chunkError
 						? "The app has been updated. Reloading to get the latest version..."
-						: error.message}
+						: errorMessage}
 				</p>
-				<Button
-					onClick={() => {
-						if (chunkError) {
-							sessionStorage.removeItem(RELOAD_KEY);
-							window.location.reload();
-						} else {
-							resetErrorBoundary();
-						}
-					}}
-				>
-					{chunkError ? (
-						<>
-							<RefreshCw className="w-4 h-4 mr-2" />
-							Reload
-						</>
-					) : (
-						"Try Again"
-					)}
-				</Button>
+				<div className="flex flex-wrap justify-center gap-2">
+					<Button
+						onClick={() => {
+							if (chunkError) {
+								sessionStorage.removeItem(RELOAD_KEY);
+								window.location.reload();
+							} else {
+								resetErrorBoundary();
+							}
+						}}
+					>
+						{chunkError ? (
+							<>
+								<RefreshCw className="w-4 h-4 mr-2" />
+								Reload
+							</>
+						) : (
+							"Try Again"
+						)}
+					</Button>
+					<Button
+						variant="outline"
+						onClick={() => {
+							void navigator.clipboard?.writeText(errorId);
+							toast.error("Something went wrong — error id copied");
+						}}
+					>
+						<Copy className="w-4 h-4" />
+						Copy error id
+					</Button>
+					<Button variant="ghost" onClick={() => navigate("/dashboard")}>
+						Back to dashboard
+					</Button>
+				</div>
 			</div>
 		</div>
 	);

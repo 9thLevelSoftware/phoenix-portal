@@ -40,6 +40,7 @@ import {
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { FormErrorSummary } from "@/app/components/ui/form-error-summary";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Skeleton } from "@/app/components/ui/skeleton";
@@ -192,6 +193,13 @@ export function Profile() {
 
 	const streak = useStreak(workouts);
 	const updateProfile = useUpdateProfile(userId || undefined);
+	const profileFormErrors = updateProfile.isError
+		? [
+				updateProfile.error instanceof Error
+					? updateProfile.error.message
+					: "We couldn't save your profile changes. Please try again.",
+			]
+		: [];
 
 	// Avatar upload state
 	const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -306,6 +314,7 @@ export function Profile() {
 	return (
 		<div className="min-h-screen pb-20 md:pb-8">
 			<PageShell>
+				<FormErrorSummary messages={profileFormErrors} />
 				{/* Profile Header */}
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}

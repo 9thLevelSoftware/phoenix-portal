@@ -34,6 +34,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/app/components/ui/dialog";
+import { FormErrorSummary } from "@/app/components/ui/form-error-summary";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Switch } from "@/app/components/ui/switch";
@@ -196,6 +197,7 @@ export function RoutineBuilder() {
 	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 	const [showPreview, setShowPreview] = useState(false);
+	const [formErrors, setFormErrors] = useState<string[]>([]);
 	const [isSelectionMode, setIsSelectionMode] = useState(false);
 	const [selectedExerciseIds, setSelectedExerciseIds] = useState<Set<string>>(
 		new Set(),
@@ -352,8 +354,17 @@ export function RoutineBuilder() {
 		}));
 
 	const handleSave = () => {
+		const validationErrors = routineName.trim()
+			? []
+			: ["Enter a name for this routine."];
+		if (validationErrors.length > 0) {
+			setFormErrors(validationErrors);
+			return;
+		}
+		setFormErrors([]);
+
 		const payload = {
-			name: routineName,
+			name: routineName.trim(),
 			description: "",
 			exercises: buildExercisePayload(),
 		};
@@ -410,6 +421,9 @@ export function RoutineBuilder() {
 
 	return (
 		<div className="min-h-screen pb-24 md:pb-8">
+			<div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
+				<FormErrorSummary messages={formErrors} />
+			</div>
 			{/* Top Bar */}
 			<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-50">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">

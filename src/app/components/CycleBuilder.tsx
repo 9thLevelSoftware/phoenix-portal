@@ -24,6 +24,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/app/components/ui/dialog";
+import { FormErrorSummary } from "@/app/components/ui/form-error-summary";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import {
@@ -87,6 +88,7 @@ export function CycleBuilder() {
 	const [showRoutinePicker, setShowRoutinePicker] = useState(false);
 	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+	const [formErrors, setFormErrors] = useState<string[]>([]);
 
 	// Progression settings
 	const [progressionType, setProgressionType] = useState<
@@ -206,6 +208,18 @@ export function CycleBuilder() {
 	};
 
 	const handleSave = () => {
+		const validationErrors = [
+			...(cycleName.trim() ? [] : ["Enter a name for this training cycle."]),
+			...(duration >= 1 && duration <= 52
+				? []
+				: ["Set a cycle duration between 1 and 52 weeks."]),
+		];
+		if (validationErrors.length > 0) {
+			setFormErrors(validationErrors);
+			return;
+		}
+		setFormErrors([]);
+
 		const progressionSettings = {
 			type: progressionType,
 			amount: progressionAmount,
@@ -224,7 +238,7 @@ export function CycleBuilder() {
 			: null;
 
 		const payload = {
-			name: cycleName,
+			name: cycleName.trim(),
 			description,
 			duration_weeks: duration,
 			started_at: startDate || null,
@@ -344,6 +358,9 @@ export function CycleBuilder() {
 
 	return (
 		<div className="min-h-screen pb-8">
+			<div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
+				<FormErrorSummary messages={formErrors} />
+			</div>
 			{/* Sticky Top Bar */}
 			<div className="sticky top-0 z-40 bg-surface-1 border-b border-secondary px-4 py-4">
 				<div className="max-w-7xl mx-auto flex items-center justify-between">
