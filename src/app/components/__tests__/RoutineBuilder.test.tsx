@@ -905,10 +905,14 @@ describe("RoutineBuilder", () => {
 		});
 		await user.click(createButtons[createButtons.length - 1]);
 
-		const group = document.querySelector<HTMLElement>(
-			"[style*='border-left-width']",
-		);
-		expect(group?.style.borderLeftColor).toBe("rgb(99, 102, 241)"); // #6366F1
+		// The group's inline border lands on the re-render after the click;
+		// reading it once raced a slow CI runner (undefined), so wait for it.
+		await waitFor(() => {
+			const group = document.querySelector<HTMLElement>(
+				"[style*='border-left-width']",
+			);
+			expect(group?.style.borderLeftColor).toBe("rgb(99, 102, 241)"); // #6366F1
+		});
 
 		await user.click(screen.getByRole("button", { name: /save routine/i }));
 		const payload = mockSaveMutate.mock.calls[0][0] as {
