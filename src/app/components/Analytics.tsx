@@ -327,17 +327,6 @@ function mapServerInsight(
 }
 
 /**
- * KD-14 precedence: the feed shows a FRESH server batch or the browser
- * fallback, never a mix, so the two can never contradict each other and no
- * item can be listed twice.
- *
- * A server row counts only while `expires_at` is in the future.
- * `insightsOptions` already filters on it in SQL; repeating it here means a
- * query result cached across the 36-hour boundary flips to the fallback
- * instead of presenting a stale batch as current, and it keeps the whole rule
- * in one testable place. Server items keep the server row's `id`.
- */
-/**
  * Loading/error state for the feed. The local fallback reads the insight-period
  * comparison, so while it is the source that query's state is the feed's too;
  * a fresh server batch does not depend on it.
@@ -354,6 +343,17 @@ export function insightsFeedState(
 	};
 }
 
+/**
+ * KD-14 precedence: the feed shows a FRESH server batch or the browser
+ * fallback, never a mix, so the two can never contradict each other and no
+ * item can be listed twice.
+ *
+ * A server row counts only while `expires_at` is in the future.
+ * `insightsOptions` already filters on it in SQL; repeating it here means a
+ * query result cached across the 36-hour boundary flips to the fallback
+ * instead of presenting a stale batch as current, and it keeps the whole rule
+ * in one testable place. Server items keep the server row's `id`.
+ */
 export function selectInsightsFeed(
 	serverRows: unknown,
 	localInsights: Array<{
@@ -640,7 +640,7 @@ export function Analytics() {
 		isPending: insightComparisonPending,
 		isError: insightComparisonError,
 	} = useQuery({
-		...volumeComparisonOptions(userId, insightPeriod, activeProfileId),
+		...volumeComparisonOptions(userId, insightPeriod, activeProfileId, "fixed"),
 		enabled: !!userId,
 	});
 	const {

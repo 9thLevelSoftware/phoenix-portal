@@ -191,25 +191,40 @@ export function strengthProgressOptions(
 /** Volume trend with previous period comparison */
 const DAY_MS = 86_400_000;
 
+/**
+ * `calendar` (the chart's window) subtracts local calendar days, matching
+ * session_volume_buckets. `fixed` subtracts exact 24 h days from one
+ * timestamp, matching generate-insights, and is what the local insight
+ * fallback uses: the two differ by an hour across a DST change.
+ */
+export type ComparisonBoundaries = "calendar" | "fixed";
+
 export function volumeComparisonOptions(
 	userId: string,
 	period: string = "4w",
 	profileId?: string | null,
+	boundaries: ComparisonBoundaries = "calendar",
 ) {
 	return queryOptions({
 		queryKey: queryKeys.analytics.summary(
 			userId,
-			`volume-comparison-${period}`,
+			`volume-comparison-${period}${boundaries === "fixed" ? "-fixed" : ""}`,
 			profileId,
 		),
 		queryFn: async () => {
-			// One timestamp and fixed 24 h days, exactly as generate-insights
-			// computes its windows: local-calendar setDate shifts a boundary by
-			// an hour when the window crosses a DST change.
 			const daysBack = periodToDays(period);
 			const now = Date.now();
-			const currentStart = new Date(now - daysBack * DAY_MS);
-			const previousStart = new Date(now - daysBack * 2 * DAY_MS);
+			let currentStart: Date;
+			let previousStart: Date;
+			if (boundaries === "fixed") {
+				currentStart = new Date(now - daysBack * DAY_MS);
+				previousStart = new Date(now - daysBack * 2 * DAY_MS);
+			} else {
+				currentStart = new Date(now);
+				currentStart.setDate(currentStart.getDate() - daysBack);
+				previousStart = new Date(now);
+				previousStart.setDate(previousStart.getDate() - daysBack * 2);
+			}
 
 			// Keyset-paged: one select per window was silently capped at 1,000
 			// rows, so a long "all" window lost its newest sessions (NF-19).
