@@ -301,10 +301,17 @@ export function repairEpochZeroSessionStarts(
       typeof duration === 'number' &&
       duration >= EPOCH_ZERO_SESSION_REPAIR.minPlausibleUnixSeconds &&
       duration <= maxPlausibleUnixSeconds;
+    // A pre-2000 updatedAt is as corrupt as the start, and it becomes the
+    // row's LWW key (client_updated_at): replace it with the receipt time on
+    // every repair path, so no 1970-era edit can beat the repaired row.
+    const updatedMs = typeof session.updatedAt === 'string' ? Date.parse(session.updatedAt) : Number.NaN;
+    const updatedAtPlausible = Number.isFinite(updatedMs) &&
+      updatedMs >= EPOCH_ZERO_SESSION_REPAIR.minPlausibleUnixSeconds * 1000;
     if (isDurationPlausibleUnixSeconds) {
       const repairedStartedAt = new Date(duration * 1000).toISOString();
       session.startedAt = repairedStartedAt;
       session.durationSeconds = 0;
+      if (typeof session.updatedAt === 'string' && !updatedAtPlausible) session.updatedAt = receivedAt;
       repaired.push({
         entity: 'session',
         id: session.id,
@@ -327,11 +334,7 @@ export function repairEpochZeroSessionStarts(
     // to client_updated_at below.
     // An updatedAt that is itself before the plausibility threshold is as
     // corrupt as the start it would replace: use the receipt time then.
-    const updatedMs = typeof session.updatedAt === 'string' ? Date.parse(session.updatedAt) : Number.NaN;
-    const fallbackStartedAt =
-      Number.isFinite(updatedMs) && updatedMs >= EPOCH_ZERO_SESSION_REPAIR.minPlausibleUnixSeconds * 1000
-        ? (session.updatedAt as string)
-        : receivedAt;
+    const fallbackStartedAt = updatedAtPlausible ? (session.updatedAt as string) : receivedAt;
     session.startedAt = fallbackStartedAt;
     // The rejected updatedAt is also this row's LWW key (client_updated_at):
     // replace it too, or any other device's 1970-era edit could beat the
