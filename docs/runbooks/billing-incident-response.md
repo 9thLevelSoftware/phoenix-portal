@@ -262,15 +262,10 @@ curl -X POST "https://api.paddle.com/notifications/{notification_id}/replay" \
 
 ### Important notes on replay
 
-- The webhook handler uses `last_event_id` for idempotency. If the original event was partially processed (idempotency check passed but upsert failed), a replay with the same `event_id` will be skipped.
-- **Workaround:** If a replay is being skipped due to idempotency, first clear the `last_event_id` in the database:
-  ```sql
-  -- Clear idempotency marker to allow reprocessing
-  UPDATE subscriptions
-  SET last_event_id = NULL
-  WHERE user_id = '<uuid>';
-  ```
-- Then retry the webhook replay.
+- The webhook handler skips an event whose `event_id` equals the stored `last_event_id` (duplicate), and `apply_subscription_event` refuses an event whose `occurred_at` is not newer than the stored `last_event_occurred_at` (stale). Both return 200 and change nothing.
+- **A skipped replay is correct; do not clear the markers to force it.** If the replayed notification is older than an event already applied, `classifyPaddleEventOrder` / `apply_subscription_event` reject it on purpose. Clearing `last_event_occurred_at` would make the stale payload look unconditional: it would overwrite the current tier, status and period with older values and move the ordering clock backwards, which can wrongly grant or revoke paid access.
+- **To repair the row, run `paddle-refresh-subscription`** for the user. It re-reads the subscription from Paddle's API and writes the current state through the same guard (see "Prefer `paddle-refresh-subscription`" above).
+- **Only if refresh cannot reach the subscription** (for example Paddle answers 404), replay the missing notifications **in chronological order**, oldest first, after confirming in the Paddle dashboard that each is newer than the stored `last_event_occurred_at`. Never reset the ordering clock to make an out-of-order event apply.
 
 ---
 
@@ -336,7 +331,8 @@ supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --li
 
 | Log message                                     | Meaning                                                          |
 | ----------------------------------------------- | ---------------------------------------------------------------- |
-| `Missing custom_data.user_id in Paddle event`   | Checkout was created without passing `user_id` in custom_data    |
+| `[Paddle] Ignoring event with missing custom_data.user_id:` | Event carries no `user_id` in custom_data; acknowledged with 200 and ignored (no retry) |
+| `[BILLING_ALERT] Malformed custom_data.user_id in Paddle event:` | `user_id` is present but not a UUID; answered 400 |
 | `Error applying subscription event for <event_type>` | Database write failed (constraint violation, connection error) |
 | `Paddle webhook handler error`                  | Unhandled exception (likely JSON parse failure or network issue) |
 | `Unhandled event type: <type>`                  | Received a non-subscription event (normal, returns 200)          |

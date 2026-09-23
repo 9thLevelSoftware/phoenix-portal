@@ -41,7 +41,8 @@ supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --li
 
 | Log message                                              | Meaning                                           | Severity                                 |
 | -------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------- |
-| `Missing custom_data.user_id in Paddle event`            | Checkout created without `user_id` in custom_data | HIGH -- user pays but gets no access     |
+| `[Paddle] Ignoring event with missing custom_data.user_id:` | Event has no `user_id` in custom_data; answered 200 and ignored | HIGH -- user pays but gets no access     |
+| `[BILLING_ALERT] Malformed custom_data.user_id in Paddle event:` | `user_id` in custom_data is not a UUID; answered 400 | HIGH -- event is never applied           |
 | `[BILLING_ALERT] Unknown price ID`                       | Price ID not in `PADDLE_*_PRICE_IDS` env vars     | HIGH -- silent tier mismatch             |
 | `[BILLING_ALERT] Error applying subscription event for`  | Database write failed                             | MEDIUM -- Paddle retries on 5xx          |
 | `[BILLING_ALERT] Webhook signature too old:`             | Signature age > 5 minutes                         | LOW -- replay protection, retry will fix |
@@ -135,24 +136,44 @@ ORDER BY failed DESC;
 
 ### Check rate limit tracking
 
+`rate_limit_tracking` is keyed by `(key, user_id)`. For provider quotas `key`
+is the provider name (plus `strava:daily` for Strava's daily bucket);
+application-wide quotas use `user_id IS NULL`, per-user quotas one row per
+user. The same table also holds per-endpoint request limits (`key` is the
+function name, e.g. `mobile-sync-push`), always per user. The legacy
+`provider` column is still written but is not the lookup key.
+
 ```sql
--- Current rate limit state per provider
-SELECT provider, requests_this_window, window_started_at,
+-- Application-wide provider buckets (Strava, Garmin)
+SELECT key, requests_this_window, window_started_at,
        last_request_at, last_reset_at
 FROM rate_limit_tracking
-ORDER BY provider;
+WHERE user_id IS NULL
+ORDER BY key;
+
+-- One user's buckets (per-user providers and endpoint limits)
+SELECT key, requests_this_window, window_started_at, last_request_at
+FROM rate_limit_tracking
+WHERE user_id = '<uuid>'
+ORDER BY key;
 ```
 
-**Rate limit thresholds** (from `process-sync-queue`):
+**Provider rate limit thresholds** (`RATE_LIMITS`, `DAILY_RATE_LIMITS` and
+`RATE_LIMIT_SCOPE` in `process-sync-queue/index.ts`):
 
-| Provider | Max requests | Window     |
-| -------- | ------------ | ---------- |
-| Strava   | 80           | 15 minutes |
-| Fitbit   | 120          | 1 hour     |
-| Garmin   | 40           | 1 hour     |
-| Hevy     | 40           | 1 hour     |
+| Provider  | Max requests | Window     | Scope                       |
+| --------- | ------------ | ---------- | --------------------------- |
+| Strava    | 80           | 15 minutes | application (`user_id` NULL) |
+| Strava    | 800          | 24 hours   | application, key `strava:daily` |
+| Fitbit    | 120          | 1 hour     | per user                    |
+| Garmin    | 40           | 1 hour     | application (`user_id` NULL) |
+| Hevy      | 40           | 1 hour     | per user (API key)          |
+| Liftosaur | 40           | 1 hour     | per user (API key)          |
 
-If `requests_this_window` is at or above the limit and the window has not expired, the provider is rate-limited and tasks will not be picked up until the window resets.
+If `requests_this_window` is at or above the limit and the window has not
+expired, that bucket is rate-limited. An exhausted application bucket stops the
+whole provider for everyone; an exhausted per-user bucket only skips that
+user's tasks.
 
 ### Reset stuck tasks
 
@@ -169,11 +190,19 @@ WHERE status = 'processing'
 **Reset a rate limit window** (use only if the provider is not actually rate-limited upstream):
 
 ```sql
+-- Application-wide bucket (Strava / Garmin; use 'strava:daily' for the daily one)
 UPDATE rate_limit_tracking
 SET requests_this_window = 0,
     window_started_at = NOW(),
     last_reset_at = NOW()
-WHERE provider = '<provider_name>';
+WHERE key = '<provider_name>' AND user_id IS NULL;
+
+-- One user's bucket (Fitbit / Hevy / Liftosaur, or an endpoint key)
+UPDATE rate_limit_tracking
+SET requests_this_window = 0,
+    window_started_at = NOW(),
+    last_reset_at = NOW()
+WHERE key = '<provider_or_endpoint>' AND user_id = '<uuid>';
 ```
 
 ### Check Edge Function logs for sync errors
@@ -258,32 +287,50 @@ needed in most cases.
 - The subscription query has a `staleTime` of 5 minutes, so at worst the user
   sees the old state for 5 minutes after the DB update.
 
-**If you need to verify the Realtime channel is active**, check the browser
-console for `[Phoenix] Realtime sync channel active`. If absent, the user may
-be on the FREE tier (sync channel only activates for EMBER+) or there is a
-WebSocket connectivity issue.
+**If you need to verify the Realtime channel is active**, note that the portal
+logs nothing when it connects. Two signals exist instead:
+
+- The mobile-sync channel (`useRealtimeSync`, private topic `sync:{userId}`)
+  shows the toast "Live sync interrupted. Retrying; data refreshes every
+  minute." when it reaches `CHANNEL_ERROR`, `TIMED_OUT` or `CLOSED`, and
+  dismisses it on the next successful subscribe. While that toast is up the
+  portal polls every 60 seconds instead. Confirmed FREE users never open this
+  channel.
+- In the browser dev tools Network tab (WS filter), an open Realtime WebSocket
+  to the project with join frames for `sync:{userId}` and
+  `subscription:{userId}:…` means both channels are live.
 
 ---
 
 ## 4. Deployment Rollback
 
-### Cloudflare Pages: roll back to a previous deployment
+### Cloudflare Worker: roll back to a previous deployment
 
-1. Open **Cloudflare Dashboard > Pages > phoenix-portal**.
+The portal is a Cloudflare Worker named `phoenix-portal` that serves `dist/` as
+static assets (`wrangler.toml`: `[assets]` with single-page-application
+fallback). Workers Builds deploys it with `npx wrangler deploy` on every push
+to `main`. It is not a Cloudflare Pages project, so the `wrangler pages`
+commands do not apply.
+
+1. Open **Cloudflare Dashboard > Workers & Pages > phoenix-portal**.
 2. Go to the **Deployments** tab.
-3. Find the last known-good deployment.
-4. Click the three-dot menu and select **Rollback to this deployment**.
-5. Confirm. The rollback takes effect within ~60 seconds.
+3. Find the last known-good version.
+4. Choose **Rollback** for that version and confirm. The previous version serves
+   traffic within about a minute.
 
-**Alternative via Wrangler CLI:**
+**Alternative via Wrangler CLI** (the pinned binary from `package.json`):
 
 ```bash
-# List recent deployments
-npx wrangler pages deployments list --project-name phoenix-portal
+# List recent deployments and their version ids
+npx wrangler deployments list
 
-# Roll back to a specific deployment
-npx wrangler pages deployments rollback --project-name phoenix-portal --deployment-id <id>
+# Roll back to the previous version, or to a specific one
+npx wrangler rollback
+npx wrangler rollback <version-id>
 ```
+
+A rollback only swaps the served version. The next push to `main` deploys
+again, so revert or fix the bad commit on `main` too.
 
 ### Edge Functions: redeploy a previous version
 
@@ -441,7 +488,33 @@ UNION ALL SELECT 'user_blocks', COUNT(*) FROM user_blocks WHERE user_id = '<uuid
 UNION ALL SELECT 'sync_queue', COUNT(*) FROM sync_queue WHERE user_id = '<uuid>'
 UNION ALL SELECT 'sync_tombstones', COUNT(*) FROM sync_tombstones WHERE user_id = '<uuid>'
 UNION ALL SELECT 'rate_limit_tracking', COUNT(*) FROM rate_limit_tracking WHERE user_id = '<uuid>'
-UNION ALL SELECT 'deletion_requests', COUNT(*) FROM deletion_requests WHERE user_id = '<uuid>';
+UNION ALL SELECT 'deletion_requests', COUNT(*) FROM deletion_requests WHERE user_id = '<uuid>'
+UNION ALL SELECT 'local_profiles', COUNT(*) FROM local_profiles WHERE user_id = '<uuid>'
+UNION ALL SELECT 'local_profile_preferences', COUNT(*) FROM local_profile_preferences WHERE user_id = '<uuid>'
+UNION ALL SELECT 'exercise_catalog (custom)', COUNT(*) FROM exercise_catalog WHERE user_id = '<uuid>'
+UNION ALL SELECT 'vbt_assessments', COUNT(*) FROM vbt_assessments WHERE user_id = '<uuid>'
+UNION ALL SELECT 'exercise_signatures', COUNT(*) FROM exercise_signatures WHERE user_id = '<uuid>'
+UNION ALL SELECT 'session_phase_statistics', COUNT(*) FROM session_phase_statistics WHERE user_id = '<uuid>'
+UNION ALL SELECT 'user_insights', COUNT(*) FROM user_insights WHERE user_id = '<uuid>'
+UNION ALL SELECT 'leaderboard_snapshots', COUNT(*) FROM leaderboard_snapshots WHERE user_id = '<uuid>'
+UNION ALL SELECT 'oauth_states', COUNT(*) FROM oauth_states WHERE user_id = '<uuid>'
+UNION ALL SELECT 'workout_deletion_tombstones', COUNT(*) FROM workout_deletion_tombstones WHERE user_id = '<uuid>'
+UNION ALL SELECT 'training_cycle_deletion_tombstones', COUNT(*) FROM training_cycle_deletion_tombstones WHERE user_id = '<uuid>'
+UNION ALL SELECT 'profile_ownership_transfers', COUNT(*) FROM profile_ownership_transfers WHERE user_id = '<uuid>'
+UNION ALL SELECT 'profile_ownership_events', COUNT(*) FROM profile_ownership_events WHERE user_id = '<uuid>'
+UNION ALL SELECT 'profile_ownership_claims', COUNT(*) FROM profile_ownership_claims WHERE user_id = '<uuid>';
+```
+
+Every `public` table with a `user_id` column should appear above. To check for
+drift before trusting the list, compare it with:
+
+```sql
+SELECT c.table_name
+FROM information_schema.columns c
+JOIN information_schema.tables t USING (table_schema, table_name)
+WHERE c.table_schema = 'public' AND c.column_name = 'user_id'
+  AND t.table_type = 'BASE TABLE'
+ORDER BY 1;
 ```
 
 **FK-less tables the CASCADE does not reach.** `purgeUser` deletes these
@@ -534,7 +607,7 @@ DELETE FROM rep_summaries WHERE user_id = '<uuid>';
 DELETE FROM sets WHERE user_id = '<uuid>';
 
 -- Exercise data (joined through workout_sessions)
-DELETE FROM exercises WHERE workout_id IN (
+DELETE FROM exercises WHERE session_id IN (
   SELECT id FROM workout_sessions WHERE user_id = '<uuid>'
 );
 
@@ -544,7 +617,7 @@ DELETE FROM routine_exercises WHERE routine_id IN (
 );
 
 -- Cycle children
-DELETE FROM cycle_days WHERE training_cycle_id IN (
+DELETE FROM cycle_days WHERE cycle_id IN (
   SELECT id FROM training_cycles WHERE user_id = '<uuid>'
 );
 

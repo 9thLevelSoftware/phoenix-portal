@@ -141,8 +141,9 @@ npm run test:db
 
 This repo includes `WORKFLOW.md` for [OpenAI Symphony](https://github.com/openai/symphony),
 which can poll Linear and launch isolated Codex implementation runs for active
-issues. Before running it, set `LINEAR_API_KEY` and fill in
-`tracker.project_slug` in `WORKFLOW.md`. See
+issues. Before running it, set `LINEAR_API_KEY` and confirm that
+`tracker.project_slug` in `WORKFLOW.md` (already set) points at your Linear
+project. See
 [`docs/runbooks/symphony.md`](docs/runbooks/symphony.md) for the full setup and
 operating checklist.
 
@@ -198,7 +199,7 @@ Custom animations: `flame-flicker`, `ember-rise`, `phoenix-glow`
 
 ## Deployment
 
-Hosted on **Cloudflare Pages** (`wrangler.toml`; `npm run deploy` via wrangler). Build outputs to `dist/`. Other static hosts are possible but not the supported path.
+Hosted as a **Cloudflare Worker with static assets** (`wrangler.toml`: the `phoenix-portal` Worker serves `dist/` with single-page-application fallback). Workers Builds runs `npx wrangler deploy` on every push to `main`; `npm run deploy` does the same by hand. Other static hosts are possible but not the supported path.
 
 ## Related Projects
 
