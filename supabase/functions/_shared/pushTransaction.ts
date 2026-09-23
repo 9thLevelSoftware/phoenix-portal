@@ -596,10 +596,24 @@ export async function openPgPushTransaction(dbUrl: string): Promise<PushTransact
     connect_timeout: 10,
     onnotice: () => {},
   });
+  // One reserved physical connection for BEGIN … COMMIT: a pool (even of one)
+  // may reconnect between statements, and a COMMIT sent on a replacement
+  // session would "succeed" with no transaction open. A dropped reserved
+  // connection fails every later statement instead.
+  let reserved: Awaited<ReturnType<typeof sql.reserve>>;
+  try {
+    reserved = await sql.reserve();
+  } catch (error) {
+    await sql.end({ timeout: 5 }).catch(() => undefined);
+    throw error;
+  }
   const executor: SqlExecutor = {
     query: (text, params) =>
-      sql.unsafe(text, params as string[]) as unknown as Promise<Array<Record<string, unknown>>>,
-    end: () => sql.end({ timeout: 5 }),
+      reserved.unsafe(text, params as string[]) as unknown as Promise<Array<Record<string, unknown>>>,
+    end: async () => {
+      reserved.release();
+      await sql.end({ timeout: 5 });
+    },
   };
   return await beginPushTransaction(executor);
 }
