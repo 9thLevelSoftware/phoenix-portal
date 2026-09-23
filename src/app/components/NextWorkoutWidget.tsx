@@ -94,7 +94,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 			>
 				<div className="flex items-center justify-between mb-4">
 					<h3 className="text-xl text-foreground">Today's Schedule</h3>
-					<Badge className="bg-success text-foreground border-0">
+					<Badge className="bg-success text-on-success border-0">
 						Rest Day
 					</Badge>
 				</div>
@@ -137,7 +137,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 		>
 			<div className="flex items-center justify-between mb-4">
 				<h3 className="text-xl text-foreground">Today's Workout</h3>
-				<Badge className="bg-success text-foreground border-0">
+				<Badge className="bg-success text-on-success border-0">
 					Active Cycle
 				</Badge>
 			</div>

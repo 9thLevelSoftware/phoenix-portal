@@ -45,6 +45,10 @@
   --success-foreground: #06060a;
   --warning: #ffab00;
   --warning-foreground: #06060a;
+  --text-on-primary: #06060a;
+  --text-on-success: #06060a;
+  --text-on-danger: #06060a;
+  --text-on-warning: #06060a;
   --border: #1a1a24;
   --input: rgba(26, 26, 36, 0.5);
   --input-background: rgba(26, 26, 36, 0.5);
@@ -151,6 +155,10 @@
   --success-foreground: #ffffff;
   --warning: #b45309;
   --warning-foreground: #101014;
+  --text-on-primary: #ffffff;
+  --text-on-success: #ffffff;
+  --text-on-danger: #ffffff;
+  --text-on-warning: #ffffff;
   --border: #e2e2ea;
   --input: rgba(226, 226, 234, 0.6);
   --input-background: rgba(255, 255, 255, 0.8);
@@ -216,6 +224,10 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-text-on-primary: var(--text-on-primary);
+  --color-text-on-success: var(--text-on-success);
+  --color-text-on-danger: var(--text-on-danger);
+  --color-text-on-warning: var(--text-on-warning);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-input-background: var(--input-background);

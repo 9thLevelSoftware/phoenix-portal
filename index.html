@@ -23,13 +23,17 @@
     <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:ital,wght@0,100..900;1,100..900&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:ital,wght@0,100..900;1,100..900&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
     <script>
-    try {
-      var t = localStorage.getItem("phoenix-theme") || "dark";
-      var r = t === "system"
-        ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
-        : t;
-      document.documentElement.dataset.theme = r;
-    } catch (e) { document.documentElement.dataset.theme = "dark"; }
+  try {
+    var t = localStorage.getItem("phoenix-theme");
+    var valid = t === "dark" || t === "light" || t === "system";
+    var chosen = valid ? t : "dark";
+    var r = chosen === "system"
+      ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+      : chosen;
+    document.documentElement.dataset.theme = r;
+  } catch (e) {
+    document.documentElement.dataset.theme = "dark";
+  }
   </script>
   </head>
 

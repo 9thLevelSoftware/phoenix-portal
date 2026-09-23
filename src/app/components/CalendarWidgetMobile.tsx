@@ -121,7 +121,7 @@ export function CalendarWidgetMobile({
 								"h-11 w-full rounded-lg text-sm font-medium transition-colors motion-reduce:transition-none relative",
 								"active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary",
 								!selected && !today && "hover:bg-secondary text-foreground",
-								selected && "bg-primary text-foreground",
+								selected && "bg-primary text-on-primary",
 								today && !selected && "ring-2 ring-primary/50 text-foreground",
 								locked && "opacity-40 cursor-not-allowed",
 							)}

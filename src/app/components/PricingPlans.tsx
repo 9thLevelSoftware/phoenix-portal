@@ -672,7 +672,7 @@ export function PricingPlans() {
 							>
 								{tierConfig.popular && (
 									<div className="absolute -top-3 left-1/2 -translate-x-1/2">
-										<Badge className="bg-primary text-foreground border-0 px-3">
+										<Badge className="bg-primary text-on-primary border-0 px-3">
 											Most Popular
 										</Badge>
 									</div>

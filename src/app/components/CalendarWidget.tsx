@@ -140,7 +140,7 @@ export function CalendarWidget({
 							className={cn(
 								"h-8 w-full rounded text-xs font-medium transition-colors motion-reduce:transition-none relative",
 								"hover:bg-secondary focus:outline-none focus:ring-1 focus:ring-primary",
-								selected && "bg-primary text-foreground",
+								selected && "bg-primary text-on-primary",
 								today && !selected && "ring-1 ring-primary/50",
 								locked && "opacity-40 cursor-not-allowed",
 							)}
