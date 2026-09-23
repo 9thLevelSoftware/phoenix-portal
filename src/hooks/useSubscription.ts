@@ -129,6 +129,23 @@ const BOUNDARY_SLACK_MS = 1000;
 /** Largest delay setTimeout honours (2^31 - 1 ms, about 24.8 days). */
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
+/**
+ * The next timer toward an entitlement boundary `remainingMs` away: the final
+ * one fires the boundary plus BOUNDARY_SLACK_MS. setTimeout caps at ~24.8 days
+ * (a longer delay fires at once), so while the whole final delay, slack
+ * included, would exceed the cap, re-arm instead.
+ */
+export function boundaryTimerStep(remainingMs: number): {
+	rearm: boolean;
+	delay: number;
+} {
+	const finalDelay = Math.max(remainingMs, 0) + BOUNDARY_SLACK_MS;
+	if (finalDelay > MAX_TIMEOUT_MS) {
+		return { rearm: true, delay: MAX_TIMEOUT_MS - BOUNDARY_SLACK_MS };
+	}
+	return { rearm: false, delay: finalDelay };
+}
+
 export function useSubscription(): SubscriptionData {
 	const { user } = useAuth();
 	const queryClient = useQueryClient();
@@ -208,10 +225,9 @@ export function useSubscription(): SubscriptionData {
 		if (!user || nextChangeAt === null) return;
 		let timer: ReturnType<typeof setTimeout>;
 		const arm = () => {
-			const remaining = nextChangeAt - Date.now();
-			// setTimeout caps at ~24.8 days; re-arm until the boundary is in range.
-			if (remaining > MAX_TIMEOUT_MS) {
-				timer = setTimeout(arm, MAX_TIMEOUT_MS);
+			const step = boundaryTimerStep(nextChangeAt - Date.now());
+			if (step.rearm) {
+				timer = setTimeout(arm, step.delay);
 				return;
 			}
 			timer = setTimeout(() => {
@@ -219,7 +235,7 @@ export function useSubscription(): SubscriptionData {
 				queryClient.invalidateQueries({
 					queryKey: queryKeys.subscription.byUser(user.id),
 				});
-			}, Math.max(remaining, 0) + BOUNDARY_SLACK_MS);
+			}, step.delay);
 		};
 		arm();
 		return () => clearTimeout(timer);
