@@ -372,6 +372,17 @@ function isOwnerRefusal(
  * retry and wedge sync behind a permanent 503. Deletes are idempotent, so a
  * failure after some chunks committed is still safe to retry.
  */
+/**
+ * Unique ids in one stable order. Delete chunks run in this order so two
+ * pushes deleting the same rows in opposite payload orders (inside
+ * SYNC_PUSH_TRANSACTION, which holds each chunk's locks to COMMIT) take the
+ * row locks in the same order and cannot deadlock.
+ */
+export function sortedUniqueIds(ids: readonly string[]): string[] {
+  return [...new UuidSet(ids.filter(Boolean))]
+    .sort((a, b) => (normalizeUuid(a) < normalizeUuid(b) ? -1 : normalizeUuid(a) > normalizeUuid(b) ? 1 : 0));
+}
+
 async function deleteOwnedRowsInChunks(
   supabase: SupabaseClient,
   table: string,
@@ -379,7 +390,7 @@ async function deleteOwnedRowsInChunks(
   userId: string,
   step: string,
 ): Promise<void> {
-  const unique = [...new UuidSet(ids.filter(Boolean))];
+  const unique = sortedUniqueIds(ids);
   const chunkSize = 100;
   for (let i = 0; i < unique.length; i += chunkSize) {
     const chunk = unique.slice(i, i + chunkSize);

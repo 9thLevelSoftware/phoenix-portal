@@ -15,7 +15,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(19);
+SELECT plan(21);
 
 SELECT diag('database:pr-legacy-identity-catalog');
 
@@ -186,6 +186,30 @@ SELECT throws_ok(
     '23505',
     NULL,
     'NULL weight, reps and session compare equal'
+);
+
+SELECT throws_ok(
+    $sql$
+        INSERT INTO public.personal_records
+            (id, user_id, exercise_name, muscle_group, record_type, value, unit,
+             achieved_at, weight_kg, reps)
+        VALUES ('62626262-0000-4000-8000-0000000000e6'::uuid, '62626262-0000-4000-8000-000000000001'::uuid,
+                'Bench', 'Chest', 'MAX_WEIGHT', 100.000, 'kg', '2026-01-01T10:00:00.123Z', 100.0, 5)
+    $sql$,
+    '23505',
+    NULL,
+    'numerically equal values with another scale are still duplicates (numeric equality, as the dedupe)'
+);
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.personal_records
+            (id, user_id, exercise_name, muscle_group, record_type, value, unit,
+             achieved_at, weight_kg, reps)
+        VALUES ('62626262-0000-4000-8000-0000000000e7'::uuid, '62626262-0000-4000-8000-000000000001'::uuid,
+                'Bench', 'Chest', 'MAX_WEIGHT', ('1' || repeat('7', 9000))::numeric, 'kg',
+                '2026-01-01T10:00:00.123Z', 1, 5)
+    $sql$,
+    'a 9,000-digit value indexes without exceeding the tuple limit'
 );
 
 SELECT diag('database:pr-legacy-identity-reassignment');
