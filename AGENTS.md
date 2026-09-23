@@ -66,8 +66,10 @@ not use the Supabase dashboard SQL editor for schema changes.
 
 Three pipelines ship independently: prod migrations (applied by the human
 operator with `supabase db push`, the single migration owner per the release
-plan's Operator Action 3 decision; the Supabase GitHub App's migration step is
-not relied on), Edge Functions (`deploy-edge-functions.yml` on
+plan's Operator Action 3 decision, after a rolled-back rehearsal against prod;
+the Supabase GitHub App's production migration step must stay disabled, or a
+merge to `main` applies migrations to prod unrehearsed; see CLAUDE.md ->
+"Migration Workflow Discipline"), Edge Functions (`deploy-edge-functions.yml` on
 merge to `main`), and the SPA (Cloudflare, on merge). Changes that span them
 follow expand/contract order:
 
