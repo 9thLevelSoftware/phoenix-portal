@@ -249,7 +249,6 @@ export function generateInsights(
       pr.previousValue !== undefined ? pr.value - pr.previousValue : undefined;
     const isVolumeRecord = (pr.recordType ?? '').toUpperCase() === 'MAX_VOLUME';
     const format = isVolumeRecord ? formatVolume : formatPerCableWeight;
-    const format = isVolumeRecord ? formatVolume : formatWeight;
     const formattedValue = format(pr.value, unit);
     const formattedDelta = delta !== undefined ? format(delta, unit) : undefined;
     const formattedPrevious =

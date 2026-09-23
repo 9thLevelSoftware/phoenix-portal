@@ -308,8 +308,6 @@ describe("personalRecordsOptions", () => {
 	});
 
 	it("flattens loaded pages for consumers", async () => {
-	it("returns Zod-transformed records with per-cable weights", async () => {
-		chain = buildChain({ data: [recordRow], error: null });
 		const { personalRecordsOptions } = await import("../records");
 		const opts = personalRecordsOptions("user-1");
 		const flattened = opts.select?.({
@@ -357,22 +355,21 @@ describe("personalRecordsOptions", () => {
 		).rejects.toMatchObject({ code: "22023" });
 	});
 
-	it("returns Zod-transformed records with doubled weights", async () => {
+	// KD-8: records stay per cable as stored. The pre-KD-8 parent asserted the
+	// WEIGHT_MULTIPLIER doubling (80 -> 160, 75 -> 150); those numbers are
+	// forbidden now, so this is the same declaration evolved and the doubled
+	// title collapsed into it.
+	it("returns Zod-transformed records with per-cable weights", async () => {
 		rpcHandler = staticHandler([recordRow]);
 		const page = await firstPage();
 
 		expect(page?.records).toHaveLength(1);
-		expect(page?.records[0].value).toBe(160);
-		expect(page?.records[0].previous_value).toBe(150);
+		// Records stay per cable (KD-8); no doubling.
+		expect(page?.records[0].value).toBe(80);
+		expect(page?.records[0].previous_value).toBe(75);
+		// achieved_at should be a Date
 		expect(page?.records[0].achieved_at).toBeInstanceOf(Date);
 		expect(page?.records[0].exercise_name).toBe("Bench Press");
-		expect(result).toHaveLength(1);
-		// Records stay per cable (KD-8); no doubling.
-		expect(result[0].value).toBe(80);
-		expect(result[0].previous_value).toBe(75);
-		// achieved_at should be a Date
-		expect(result[0].achieved_at).toBeInstanceOf(Date);
-		expect(result[0].exercise_name).toBe("Bench Press");
 	});
 
 	it("normalizes leaked catalog IDs to catalog display names", async () => {
@@ -415,15 +412,6 @@ describe("personalRecordsOptions", () => {
 		});
 		fromFn.mockImplementation(() => chain);
 
-		const { personalRecordsOptions } = await import("../records");
-		const opts = personalRecordsOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
-
-		// Scoped by user_id: the session id list used to grow with the PR count
-		// and blew the GET URL limit (F-035).
-		expect(exercisesChain.in).not.toHaveBeenCalled();
-		expect(exercisesChain.eq).toHaveBeenCalledWith("user_id", "user-1");
-		expect(result[0].exercise_name).toBe("Cable Curl (Handles)");
 		const page = await firstPage();
 		expect(fromFn).toHaveBeenCalledWith("exercises");
 		expect(page?.records[0].exercise_name).toBe("Seated Row");

@@ -2,7 +2,6 @@ import { QueryClient } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SubscriptionTier } from "@/hooks/useSubscription";
 import { renderWithProviders } from "@/test/test-utils";
@@ -268,6 +267,20 @@ describe("PricingPlans billing actions", () => {
 				}),
 				{ status: 409 },
 			),
+		});
+
+		renderWithProviders(<PricingPlans />);
+		await user.click(screen.getByRole("button", { name: /downgrade/i }));
+		await user.click(screen.getByRole("button", { name: /^downgrade$/i }));
+
+		await waitFor(() => {
+			expect(toast.error).toHaveBeenCalledWith(
+				"Your last payment failed. Update your payment method before changing your plan.",
+			);
+		});
+		expect(mockOpenCheckout).not.toHaveBeenCalled();
+	});
+
 	const pastDueSubscription = {
 		tier: "FLAME" as SubscriptionTier,
 		rawTier: "FLAME" as SubscriptionTier,
@@ -332,10 +345,6 @@ describe("PricingPlans billing actions", () => {
 		await user.click(screen.getByRole("button", { name: /^downgrade$/i }));
 
 		await waitFor(() => {
-			expect(toast.error).toHaveBeenCalledWith(
-				"Your last payment failed. Update your payment method before changing your plan.",
-			);
-		});
 			expect(mockOpenUpdatePaymentMethodCheckout).toHaveBeenCalledWith(
 				expect.objectContaining({ transactionId: "txn_from_plan_change" }),
 			);

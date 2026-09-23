@@ -17,16 +17,6 @@ const nullableSetting = <T>(normalize: (value: unknown) => T | null) =>
 		.nullish()
 		.transform((value) => normalize(value));
 
-// Routine-exercise settings read in mobile's vocabulary. A value outside it
-// (legacy portal "light"/"low"/free text) is what the phone parsed to its
-// default, so it reads as null; legacy hex colours read as their name.
-const nullableSetting = <T>(normalize: (value: unknown) => T | null) =>
-	z
-		.string()
-		.nullish()
-		.transform((value) => normalize(value));
-import { toWireMode } from "../../supabase/functions/_shared/workoutModes.ts";
-
 // Loads are stored and returned per cable, exactly as the phone shows them.
 // Schemas never convert them: the display adapter (src/lib/units/loadDisplay.ts)
 // adds a total only when the exercise's cable_count is known (KD-8).

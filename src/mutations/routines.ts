@@ -14,7 +14,6 @@ import {
 	toSupersetColorName,
 	toWireMode,
 } from "../../supabase/functions/_shared/workoutModes.ts";
-import { toWireMode } from "../../supabase/functions/_shared/workoutModes.ts";
 
 function estimatedRoutineDurationSeconds(
 	exercises: RoutineExerciseInput[],
@@ -105,8 +104,6 @@ export function toRoutineExerciseRows(
 	preservedModes: readonly string[] = [],
 	{ withIds = false }: { withIds?: boolean } = {},
 ): RoutineExerciseRow[] {
-	routineId: string,
-): RoutineExerciseInsert[] {
 	return exercises.map((ex, i) => ({
 		// Only on update, and only when the exercise already has a row: the
 		// create RPC ignores payload ids, so sending them there would be
@@ -306,7 +303,6 @@ export function useUpdateRoutine() {
 						...row,
 						routine_id: input.routineId,
 					})) as unknown as Json,
-					) as unknown as Json,
 				},
 			);
 

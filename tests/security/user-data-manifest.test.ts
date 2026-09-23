@@ -7,22 +7,13 @@
  *      a `user_id` column, a `REFERENCES auth.users` FK, or (transitively) an
  *      FK to such a table. Limitation: DDL built dynamically in `EXECUTE`
  *      strings or inside function bodies is not parsed.
- *   2. src/lib/database.types.ts (generated from prod): tables whose Row has
- *      `user_id`. This catches prod tables whose migration is only a stub
- *      (e.g. 20260420210411_comprehensive_dashboard_drift_reconciliation.sql).
- *   2. src/lib/database.types.ts: tables whose Row has `user_id`. This used to
- *      catch prod tables whose migration is only a stub. Since PR 4 the file is
- *      generated from the MIGRATED local schema (`npm run gen:types:local`), so
- *      it no longer records prod's shape and this source adds nothing that
- *      source 1 misses. Prod's own shape is evidenced outside the repo
- *      (prod-evidence.md, as cited throughout userDataManifest.ts).
- *   2. src/lib/database.types.ts (generated from the clean migrated schema):
- *      tables whose Row has `user_id`. This catches migration DDL shapes the
- *      lightweight SQL parser does not understand.
- *
- * Merge-order note: TABLES_WITHOUT_MIGRATION_DDL lists subscription_events
- * (DDL from PR 2) and sync_tombstones (DDL from PR 16). When their DDL lands,
- * this test only warns; remove the entry then so the column checks apply.
+ *   2. src/lib/database.types.ts (generated from the clean migrated schema via
+ *      `npm run gen:types:local` since PR 4): tables whose Row has `user_id`.
+ *      This catches migration DDL shapes the lightweight SQL parser does not
+ *      understand. Since PR 4 the file is generated from the MIGRATED local
+ *      schema, so it no longer records prod's shape and this source adds
+ *      nothing that source 1 misses; prod's own shape is evidenced outside the
+ *      repo (prod-evidence.md, as cited throughout userDataManifest.ts).
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -74,13 +65,6 @@ const TABLES_WITHOUT_MIGRATION_DDL: Record<string, string> = {
 	// table is now parseable from the migrations and the column checks apply to
 	// all of them. Add an entry here only for a table that genuinely has no
 	// DDL on the branch.
-	subscription_events: "prod table; captured into migrations by PR 2",
-	sync_tombstones: "created by PR 16",
-	paddle_webhook_events: "prod table; no migration",
-	goal_snapshots: "prod table; stub migration 20260420210411",
-	overload_suggestions: "prod table; stub migration 20260420210411",
-	telemetry_analysis: "prod table; stub migration 20260420210411",
-	wearable_daily_summaries: "prod table; stub migration 20260420210411",
 };
 
 const CREDENTIAL_COLUMN = /token|api_key|secret|password/;
@@ -140,20 +124,13 @@ describe("user data manifest (R-31)", () => {
 			expect(owned.has(table), table).toBe(true);
 		}
 		expect(owned.get("routine_exercises")).toBe("FK to routines");
-		expect(owned.get("wearable_daily_summaries")).toBe(
-			"user_id in database.types.ts",
-		);
-		expect(owned.has("challenges")).toBe(false);
-		expect(owned.has("community_benchmarks")).toBe(false);
-		expect(owned.size).toBeGreaterThanOrEqual(45);
 		// Was "user_id in database.types.ts": PR 2 captured this table's DDL, so
 		// migration discovery now finds it first. The types-only discovery path
 		// is still exercised by any prod table whose migration is a stub.
 		expect(owned.has("wearable_daily_summaries")).toBe(true);
-		// Prod-only tables are declared explicitly below and are intentionally
-		// absent from the canonical clean-migration type snapshot.
-		expect(owned.has("wearable_daily_summaries")).toBe(false);
-		expect(owned.size).toBeGreaterThanOrEqual(40);
+		expect(owned.has("challenges")).toBe(false);
+		expect(owned.has("community_benchmarks")).toBe(false);
+		expect(owned.size).toBeGreaterThanOrEqual(45);
 		expect(schema.get("routines")?.uniques.get("routines_pkey")).toEqual([
 			"id",
 		]);
@@ -271,7 +248,6 @@ describe("user data manifest (R-31)", () => {
 		}
 	});
 
-	it("exports exactly the migrated columns, plus prod-only drift columns as optional", () => {
 	// PR 4 (7f87b880) regenerated src/lib/database.types.ts from the MIGRATED
 	// local schema, so it is no longer a record of prod's shape: the two rules
 	// this test used to run against it ("optional but not in prod types" and

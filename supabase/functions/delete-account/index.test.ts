@@ -6,13 +6,12 @@ import {
   type PurgeUserDependencies,
 } from "../_shared/accountPurge.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
+import { assertNoSecretsLogged, captureLogs } from "../_shared/testLogCapture.ts";
 import {
   createDeleteAccountHandler,
   PROCESS_DUE_BATCH_SIZE,
   STUCK_CLAIM_MINUTES,
 } from "./index.ts";
-import { assertNoSecretsLogged, captureLogs } from "../_shared/testLogCapture.ts";
-import { createDeleteAccountHandler } from "./index.ts";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_USER_ID = "22222222-2222-4222-8222-222222222222";
@@ -35,10 +34,10 @@ type Call =
   | { kind: "delete"; table: string; filters: [string, unknown][] }
   | { kind: "update"; table: string; values: Record<string, unknown>; filters: [string, unknown][] }
   | { kind: "rpc"; name: string; args: unknown }
-  | { kind: "revoke"; url: string }
   | { kind: "deleteUser"; userId: string }
   | { kind: "storage.list"; prefix: string }
-  | { kind: "storage.remove"; paths: string[] };
+  | { kind: "storage.remove"; paths: string[] }
+  | { kind: "revoke"; url: string };
 
 interface FakeError {
   code?: string;
@@ -107,18 +106,18 @@ interface FakeState {
   otherSubscriptionRefs: Record<string, number>;
   /** Error returned by the shared-subscription check. */
   sharedCheckError: FakeError | null;
-  /** Stored provider tokens (plaintext: no encryption key in tests). */
+  /** Stored provider tokens for the PR 54 revoke/disconnect step. */
   oauthTokens: {
     provider: string;
     access_token: string | null;
     refresh_token: string | null;
-    token_expires_at?: string | null;
+    token_expires_at?: string;
   }[];
-  /** Error returned by the step-1b provider-list read of oauth_tokens. */
+  /** Error returned by the oauth_tokens provider list. */
   tokenListError: FakeError | null;
-  /** Error returned by the per-provider token read (maybeSingle). */
+  /** Error returned when reading one provider's token row. */
   tokenReadError: FakeError | null;
-  /** Error returned by rpc('disconnect_integration'). */
+  /** Error returned by disconnect_integration. */
   disconnectRpcError: FakeError | null;
 }
 
@@ -141,6 +140,10 @@ function fakeState(overrides: Partial<FakeState> = {}): FakeState {
     claimRace: false,
     otherSubscriptionRefs: {},
     sharedCheckError: null,
+    oauthTokens: [],
+    tokenListError: null,
+    tokenReadError: null,
+    disconnectRpcError: null,
   } as unknown as FakeState;
   Object.defineProperties(state, {
     deletionRequest: {
@@ -205,10 +208,6 @@ function requestFor(userId: string, overrides: Partial<FakeRequest> = {}): FakeR
     claimed_at: null,
     needs_support_reason: null,
     last_attempt_at: null,
-    oauthTokens: [],
-    tokenListError: null,
-    tokenReadError: null,
-    disconnectRpcError: null,
     ...overrides,
   };
 }
@@ -345,7 +344,6 @@ class FakeQuery {
       const userId = this.filters.find(([c]) => c === "user_id")?.[1];
       return this.state.subscriptions[String(userId)] ?? null;
     }
-    if (this.table === "subscriptions") return this.state.subscription;
     if (this.table === "oauth_tokens") {
       const provider = this.filters.find(([c]) => c === "provider")?.[1];
       return this.state.oauthTokens.find((t) => t.provider === provider) ?? null;
@@ -440,7 +438,7 @@ class FakeQuery {
       ? this.resolveUpdate()
       : this.op === "delete"
       ? this.resolveDelete()
-      : this.table === "oauth_tokens"
+      : this.table === "oauth_tokens" && !this.headCount
       ? this.state.tokenListError
         ? { data: null, error: this.state.tokenListError }
         : { data: this.state.oauthTokens.map((t) => ({ provider: t.provider })), error: null }
@@ -467,6 +465,7 @@ function fakeAdmin(state: FakeState): SupabaseClient {
             ? { data: null, error: state.sweepError }
             : { data: state.sweepResult, error: null },
         );
+      }
       if (name === "disconnect_integration") {
         const error = state.disconnectRpcError;
         if (!error) {
@@ -1120,6 +1119,8 @@ Deno.test("purgeUser: a per-provider token read error aborts step 1b with nothin
   assertEquals(res.status, 500);
   assertUntouched(handlerState);
 });
+
+
 
 function webhookDeleteFilters(state: FakeState): [string, unknown][][] {
   return state.calls

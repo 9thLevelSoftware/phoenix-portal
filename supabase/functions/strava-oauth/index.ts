@@ -165,26 +165,6 @@ async function stravaOAuthHandler(
       code,
       state,
     });
-
-    if (queueError) {
-      // A reconnect while the first initial import is still queued or running
-      // hits `sync_queue_one_active` (23505). That is the intended outcome —
-      // the import is already on its way — so it is not even worth an error.
-      if ((queueError as { code?: string }).code === '23505') {
-        console.log('Strava initial sync already queued for this user');
-      } else {
-        // Non-fatal: tokens are saved, sync can be triggered manually later
-        console.error('Failed to queue initial sync:', queueError);
-      }
-    }
-
-    // ----------------------------------------------------------------
-    // Redirect back to the portal
-    // ----------------------------------------------------------------
-    return Response.redirect(
-      `${APP_URL()}/integrations?connected=strava`,
-      302
-    );
   } catch (err) {
     // Name only: a thrown fetch/URL error can carry the request URL, and with
     // it the authorization code.

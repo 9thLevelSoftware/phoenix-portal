@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createLiftosaurSyncHandler } from "./index.ts";
 import {
   FakeDb,
@@ -213,15 +213,53 @@ Deno.test("liftosaur-sync: a run that names another user's queue row completes n
   assertEquals(res.status, 200);
   assertEquals(db.rows("sync_queue")[0].status, "processing");
   assertEquals(db.rows("sync_queue")[0].started_at, CLAIMED_AT);
-import { assert, assertEquals } from "jsr:@std/assert@1";
-import { createLiftosaurSyncHandler } from "./index.ts";
+});
 
-// Handler tests with in-process doubles: an in-memory Supabase client and a
-// fake Liftosaur API whose `startDate` filters on workout date. No real
-// provider calls.
+Deno.test("liftosaur-sync: a browser sync is capped at 3 per 15 minutes", async () => {
+  const db = new FakeDb(tables([]));
+  const call = harness(db, 1, USER_ID);
 
-const USER_ID = "00000000-0000-4000-8000-0000000000b1";
-const SERVICE_ROLE_KEY = "test-service-role-key";
+  for (const attempt of [1, 2, 3]) {
+    const res = await call({ sync_type: "manual" });
+    assertEquals(res.status, 200, `attempt ${attempt}: ${await res.clone().text()}`);
+  }
+  // The key literal is per-provider: a wrong one would silently share or split
+  // a bucket and stay invisible until someone read rate_limit_tracking.
+  assertEquals(db.rows("rate_limit_tracking").length, 1);
+  assertEquals(db.rows("rate_limit_tracking")[0].key, "liftosaur-sync");
+  assertEquals(db.rows("rate_limit_tracking")[0].requests_this_window, 3);
+
+  const limited = await call({ sync_type: "manual" });
+  assertEquals(limited.status, 429);
+  assertEquals(limited.headers.get("Retry-After"), "900");
+});
+
+Deno.test("liftosaur-sync: saving an API key charges both credential and provider-read budgets", async () => {
+  const db = new FakeDb(tables([]));
+  const call = harness(db, 1, USER_ID);
+
+  for (const attempt of [1, 2, 3]) {
+    const res = await call({ api_key: `key-attempt-${attempt}` });
+    assertEquals(res.status, 200, `attempt ${attempt}: ${await res.clone().text()}`);
+  }
+  const limited = await call({ api_key: "valid-key-again" });
+  assertEquals(limited.status, 429);
+
+  const buckets = db.rows("rate_limit_tracking");
+  assertEquals(buckets.length, 2);
+  assertEquals(
+    buckets.map((row) => [row.key, row.requests_this_window]).sort(),
+    [["liftosaur-sync", 3], ["liftosaur-sync-connect", 4]],
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Watermark suite: incremental windows, stable undated-record dates, and the
+// pre-fetch watermark. In-process Supabase double + a fake Liftosaur API whose
+// startDate filters on workout date. No real provider calls.
+// ---------------------------------------------------------------------------
+
+const SYNC_USER_ID = "00000000-0000-4000-8000-0000000000b1";
 const HOUR = 60 * 60 * 1000;
 
 interface DbState {
@@ -380,7 +418,7 @@ async function runSync(state: DbState, syncType: string): Promise<Response> {
           Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ user_id: USER_ID, sync_type: syncType }),
+        body: JSON.stringify({ user_id: SYNC_USER_ID, sync_type: syncType }),
       }),
     );
   } finally {
@@ -470,42 +508,4 @@ Deno.test("liftosaur-sync keeps the stored date of an undated record re-fetched 
   } finally {
     liftosaur.restore();
   }
-});
-
-Deno.test("liftosaur-sync: a browser sync is capped at 3 per 15 minutes", async () => {
-  const db = new FakeDb(tables([]));
-  const call = harness(db, 1, USER_ID);
-
-  for (const attempt of [1, 2, 3]) {
-    const res = await call({ sync_type: "manual" });
-    assertEquals(res.status, 200, `attempt ${attempt}: ${await res.clone().text()}`);
-  }
-  // The key literal is per-provider: a wrong one would silently share or split
-  // a bucket and stay invisible until someone read rate_limit_tracking.
-  assertEquals(db.rows("rate_limit_tracking").length, 1);
-  assertEquals(db.rows("rate_limit_tracking")[0].key, "liftosaur-sync");
-  assertEquals(db.rows("rate_limit_tracking")[0].requests_this_window, 3);
-
-  const limited = await call({ sync_type: "manual" });
-  assertEquals(limited.status, 429);
-  assertEquals(limited.headers.get("Retry-After"), "900");
-});
-
-Deno.test("liftosaur-sync: saving an API key charges both credential and provider-read budgets", async () => {
-  const db = new FakeDb(tables([]));
-  const call = harness(db, 1, USER_ID);
-
-  for (const attempt of [1, 2, 3]) {
-    const res = await call({ api_key: `key-attempt-${attempt}` });
-    assertEquals(res.status, 200, `attempt ${attempt}: ${await res.clone().text()}`);
-  }
-  const limited = await call({ api_key: "valid-key-again" });
-  assertEquals(limited.status, 429);
-
-  const buckets = db.rows("rate_limit_tracking");
-  assertEquals(buckets.length, 2);
-  assertEquals(
-    buckets.map((row) => [row.key, row.requests_this_window]).sort(),
-    [["liftosaur-sync", 3], ["liftosaur-sync-connect", 4]],
-  );
 });

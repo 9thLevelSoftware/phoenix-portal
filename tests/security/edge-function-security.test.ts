@@ -282,8 +282,6 @@ describe("Paddle webhook security helpers", () => {
 		const now = new Date("2026-05-17T12:00:00Z");
 		const pastDue = {
 			paddle_subscription_id: "sub_1",
-	it("routes past_due to manage-with-a-card-update, never to a new checkout", () => {
-			tier: "FLAME",
 			status: "past_due",
 			current_period_end: "2026-05-07T12:00:00Z",
 			cancel_at_period_end: false,
@@ -298,17 +296,6 @@ describe("Paddle webhook security helpers", () => {
 
 		expect(
 			decidePlanChangeGate(
-		expect(billingAction(pastDue, now)).toEqual({
-			action: "manage",
-			reason: "payment_past_due",
-			needsPaymentUpdate: true,
-			entitled: true,
-			paddleSubscriptionId: "sub_1",
-		expect(mayOpenNewCheckout(billingAction(pastDue, now))).toBe(false);
-		expect(EXISTING_SUBSCRIPTION_HTTP_STATUS).toBe(409);
-		const body = existingSubscriptionResponseBody(billingAction(pastDue, now));
-		expect(body.code).toBe("existing_subscription");
-			billingAction(
 				{
 					...pastDue,
 					status: "active",
@@ -319,10 +306,6 @@ describe("Paddle webhook security helpers", () => {
 		).toEqual({ action: "proceed", paddleSubscriptionId: "sub_1" });
 		expect(
 			decidePlanChangeGate(
-			).action,
-		).toBe("manage");
-		// Canceled is the ONLY stored state that may open a new checkout.
-			billingAction(
 				{
 					...pastDue,
 					status: "canceled",
@@ -341,14 +324,61 @@ describe("Paddle webhook security helpers", () => {
 		expect(
 			decidePlanChangeGate({ ...pastDue, paddle_subscription_id: null }, now),
 		).toEqual({ action: "checkout_required", reason: "missing_subscription" });
+	});
+
+	it("routes past_due to manage-with-a-card-update, never to a new checkout", () => {
+		const now = new Date("2026-05-17T12:00:00Z");
+		const pastDue = {
+			paddle_subscription_id: "sub_1",
+			tier: "FLAME",
+			status: "past_due",
+			current_period_end: "2026-05-07T12:00:00Z",
+			cancel_at_period_end: false,
+		};
+		expect(billingAction(pastDue, now)).toEqual({
+			action: "manage",
+			reason: "payment_past_due",
+			needsPaymentUpdate: true,
+			entitled: true,
+			paddleSubscriptionId: "sub_1",
+		});
+		expect(mayOpenNewCheckout(billingAction(pastDue, now))).toBe(false);
+		expect(EXISTING_SUBSCRIPTION_HTTP_STATUS).toBe(409);
+		const body = existingSubscriptionResponseBody(billingAction(pastDue, now));
+		expect(body.code).toBe("existing_subscription");
+		expect(body.message).toMatch(/payment method/i);
+
+		expect(
+			billingAction(
+				{
+					...pastDue,
+					status: "active",
+					current_period_end: "2026-06-17T00:00:00Z",
+				},
+				now,
+			).action,
+		).toBe("manage");
+		// Canceled is the ONLY stored state that may open a new checkout.
+		expect(
+			billingAction(
+				{
+					...pastDue,
+					status: "canceled",
+					current_period_end: "2026-06-17T00:00:00Z",
+				},
+				now,
+			),
 		).toMatchObject({ action: "checkout", reason: "canceled_subscription" });
 		expect(billingAction(null, now)).toMatchObject({
 			action: "checkout",
 			reason: "no_subscription",
+		});
+		expect(
 			billingAction({ ...pastDue, paddle_subscription_id: null }, now),
 		).toMatchObject({ action: "checkout", reason: "no_subscription" });
 		// A live subscription whose stored state lapsed refreshes, it does not
 		// check out — signing would refuse it with 409 (F-022).
+		expect(
 			billingAction(
 				{
 					...pastDue,
@@ -483,6 +513,32 @@ describe("Paddle webhook security helpers", () => {
 		};
 
 		expect(findCrossTierDuplicatePriceIds(env)).toEqual(["pri_shared"]);
+	});
+
+	it("locks webhook and refresh to reject duplicate price IDs before apply", () => {
+		const webhook = readFileSync(
+			join(process.cwd(), "supabase/functions/paddle-webhooks/index.ts"),
+			"utf8",
+		);
+		const refresh = readFileSync(
+			join(
+				process.cwd(),
+				"supabase/functions/paddle-refresh-subscription/index.ts",
+			),
+			"utf8",
+		);
+
+		const webhookDup = webhook.indexOf("findCrossTierDuplicatePriceIds(");
+		const webhookApply = webhook.indexOf("apply_subscription_event");
+		expect(webhookDup).toBeGreaterThan(-1);
+		expect(webhookApply).toBeGreaterThan(webhookDup);
+		expect(webhook).toMatch(/Billing configuration invalid/);
+
+		const refreshDup = refresh.indexOf("findCrossTierDuplicatePriceIds(");
+		const refreshMap = refresh.indexOf("mapPriceIdToTier(");
+		expect(refreshDup).toBeGreaterThan(-1);
+		expect(refreshMap).toBeGreaterThan(refreshDup);
+		expect(refresh).toMatch(/Billing configuration invalid/);
 	});
 
 	// paddle-webhooks is covered behaviourally by
