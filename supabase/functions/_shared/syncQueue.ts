@@ -51,14 +51,19 @@ export interface CompleteSyncQueueEntryOptions {
  * finished must not be overwritten by a late worker. Without a queue id
  * there is nothing this run owns, and nothing is completed.
  */
-/** Returns false when the completion write failed (true when there is no row). */
+/**
+ * Returns true only when this worker's `processing` row became `completed`
+ * (or there is no row). False on a write error, and also when the update
+ * matched nothing: the row was cancelled by a disconnect or reclaimed, so the
+ * caller no longer owns it.
+ */
 export async function completeSyncQueueEntry(
   supabase: DbClient,
   options: CompleteSyncQueueEntryOptions,
 ): Promise<boolean> {
   if (!options.queueId) return true;
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('sync_queue')
     .update({
       status: 'completed',
@@ -68,10 +73,15 @@ export async function completeSyncQueueEntry(
     .eq('id', options.queueId)
     .eq('user_id', options.userId)
     .eq('provider', options.provider)
-    .eq('status', 'processing');
+    .eq('status', 'processing')
+    .select('id');
 
   if (error) {
     console.error(`Failed to complete ${options.provider} sync queue entry:`, error);
+    return false;
+  }
+  if (!Array.isArray(data) || data.length === 0) {
+    console.warn(`${options.provider} sync queue entry was no longer processing; not completed`);
     return false;
   }
   return true;

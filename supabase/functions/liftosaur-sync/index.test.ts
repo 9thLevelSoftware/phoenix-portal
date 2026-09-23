@@ -292,6 +292,7 @@ Deno.test("liftosaur-sync: a failed queue completion is retried, never reported 
         if (patch.status !== "completed") return update(patch);
         const failed = {
           eq: () => failed,
+          select: () => failed,
           then: (resolve: (value: unknown) => unknown) =>
             Promise.resolve({ data: null, error: { message: "write failed" } }).then(resolve),
         };
@@ -492,6 +493,43 @@ Deno.test("liftosaur-sync: a new API key starts a fresh full read, not the old k
     [null, null, null],
   );
   assertEquals(integration.last_sync_at, new Date(NOW).toISOString());
+});
+
+Deno.test("liftosaur-sync: a new key clears the old cursor even when its first fetch fails", async () => {
+  const db = new FakeDb({
+    ...tables([]),
+    user_integrations: [{
+      user_id: USER_ID, provider: "liftosaur", status: "connected",
+      last_sync_at: "2025-06-01T00:00:00.000Z",
+      backfill_before: "2025-01-01T00:00:00.000Z", backfill_after: null,
+      backfill_started_at: "2025-01-01T00:00:00.000Z",
+    }],
+  });
+  const down = () => Promise.resolve(new Response("unavailable", { status: 503 }));
+  const res = await harness(db, down, USER_ID)({ api_key: "new-account-key" });
+  assert(res.status >= 500, await res.clone().text());
+  const [integration] = db.rows("user_integrations");
+  assertEquals(
+    [integration.last_sync_at, integration.backfill_before, integration.backfill_after, integration.backfill_started_at],
+    [null, null, null, null],
+  );
+});
+
+Deno.test("liftosaur-sync: a queue row no longer processing is not completed and nothing follows", async () => {
+  // A disconnect cancelled the row while this run was reading.
+  const db = new FakeDb(
+    tables([queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)]),
+    [syncQueueOneActiveIndex],
+  );
+  const upstream = descendingLiftosaur(4500);
+  const fetchAndCancel = (input: string | URL | Request) => {
+    const row = db.rows("sync_queue")[0];
+    if (row) row.status = "cancelled";
+    return upstream.fetch(input);
+  };
+  const res = await harness(db, fetchAndCancel)({ sync_type: "initial", queue_id: QUEUE_ID });
+  assertEquals(res.status, 502, await res.clone().text());
+  assertEquals(db.rows("sync_queue").map((r) => r.status), ["cancelled"], "no follow-up queued");
 });
 
 Deno.test("liftosaur-sync: API-key saves spend only the credential budget, so a fourth key still saves (NF-27)", async () => {

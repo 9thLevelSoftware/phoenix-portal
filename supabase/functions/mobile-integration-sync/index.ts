@@ -362,6 +362,11 @@ async function mobileIntegrationSyncHandler(
             status: 'connected',
             connected_at: new Date().toISOString(),
             error_message: null,
+            // A new Liftosaur key may be another account: drop the previous
+            // key's cursor and watermark so no later sync resumes them.
+            ...(provider === 'liftosaur'
+              ? { last_sync_at: null, backfill_before: null, backfill_after: null, backfill_started_at: null }
+              : {}),
           },
           { onConflict: 'user_id,provider' }
         );
