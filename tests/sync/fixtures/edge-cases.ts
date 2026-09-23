@@ -450,7 +450,7 @@ export function createAsymmetryBoundaryRepFixtures(
 	setId?: string,
 	userId?: string,
 ) {
-	return Object.entries(ASYMMETRY_BOUNDARY_VALUES).map(([name, asymmetry]) =>
+	return Object.entries(ASYMMETRY_BOUNDARY_VALUES).map(([_name, asymmetry]) =>
 		createRepSummaryFixture({
 			set_id: setId,
 			user_id: userId,
@@ -493,7 +493,7 @@ export function createVelocityBoundaryRepFixtures(
 		return "GRIND";
 	};
 
-	return Object.entries(VELOCITY_BOUNDARY_VALUES).map(([name, velocity]) =>
+	return Object.entries(VELOCITY_BOUNDARY_VALUES).map(([_name, velocity]) =>
 		createRepSummaryFixture({
 			set_id: setId,
 			user_id: userId,

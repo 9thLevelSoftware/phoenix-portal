@@ -308,8 +308,6 @@ describe("personalRecordsOptions", () => {
 	});
 
 	it("flattens loaded pages for consumers", async () => {
-	it("returns Zod-transformed records with per-cable weights", async () => {
-		chain = buildChain({ data: [recordRow], error: null });
 		const { personalRecordsOptions } = await import("../records");
 		const opts = personalRecordsOptions("user-1");
 		const flattened = opts.select?.({

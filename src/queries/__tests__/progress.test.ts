@@ -304,9 +304,9 @@ describe("progressionWorkbenchOptions", () => {
 
 		const row = result.progressRows[0];
 		expect(row.recorded_at).toBeInstanceOf(Date);
-		// weightTransform doubles stored kilograms.
+		// Loads stay per cable; the display adapter adds a total when cable_count is known (KD-8).
 		const source = PROGRESS.find((seed) => seed.id === row.id);
-		expect(row.max_weight_kg).toBe((source?.max_weight_kg ?? 0) * 2);
+		expect(row.max_weight_kg).toBe(source?.max_weight_kg ?? 0);
 	});
 
 	it("throws when the RPC fails", async () => {

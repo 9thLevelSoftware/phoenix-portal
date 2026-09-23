@@ -242,7 +242,7 @@ describe("Velocity Zone Tests", () => {
 
 			// Assert: VBT zones preserved
 			const pulledReps =
-				pullResult.data!.sessions[0].exercises[0].sets[0].repSummaries;
+				pullResult.data?.sessions[0].exercises[0].sets[0].repSummaries;
 			expect(pulledReps).toHaveLength(3);
 
 			expect(pulledReps.find((r) => r.repNumber === 1)?.vbtZone).toBe(
@@ -298,7 +298,7 @@ describe("Velocity Zone Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			const pulledRep =
-				pullResult.data!.sessions[0].exercises[0].sets[0].repSummaries[0];
+				pullResult.data?.sessions[0].exercises[0].sets[0].repSummaries[0];
 			expect(pulledRep.meanVelocityMps).toBe(0.92);
 			expect(pulledRep.peakVelocityMps).toBe(1.35);
 		});
@@ -442,7 +442,7 @@ describe("Asymmetry Threshold Tests", () => {
 
 			// Assert: Asymmetry values preserved
 			const pulledReps =
-				pullResult.data!.sessions[0].exercises[0].sets[0].repSummaries;
+				pullResult.data?.sessions[0].exercises[0].sets[0].repSummaries;
 
 			expect(pulledReps.find((r) => r.repNumber === 1)?.asymmetryPct).toBe(0);
 			expect(pulledReps.find((r) => r.repNumber === 2)?.asymmetryPct).toBe(1.7);
@@ -495,7 +495,7 @@ describe("Asymmetry Threshold Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			const pulledRep =
-				pullResult.data!.sessions[0].exercises[0].sets[0].repSummaries[0];
+				pullResult.data?.sessions[0].exercises[0].sets[0].repSummaries[0];
 			expect(pulledRep.leftForceAvg).toBe(218);
 			expect(pulledRep.rightForceAvg).toBe(232);
 			expect(pulledRep.asymmetryPct).toBe(6.2);
@@ -517,8 +517,8 @@ describe("Asymmetry Threshold Tests", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			expect(pullResult.data!.sessions[0].avgAsymmetryPct).toBe(1.8);
-			expect(pullResult.data!.sessions[0].dominantSide).toBe("RIGHT");
+			expect(pullResult.data?.sessions[0].avgAsymmetryPct).toBe(1.8);
+			expect(pullResult.data?.sessions[0].dominantSide).toBe("RIGHT");
 		});
 
 		it("should handle imbalanced session correctly", async () => {
@@ -535,7 +535,7 @@ describe("Asymmetry Threshold Tests", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const asymmetry = pullResult.data!.sessions[0].avgAsymmetryPct;
+			const asymmetry = pullResult.data?.sessions[0].avgAsymmetryPct;
 			expect(asymmetry).toBe(8.5);
 			expect(classifyAsymmetry(asymmetry!)).toBe("IMBALANCED");
 		});
@@ -595,7 +595,7 @@ describe("Biomechanics Data Integrity", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			const pulledRep =
-				pullResult.data!.sessions[0].exercises[0].sets[0].repSummaries[0];
+				pullResult.data?.sessions[0].exercises[0].sets[0].repSummaries[0];
 
 			// Assert: All fields preserved
 			expect(pulledRep.meanVelocityMps).toBe(0.82);
@@ -656,7 +656,7 @@ describe("Biomechanics Data Integrity", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			const pulledRep =
-				pullResult.data!.sessions[0].exercises[0].sets[0].repSummaries[0];
+				pullResult.data?.sessions[0].exercises[0].sets[0].repSummaries[0];
 
 			// Assert: Nulls preserved (not converted to 0 or other values)
 			expect(pulledRep.meanVelocityMps).toBeNull();

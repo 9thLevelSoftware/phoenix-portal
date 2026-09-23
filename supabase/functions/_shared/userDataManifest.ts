@@ -23,8 +23,6 @@
  *     ends paging only when a one-row probe after the page's last key finds
  *     nothing, so a PostgREST `max_rows` below `USER_DATA_PAGE_SIZE` cannot
  *     end paging early (and no per-page count rescans large tables).
- *     computes the end of paging from an exact row count, so a PostgREST
- *     `max_rows` below `USER_DATA_PAGE_SIZE` cannot end paging early.
  *   - `tableMissing: true` (HTTP 200, no rows) is returned only for
  *     `mayBeAbsent` entries whose relation does not exist in that database.
  *     The client MUST record every such table in the export (e.g. "N tables

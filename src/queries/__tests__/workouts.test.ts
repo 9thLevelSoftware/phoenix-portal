@@ -168,7 +168,7 @@ describe("sessionDetailOptions", () => {
 			is_pr: true,
 			notes: null,
 		};
-		const exerciseRows = [
+		const _exerciseRows = [
 			{
 				id: "aaaa1111-1111-4111-8111-111111111111",
 				session_id: "11111111-1111-4111-8111-111111111111",
@@ -178,7 +178,7 @@ describe("sessionDetailOptions", () => {
 				cable_count: 2,
 			},
 		];
-		const setRows = [
+		const _setRows = [
 			{
 				id: "bbbb1111-1111-4111-8111-111111111111",
 				exercise_id: "aaaa1111-1111-4111-8111-111111111111",
@@ -197,6 +197,7 @@ describe("sessionDetailOptions", () => {
 			name: "Squat",
 			muscle_group: "Legs",
 			order_index: 0,
+			cable_count: 2,
 		};
 		const embeddedRow = {
 			...SESSION_ROW,
@@ -244,7 +245,7 @@ describe("sessionDetailOptions", () => {
 		expect(exercises).toEqual([
 			{
 				...exerciseRow,
-				sets: [{ ...setRow, weight_kg: 120 }], // weight_kg doubled by Zod transform
+				sets: [{ ...setRow, weight_kg: 60 }], // per-cable kg (KD-8)
 				hasPR: true,
 			},
 		]);
@@ -376,14 +377,14 @@ describe("comparisonDetailOptions", () => {
 			exercises: [
 				{
 					name: "Squat",
-					// weights doubled by Zod: (100 + 120) * 5
-					volume: 1100,
-					maxWeight: 120,
+					// Per-cable kg (KD-8): (50 + 60) * 5
+					volume: 550,
+					maxWeight: 60,
 					sets: 2,
 					// null velocity ignored: (0.5 + 0.7) / 2
 					avgVelocity: expect.closeTo(0.6, 10),
 				},
-				{ name: "Row", volume: 200, maxWeight: 40, sets: 1, avgVelocity: 0 },
+				{ name: "Row", volume: 100, maxWeight: 20, sets: 1, avgVelocity: 0 },
 			],
 		});
 	});

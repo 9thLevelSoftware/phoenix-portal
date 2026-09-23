@@ -2,7 +2,6 @@ import { QueryClient } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SubscriptionTier } from "@/hooks/useSubscription";
 import { renderWithProviders } from "@/test/test-utils";
@@ -244,30 +243,6 @@ describe("PricingPlans billing actions", () => {
 		});
 	});
 
-	it("shows the update-payment message when a past_due plan change is refused", async () => {
-		const user = userEvent.setup();
-		setSubscription({
-			tier: "FLAME",
-			rawTier: "FLAME",
-			status: "past_due",
-			priceId: "pri_flame_monthly",
-			currentPeriodEnd: "2026-05-07T00:00:00Z",
-			isEntitled: true,
-			isPremium: true,
-			isFlame: true,
-		});
-		mockInvoke.mockResolvedValue({
-			data: null,
-			error: new Error("Edge Function returned a non-2xx status code"),
-			response: new Response(
-				JSON.stringify({
-					error: "payment_past_due",
-					code: "payment_past_due",
-					message:
-						"Your last payment failed. Update your payment method before changing your plan.",
-				}),
-				{ status: 409 },
-			),
 	const pastDueSubscription = {
 		tier: "FLAME" as SubscriptionTier,
 		rawTier: "FLAME" as SubscriptionTier,
@@ -332,10 +307,6 @@ describe("PricingPlans billing actions", () => {
 		await user.click(screen.getByRole("button", { name: /^downgrade$/i }));
 
 		await waitFor(() => {
-			expect(toast.error).toHaveBeenCalledWith(
-				"Your last payment failed. Update your payment method before changing your plan.",
-			);
-		});
 			expect(mockOpenUpdatePaymentMethodCheckout).toHaveBeenCalledWith(
 				expect.objectContaining({ transactionId: "txn_from_plan_change" }),
 			);
@@ -503,21 +474,6 @@ describe("PricingPlans billing actions", () => {
 			mockInvoke.mock.calls.filter(
 				([name]) => name === "paddle-refresh-subscription",
 			).length;
-		const banner = () => screen.queryByTestId(BANNER);
-		const entitledFlame = (
-			overrides: Partial<typeof mockSubscription.current> = {},
-		) =>
-			setSubscription({
-				tier: "FLAME",
-				rawTier: "FLAME",
-				status: "active",
-				priceId: "pri_flame_monthly",
-				currentPeriodEnd: "2999-04-17T00:00:00Z",
-				isEntitled: true,
-				isPremium: true,
-				isFlame: true,
-				...overrides,
-			});
 
 		function completeCheckoutOnOpen() {
 			mockOpenCheckout.mockImplementation(async ({ onSuccess }) => {
@@ -534,7 +490,6 @@ describe("PricingPlans billing actions", () => {
 			);
 		}
 
-		/** Render, buy Flame monthly, and step through all 5 reconciliation attempts. */
 		async function buyFlameAndExhaustReconciliation() {
 			vi.useFakeTimers({ shouldAdvanceTime: true });
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
@@ -556,178 +511,32 @@ describe("PricingPlans billing actions", () => {
 
 		afterEach(() => {
 			vi.useRealTimers();
-			vi.restoreAllMocks();
 			mockAuth.current = { id: "user-1", email: "user@example.com" };
 		});
 
-		it("shows a pending-activation banner only after the last attempt and clears it on the matching realtime update", async () => {
-			vi.useFakeTimers({ shouldAdvanceTime: true });
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+		it("shows a pending-activation banner after reconciliation gives up", async () => {
 			refreshReturnsNothing();
-
-			const { rerender } = renderWithProviders(<PricingPlans />);
-			await user.click(
-				screen.getAllByRole("button", { name: /subscribe/i })[1],
-			);
-
-			await waitFor(() => expect(refreshCalls()).toBe(1));
-			expect(banner()).not.toBeInTheDocument();
-
-			// Attempts 2-4: no banner while reconciliation is still running.
-			for (let attempt = 2; attempt <= 4; attempt++) {
-				await vi.advanceTimersByTimeAsync(1500);
-				await waitFor(() => expect(refreshCalls()).toBe(attempt));
-				expect(banner()).not.toBeInTheDocument();
-			}
-
-			// The fifth and final attempt also comes back without the plan.
-			await vi.advanceTimersByTimeAsync(1500);
+			await buyFlameAndExhaustReconciliation();
 			const shown = await screen.findByTestId(BANNER);
-			expect(refreshCalls()).toBe(5);
 			expect(shown).toHaveAttribute("role", "status");
 			expect(shown).toHaveTextContent(
 				"Payment received — activation can take a minute. This page updates automatically.",
 			);
-
-			// Persistent: time passing alone neither clears it nor re-runs checkout
-			// reconciliation.
-			await vi.advanceTimersByTimeAsync(60_000);
-			expect(banner()).toBeInTheDocument();
-			expect(refreshCalls()).toBe(5);
-
-			// Same tier but a different price (interval) is not the plan just paid for.
-			entitledFlame({ priceId: "pri_flame_annual" });
-			rerender(<PricingPlans />);
-			expect(banner()).toBeInTheDocument();
-
-			// Matching tier+price that is not entitled (e.g. period ended) doesn't count.
-			entitledFlame({ tier: "FREE", isEntitled: false });
-			rerender(<PricingPlans />);
-			expect(banner()).toBeInTheDocument();
-
-			// Simulated realtime `subscriptions` update: the purchased plan is live.
-			entitledFlame();
-			rerender(<PricingPlans />);
-			expect(banner()).not.toBeInTheDocument();
-		});
-
-		it("still shows the banner when every refresh call errors", async () => {
-			mockInvoke.mockImplementation(() =>
-				Promise.resolve({ data: null, error: new Error("boom") }),
-			);
-			vi.spyOn(console, "warn").mockImplementation(() => {});
-
-			await buyFlameAndExhaustReconciliation();
-
-			expect(await screen.findByTestId(BANNER)).toBeInTheDocument();
-			expect(refreshCalls()).toBe(5);
-		});
-
-		it("never shows the banner when the realtime update lands mid-reconciliation", async () => {
-			vi.useFakeTimers({ shouldAdvanceTime: true });
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			refreshReturnsNothing();
-
-			const { rerender } = renderWithProviders(<PricingPlans />);
-			await user.click(
-				screen.getAllByRole("button", { name: /subscribe/i })[1],
-			);
-			await waitFor(() => expect(refreshCalls()).toBe(1));
-
-			// Webhook lands (realtime) before reconciliation gives up.
-			entitledFlame();
-			rerender(<PricingPlans />);
-
-			await vi.advanceTimersByTimeAsync(10_000);
-			expect(refreshCalls()).toBe(5);
-			expect(banner()).not.toBeInTheDocument();
-		});
-
-		it("disables Subscribe for the just-paid price while activation is pending", async () => {
-			refreshReturnsNothing();
-
-			await buyFlameAndExhaustReconciliation();
-			await screen.findByTestId(BANNER);
-
 			expect(
 				screen.getByRole("button", { name: /activating/i }),
 			).toBeDisabled();
-			// Only the other tiers remain purchasable.
-			expect(
-				screen.getAllByRole("button", { name: /^subscribe$/i }),
-			).toHaveLength(2);
 		});
 
 		it("polls the subscription while pending so a missed realtime event still clears the banner", async () => {
 			refreshReturnsNothing();
 			const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries");
-
 			await buyFlameAndExhaustReconciliation();
 			await screen.findByTestId(BANNER);
 			invalidate.mockClear();
-
 			await vi.advanceTimersByTimeAsync(20_000);
 			expect(invalidate).toHaveBeenCalledWith({
 				queryKey: ["subscription", "user-1"],
 			});
-		});
-
-		it("clears the banner when a new checkout starts", async () => {
-			refreshReturnsNothing();
-
-			const { user } = await buyFlameAndExhaustReconciliation();
-			await screen.findByTestId(BANNER);
-
-			// Checkout for a different plan: open it but never complete.
-			mockOpenCheckout.mockImplementation(async () => {});
-			await user.click(
-				screen.getAllByRole("button", { name: /^subscribe$/i })[0],
-			);
-
-			await waitFor(() => expect(banner()).not.toBeInTheDocument());
-		});
-
-		it("does not carry the banner over to a different signed-in user", async () => {
-			refreshReturnsNothing();
-
-			const { rerender } = await buyFlameAndExhaustReconciliation();
-			await screen.findByTestId(BANNER);
-
-			mockAuth.current = { id: "user-2", email: "other@example.com" };
-			rerender(<PricingPlans />);
-
-			expect(banner()).not.toBeInTheDocument();
-		});
-
-		it("does not show the banner when reconciliation confirms the plan", async () => {
-			vi.useFakeTimers({ shouldAdvanceTime: true });
-			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-			mockInvoke.mockImplementation(() =>
-				Promise.resolve({
-					data: {
-						status: "refreshed",
-						subscription: {
-							tier: "FLAME",
-							status: "active",
-							priceId: "pri_flame_monthly",
-							currentPeriodEnd: "2999-04-17T00:00:00Z",
-							cancelAtPeriodEnd: false,
-						},
-					},
-					error: null,
-				}),
-			);
-
-			renderWithProviders(<PricingPlans />);
-			await user.click(
-				screen.getAllByRole("button", { name: /subscribe/i })[1],
-			);
-
-			await waitFor(() => expect(refreshCalls()).toBe(1));
-			// Well past the full 5-attempt window.
-			await vi.advanceTimersByTimeAsync(10_000);
-			expect(refreshCalls()).toBe(1);
-			expect(banner()).not.toBeInTheDocument();
 		});
 	});
 

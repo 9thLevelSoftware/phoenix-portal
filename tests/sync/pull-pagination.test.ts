@@ -96,9 +96,9 @@ describe("mobile-sync-pull pagination", () => {
 				);
 				const page1 = await callPullEndpoint(0, testUser.accessToken);
 				expect(page1.success).toBe(true);
-				expect(page1.data!.sessions.length).toBe(DEFAULT_PAGE_SIZE);
-				expect(page1.data!.hasMore).toBe(true);
-				expect(typeof page1.data!.nextCursor).toBe("string");
+				expect(page1.data?.sessions.length).toBe(DEFAULT_PAGE_SIZE);
+				expect(page1.data?.hasMore).toBe(true);
+				expect(typeof page1.data?.nextCursor).toBe("string");
 			},
 		);
 
@@ -111,7 +111,7 @@ describe("mobile-sync-pull pagination", () => {
 			);
 			const result = await callPullEndpoint(0, testUser.accessToken);
 			expect(result.success).toBe(true);
-			expect(result.data!.sessions.length).toBe(10);
+			expect(result.data?.sessions.length).toBe(10);
 		});
 	});
 
@@ -138,8 +138,8 @@ describe("mobile-sync-pull pagination", () => {
 						cursor,
 					});
 					expect(result.success).toBe(true);
-					for (const s of result.data!.sessions) collected.add(s.id);
-					cursor = result.data!.hasMore ? result.data!.nextCursor : undefined;
+					for (const s of result.data?.sessions) collected.add(s.id);
+					cursor = result.data?.hasMore ? result.data?.nextCursor : undefined;
 					safety++;
 				} while (cursor && safety < 20);
 
@@ -169,20 +169,20 @@ describe("mobile-sync-pull pagination", () => {
 			const future = Date.now() + 60_000; // 1 minute ahead
 			const result = await callPullEndpoint(future, testUser.accessToken);
 			expect(result.success).toBe(true);
-			expect(result.data!.sessions).toEqual([]);
-			expect(result.data!.routines).toEqual([]);
-			expect(result.data!.cycles).toEqual([]);
-			expect(result.data!.badges).toEqual([]);
+			expect(result.data?.sessions).toEqual([]);
+			expect(result.data?.routines).toEqual([]);
+			expect(result.data?.cycles).toEqual([]);
+			expect(result.data?.badges).toEqual([]);
 			// Stats/RPG are singletons — null when unchanged
-			expect(result.data!.rpgAttributes).toBeNull();
-			expect(result.data!.gamificationStats).toBeNull();
+			expect(result.data?.rpgAttributes).toBeNull();
+			expect(result.data?.gamificationStats).toBeNull();
 		});
 
 		it("asserts hasMore=false and nextCursor is absent/undefined in empty-delta pull", async () => {
 			const future = Date.now() + 60_000;
 			const result = await callPullEndpoint(future, testUser.accessToken);
-			expect(result.data!.hasMore).toBe(false);
-			expect(result.data!.nextCursor).toBeUndefined();
+			expect(result.data?.hasMore).toBe(false);
+			expect(result.data?.nextCursor).toBeUndefined();
 		});
 	});
 

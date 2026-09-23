@@ -16,12 +16,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { formatLoad, toLoadDisplay } from "@/lib/units/loadDisplay";
 import {
-	createRoutineExerciseFixture,
-	createSessionFixture,
-	createSetFixture,
-	WEIGHT_BOUNDARY_VALUES,
-} from "../fixtures";
-import {
 	callPullEndpoint,
 	callPushEndpoint,
 	createMinimalPushPayload,
@@ -84,7 +78,7 @@ describe("Weight Transform Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: Weight stored as per-cable value
-			const pulledSet = pullResult.data!.sessions[0].exercises[0].sets[0];
+			const pulledSet = pullResult.data?.sessions[0].exercises[0].sets[0];
 			expect(pulledSet.weightKg).toBe(perCableWeight);
 
 			// Verify mock store has per-cable value
@@ -130,7 +124,7 @@ describe("Weight Transform Tests", () => {
 				const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 				const pulledWeight =
-					pullResult.data!.sessions[0].exercises[0].sets[0].weightKg;
+					pullResult.data?.sessions[0].exercises[0].sets[0].weightKg;
 				expect(pulledWeight).toBe(perCableWeight);
 			}
 		});
@@ -189,7 +183,7 @@ describe("Weight Transform Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			const pulledWeight =
-				pullResult.data!.sessions[0].exercises[0].sets[0].weightKg;
+				pullResult.data?.sessions[0].exercises[0].sets[0].weightKg;
 			expect(pulledWeight).toBe(0);
 
 			// Display is 0 per cable (and 0 total when the count is known)
@@ -229,7 +223,7 @@ describe("Weight Transform Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			const pulledWeight =
-				pullResult.data!.sessions[0].exercises[0].sets[0].weightKg;
+				pullResult.data?.sessions[0].exercises[0].sets[0].weightKg;
 			expect(pulledWeight).toBe(1);
 
 			// Primary display is the pulled per-cable value; unknown count -> no total
@@ -269,7 +263,7 @@ describe("Weight Transform Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			const pulledWeight =
-				pullResult.data!.sessions[0].exercises[0].sets[0].weightKg;
+				pullResult.data?.sessions[0].exercises[0].sets[0].weightKg;
 			expect(pulledWeight).toBe(MAX_PER_CABLE_KG);
 
 			expect(toLoadDisplay(pulledWeight, 2)).toEqual({
@@ -296,7 +290,7 @@ describe("Weight Transform Tests", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			expect(pullResult.data!.sessions[0].totalVolume).toBe(perCableVolume);
+			expect(pullResult.data?.sessions[0].totalVolume).toBe(perCableVolume);
 		});
 
 		it("should store heaviest_lift_kg as per-cable value", async () => {
@@ -314,7 +308,7 @@ describe("Weight Transform Tests", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			expect(pullResult.data!.sessions[0].heaviestLiftKg).toBe(
+			expect(pullResult.data?.sessions[0].heaviestLiftKg).toBe(
 				heaviestPerCable,
 			);
 		});
@@ -354,7 +348,7 @@ describe("Weight Transform Tests", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const pulledSets = pullResult.data!.sessions[0].exercises[0].sets;
+			const pulledSets = pullResult.data?.sessions[0].exercises[0].sets;
 			expect(pulledSets).toHaveLength(5);
 
 			// Verify each set's weight preserved
@@ -401,7 +395,7 @@ describe("Weight Transform Tests", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const pulledExercise = pullResult.data!.routines[0].exercises[0];
+			const pulledExercise = pullResult.data?.routines[0].exercises[0];
 			expect(pulledExercise.weight).toBe(perCableWeight);
 		});
 
@@ -442,7 +436,7 @@ describe("Weight Transform Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			const pulledPerSetWeights =
-				pullResult.data!.routines[0].exercises[0].perSetWeights;
+				pullResult.data?.routines[0].exercises[0].perSetWeights;
 			expect(pulledPerSetWeights).toBe(JSON.stringify(perSetWeightsPerCable));
 
 			// Verify parsing and values
@@ -476,7 +470,7 @@ describe("Weight Transform Tests", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			expect(pullResult.data!.sessions[0].totalVolume).toBe(
+			expect(pullResult.data?.sessions[0].totalVolume).toBe(
 				expectedPerCableVolume,
 			);
 		});

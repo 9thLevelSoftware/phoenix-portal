@@ -236,7 +236,6 @@ describe("useSaveRoutine", () => {
 	});
 
 	it("rejects an unknown mode before calling the create RPC", async () => {
-	it("rejects an unknown mode before inserting the routine", async () => {
 		const { useSaveRoutine } = await import("../routines");
 
 		const { wrapper } = createWrapper();

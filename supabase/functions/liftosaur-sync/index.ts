@@ -1,6 +1,4 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { completeClaimedSyncQueueEntry } from "../_shared/completeSyncQueueEntry.ts";
-import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { errorMessage } from "../_shared/errorMessage.ts";
 import { computeIncrementalWindow } from "../_shared/incrementalWindow.ts";
@@ -148,33 +146,6 @@ async function runLiftosaurSync(
 	req: Request,
 	deps: LiftosaurSyncDependencies,
 	owned: OwnedQueueRow,
-// deno-lint-ignore no-explicit-any
-type DbClient = SupabaseClient<any, any, any>;
-export interface LiftosaurSyncAuthClient {
-	auth: {
-		getUser(): Promise<{ data: { user: { id: string } | null } }>;
-	};
-export interface LiftosaurSyncHandlerDependencies {
-	createAuthClient(authorization: string): LiftosaurSyncAuthClient;
-	createAdminClient(): DbClient;
-function defaultLiftosaurSyncDependencies(): LiftosaurSyncHandlerDependencies {
-	return {
-		createAuthClient(authorization: string) {
-			return createClient(
-				Deno.env.get("SUPABASE_URL")!,
-				Deno.env.get("SUPABASE_ANON_KEY")!,
-				{ global: { headers: { Authorization: authorization } } }
-			) as unknown as LiftosaurSyncAuthClient;
-		},
-		createAdminClient() {
-			return createClient(
-				Deno.env.get("SUPABASE_URL")!,
-				Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-			);
-		},
-	};
-async function liftosaurSyncHandler(
-	deps: LiftosaurSyncHandlerDependencies
 ): Promise<Response> {
 	const cors = getCorsHeaders(req);
 
@@ -208,7 +179,6 @@ async function liftosaurSyncHandler(
 			deps.env("SUPABASE_ANON_KEY")!,
 			{ global: { headers: { Authorization: authHeader } } }
 		);
-		const supabaseAuth = deps.createAuthClient(authHeader);
 		const {
 			data: { user: jwtUser },
 		} = await supabaseAuth.auth.getUser();
@@ -252,7 +222,6 @@ async function liftosaurSyncHandler(
 			deps.env("SUPABASE_URL")!,
 			deps.env("SUPABASE_SERVICE_ROLE_KEY")!
 		);
-		const supabase = deps.createAdminClient();
 
 		// Cap browser-initiated invocations per user. Keyed on the JWT-verified
 		// id, so nobody can spend another user's budget; the queue path (service
@@ -674,14 +643,4 @@ async function liftosaurSyncHandler(
 			}
 		);
 	}
-}
-
-export function createLiftosaurSyncHandler(
-	deps: LiftosaurSyncHandlerDependencies = defaultLiftosaurSyncDependencies()
-): (req: Request) => Promise<Response> {
-	return (req) => liftosaurSyncHandler(req, deps);
-}
-
-if (import.meta.main) {
-	Deno.serve(createLiftosaurSyncHandler());
 }

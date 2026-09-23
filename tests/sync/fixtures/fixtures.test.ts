@@ -83,7 +83,7 @@ describe("Workout Fixtures", () => {
 		});
 
 		expect(nested.exercises[0].sets[0].telemetry).toBeDefined();
-		expect(nested.exercises[0].sets[0].telemetry!.length).toBeGreaterThan(0);
+		expect(nested.exercises[0].sets[0].telemetry?.length).toBeGreaterThan(0);
 	});
 });
 

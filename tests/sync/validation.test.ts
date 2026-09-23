@@ -273,7 +273,7 @@ describe("Server-Side Validation Invariants", () => {
 
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.sessions).toHaveLength(0);
+			expect(pullResult.data?.sessions).toHaveLength(0);
 		});
 
 		it("rejects duplicate assessment keys before persisting earlier rows", async () => {
@@ -313,7 +313,7 @@ describe("Server-Side Validation Invariants", () => {
 
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.sessions).toHaveLength(0);
+			expect(pullResult.data?.sessions).toHaveLength(0);
 		});
 	});
 

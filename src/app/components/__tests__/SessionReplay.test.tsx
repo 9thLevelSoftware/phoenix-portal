@@ -50,18 +50,27 @@ const mockDb = vi.hoisted(() => ({
 
 vi.mock("@/lib/supabase", () => {
 	const chainFor = (table: string) => {
+		const result = () =>
+			Promise.resolve({ data: mockDb.rows[table] ?? [], error: null });
 		const chain = {
 			select: () => chain,
 			eq: () => chain,
+			gte: () => chain,
+			or: () => chain,
+			limit: () => chain,
 			maybeSingle: () => Promise.resolve({ data: null, error: null }),
-			order: () =>
-				Promise.resolve({ data: mockDb.rows[table] ?? [], error: null }),
+			order: () => chain,
 			single: () =>
 				Promise.resolve(
 					mockDb.session
 						? { data: mockDb.session, error: null }
 						: { data: null, error: { message: "not found" } },
 				),
+			// biome-ignore lint/suspicious/noThenProperty: supabase query builders are thenable
+			then: (
+				resolve: (value: { data: unknown; error: null }) => unknown,
+				reject?: (reason: unknown) => unknown,
+			) => result().then(resolve, reject),
 		};
 		return chain;
 	};

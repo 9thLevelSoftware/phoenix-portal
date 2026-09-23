@@ -7,7 +7,6 @@ import type {
 	EmbeddedRoutineSnapshot,
 	RoutineExerciseSnapshot,
 } from "@/schemas/community";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import {
 	eccentricLoadLabel,
 	echoLevelLabel,
@@ -16,7 +15,6 @@ import {
 	toWireMode,
 	workoutModeLabel,
 } from "../../../../supabase/functions/_shared/workoutModes.ts";
-import { workoutModeLabel } from "../../../../supabase/functions/_shared/workoutModes.ts";
 
 function orderedExercises(exercises: RoutineExerciseSnapshot[]) {
 	return [...exercises].sort((a, b) => a.order_index - b.order_index);

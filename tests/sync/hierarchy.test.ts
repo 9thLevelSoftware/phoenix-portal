@@ -225,9 +225,9 @@ describe("Task 1: Nested Hierarchy Integrity", () => {
 			expect(pullResult.success).toBe(true);
 
 			// Assert: Full hierarchy returned
-			expect(pullResult.data!.sessions).toHaveLength(1);
+			expect(pullResult.data?.sessions).toHaveLength(1);
 
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 			expect(pulledSession.id).toBe(session.id);
 			expect(pulledSession.exercises).toHaveLength(3);
 
@@ -259,7 +259,7 @@ describe("Task 1: Nested Hierarchy Integrity", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 
 			// Verify all exercises reference correct session
 			for (const exercise of pulledSession.exercises) {
@@ -281,7 +281,7 @@ describe("Task 1: Nested Hierarchy Integrity", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 
 			// Build a set of valid exercise IDs
 			const validExerciseIds = new Set(
@@ -311,7 +311,7 @@ describe("Task 1: Nested Hierarchy Integrity", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 
 			// Verify all rep summaries reference correct sets
 			for (const exercise of pulledSession.exercises) {
@@ -339,7 +339,7 @@ describe("Task 1: Nested Hierarchy Integrity", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 
 			// Verify exercises maintain order
 			const sortedExercises = [...pulledSession.exercises].sort(
@@ -365,7 +365,7 @@ describe("Task 1: Nested Hierarchy Integrity", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 
 			for (const exercise of pulledSession.exercises) {
 				const sortedSets = [...exercise.sets].sort(
@@ -391,7 +391,7 @@ describe("Task 1: Nested Hierarchy Integrity", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 
 			for (const exercise of pulledSession.exercises) {
 				for (const set of exercise.sets) {
@@ -436,11 +436,11 @@ describe("Task 1: Nested Hierarchy Integrity", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 			expect(pullResult.success).toBe(true);
 
-			const pulledSession = pullResult.data!.sessions.find(
+			const pulledSession = pullResult.data?.sessions.find(
 				(s) => s.id === session.id,
 			);
 			expect(pulledSession).toBeDefined();
-			expect(pulledSession!.exercises).toHaveLength(0);
+			expect(pulledSession?.exercises).toHaveLength(0);
 		});
 
 		it("should handle exercise with 0 sets gracefully", async () => {
@@ -483,12 +483,12 @@ describe("Task 1: Nested Hierarchy Integrity", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 			expect(pullResult.success).toBe(true);
 
-			const pulledSession = pullResult.data!.sessions.find(
+			const pulledSession = pullResult.data?.sessions.find(
 				(s) => s.id === session.id,
 			);
 			expect(pulledSession).toBeDefined();
-			expect(pulledSession!.exercises).toHaveLength(1);
-			expect(pulledSession!.exercises[0].sets).toHaveLength(0);
+			expect(pulledSession?.exercises).toHaveLength(1);
+			expect(pulledSession?.exercises[0].sets).toHaveLength(0);
 		});
 
 		it("should handle set with 0 rep summaries gracefully", async () => {
@@ -545,11 +545,11 @@ describe("Task 1: Nested Hierarchy Integrity", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 			expect(pullResult.success).toBe(true);
 
-			const pulledSession = pullResult.data!.sessions.find(
+			const pulledSession = pullResult.data?.sessions.find(
 				(s) => s.id === sessionId,
 			);
 			expect(pulledSession).toBeDefined();
-			expect(pulledSession!.exercises[0].sets[0].repSummaries).toHaveLength(0);
+			expect(pulledSession?.exercises[0].sets[0].repSummaries).toHaveLength(0);
 		});
 	});
 
@@ -601,7 +601,7 @@ describe("Task 1: Nested Hierarchy Integrity", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 
 			// Verify pulled structure maintains correct references
 			for (const exercise of pulledSession.exercises) {
@@ -645,15 +645,15 @@ describe("Task 1: Nested Hierarchy Integrity", () => {
 
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.sessions).toHaveLength(3);
+			expect(pullResult.data?.sessions).toHaveLength(3);
 
 			// Verify each session's hierarchy is intact
 			for (const originalSession of [session1, session2, session3]) {
-				const pulledSession = pullResult.data!.sessions.find(
+				const pulledSession = pullResult.data?.sessions.find(
 					(s) => s.id === originalSession.id,
 				);
 				expect(pulledSession).toBeDefined();
-				expect(pulledSession!.exercises.length).toBe(
+				expect(pulledSession?.exercises.length).toBe(
 					originalSession.exercises.length,
 				);
 
@@ -815,8 +815,8 @@ describe("Task 2: Profile Scoping Isolation", () => {
 			expect(pullResult.success).toBe(true);
 
 			// The pull response should include localProfiles array
-			expect(pullResult.data!.localProfiles).toBeDefined();
-			expect(Array.isArray(pullResult.data!.localProfiles)).toBe(true);
+			expect(pullResult.data?.localProfiles).toBeDefined();
+			expect(Array.isArray(pullResult.data?.localProfiles)).toBe(true);
 		});
 	});
 
@@ -847,7 +847,7 @@ describe("Task 2: Profile Scoping Isolation", () => {
 				profileId: profileA,
 			});
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.routines).toBeDefined();
+			expect(pullResult.data?.routines).toBeDefined();
 		});
 
 		it("should scope training cycles by profile", async () => {
@@ -881,7 +881,7 @@ describe("Task 2: Profile Scoping Isolation", () => {
 				profileId: profileA,
 			});
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.cycles).toBeDefined();
+			expect(pullResult.data?.cycles).toBeDefined();
 		});
 	});
 
@@ -903,7 +903,7 @@ describe("Task 2: Profile Scoping Isolation", () => {
 
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.sessions.length).toBeGreaterThanOrEqual(1);
+			expect(pullResult.data?.sessions.length).toBeGreaterThanOrEqual(1);
 		});
 
 		it("should include null-profile sessions when pulling for specific profile", async () => {
@@ -967,7 +967,7 @@ describe("Task 3: Delta Sync Behavior", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.sessions.length).toBeGreaterThanOrEqual(1);
+			expect(pullResult.data?.sessions.length).toBeGreaterThanOrEqual(1);
 		});
 
 		it("should return syncTime for tracking subsequent syncs", async () => {
@@ -985,9 +985,9 @@ describe("Task 3: Delta Sync Behavior", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.syncTime).toBeDefined();
-			expect(typeof pullResult.data!.syncTime).toBe("number");
-			expect(pullResult.data!.syncTime).toBeGreaterThan(0);
+			expect(pullResult.data?.syncTime).toBeDefined();
+			expect(typeof pullResult.data?.syncTime).toBe("number");
+			expect(pullResult.data?.syncTime).toBeGreaterThan(0);
 		});
 	});
 
@@ -1007,7 +1007,7 @@ describe("Task 3: Delta Sync Behavior", () => {
 
 			// Get initial sync time
 			const initialPull = await callPullEndpoint(0, testUser.accessToken);
-			const lastSyncTime = initialPull.data!.syncTime;
+			const lastSyncTime = initialPull.data?.syncTime;
 
 			// Wait a moment and push another session
 			await new Promise((resolve) => setTimeout(resolve, 10));
@@ -1032,7 +1032,7 @@ describe("Task 3: Delta Sync Behavior", () => {
 			expect(deltaPull.success).toBe(true);
 			// In mock mode, the simple timestamp check returns all or nothing
 			// In real Supabase, it would only return session2
-			expect(deltaPull.data!.syncTime).toBeGreaterThan(lastSyncTime);
+			expect(deltaPull.data?.syncTime).toBeGreaterThan(lastSyncTime);
 		});
 
 		it("should return empty arrays when no changes since lastSync", async () => {
@@ -1163,7 +1163,7 @@ describe("Task 3: Delta Sync Behavior", () => {
 			expect(pullResult.success).toBe(true);
 
 			// Document: Sessions filter by updated_at OR started_at
-			expect(pullResult.data!.sessions).toBeDefined();
+			expect(pullResult.data?.sessions).toBeDefined();
 		});
 
 		it("should verify routines support delta sync via updated_at", async () => {
@@ -1190,7 +1190,7 @@ describe("Task 3: Delta Sync Behavior", () => {
 			expect(pullResult.success).toBe(true);
 
 			// Document: Routines filter by updated_at
-			expect(pullResult.data!.routines).toBeDefined();
+			expect(pullResult.data?.routines).toBeDefined();
 		});
 
 		it("should verify badges support delta sync via earned_at", async () => {
@@ -1201,7 +1201,7 @@ describe("Task 3: Delta Sync Behavior", () => {
 			expect(pullResult.success).toBe(true);
 
 			// Document: Badges filter by earned_at
-			expect(pullResult.data!.badges).toBeDefined();
+			expect(pullResult.data?.badges).toBeDefined();
 		});
 
 		it("should verify rpg_attributes and gamification_stats support delta sync", async () => {
@@ -1268,7 +1268,7 @@ describe("Integration: Combined Sync Scenarios", () => {
 			profileId,
 		});
 		expect(initialPull.success).toBe(true);
-		const syncTime = initialPull.data!.syncTime;
+		const syncTime = initialPull.data?.syncTime;
 
 		// Push more data with same profile
 		const session2 = createFullHierarchySession(testUser.id, {
@@ -1292,7 +1292,7 @@ describe("Integration: Combined Sync Scenarios", () => {
 
 		expect(deltaPull.success).toBe(true);
 		// syncTime should be >= the previous sync time (may be same ms in fast execution)
-		expect(deltaPull.data!.syncTime).toBeGreaterThanOrEqual(syncTime);
+		expect(deltaPull.data?.syncTime).toBeGreaterThanOrEqual(syncTime);
 	});
 
 	it("should maintain hierarchy integrity after multiple sync cycles", async () => {
@@ -1320,14 +1320,14 @@ describe("Integration: Combined Sync Scenarios", () => {
 		expect(pullResult.success).toBe(true);
 
 		// Find our session (should be latest version with 3 exercises)
-		const pulledSession = pullResult.data!.sessions.find(
+		const pulledSession = pullResult.data?.sessions.find(
 			(s) => s.id === sessionId,
 		);
 		expect(pulledSession).toBeDefined();
 
 		// Verify hierarchy is intact
-		expect(pulledSession!.exercises.length).toBeGreaterThan(0);
-		for (const exercise of pulledSession!.exercises) {
+		expect(pulledSession?.exercises.length).toBeGreaterThan(0);
+		for (const exercise of pulledSession?.exercises) {
 			expect(exercise.sessionId).toBe(sessionId);
 			expect(exercise.sets.length).toBeGreaterThan(0);
 		}

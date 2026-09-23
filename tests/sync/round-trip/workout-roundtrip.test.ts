@@ -75,7 +75,7 @@ describe("Workout Round-Trip Tests", () => {
 			expect(pullResult.data).toBeDefined();
 
 			// Assert: Verify the session came back with matching core fields
-			const pulledSessions = pullResult.data!.sessions;
+			const pulledSessions = pullResult.data?.sessions;
 			expect(pulledSessions).toHaveLength(1);
 
 			const pulledSession = pulledSessions[0];
@@ -118,7 +118,7 @@ describe("Workout Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: Enrichment fields preserved
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 			expect(pulledSession.avgVelocityMps).toBe(0.72);
 			expect(pulledSession.avgAsymmetryPct).toBe(1.5);
 			expect(pulledSession.velocityLossPct).toBe(15.2);
@@ -157,7 +157,7 @@ describe("Workout Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: Nulls preserved
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 			expect(pulledSession.name).toBeNull();
 			expect(pulledSession.routineName).toBeNull();
 		});
@@ -199,7 +199,7 @@ describe("Workout Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: Exercises intact
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 			expect(pulledSession.exercises).toHaveLength(2);
 
 			const pulledExercise1 = pulledSession.exercises.find(
@@ -210,13 +210,13 @@ describe("Workout Round-Trip Tests", () => {
 			);
 
 			expect(pulledExercise1).toBeDefined();
-			expect(pulledExercise1!.name).toBe("Bench Press");
-			expect(pulledExercise1!.muscleGroup).toBe("Chest");
-			expect(pulledExercise1!.orderIndex).toBe(0);
+			expect(pulledExercise1?.name).toBe("Bench Press");
+			expect(pulledExercise1?.muscleGroup).toBe("Chest");
+			expect(pulledExercise1?.orderIndex).toBe(0);
 
 			expect(pulledExercise2).toBeDefined();
-			expect(pulledExercise2!.name).toBe("Incline Dumbbell Press");
-			expect(pulledExercise2!.orderIndex).toBe(1);
+			expect(pulledExercise2?.name).toBe("Incline Dumbbell Press");
+			expect(pulledExercise2?.orderIndex).toBe(1);
 		});
 
 		it("should preserve nested sets within exercises", async () => {
@@ -274,15 +274,15 @@ describe("Workout Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: Sets preserved with correct values
-			const pulledExercise = pullResult.data!.sessions[0].exercises[0];
+			const pulledExercise = pullResult.data?.sessions[0].exercises[0];
 			expect(pulledExercise.sets).toHaveLength(3);
 
 			const pulledSet3 = pulledExercise.sets.find((s) => s.id === set3Id);
 			expect(pulledSet3).toBeDefined();
-			expect(pulledSet3!.weightKg).toBe(70);
-			expect(pulledSet3!.actualReps).toBe(8);
-			expect(pulledSet3!.rpe).toBe(9);
-			expect(pulledSet3!.isPr).toBe(true);
+			expect(pulledSet3?.weightKg).toBe(70);
+			expect(pulledSet3?.actualReps).toBe(8);
+			expect(pulledSet3?.rpe).toBe(9);
+			expect(pulledSet3?.isPr).toBe(true);
 		});
 
 		it("should preserve rep summaries within sets", async () => {
@@ -351,19 +351,19 @@ describe("Workout Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: Rep summaries preserved
-			const pulledSet = pullResult.data!.sessions[0].exercises[0].sets[0];
+			const pulledSet = pullResult.data?.sessions[0].exercises[0].sets[0];
 			expect(pulledSet.repSummaries).toHaveLength(2);
 
 			const rep1 = pulledSet.repSummaries.find((r) => r.repNumber === 1);
 			expect(rep1).toBeDefined();
-			expect(rep1!.meanVelocityMps).toBe(0.85);
-			expect(rep1!.peakVelocityMps).toBe(1.1);
-			expect(rep1!.meanForceN).toBe(500);
-			expect(rep1!.powerWatts).toBe(425);
-			expect(rep1!.romMm).toBe(820);
-			expect(rep1!.tutMs).toBe(2200);
-			expect(rep1!.asymmetryPct).toBe(1.6);
-			expect(rep1!.vbtZone).toBe("FAST");
+			expect(rep1?.meanVelocityMps).toBe(0.85);
+			expect(rep1?.peakVelocityMps).toBe(1.1);
+			expect(rep1?.meanForceN).toBe(500);
+			expect(rep1?.powerWatts).toBe(425);
+			expect(rep1?.romMm).toBe(820);
+			expect(rep1?.tutMs).toBe(2200);
+			expect(rep1?.asymmetryPct).toBe(1.6);
+			expect(rep1?.vbtZone).toBe("FAST");
 		});
 
 		it("should handle complete 4-level nested hierarchy", async () => {
@@ -433,7 +433,7 @@ describe("Workout Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: Full hierarchy intact
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 			expect(pulledSession.exercises).toHaveLength(2);
 
 			for (const exercise of pulledSession.exercises) {
@@ -484,7 +484,7 @@ describe("Workout Round-Trip Tests", () => {
 			);
 			expect(pushResult1.success).toBe(true);
 
-			const sync1Time = pushResult1.data!.syncTime!;
+			const sync1Time = pushResult1.data?.syncTime!;
 
 			// Small delay to ensure different timestamps
 			await new Promise((resolve) => setTimeout(resolve, 10));
@@ -512,7 +512,7 @@ describe("Workout Round-Trip Tests", () => {
 			// Mock returns all sessions since lastPushTime > lastSync
 			// Production would return only Session 2 based on per-row updated_at
 			expect(pullResult.success).toBe(true);
-			const sessions = pullResult.data!.sessions;
+			const sessions = pullResult.data?.sessions;
 			expect(sessions.length).toBeGreaterThanOrEqual(1);
 
 			// Session 2 should definitely be in the result
@@ -541,7 +541,7 @@ describe("Workout Round-Trip Tests", () => {
 
 			// Assert: All 3 sessions returned
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.sessions).toHaveLength(3);
+			expect(pullResult.data?.sessions).toHaveLength(3);
 		});
 
 		it("should return empty when no updates after lastSync", async () => {
@@ -557,7 +557,7 @@ describe("Workout Round-Trip Tests", () => {
 			const pushResult = await callPushEndpoint(payload, testUser.accessToken);
 
 			// Use a future timestamp
-			const futureTime = pushResult.data!.syncTime! + 10000;
+			const futureTime = pushResult.data?.syncTime! + 10000;
 
 			// Act: Pull with future lastSync
 			const pullResult = await callPullEndpoint(
@@ -567,7 +567,7 @@ describe("Workout Round-Trip Tests", () => {
 
 			// Assert: No sessions returned
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.sessions).toHaveLength(0);
+			expect(pullResult.data?.sessions).toHaveLength(0);
 		});
 	});
 
@@ -610,11 +610,11 @@ describe("Workout Round-Trip Tests", () => {
 
 			// Assert: All 5 sessions synced
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.sessions).toHaveLength(5);
+			expect(pullResult.data?.sessions).toHaveLength(5);
 
 			// Verify each session's identity
 			for (let i = 0; i < 5; i++) {
-				const session = pullResult.data!.sessions.find(
+				const session = pullResult.data?.sessions.find(
 					(s) => s.name === `Batch Session ${i + 1}`,
 				);
 				expect(session).toBeDefined();
@@ -642,7 +642,7 @@ describe("Workout Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: Sessions present (order may vary by implementation)
-			expect(pullResult.data!.sessions).toHaveLength(3);
+			expect(pullResult.data?.sessions).toHaveLength(3);
 		});
 
 		it("should isolate failures - one bad session should not block others", async () => {
@@ -692,7 +692,7 @@ describe("Workout Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: Mode preserved
-			expect(pullResult.data!.sessions[0].workoutMode).toBe(mode);
+			expect(pullResult.data?.sessions[0].workoutMode).toBe(mode);
 		});
 	});
 });

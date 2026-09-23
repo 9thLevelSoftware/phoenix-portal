@@ -56,7 +56,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { PHOENIX } from "@/lib/colors";
 import { cancelSuccessMessage } from "@/lib/paddle";
 import { supabase } from "@/lib/supabase";
-import { formatVolume, type WeightUnit } from "@/lib/units";
+import { formatVolume } from "@/lib/units";
 import { useUpdateProfile } from "@/mutations/profile";
 import { integrationsOptions } from "@/queries/integrations";
 import { queryKeys } from "@/queries/keys";
@@ -96,17 +96,6 @@ function getInitials(name: string | null | undefined): string {
 		return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 	}
 	return name.slice(0, 2).toUpperCase();
-}
-
-/**
- * Profile volume: the per-cable sum of workout_sessions.total_volume (KD-8),
- * labelled per cable. The only volume figure the Profile page shows.
- */
-export function formatProfileVolume(
-	perCableKg: number | null | undefined,
-	unit: WeightUnit,
-): string {
-	return `${formatVolume(perCableKg ?? 0, unit)} per cable`;
 }
 
 export function Profile() {
@@ -315,7 +304,7 @@ export function Profile() {
 			label: "Total Volume",
 			value: statsLoading
 				? "..."
-				: formatProfileVolume(stats?.totalVolume, weightUnit),
+				: formatVolume(stats?.totalVolume ?? 0, weightUnit),
 			icon: Dumbbell,
 		},
 	];
@@ -434,11 +423,6 @@ export function Profile() {
 									<div className="text-white font-medium">
 										{PLAN_LABELS[subscriptionDisplayTier]}
 									</div>
-									{isStale && (
-										<div className="text-sm text-muted-foreground">
-											{subscriptionStatus === "past_due"
-												? "Payment past due. Checking billing status..."
-												: "Subscription expired. Refreshing billing status..."}
 									{/*
 									 * A failed payment must be visible DURING Paddle's retry
 									 * window, which is exactly when `isStale` is still false
@@ -580,7 +564,7 @@ export function Profile() {
 										<div className="text-3xl text-primary font-data">
 											{statsLoading
 												? "..."
-												: formatProfileVolume(stats?.totalVolume, weightUnit)}
+												: formatVolume(stats?.totalVolume ?? 0, weightUnit)}
 										</div>
 									</div>
 									<div className="p-4 bg-gradient-to-br from-success/10 to-emerald-600/10 border border-success/30 rounded-lg">
@@ -720,12 +704,12 @@ export function Profile() {
 									<div className="flex items-center justify-between py-2">
 										<span className="text-muted-foreground">Total Volume</span>
 										<span className="text-primary font-data">
-											{/* One source only: the session-derived per-cable sum.
-											    gamification_stats.total_volume_kg is a device-pushed
-											    two-cable total until PR 25 derives it server-side. */}
-											{statsLoading
-												? "..."
-												: formatProfileVolume(stats?.totalVolume, weightUnit)}
+											{formatVolume(
+												gamificationStats?.total_volume_kg ??
+													stats?.totalVolume ??
+													0,
+												weightUnit,
+											)}
 										</span>
 									</div>
 								</div>

@@ -118,11 +118,11 @@ describe("WorkoutPhase round-trip", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 			expect(pullResult.success).toBe(true);
 
-			const pulled = pullResult.data!.sessions.find((s) => s.id === session.id);
+			const pulled = pullResult.data?.sessions.find((s) => s.id === session.id);
 			expect(pulled).toBeDefined();
-			expect(pulled!.exercises[0].sets).toHaveLength(1);
+			expect(pulled?.exercises[0].sets).toHaveLength(1);
 
-			const pulledSet = pulled!.exercises[0]
+			const pulledSet = pulled?.exercises[0]
 				.sets[0] as unknown as SetDtoWithPhase;
 			// Mock spreads the incoming SetDto onto the response, preserving the
 			// prPhase field even though the harness' public SetDto type omits it.
@@ -148,8 +148,8 @@ describe("WorkoutPhase round-trip", () => {
 				testUser.accessToken,
 			);
 			const pulled = await callPullEndpoint(0, testUser.accessToken);
-			expect(pulled.data!.personalRecords.length).toBeGreaterThan(0);
-			expect(pulled.data!.personalRecords[0].workoutPhase).toBe("CONCENTRIC");
+			expect(pulled.data?.personalRecords.length).toBeGreaterThan(0);
+			expect(pulled.data?.personalRecords[0].workoutPhase).toBe("CONCENTRIC");
 		},
 	);
 
@@ -168,11 +168,11 @@ describe("WorkoutPhase round-trip", () => {
 		);
 
 		const pulled = await callPullEndpoint(0, testUser.accessToken);
-		const pulledSession = pulled.data!.sessions.find(
+		const pulledSession = pulled.data?.sessions.find(
 			(s) => s.id === session.id,
 		);
 		expect(pulledSession).toBeDefined();
-		const pulledSet = pulledSession!.exercises[0]
+		const pulledSet = pulledSession?.exercises[0]
 			.sets[0] as unknown as SetDtoWithPhase;
 		// Round-trip preserves absence — mobile applies its default on consume.
 		expect(pulledSet.prPhase).toBeUndefined();

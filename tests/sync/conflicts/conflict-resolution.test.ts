@@ -90,7 +90,7 @@ describe("Conflict Resolution harness/fixture smoke (mock Edge)", () => {
 			expect(pullResult.success).toBe(true);
 
 			// All 5 sessions should be available
-			expect(pullResult.data!.sessions.length).toBeGreaterThanOrEqual(5);
+			expect(pullResult.data?.sessions.length).toBeGreaterThanOrEqual(5);
 		});
 	});
 
@@ -130,9 +130,9 @@ describe("Conflict Resolution harness/fixture smoke (mock Edge)", () => {
 
 			// Pull should return the last pushed version
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
-			const routine = pullResult.data!.routines.find((r) => r.id === routineId);
+			const routine = pullResult.data?.routines.find((r) => r.id === routineId);
 			expect(routine).toBeDefined();
-			expect(routine!.name).toBe("Routine Version 2");
+			expect(routine?.name).toBe("Routine Version 2");
 		});
 
 		it("should correctly apply delta sync based on lastSync timestamp", async () => {
@@ -178,7 +178,7 @@ describe("Conflict Resolution harness/fixture smoke (mock Edge)", () => {
 
 			// Pull with lastSync=0 should return both
 			const fullPull = await callPullEndpoint(0, testUser.accessToken);
-			expect(fullPull.data!.routines.length).toBeGreaterThanOrEqual(2);
+			expect(fullPull.data?.routines.length).toBeGreaterThanOrEqual(2);
 
 			// NOTE: The mock doesn't implement true delta sync, but the pattern is validated
 		});
@@ -238,23 +238,23 @@ describe("Conflict Resolution harness/fixture smoke (mock Edge)", () => {
 
 			// Verify session exists with routine reference
 			const pullBefore = await callPullEndpoint(0, testUser.accessToken);
-			const pulledSession = pullBefore.data!.sessions.find(
+			const pulledSession = pullBefore.data?.sessions.find(
 				(s) => s.id === sessionId,
 			);
 			expect(pulledSession).toBeDefined();
-			expect(pulledSession!.routineName).toBe("Leg Day");
-			expect(pulledSession!.routineSessionId).toBe(routineId);
+			expect(pulledSession?.routineName).toBe("Leg Day");
+			expect(pulledSession?.routineSessionId).toBe(routineId);
 
 			// Soft-delete the routine by not including it in next sync
 			// (In real implementation, this would set deletedAt on the routine)
 
 			// Session should still exist with its routine reference
 			const pullAfter = await callPullEndpoint(0, testUser.accessToken);
-			const sessionAfter = pullAfter.data!.sessions.find(
+			const sessionAfter = pullAfter.data?.sessions.find(
 				(s) => s.id === sessionId,
 			);
 			expect(sessionAfter).toBeDefined();
-			expect(sessionAfter!.routineName).toBe("Leg Day"); // Preserved
+			expect(sessionAfter?.routineName).toBe("Leg Day"); // Preserved
 		});
 	});
 
@@ -319,7 +319,7 @@ describe("Conflict Resolution harness/fixture smoke (mock Edge)", () => {
 			// In a proper implementation, only the last-activated cycle should be active
 			// The mock may not enforce this, but the test validates the expected pattern
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.cycles.length).toBeGreaterThanOrEqual(1);
+			expect(pullResult.data?.cycles.length).toBeGreaterThanOrEqual(1);
 		});
 	});
 });

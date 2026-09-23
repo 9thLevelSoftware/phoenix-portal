@@ -54,45 +54,6 @@ export function profileStatsOptions(userId: string, profileId?: string | null) {
 				...(profileId ? { p_profile_id: profileId } : {}),
 			});
 			if (error) throw error;
-			// Fetch all workout sessions for stats computation
-			let sessionQuery = supabase
-				.from("workout_sessions")
-				.select("started_at, total_volume")
-				.eq("user_id", userId);
-
-			if (profileId) {
-				sessionQuery = sessionQuery.eq("local_profile_id", profileId);
-			}
-
-			const { data: sessions, error: sessionsError } = await sessionQuery.order(
-				"started_at",
-				{ ascending: true },
-			);
-			if (sessionsError) throw sessionsError;
-
-			const totalWorkouts = sessions?.length ?? 0;
-			const totalVolume = (sessions ?? []).reduce(
-				// Per cable, as stored (KD-8).
-				(sum, s) => sum + (s.total_volume ?? 0),
-				0,
-			);
-
-			// Compute best streak from sessions
-			const bestStreak = computeBestStreak(sessions ?? []);
-
-			// Count personal_records rows. Phase-specific records are distinct PRs.
-			let prQuery = supabase
-				.from("personal_records")
-				.select("id", { count: "exact", head: true })
-				.eq("user_id", userId)
-				.is("deleted_at", null);
-
-			if (profileId) {
-				prQuery = prQuery.eq("local_profile_id", profileId);
-			}
-
-			const { count: prCount, error: prError } = await prQuery;
-			if (prError) throw prError;
 
 			const stats = data?.[0];
 			return {

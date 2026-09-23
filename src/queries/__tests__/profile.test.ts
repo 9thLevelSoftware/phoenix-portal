@@ -169,16 +169,6 @@ describe("profileStatsOptions", () => {
 					pr_count: 1100,
 				},
 			],
-	it("computes stats with per-cable volume and streak", async () => {
-		const sessions = [
-			{ started_at: "2026-03-15T08:00:00Z", total_volume: 500 },
-			{ started_at: "2026-03-16T08:00:00Z", total_volume: 600 },
-			{ started_at: "2026-03-17T08:00:00Z", total_volume: 400 },
-		];
-
-		const sessionsChain = buildChain({ data: sessions, error: null });
-		const personalRecordsChain = buildChain({
-			data: null,
 			error: null,
 		});
 
@@ -211,13 +201,6 @@ describe("profileStatsOptions", () => {
 		expect(rpcFn).toHaveBeenCalledWith("profile_workout_stats", {
 			p_tz: "UTC",
 		});
-		expect(result.totalWorkouts).toBe(3);
-		// total_volume is per cable, summed as stored (KD-8): 500+600+400
-		expect(result.totalVolume).toBe(1500);
-		// 3 consecutive days = streak of 3
-		expect(result.bestStreak).toBe(3);
-		expect(result.prCount).toBe(5);
-		expect(personalRecordsChain.is).toHaveBeenCalledWith("deleted_at", null);
 	});
 
 	it("returns zeros when user has no sessions", async () => {

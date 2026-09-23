@@ -104,9 +104,9 @@ describe("Entity Round-Trip Tests", () => {
 
 			// Assert
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.routines).toHaveLength(1);
+			expect(pullResult.data?.routines).toHaveLength(1);
 
-			const pulledRoutine = pullResult.data!.routines[0];
+			const pulledRoutine = pullResult.data?.routines[0];
 			expect(pulledRoutine.id).toBe(routineId);
 			expect(pulledRoutine.name).toBe("Push Day A");
 			expect(pulledRoutine.description).toBe("Chest and triceps workout");
@@ -175,7 +175,7 @@ describe("Entity Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: Superset fields preserved
-			const pulledExercises = pullResult.data!.routines[0].exercises;
+			const pulledExercises = pullResult.data?.routines[0].exercises;
 			expect(pulledExercises).toHaveLength(2);
 
 			const bicepCurl = pulledExercises.find((e) => e.name === "Bicep Curl");
@@ -232,7 +232,7 @@ describe("Entity Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert
-			const pulledExercise = pullResult.data!.routines[0].exercises[0];
+			const pulledExercise = pullResult.data?.routines[0].exercises[0];
 			expect(pulledExercise.perSetWeights).toBe("[50,55,60,55]");
 			expect(pulledExercise.perSetRest).toBe("[60,90,120,90]");
 		});
@@ -290,7 +290,7 @@ describe("Entity Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert
-			const exercises = pullResult.data!.routines[0].exercises;
+			const exercises = pullResult.data?.routines[0].exercises;
 
 			const amrap = exercises.find((e) => e.name === "AMRAP Finisher");
 			expect(amrap?.isAmrap).toBe(true);
@@ -355,7 +355,7 @@ describe("Entity Round-Trip Tests", () => {
 			// Assert
 			expect(pullResult.success).toBe(true);
 
-			const pulledExercises = pullResult.data!.routines[0].exercises;
+			const pulledExercises = pullResult.data?.routines[0].exercises;
 			const enabled = pulledExercises.find(
 				(e) => e.name === "Enabled Stall Detection",
 			);
@@ -422,7 +422,7 @@ describe("Entity Round-Trip Tests", () => {
 
 			expect(pullResult.success).toBe(true);
 
-			const pulledExercises = pullResult.data!.routines[0].exercises;
+			const pulledExercises = pullResult.data?.routines[0].exercises;
 			const enabled = pulledExercises.find(
 				(e) => e.name === "Enabled Drop Set",
 			);
@@ -477,7 +477,7 @@ describe("Entity Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert
-			const exercise = pullResult.data!.routines[0].exercises[0];
+			const exercise = pullResult.data?.routines[0].exercises[0];
 			expect(exercise?.isAmrap).toBe(true);
 			expect(exercise?.perSetReps).toBe(perSetReps);
 		});
@@ -558,9 +558,9 @@ describe("Entity Round-Trip Tests", () => {
 
 			// Assert
 			expect(pullResult.success).toBe(true);
-			expect(pullResult.data!.cycles).toHaveLength(1);
+			expect(pullResult.data?.cycles).toHaveLength(1);
 
-			const pulledCycle = pullResult.data!.cycles[0];
+			const pulledCycle = pullResult.data?.cycles[0];
 			expect(pulledCycle.id).toBe(cycleId);
 			expect(pulledCycle.name).toBe("PPL Cycle");
 			expect(pulledCycle.durationWeeks).toBe(4);
@@ -631,10 +631,10 @@ describe("Entity Round-Trip Tests", () => {
 
 			// Assert: both day rows are preserved by (cycleId, dayNumber)
 			expect(pullResult.success).toBe(true);
-			const pulledCycle = pullResult.data!.cycles.find((c) => c.id === cycleId);
+			const pulledCycle = pullResult.data?.cycles.find((c) => c.id === cycleId);
 			expect(pulledCycle).toBeDefined();
-			expect(pulledCycle!.days).toHaveLength(2);
-			expect(pulledCycle!.days).toEqual(
+			expect(pulledCycle?.days).toHaveLength(2);
+			expect(pulledCycle?.days).toEqual(
 				expect.arrayContaining([
 					expect.objectContaining({
 						dayNumber: 1,
@@ -694,7 +694,7 @@ describe("Entity Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert
-			const pulledDay = pullResult.data!.cycles[0].days[0];
+			const pulledDay = pullResult.data?.cycles[0].days[0];
 			expect(pulledDay.dayType).toBe("deload");
 			expect(pulledDay.weightAdjustment).toBe(-20);
 			expect(pulledDay.repModifier).toBe(2);
@@ -704,7 +704,7 @@ describe("Entity Round-Trip Tests", () => {
 		it("should handle all cycle statuses", async () => {
 			// Arrange: Cycles with different statuses
 			const statuses = ["draft", "active", "completed"] as const;
-			const cycles: CycleDto[] = statuses.map((status, i) => ({
+			const cycles: CycleDto[] = statuses.map((status, _i) => ({
 				id: generateTestId(),
 				userId: testUser.id,
 				name: `${status} Cycle`,
@@ -728,9 +728,9 @@ describe("Entity Round-Trip Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert
-			expect(pullResult.data!.cycles).toHaveLength(3);
+			expect(pullResult.data?.cycles).toHaveLength(3);
 			for (const status of statuses) {
-				const found = pullResult.data!.cycles.find((c) => c.status === status);
+				const found = pullResult.data?.cycles.find((c) => c.status === status);
 				expect(found).toBeDefined();
 			}
 		});
@@ -1135,9 +1135,9 @@ describe("Entity Round-Trip Tests", () => {
 			expect(pullResult.success).toBe(true);
 
 			// Verify sessions, routines, and cycles came back
-			expect(pullResult.data!.sessions.length).toBeGreaterThanOrEqual(1);
-			expect(pullResult.data!.routines.length).toBeGreaterThanOrEqual(1);
-			expect(pullResult.data!.cycles.length).toBeGreaterThanOrEqual(1);
+			expect(pullResult.data?.sessions.length).toBeGreaterThanOrEqual(1);
+			expect(pullResult.data?.routines.length).toBeGreaterThanOrEqual(1);
+			expect(pullResult.data?.cycles.length).toBeGreaterThanOrEqual(1);
 		});
 	});
 });

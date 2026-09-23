@@ -46,11 +46,11 @@ vi.setConfig({ testTimeout: 30000 });
 describe("Multi-device harness/fixture smoke (mock Edge)", () => {
 	// Simulated device identifiers
 	const DEVICE_A = {
-		deviceId: "device-a-" + Date.now(),
+		deviceId: `device-a-${Date.now()}`,
 		name: "Phone",
 	};
 	const DEVICE_B = {
-		deviceId: "device-b-" + Date.now(),
+		deviceId: `device-b-${Date.now()}`,
 		name: "Tablet",
 	};
 
@@ -128,13 +128,13 @@ describe("Multi-device harness/fixture smoke (mock Edge)", () => {
 			expect(pullResult.success).toBe(true);
 
 			// Verify session transferred
-			const pulledSession = pullResult.data!.sessions.find(
+			const pulledSession = pullResult.data?.sessions.find(
 				(s) => s.id === sessionId,
 			);
 			expect(pulledSession).toBeDefined();
-			expect(pulledSession!.name).toBe("Morning Workout");
-			expect(pulledSession!.exercises).toHaveLength(1);
-			expect(pulledSession!.exercises[0].sets).toHaveLength(1);
+			expect(pulledSession?.name).toBe("Morning Workout");
+			expect(pulledSession?.exercises).toHaveLength(1);
+			expect(pulledSession?.exercises[0].sets).toHaveLength(1);
 		});
 
 		it("should transfer all routine data from Device A to Device B", async () => {
@@ -200,14 +200,14 @@ describe("Multi-device harness/fixture smoke (mock Edge)", () => {
 				deviceId: DEVICE_B.deviceId,
 			});
 
-			const pulledRoutine = pullResult.data!.routines.find(
+			const pulledRoutine = pullResult.data?.routines.find(
 				(r) => r.id === routineId,
 			);
 			expect(pulledRoutine).toBeDefined();
-			expect(pulledRoutine!.name).toBe("Push Day");
-			expect(pulledRoutine!.exercises).toHaveLength(3);
-			expect(pulledRoutine!.exercises[0].name).toBe("Bench Press");
-			expect(pulledRoutine!.exercises[2].name).toBe("Tricep Pushdown");
+			expect(pulledRoutine?.name).toBe("Push Day");
+			expect(pulledRoutine?.exercises).toHaveLength(3);
+			expect(pulledRoutine?.exercises[0].name).toBe("Bench Press");
+			expect(pulledRoutine?.exercises[2].name).toBe("Tricep Pushdown");
 		});
 
 		it("should transfer cycle data with days from Device A to Device B", async () => {
@@ -266,10 +266,10 @@ describe("Multi-device harness/fixture smoke (mock Edge)", () => {
 				deviceId: DEVICE_B.deviceId,
 			});
 
-			const pulledCycle = pullResult.data!.cycles.find((c) => c.id === cycleId);
+			const pulledCycle = pullResult.data?.cycles.find((c) => c.id === cycleId);
 			expect(pulledCycle).toBeDefined();
-			expect(pulledCycle!.name).toBe("PPL Cycle");
-			expect(pulledCycle!.days).toHaveLength(2);
+			expect(pulledCycle?.name).toBe("PPL Cycle");
+			expect(pulledCycle?.days).toHaveLength(2);
 		});
 	});
 
@@ -343,18 +343,18 @@ describe("Multi-device harness/fixture smoke (mock Edge)", () => {
 			// Pull to see final state
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const finalSession = pullResult.data!.sessions.find(
+			const finalSession = pullResult.data?.sessions.find(
 				(s) => s.id === sessionId,
 			);
 			expect(finalSession).toBeDefined();
 
 			// ACTUAL BEHAVIOR: Last push wins (Device B's data)
-			expect(finalSession!.name).toBe("Device B Evening Workout");
-			expect(finalSession!.workoutMode).toBe("PUMP");
-			expect(finalSession!.durationSeconds).toBe(2400);
+			expect(finalSession?.name).toBe("Device B Evening Workout");
+			expect(finalSession?.workoutMode).toBe("PUMP");
+			expect(finalSession?.durationSeconds).toBe(2400);
 
 			// Only one session should exist with this ID
-			const sessionsWithId = pullResult.data!.sessions.filter(
+			const sessionsWithId = pullResult.data?.sessions.filter(
 				(s) => s.id === sessionId,
 			);
 			expect(sessionsWithId).toHaveLength(1);
@@ -456,15 +456,15 @@ describe("Multi-device harness/fixture smoke (mock Edge)", () => {
 			// Pull to verify final state
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const finalRoutine = pullResult.data!.routines.find(
+			const finalRoutine = pullResult.data?.routines.find(
 				(r) => r.id === routineId,
 			);
 			expect(finalRoutine).toBeDefined();
 
 			// Device B's version should win (last push)
-			expect(finalRoutine!.name).toBe("Push Day Modified - Device B");
-			expect(finalRoutine!.description).toBe("Modified by Device B");
-			expect(finalRoutine!.isFavorite).toBe(false);
+			expect(finalRoutine?.name).toBe("Push Day Modified - Device B");
+			expect(finalRoutine?.description).toBe("Modified by Device B");
+			expect(finalRoutine?.isFavorite).toBe(false);
 
 			// Note: Exercise cleanup may depend on implementation details
 			// The mock may retain exercises from both, real impl may clean orphans
@@ -536,17 +536,17 @@ describe("Multi-device harness/fixture smoke (mock Edge)", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Both cycles should exist
-			const cycleA = pullResult.data!.cycles.find((c) => c.id === cycleIdA);
-			const cycleB = pullResult.data!.cycles.find((c) => c.id === cycleIdB);
+			const cycleA = pullResult.data?.cycles.find((c) => c.id === cycleIdA);
+			const cycleB = pullResult.data?.cycles.find((c) => c.id === cycleIdB);
 
 			expect(cycleA).toBeDefined();
 			expect(cycleB).toBeDefined();
-			expect(cycleA!.name).toBe("PPL Cycle");
-			expect(cycleB!.name).toBe("Upper Lower Split");
+			expect(cycleA?.name).toBe("PPL Cycle");
+			expect(cycleB?.name).toBe("Upper Lower Split");
 
 			// Note: Server does not enforce single active cycle
 			// Client-side logic determines which is "current"
-			const activeCycles = pullResult.data!.cycles.filter(
+			const activeCycles = pullResult.data?.cycles.filter(
 				(c) => c.status === "active",
 			);
 			expect(activeCycles.length).toBeGreaterThanOrEqual(1);
@@ -620,7 +620,7 @@ describe("Multi-device harness/fixture smoke (mock Edge)", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Extract unique badge IDs
-			const badgeIds = pullResult.data!.badges.map((b) => b.badgeId);
+			const badgeIds = pullResult.data?.badges.map((b) => b.badgeId);
 			const uniqueBadgeIds = [...new Set(badgeIds)];
 
 			// Should have all unique badges: FIRST_WORKOUT, WEEK_WARRIOR, PR_KING
@@ -629,7 +629,7 @@ describe("Multi-device harness/fixture smoke (mock Edge)", () => {
 			expect(uniqueBadgeIds).toContain("PR_KING");
 
 			// FIRST_WORKOUT should not be duplicated (upsert on user_id, badge_id)
-			const firstWorkoutBadges = pullResult.data!.badges.filter(
+			const firstWorkoutBadges = pullResult.data?.badges.filter(
 				(b) => b.badgeId === "FIRST_WORKOUT",
 			);
 			expect(firstWorkoutBadges.length).toBe(1);
@@ -729,7 +729,7 @@ describe("Multi-device harness/fixture smoke (mock Edge)", () => {
 
 			// Pull should have all 6 sessions
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
-			expect(pullResult.data!.sessions.length).toBeGreaterThanOrEqual(6);
+			expect(pullResult.data?.sessions.length).toBeGreaterThanOrEqual(6);
 		});
 	});
 });

@@ -85,7 +85,7 @@ describe("Workout Mode Transform Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: Mode preserved in database format
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 			expect(pulledSession.workoutMode).toBe(mode);
 		});
 
@@ -125,36 +125,36 @@ describe("Workout Mode Transform Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: Both session and set modes preserved
-			expect(pullResult.data!.sessions[0].workoutMode).toBe(sessionMode);
+			expect(pullResult.data?.sessions[0].workoutMode).toBe(sessionMode);
 			expect(
-				pullResult.data!.sessions[0].exercises[0].sets[0].workoutMode,
+				pullResult.data?.sessions[0].exercises[0].sets[0].workoutMode,
 			).toBe(setMode);
 		});
 	});
 
 	describe("Display Name Mapping", () => {
 		it('should map OLD_SCHOOL to "Old School"', () => {
-			expect(workoutModeMap["OLD_SCHOOL"]).toBe("Old School");
+			expect(workoutModeMap.OLD_SCHOOL).toBe("Old School");
 		});
 
 		it('should map ECHO to "Echo"', () => {
-			expect(workoutModeMap["ECHO"]).toBe("Echo");
+			expect(workoutModeMap.ECHO).toBe("Echo");
 		});
 
 		it('should map PUMP to "Pump"', () => {
-			expect(workoutModeMap["PUMP"]).toBe("Pump");
+			expect(workoutModeMap.PUMP).toBe("Pump");
 		});
 
 		it('should map TUT to "TUT"', () => {
-			expect(workoutModeMap["TUT"]).toBe("TUT");
+			expect(workoutModeMap.TUT).toBe("TUT");
 		});
 
 		it('should map TUT_BEAST to "TUT Beast"', () => {
-			expect(workoutModeMap["TUT_BEAST"]).toBe("TUT Beast");
+			expect(workoutModeMap.TUT_BEAST).toBe("TUT Beast");
 		});
 
 		it('should map ECCENTRIC_ONLY to "Eccentric Only"', () => {
-			expect(workoutModeMap["ECCENTRIC_ONLY"]).toBe("Eccentric Only");
+			expect(workoutModeMap.ECCENTRIC_ONLY).toBe("Eccentric Only");
 		});
 
 		it("should have display mapping for all primary modes", () => {
@@ -176,8 +176,8 @@ describe("Workout Mode Transform Tests", () => {
 
 	describe("CLASSIC Legacy Alias", () => {
 		it('should map CLASSIC to "Old School" (same as OLD_SCHOOL)', () => {
-			expect(workoutModeMap["CLASSIC"]).toBe("Old School");
-			expect(workoutModeMap["CLASSIC"]).toBe(workoutModeMap["OLD_SCHOOL"]);
+			expect(workoutModeMap.CLASSIC).toBe("Old School");
+			expect(workoutModeMap.CLASSIC).toBe(workoutModeMap.OLD_SCHOOL);
 		});
 
 		it("should include CLASSIC in WORKOUT_MODES constant", () => {
@@ -199,15 +199,15 @@ describe("Workout Mode Transform Tests", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const pulledMode = pullResult.data!.sessions[0].workoutMode;
+			const pulledMode = pullResult.data?.sessions[0].workoutMode;
 			// Either CLASSIC (stored as-is) or OLD_SCHOOL (normalized) is acceptable
 			expect(["CLASSIC", "OLD_SCHOOL"]).toContain(pulledMode);
 		});
 
 		it("should display CLASSIC and OLD_SCHOOL identically", () => {
 			// Both should show "Old School" to the user
-			const classicDisplay = workoutModeMap["CLASSIC"];
-			const oldSchoolDisplay = workoutModeMap["OLD_SCHOOL"];
+			const classicDisplay = workoutModeMap.CLASSIC;
+			const oldSchoolDisplay = workoutModeMap.OLD_SCHOOL;
 
 			expect(classicDisplay).toBe(oldSchoolDisplay);
 			expect(classicDisplay).toBe("Old School");
@@ -276,7 +276,7 @@ describe("Workout Mode Transform Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: Each exercise has its mode preserved
-			const pulledExercises = pullResult.data!.routines[0].exercises;
+			const pulledExercises = pullResult.data?.routines[0].exercises;
 			expect(pulledExercises).toHaveLength(3);
 
 			const tutExercise = pulledExercises.find((e) => e.name === "TUT Bench");
@@ -306,7 +306,7 @@ describe("Workout Mode Transform Tests", () => {
 			await callPushEndpoint(payload, testUser.accessToken);
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
-			const pulledMode = pullResult.data!.sessions[0].workoutMode;
+			const pulledMode = pullResult.data?.sessions[0].workoutMode;
 			expect(pulledMode).toBeNull();
 		});
 
@@ -372,7 +372,7 @@ describe("Workout Mode Transform Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Pull should succeed and return the empty string
-			const pulledSession = pullResult.data!.sessions[0];
+			const pulledSession = pullResult.data?.sessions[0];
 			expect(pulledSession.workoutMode).toBe("");
 		});
 
@@ -435,7 +435,7 @@ describe("Workout Mode Transform Tests", () => {
 				"TUT_BEAST",
 				"ECCENTRIC_ONLY",
 			];
-			const sessions: SessionDto[] = modes.map((mode, i) =>
+			const sessions: SessionDto[] = modes.map((mode, _i) =>
 				createTestSession(testUser.id, {
 					id: generateTestId(),
 					name: `${mode} Session`,
@@ -449,7 +449,7 @@ describe("Workout Mode Transform Tests", () => {
 			const pullResult = await callPullEndpoint(0, testUser.accessToken);
 
 			// Assert: All modes present
-			const pulledModes = pullResult.data!.sessions.map((s) => s.workoutMode);
+			const pulledModes = pullResult.data?.sessions.map((s) => s.workoutMode);
 			for (const mode of modes) {
 				expect(pulledModes).toContain(mode);
 			}
@@ -478,9 +478,9 @@ describe("Workout Mode Transform Tests", () => {
 
 			// Assert: Each session has correct mode
 			for (const { name, mode } of sessionData) {
-				const found = pullResult.data!.sessions.find((s) => s.name === name);
+				const found = pullResult.data?.sessions.find((s) => s.name === name);
 				expect(found).toBeDefined();
-				expect(found!.workoutMode).toBe(mode);
+				expect(found?.workoutMode).toBe(mode);
 			}
 		});
 	});
