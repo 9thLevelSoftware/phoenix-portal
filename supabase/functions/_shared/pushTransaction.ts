@@ -220,10 +220,27 @@ export class TransactionalClient {
     }
   }
 
+  /**
+   * A catalog lookup outside any savepoint: a failure here (typically
+   * transaction_timeout) ends the transaction, so it marks it aborted.
+   */
+  private async metadata(
+    text: string,
+    params: ReadonlyArray<string>,
+  ): Promise<Array<Record<string, unknown>>> {
+    if (this.#aborted) throw Object.assign(new Error(this.#aborted.message), this.#aborted);
+    try {
+      return await this.executor.query(text, params);
+    } catch (error) {
+      this.#aborted = toPostgrestError(error);
+      throw error;
+    }
+  }
+
   async columnTypes(table: string): Promise<Map<string, string>> {
     const cached = this.#columnTypes.get(table);
     if (cached) return cached;
-    const rows = await this.executor.query(
+    const rows = await this.metadata(
       `SELECT a.attname::text AS name, format_type(a.atttypid, a.atttypmod) AS type
          FROM pg_catalog.pg_attribute a
         WHERE a.attrelid = to_regclass('public.' || quote_ident($1::text))
@@ -238,7 +255,7 @@ export class TransactionalClient {
   private async functionInfo(name: string): Promise<FunctionInfo[]> {
     const cached = this.#functions.get(name);
     if (cached) return cached;
-    const rows = await this.executor.query(
+    const rows = await this.metadata(
       `SELECT coalesce(p.proargnames, '{}')::text[] AS argnames,
               coalesce(p.proargmodes::text[], '{}') AS argmodes,
               array(SELECT format_type(x, NULL) FROM unnest(p.proargtypes) x) AS argtypes,
