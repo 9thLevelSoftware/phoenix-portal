@@ -2150,25 +2150,49 @@ async function mobileSyncPushHandler(
     let liveRoutines = payload.routines ?? [];
     let liveCycles = payload.cycles ?? [];
     if (allRoutineIds.length > 0 || allCycleIds.length > 0) {
+      // 204-E: a tombstone carries the delete's client clock. A pushed row is
+      // skipped when its own clock is missing (older builds send none) or not
+      // strictly newer; a strictly newer edit wins and the SQL removes the
+      // tombstone in the same transaction (docs/sync-reliability-contract.md).
+      // The DTO clock is used, never the receipt time: an undated push must
+      // keep losing to a delete (KD-4).
       const { data: tombstoneRows, error: tombstoneErr } = await supabase.rpc(
-        'get_sync_tombstones',
+        'apply_sync_tombstone_gate',
         {
           p_user_id: userId,
-          p_entity: null,
-          p_ids: [...new Set([...allRoutineIds, ...allCycleIds])],
-          p_since: null,
+          p_rows: [
+            ...(payload.routines ?? []).map((r) => ({
+              entity: 'routine',
+              id: r.id,
+              clock: r.updatedAt ?? null,
+            })),
+            ...(payload.cycles ?? []).map((c) => ({
+              entity: 'cycle',
+              id: c.id,
+              clock: c.updatedAt ?? null,
+            })),
+          ],
         },
       );
-      if (tombstoneErr) throw new Error(`sync tombstone lookup failed: ${tombstoneErr.message}`);
+      if (tombstoneErr) throw new Error(`sync tombstone gate failed: ${tombstoneErr.message}`);
       const tombstonedRoutineIds = new UuidSet();
       const tombstonedCycleIds = new UuidSet();
+      let supersededTombstones = 0;
       for (const row of (Array.isArray(tombstoneRows) ? tombstoneRows : []) as Array<{
         entity?: unknown;
         entity_id?: unknown;
+        skipped?: unknown;
       }>) {
         if (typeof row.entity_id !== 'string') continue;
+        if (row.skipped !== true) {
+          supersededTombstones++;
+          continue;
+        }
         if (row.entity === 'routine') tombstonedRoutineIds.add(row.entity_id);
         else if (row.entity === 'cycle') tombstonedCycleIds.add(row.entity_id);
+      }
+      if (supersededTombstones > 0) {
+        console.log(`A newer edit superseded ${supersededTombstones} delete tombstone(s)`);
       }
       liveRoutines = liveRoutines.filter((r) => !tombstonedRoutineIds.has(r.id));
       liveCycles = liveCycles.filter((c) => !tombstonedCycleIds.has(c.id));
@@ -3086,20 +3110,27 @@ async function mobileSyncPushHandler(
     //     server row is a silent no-op (neither acknowledged nor rejected).
     //     Ids already covered by a clocked entry are left to that gate.
     // =========================================================================
-    const clockedDeleteById = new Map<string, string>();
+    // Keyed case-insensitively; the device's first spelling is kept for the
+    // receipt. Instants, not strings: `10:00-04:00` is later than `13:00Z`.
+    const clockedDeleteById = new Map<string, { id: string; updatedAt: string }>();
     for (const deletion of payload.deletedCycles ?? []) {
-      const previous = clockedDeleteById.get(deletion.id);
-      // Instants, not strings: `10:00-04:00` is later than `13:00Z`.
-      if (!previous || Date.parse(deletion.updatedAt) > Date.parse(previous)) {
-        clockedDeleteById.set(deletion.id, deletion.updatedAt);
+      const key = normalizeUuid(deletion.id);
+      const previous = clockedDeleteById.get(key);
+      if (!previous || Date.parse(deletion.updatedAt) > Date.parse(previous.updatedAt)) {
+        clockedDeleteById.set(key, {
+          id: previous?.id ?? deletion.id,
+          updatedAt: deletion.updatedAt,
+        });
       }
     }
-    const legacyDeleteIds = [...new Set(payload.deletedCycleIds ?? [])].filter(
-      (id) => Boolean(id) && !clockedDeleteById.has(id),
+    const legacyDeleteIds = uniqueUuidValues(payload.deletedCycleIds ?? []).filter(
+      (id) => Boolean(id) && !clockedDeleteById.has(normalizeUuid(id)),
     );
-    const cycleDeleteProbeIds = [
-      ...new Set([...clockedDeleteById.keys(), ...legacyDeleteIds]),
-    ].filter(Boolean);
+    const clockedDeleteIds = [...clockedDeleteById.values()].map((d) => d.id);
+    const cycleDeleteProbeIds = uniqueUuidValues([
+      ...clockedDeleteIds,
+      ...legacyDeleteIds,
+    ]).filter(Boolean);
 
     if (cycleDeleteProbeIds.length > 0) {
       // Ownership: a crafted id that belongs to somebody else is still a 400,
@@ -3113,85 +3144,76 @@ async function mobileSyncPushHandler(
       );
       if (cycleDelOwnershipResp) return cycleDelOwnershipResp;
 
-      // One probe for both forms. The stored LWW key orders a clocked delete
-      // and is what a rejection reports as `serverUpdatedAt` (KD-5).
-      const storedLwwById = new Map<string, string | null>();
-      for (let i = 0; i < cycleDeleteProbeIds.length; i += 100) {
-        const chunk = cycleDeleteProbeIds.slice(i, i + 100);
-        const { data: rows, error } = await supabase
-          .from('training_cycles')
-          .select('id, client_updated_at')
-          .in('id', chunk)
-          .eq('user_id', userId);
-        if (error) throw new PartialWriteRetryError('cycle delete probe', error);
-        for (const row of (rows ?? []) as Array<{
-          id: string;
-          client_updated_at: string | null;
-        }>) {
-          storedLwwById.set(row.id, row.client_updated_at ?? null);
-        }
-      }
-
       // --- 7b-i. Clocked deletes (the authoritative form) ---
-      const winningDeleteIds: string[] = [];
-      for (const [id, deleteClock] of clockedDeleteById) {
-        const hasRow = storedLwwById.has(id);
-        const stored = storedLwwById.get(id) ?? null;
-        const storedMs = stored ? Date.parse(stored) : Number.NaN;
-        const deleteMs = Date.parse(deleteClock);
-        // A usable incoming timestamp may delete only when it is at least the
-        // stored LWW key. A row whose stored key is strictly newer survives.
-        // A row with no usable stored key loses to a usable delete clock.
-        if (
-          hasRow &&
-          Number.isFinite(storedMs) &&
-          Number.isFinite(deleteMs) &&
-          storedMs > deleteMs
-        ) {
-          rejections.cycles.push({ id, serverUpdatedAt: stored });
-          continue;
-        }
-        winningDeleteIds.push(id);
-      }
-
-      if (winningDeleteIds.length > 0) {
-        const presentIds = winningDeleteIds.filter((id) => storedLwwById.has(id));
-        const absentIds = winningDeleteIds.filter((id) => !storedLwwById.has(id));
-        if (presentIds.length > 0) {
-          await deleteOwnedRowsInChunks(
-            supabase,
-            'training_cycles',
-            presentIds,
-            userId,
-            'cycle delete',
-          );
-        }
-        // An id the server no longer holds still needs the tombstone, or the
-        // next stale upload from the deleting device recreates the cycle.
-        for (let i = 0; i < absentIds.length; i += 100) {
-          const chunk = absentIds.slice(i, i + 100);
-          const { error } = await supabase.from('sync_tombstones').upsert(
-            chunk.map((id) => ({
-              user_id: userId,
-              entity: 'cycle' as const,
-              entity_id: id,
-              deleted_at: new Date(dependencies.now()).toISOString(),
+      // One SQL call decides and deletes each id under the per-cycle lock
+      // every cycle write holds, so a concurrent write cannot land between
+      // the clock comparison and the delete (204-C). A delete whose clock is
+      // at least the stored LWW key wins (a row with no stored key loses to
+      // it); an id the server no longer holds is tombstoned with the device
+      // clock so a later stale upload cannot recreate it.
+      if (clockedDeleteIds.length > 0) {
+        const { data: deleteRows, error: deleteErr } = await supabase.rpc(
+          'delete_cycles_clocked',
+          {
+            p_user_id: userId,
+            p_deletions: [...clockedDeleteById.values()].map((d) => ({
+              id: d.id,
+              updatedAt: d.updatedAt,
             })),
-            { onConflict: 'user_id,entity,entity_id' },
-          );
-          if (error) throw new PartialWriteRetryError('cycle tombstone insert', error);
-        }
-        acknowledgedDeletedCycleIds.push(...winningDeleteIds);
-        console.log(
-          `Deleted ${presentIds.length} cycle(s) from server; ` +
-            `tombstoned ${absentIds.length} already-absent cycle(s)`,
+          },
         );
+        if (deleteErr) throw new PartialWriteRetryError('cycle delete', deleteErr);
+        const spelling = new Map(clockedDeleteIds.map((id) => [normalizeUuid(id), id]));
+        let deleted = 0;
+        let tombstonedAbsent = 0;
+        for (const row of (Array.isArray(deleteRows) ? deleteRows : []) as Array<{
+          id: string;
+          accepted: boolean;
+          existed: boolean;
+          server_updated_at: string | null;
+        }>) {
+          const id = spelling.get(normalizeUuid(row.id)) ?? row.id;
+          if (!row.accepted) {
+            // KD-5: the stored LWW key the delete lost to.
+            rejections.cycles.push({ id, serverUpdatedAt: row.server_updated_at ?? null });
+            continue;
+          }
+          acknowledgedDeletedCycleIds.push(id);
+          if (row.existed) deleted++;
+          else tombstonedAbsent++;
+        }
+        if (deleted + tombstonedAbsent > 0) {
+          console.log(
+            `Deleted ${deleted} cycle(s) from server; ` +
+              `tombstoned ${tombstonedAbsent} already-absent cycle(s)`,
+          );
+        }
       }
 
       // --- 7b-ii. Legacy clockless ids: never hard-delete, never tombstone. ---
-      for (const id of legacyDeleteIds) {
-        if (!storedLwwById.has(id)) continue; // silent no-op
-        rejections.cycles.push({ id, serverUpdatedAt: storedLwwById.get(id) ?? null });
+      // Read-only, so no race: an existing row is a structured rejection that
+      // keeps the server copy; an absent id is a silent no-op.
+      if (legacyDeleteIds.length > 0) {
+        const storedLwwById = new Map<string, string | null>();
+        for (const chunk of chunked(legacyDeleteIds, 100)) {
+          const { data: rows, error } = await supabase
+            .from('training_cycles')
+            .select('id, client_updated_at')
+            .in('id', chunk)
+            .eq('user_id', userId);
+          if (error) throw new PartialWriteRetryError('cycle delete probe', error);
+          for (const row of (rows ?? []) as Array<{
+            id: string;
+            client_updated_at: string | null;
+          }>) {
+            storedLwwById.set(normalizeUuid(row.id), row.client_updated_at ?? null);
+          }
+        }
+        for (const id of legacyDeleteIds) {
+          const key = normalizeUuid(id);
+          if (!storedLwwById.has(key)) continue; // silent no-op
+          rejections.cycles.push({ id, serverUpdatedAt: storedLwwById.get(key) ?? null });
+        }
       }
     }
 

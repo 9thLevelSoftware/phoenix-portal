@@ -805,6 +805,9 @@ function makeHarness(
       if (lww) return lww;
       const merge = mergeCycleDouble(name, args);
       if (merge) return merge;
+      if (name === "delete_cycles_clocked") {
+        return cycleDeleteDouble(args, options.tableResults?.training_cycles);
+      }
       if (name === "mutate_local_profile_preference_section") {
         const section = String(args.p_section);
         return {
@@ -1415,12 +1418,17 @@ Deno.test("clocked cycle deletion that wins is acknowledged and hard-deletes the
   assertEquals(response.status, 200, JSON.stringify(body));
   assertEquals(body.acknowledgedDeletedCycleIds, [deletedId]);
   assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
-  // CASCADE takes cycle_days — there is never a separate cycle_days delete
-  // racing the parent.
-  const deletes = writeQueries(harness, "training_cycles", "delete");
-  assertEquals(deletes.length, 1);
-  assertEquals(callArgs(deletes[0]!, "in")[1], [deletedId]);
-  assertEquals(callArgs(deletes[0]!, "eq"), ["user_id", VALID_USER_ID]);
+  // One SQL call decides and deletes under the per-cycle lock (204-C);
+  // CASCADE takes cycle_days, so there is never a separate delete racing it.
+  const deleteCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "delete_cycles_clocked"
+  );
+  assertEquals(deleteCalls.length, 1);
+  assertEquals(deleteCalls[0]!.args, {
+    p_user_id: VALID_USER_ID,
+    p_deletions: [{ id: deletedId, updatedAt: "2026-09-20T13:00:00.000Z" }],
+  });
+  assertEquals(writeQueries(harness, "training_cycles", "delete"), []);
   assertEquals(
     harness.adminWriteCalls.filter((call) => call.table === "cycle_days"),
     [],
@@ -1518,17 +1526,18 @@ Deno.test("clocked cycle deletion of an already-absent id records a tombstone an
   assertEquals(response.status, 200, JSON.stringify(body));
   assertEquals(body.acknowledgedDeletedCycleIds, [absentId]);
   assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
-  // No row to hard-delete; the tombstone is what stops the next stale upload
-  // from recreating the cycle.
+  // No row to hard-delete; delete_cycles_clocked records the tombstone (with
+  // the device clock) that stops the next stale upload recreating the cycle,
+  // so the Edge itself writes neither.
+  const deleteCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "delete_cycles_clocked"
+  );
+  assertEquals(
+    (deleteCalls[0]!.args.p_deletions as Array<{ id: string }>).map((d) => d.id),
+    [absentId],
+  );
   assertEquals(writeQueries(harness, "training_cycles", "delete"), []);
-  const tombstoneUpserts = writeQueries(harness, "sync_tombstones", "upsert");
-  assertEquals(tombstoneUpserts.length, 1);
-  assertEquals(callArgs(tombstoneUpserts[0]!, "upsert")[0], [{
-    user_id: VALID_USER_ID,
-    entity: "cycle",
-    entity_id: absentId,
-    deleted_at: "2026-07-16T02:00:00.000Z",
-  }]);
+  assertEquals(writeQueries(harness, "sync_tombstones", "upsert"), []);
 });
 
 Deno.test("an id named by both a clocked and a legacy delete is handled only by the clocked gate", async () => {
@@ -1552,7 +1561,11 @@ Deno.test("an id named by both a clocked and a legacy delete is handled only by 
   assertEquals(body.acknowledgedDeletedCycleIds, [deletedId]);
   // The legacy list must not also produce a rejection for the same id.
   assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
-  assertEquals(writeQueries(harness, "training_cycles", "delete").length, 1);
+  const deleteCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "delete_cycles_clocked"
+  );
+  assertEquals(deleteCalls.length, 1);
+  assertEquals((deleteCalls[0]!.args.p_deletions as unknown[]).length, 1);
 });
 
 Deno.test("byte golden metadata and raw lexemes remain exact", () => {
@@ -3485,7 +3498,10 @@ Deno.test("routine delete failure returns retryable 503 and no sync_complete", a
 
 Deno.test("cycle delete failure returns retryable 503 and no sync_complete", async () => {
   const harness = makeHarness(undefined, {
-    writeErrors: { "training_cycles:delete": INJECTED_DB_ERROR },
+    rpcBehavior: async (name) => {
+      if (name === "delete_cycles_clocked") return { data: null, error: INJECTED_DB_ERROR };
+      return undefined;
+    },
     tableResults: {
       training_cycles: {
         data: [{ id: CYCLE_ID, client_updated_at: "2026-09-20T12:00:00.000Z" }],
@@ -3493,8 +3509,8 @@ Deno.test("cycle delete failure returns retryable 503 and no sync_complete", asy
       },
     },
   });
-  // Clocked delete of a present row with a stale LWW key: it wins and takes
-  // the hard-delete path, which is where the injected failure lands.
+  // Clocked delete of a present row with a stale LWW key: the atomic delete
+  // call is where the injected failure lands.
   const response = await harness.handler(requestFromBody({
     ...validPushBody(),
     deletedCycles: [{ id: CYCLE_ID, updatedAt: "2026-09-20T13:00:00.000Z" }],
@@ -3798,7 +3814,7 @@ function manyIds(prefix: string, count: number): string[] {
   );
 }
 
-Deno.test("routine and clocked cycle deletes are chunked at 100 ids", async () => {
+Deno.test("routine deletes are chunked at 100 ids; clocked cycle deletes travel in one call body", async () => {
   const routineIds = manyIds("8a00", 250);
   const cycleIds = manyIds("8b00", 201);
   const harness = makeHarness(undefined, {
@@ -3825,23 +3841,27 @@ Deno.test("routine and clocked cycle deletes are chunked at 100 ids", async () =
 
   assertEquals(response.status, 200);
   assertEquals((await json(response)).acknowledgedDeletedCycleIds, cycleIds);
-  const cases: Array<[string, string[], number[]]> = [
-    ["routines", routineIds, [100, 100, 50]],
-    ["training_cycles", cycleIds, [100, 100, 1]],
-  ];
-  for (const [table, ids, sizes] of cases) {
-    const deletes = writeQueries(harness, table, "delete");
-    const chunks = deletes.map((query) => callArgs(query, "in")[1] as string[]);
-    assertEquals(chunks.map((chunk) => chunk.length), sizes);
-    assertEquals(chunks.flat(), ids);
-    for (const query of deletes) {
-      assertEquals(callArgs(query, "eq"), ["user_id", VALID_USER_ID]);
-    }
+  const routineDeletes = writeQueries(harness, "routines", "delete");
+  const chunks = routineDeletes.map((query) => callArgs(query, "in")[1] as string[]);
+  assertEquals(chunks.map((chunk) => chunk.length), [100, 100, 50]);
+  assertEquals(chunks.flat(), routineIds);
+  for (const query of routineDeletes) {
+    assertEquals(callArgs(query, "eq"), ["user_id", VALID_USER_ID]);
   }
+  // Cycle ids go in the RPC's POST body, so there is no URL limit to chunk for.
+  const deleteCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "delete_cycles_clocked"
+  );
+  assertEquals(deleteCalls.length, 1);
+  assertEquals(
+    (deleteCalls[0]!.args.p_deletions as Array<{ id: string }>).map((d) => d.id),
+    cycleIds,
+  );
+  assertEquals(writeQueries(harness, "training_cycles", "delete"), []);
   assertEquals(harness.broadcastPayloads.length, 1);
 });
 
-Deno.test("clocked deletes of already-absent cycles chunk the tombstone upsert at 100 ids", async () => {
+Deno.test("clocked deletes of already-absent cycles travel in one call body and are all acknowledged", async () => {
   const cycleIds = manyIds("8b00", 201);
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody({
@@ -3855,21 +3875,19 @@ Deno.test("clocked deletes of already-absent cycles chunk the tombstone upsert a
 
   assertEquals(response.status, 200, JSON.stringify(body));
   assertEquals(body.acknowledgedDeletedCycleIds, cycleIds);
-  // No server row to hard-delete; the tombstone is what stops the next stale
-  // upload from recreating the cycle.
+  // No server row to hard-delete; delete_cycles_clocked tombstones each id
+  // (in its POST body, so no URL limit) to stop the next stale upload
+  // recreating the cycle.
   assertEquals(writeQueries(harness, "training_cycles", "delete"), []);
-  const upserts = writeQueries(harness, "sync_tombstones", "upsert");
-  const chunks = upserts.map((query) =>
-    callArgs(query, "upsert")[0] as Array<{ entity_id: string }>
+  assertEquals(writeQueries(harness, "sync_tombstones", "upsert"), []);
+  const deleteCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "delete_cycles_clocked"
   );
-  assertEquals(chunks.map((chunk) => chunk.length), [100, 100, 1]);
-  assertEquals(chunks.flat().map((row) => row.entity_id), cycleIds);
-  for (const query of upserts) {
-    assertEquals(
-      callArgs(query, "upsert")[1],
-      { onConflict: "user_id,entity,entity_id" },
-    );
-  }
+  assertEquals(deleteCalls.length, 1);
+  assertEquals(
+    (deleteCalls[0]!.args.p_deletions as Array<{ id: string }>).map((d) => d.id),
+    cycleIds,
+  );
 });
 
 Deno.test("a failed tombstone delete chunk stops at that chunk with a retryable 503", async () => {
@@ -4701,11 +4719,48 @@ function oldBuildRoutineAndCycleBody(
   };
 }
 
+/**
+ * The push re-create gate (20260924100000): a pushed row is skipped when its
+ * clock is missing or not strictly newer than the tombstone's client clock; a
+ * strictly newer edit is reported skipped=false (the SQL removes the
+ * tombstone). uuid comparison is case-insensitive, as in Postgres.
+ */
+function tombstoneGateRows(
+  tombstones: Array<{ entity: string; entity_id: string; client_deleted_at?: string }>,
+  rows: Array<{ entity: string; id: string; clock?: string | null }>,
+): Array<{ entity: string; entity_id: string; skipped: boolean }> {
+  const out: Array<{ entity: string; entity_id: string; skipped: boolean }> = [];
+  for (const row of rows) {
+    const tombstone = tombstones.find((t) =>
+      t.entity === row.entity && t.entity_id.toLowerCase() === row.id.toLowerCase()
+    );
+    if (!tombstone) continue;
+    const tombstoneClock = Date.parse(tombstone.client_deleted_at ?? "2026-07-15T00:00:00.000Z");
+    const clock = typeof row.clock === "string" ? Date.parse(row.clock) : Number.NaN;
+    out.push({
+      entity: row.entity,
+      entity_id: tombstone.entity_id,
+      skipped: !Number.isFinite(clock) || clock <= tombstoneClock,
+    });
+  }
+  return out;
+}
+
 function tombstoneRpcBehavior(
-  tombstones: Array<{ entity: string; entity_id: string }>,
+  tombstones: Array<{ entity: string; entity_id: string; client_deleted_at?: string }>,
   tombstoneError: unknown = null,
 ): RpcBehavior {
   return async (name, args) => {
+    if (name === "apply_sync_tombstone_gate") {
+      if (tombstoneError) return { data: null, error: tombstoneError };
+      return {
+        data: tombstoneGateRows(
+          tombstones,
+          args.p_rows as Array<{ entity: string; id: string; clock?: string | null }>,
+        ),
+        error: null,
+      };
+    }
     if (name === "get_sync_tombstones") {
       if (tombstoneError) return { data: null, error: tombstoneError };
       // p_ids is uuid[]: Postgres matches regardless of case.
@@ -4819,16 +4874,19 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): old-build push of a deleted rou
   assertEquals(days.length, 1);
   assertEquals(days[0].cycle_id, TOMB_CYCLE_ID);
   assertEquals(days[0].routine_id, null);
-  // One lookup covers both entities.
+  // One gate call covers both entities; an old build sends no clocks.
   const lookups = harness.adminRpcCalls.filter((call) =>
-    call.name === "get_sync_tombstones"
+    call.name === "apply_sync_tombstone_gate"
   );
   assertEquals(lookups.length, 1);
   assertEquals(lookups[0].args.p_user_id, VALID_USER_ID);
-  assertEquals(lookups[0].args.p_entity, null);
   assertEquals(
-    [...(lookups[0].args.p_ids as string[])].sort(),
-    [TOMB_ROUTINE_ID, TOMB_CYCLE_ID].sort(),
+    [...(lookups[0].args.p_rows as Array<{ entity: string; id: string; clock: unknown }>)]
+      .sort((a, b) => a.id.localeCompare(b.id)),
+    [
+      { entity: "routine", id: TOMB_ROUTINE_ID, clock: null },
+      { entity: "cycle", id: TOMB_CYCLE_ID, clock: null },
+    ].sort((a, b) => a.id.localeCompare(b.id)),
   );
 });
 
@@ -4851,6 +4909,68 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a routine created in the same p
   const days = upsertedRows(harness, "cycle_days");
   assertEquals(days.length, 1);
   assertEquals(days[0].routine_id, TOMB_ROUTINE_ID);
+});
+
+// 204-E: the tombstone carries the delete's client clock. A dated edit that
+// is strictly newer wins (the SQL clears the tombstone); an edit dated at or
+// before the delete stays skipped. Real-SQL coverage: pgTAP
+// sync_tombstone_clock.test.sql and the "integration: tombstone clock" tests.
+function datedRoutineAndCycleBody(clock: string): Record<string, unknown> {
+  const body = oldBuildRoutineAndCycleBody();
+  const [routine] = body.routines as Array<Record<string, unknown>>;
+  const [cycle] = body.cycles as Array<Record<string, unknown>>;
+  return {
+    ...body,
+    routines: [{ ...routine, updatedAt: clock }],
+    cycles: [{ ...cycle, updatedAt: clock }],
+  };
+}
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): an edit strictly newer than the delete wins and is written`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([
+      { entity: "routine", entity_id: TOMB_ROUTINE_ID, client_deleted_at: "2026-09-20T12:00:00.000Z" },
+      { entity: "cycle", entity_id: TOMB_CYCLE_ID, client_deleted_at: "2026-09-20T12:00:00.000Z" },
+    ]),
+  });
+  const response = await harness.handler(
+    requestFromBody(datedRoutineAndCycleBody("2026-09-20T12:00:00.001Z")),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
+  assertEquals(parentWriteIds(harness, "routines"), [TOMB_ROUTINE_ID]);
+  assertEquals(parentWriteIds(harness, "training_cycles"), [TOMB_CYCLE_ID]);
+  // The day keeps its routine reference: the routine survives this push.
+  assertEquals(upsertedRows(harness, "cycle_days")[0].routine_id, TOMB_ROUTINE_ID);
+  const gate = harness.adminRpcCalls.find((call) => call.name === "apply_sync_tombstone_gate");
+  assertEquals(
+    (gate!.args.p_rows as Array<{ clock: unknown }>).map((row) => row.clock),
+    ["2026-09-20T12:00:00.001Z", "2026-09-20T12:00:00.001Z"],
+  );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): an edit dated at the delete's clock stays skipped`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([
+      { entity: "routine", entity_id: TOMB_ROUTINE_ID, client_deleted_at: "2026-09-20T12:00:00.000Z" },
+      { entity: "cycle", entity_id: TOMB_CYCLE_ID, client_deleted_at: "2026-09-20T12:00:00.000Z" },
+    ]),
+  });
+  const response = await harness.handler(
+    // Same instant, different offset: compared as instants, not strings.
+    requestFromBody(datedRoutineAndCycleBody("2026-09-20T08:00:00.000-04:00")),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, {
+    routines: [TOMB_ROUTINE_ID],
+    cycles: [TOMB_CYCLE_ID],
+  });
+  assertEquals(parentWriteIds(harness, "routines"), []);
+  assertEquals(parentWriteIds(harness, "training_cycles"), []);
 });
 
 Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a deleted cycle is skipped with its days`, async () => {
@@ -5168,7 +5288,7 @@ Deno.test("tombstones: a push without routines or cycles makes no tombstone look
   assertEquals(response.status, 200);
   assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
   assertEquals(
-    harness.adminRpcCalls.filter((call) => call.name === "get_sync_tombstones"),
+    harness.adminRpcCalls.filter((call) => call.name === "apply_sync_tombstone_gate"),
     [],
   );
 });
@@ -11295,3 +11415,37 @@ Deno.test("uppercase routine exercise keeps a lowercase stored duration in a mix
   assertEquals(byId.get(upper(caseExerciseId))?.duration_seconds, 55);
   assertEquals(byId.get(TIMED_ROUTINE_EXERCISE_ID)?.duration_seconds, 30);
 });
+
+/**
+ * delete_cycles_clocked (20260924100000): per deletion, reject when the stored
+ * cycle's client_updated_at is strictly newer than the delete clock, otherwise
+ * accept (existed = a stored row was deleted). Stored rows come from the
+ * test's static `training_cycles` table result.
+ */
+function cycleDeleteDouble(
+  args: Record<string, unknown>,
+  storedResult: TerminalResult | undefined,
+): TerminalResultValue {
+  const stored = storedResult && typeof storedResult !== "function" &&
+      Array.isArray(storedResult.data)
+    ? storedResult.data as Array<{ id?: string; client_updated_at?: string | null }>
+    : [];
+  const deletions = args.p_deletions as Array<{ id: string; updatedAt: string }>;
+  return {
+    data: deletions.map((deletion) => {
+      const row = stored.find((r) =>
+        typeof r.id === "string" && r.id.toLowerCase() === deletion.id.toLowerCase()
+      );
+      const storedKey = row?.client_updated_at ?? null;
+      const rejected = row !== undefined && storedKey !== null &&
+        Date.parse(storedKey) > Date.parse(deletion.updatedAt);
+      return {
+        id: deletion.id.toLowerCase(),
+        accepted: !rejected,
+        existed: row !== undefined,
+        server_updated_at: rejected ? storedKey : null,
+      };
+    }),
+    error: null,
+  };
+}
