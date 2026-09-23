@@ -18,6 +18,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/app/components/ui/select";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import {
 	Tabs,
 	TabsContent,
@@ -203,10 +204,9 @@ export function Community() {
 						<div className="px-4 space-y-3">
 							{isLoading ? (
 								["s1", "s2", "s3", "s4"].map((id) => (
-									<Card
-										key={id}
-										className="p-5 bg-surface-2 border-secondary animate-pulse h-40"
-									/>
+									<Card key={id} className="p-5 bg-surface-2 border-secondary">
+										<Skeleton className="h-40 w-full" />
+									</Card>
 								))
 							) : isError ? (
 								<div className="text-center py-12 text-muted-foreground">
@@ -333,8 +333,10 @@ export function Community() {
 									{["d1", "d2", "d3", "d4", "d5", "d6"].map((id) => (
 										<Card
 											key={id}
-											className="p-5 bg-surface-2 border-secondary animate-pulse h-48"
-										/>
+											className="p-5 bg-surface-2 border-secondary"
+										>
+											<Skeleton className="h-48 w-full" />
+										</Card>
 									))}
 								</div>
 							) : isError ? (

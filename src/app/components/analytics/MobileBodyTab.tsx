@@ -6,6 +6,7 @@ import { BiomechanicsContent } from "@/app/components/Biomechanics";
 import { MuscleRadar } from "@/app/components/charts/MuscleRadar";
 import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
 import { Card } from "@/app/components/ui/card";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import type { Recommendation } from "@/lib/recommendations";
 import type { MuscleRecovery } from "@/lib/sra-recovery";
 import type { WeightUnit } from "@/lib/units";
@@ -114,11 +115,7 @@ export default function MobileBodyTab({
 			</Card>
 
 			{/* Volume Landmarks */}
-			<Suspense
-				fallback={
-					<div className="h-48 animate-pulse bg-surface-2 rounded-lg" />
-				}
-			>
+			<Suspense fallback={<Skeleton className="h-48 w-full" />}>
 				<VolumeLandmarks
 					weeklyVolume={weeklyVolume}
 					selectedMuscleGroup={null}
@@ -128,11 +125,7 @@ export default function MobileBodyTab({
 			</Suspense>
 
 			{/* SRA Recovery Matrix (self-gates for INFERNO) */}
-			<Suspense
-				fallback={
-					<div className="h-48 animate-pulse bg-surface-2 rounded-lg" />
-				}
-			>
+			<Suspense fallback={<Skeleton className="h-48 w-full" />}>
 				<SraRecoveryMatrix
 					recoveries={muscleRecoveries}
 					recommendations={recommendations}
@@ -140,11 +133,7 @@ export default function MobileBodyTab({
 			</Suspense>
 
 			{/* Recommendations Panel (self-gates for INFERNO) */}
-			<Suspense
-				fallback={
-					<div className="h-24 animate-pulse bg-surface-2 rounded-lg" />
-				}
-			>
+			<Suspense fallback={<Skeleton className="h-24 w-full" />}>
 				<RecommendationsPanel recommendations={recommendations} />
 			</Suspense>
 		</>

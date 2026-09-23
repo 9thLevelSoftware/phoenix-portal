@@ -18,6 +18,7 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useRecoveryScore } from "@/hooks/useRecoveryScore";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -196,10 +197,10 @@ export function Recovery() {
 		return (
 			<div className="min-h-screen pb-20 md:pb-8">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-					<div className="animate-pulse space-y-6">
-						<div className="h-10 w-64 bg-secondary rounded" />
-						<div className="h-48 bg-secondary rounded-lg" />
-						<div className="h-32 bg-secondary rounded-lg" />
+					<div className="space-y-6">
+						<Skeleton className="h-10 w-64" />
+						<Skeleton className="h-48 w-full" />
+						<Skeleton className="h-32 w-full" />
 					</div>
 				</div>
 			</div>

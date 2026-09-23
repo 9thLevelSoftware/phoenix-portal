@@ -39,6 +39,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/app/components/ui/popover";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import {
 	Tabs,
 	TabsContent,
@@ -473,8 +474,8 @@ export function Goals() {
 					<div className="space-y-4">
 						{Array.from({ length: 2 }).map((_, i) => (
 							// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
-							<Card key={i} className="p-6 bg-surface-2 animate-pulse">
-								<div className="h-20" />
+							<Card key={i} className="p-6 bg-surface-2">
+								<Skeleton className="h-20 w-full" />
 							</Card>
 						))}
 					</div>

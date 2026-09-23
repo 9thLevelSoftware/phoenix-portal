@@ -441,7 +441,7 @@ export function RoutineBuilder() {
 						<div className="flex items-center gap-3">
 							{hasUnsavedChanges && (
 								<div className="flex items-center gap-2">
-									<div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+									<div className="w-2 h-2 bg-primary rounded-full" />
 									<span className="text-sm text-muted-foreground">
 										Unsaved changes
 									</span>

@@ -2,6 +2,7 @@ import { ArrowRight, HeartPulse, Lock } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import { useRecoveryScore } from "@/hooks/useRecoveryScore";
 import { useSubscription } from "@/hooks/useSubscription";
 import { GATING_THRESHOLD_DAYS } from "@/lib/recovery";
@@ -50,7 +51,7 @@ export function RecoveryDashboardWidget() {
 					</h3>
 				</div>
 				<div className="flex items-center justify-center py-6">
-					<div className="w-12 h-12 rounded-full border-2 border-secondary animate-pulse" />
+					<Skeleton className="w-12 h-12 rounded-full" />
 				</div>
 			</Card>
 		);

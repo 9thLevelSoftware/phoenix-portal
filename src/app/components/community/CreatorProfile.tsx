@@ -258,8 +258,10 @@ export function CreatorProfile({
 						<Card
 							// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
 							key={i}
-							className="p-5 bg-surface-2 border-secondary animate-pulse h-48"
-						/>
+							className="p-5 bg-surface-2 border-secondary"
+						>
+							<Skeleton className="h-48 w-full" />
+						</Card>
 					))}
 				</div>
 			) : allItems.length === 0 ? (

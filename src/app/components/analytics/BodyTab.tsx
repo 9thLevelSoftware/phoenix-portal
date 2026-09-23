@@ -6,6 +6,7 @@ import MuscleHighlighter, {
 import { MuscleRadar } from "@/app/components/charts/MuscleRadar";
 import { EChartsWrapper } from "@/app/components/charts/shared/EChartsWrapper";
 import { Card } from "@/app/components/ui/card";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import type { Recommendation } from "@/lib/recommendations";
 import type { MuscleRecovery } from "@/lib/sra-recovery";
 import type { WeightUnit } from "@/lib/units";
@@ -257,11 +258,7 @@ export default function BodyTab({
 						exit={{ opacity: 0, height: 0 }}
 						transition={{ duration: 0.3 }}
 					>
-						<Suspense
-							fallback={
-								<div className="h-64 animate-pulse bg-surface-2 rounded-lg" />
-							}
-						>
+						<Suspense fallback={<Skeleton className="h-64 w-full" />}>
 							<ExerciseDeepDive
 								muscleGroup={selectedMuscleGroup}
 								exercises={exercisesByMuscle[selectedMuscleGroup] ?? []}
@@ -275,11 +272,7 @@ export default function BodyTab({
 			</AnimatePresence>
 
 			{/* Volume Landmarks */}
-			<Suspense
-				fallback={
-					<div className="h-48 animate-pulse bg-surface-2 rounded-lg" />
-				}
-			>
+			<Suspense fallback={<Skeleton className="h-48 w-full" />}>
 				<VolumeLandmarks
 					weeklyVolume={weeklyVolume}
 					selectedMuscleGroup={selectedMuscleGroup}
@@ -289,11 +282,7 @@ export default function BodyTab({
 			</Suspense>
 
 			{/* SRA Recovery Matrix (self-gates for INFERNO) */}
-			<Suspense
-				fallback={
-					<div className="h-48 animate-pulse bg-surface-2 rounded-lg" />
-				}
-			>
+			<Suspense fallback={<Skeleton className="h-48 w-full" />}>
 				<SraRecoveryMatrix
 					recoveries={muscleRecoveries}
 					recommendations={recommendations}
@@ -301,11 +290,7 @@ export default function BodyTab({
 			</Suspense>
 
 			{/* Recommendations Panel (self-gates for INFERNO) */}
-			<Suspense
-				fallback={
-					<div className="h-24 animate-pulse bg-surface-2 rounded-lg" />
-				}
-			>
+			<Suspense fallback={<Skeleton className="h-24 w-full" />}>
 				<RecommendationsPanel recommendations={recommendations} />
 			</Suspense>
 		</>
