@@ -235,3 +235,50 @@ Deno.test('writeLiftosaurRows: an undated record keeps its first import date on 
   assertEquals(row.started_at, 'first-run');
   assertEquals(row.name, 'Renamed', 'other columns are refreshed');
 });
+
+/** Records every upsert; refuses any request that carries a poisoned row. */
+function recordingClient(poisonedExternalId: string | null) {
+  const upserts: number[] = [];
+  const client = {
+    from(_table: string) {
+      return {
+        upsert(payload: Record<string, unknown> | Array<Record<string, unknown>>) {
+          const batch = Array.isArray(payload) ? payload : [payload];
+          upserts.push(batch.length);
+          const poisoned = batch.some((row) => row.external_id === poisonedExternalId);
+          return Promise.resolve({ error: poisoned ? { message: 'refused' } : null });
+        },
+        update() {
+          const chain = { eq: () => chain, then: (ok: (v: unknown) => void) => ok({ error: null }) };
+          return chain;
+        },
+      };
+    },
+  };
+  return { client, upserts };
+}
+
+const datedRecord = (id: number) => ({
+  id,
+  text: `2026-03-01T10:00:00Z / program: "P${id}" / duration: 60s`,
+});
+
+Deno.test('writeLiftosaurRows: rows are written in chunks, not one request per row', async () => {
+  const { client, upserts } = recordingClient(null);
+  const rows = Array.from({ length: 250 }, (_, i) => toLiftosaurActivityRow('u1', datedRecord(i + 1), 'run'));
+  const progress: number[] = [];
+  const result = await writeLiftosaurRows(client, 'u1', rows, {}, (n) => {
+    progress.push(n);
+  });
+  assertEquals(result, { written: 250, failed: 0 });
+  assertEquals(upserts, [100, 100, 50]);
+  assertEquals(progress, [100, 200, 250]);
+});
+
+Deno.test('writeLiftosaurRows: a refused chunk is retried row by row and counts only the bad row', async () => {
+  const rows = Array.from({ length: 5 }, (_, i) => toLiftosaurActivityRow('u1', datedRecord(i + 1), 'run'));
+  const { client, upserts } = recordingClient(String(rows[2].row.external_id));
+  const result = await writeLiftosaurRows(client, 'u1', rows);
+  assertEquals(result, { written: 4, failed: 1 });
+  assertEquals(upserts, [5, 1, 1, 1, 1, 1]);
+});

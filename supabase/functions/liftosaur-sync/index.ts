@@ -57,9 +57,9 @@ import { isServiceRoleBearer } from "../_shared/timingSafe.ts";
  */
 
 /**
- * Renew the sync_queue lease after this many upserted records. Records are
- * upserted one by one, so a 2,000-record history can outlast
- * process-sync-queue's heartbeat lease without it.
+ * Renew the sync_queue lease after this many upserted records. A
+ * 2,000-record history written chunk by chunk (with a row-by-row retry of a
+ * refused chunk) can outlast process-sync-queue's heartbeat lease without it.
  */
 const HEARTBEAT_EVERY_RECORDS = 100;
 
@@ -431,13 +431,17 @@ async function runLiftosaurSync(
 		// Normalize and persist. An undated record gets ONE per-run import time on
 		// first insert and is never re-dated afterwards (writeLiftosaurRows).
 		const importedAt = deps.now().toISOString();
+		let lastHeartbeatAt = 0;
 		const { written: importedCount, failed: failedCount } = await writeLiftosaurRows(
 			supabase,
 			userId,
 			allRecords.map((record) => toLiftosaurActivityRow(userId, record, importedAt)),
 			{},
 			async (n) => {
-				if (n % HEARTBEAT_EVERY_RECORDS === 0) {
+				// n is a running count reported per chunk, so renew on crossing
+				// each boundary rather than on an exact multiple.
+				if (n - lastHeartbeatAt >= HEARTBEAT_EVERY_RECORDS) {
+					lastHeartbeatAt = n;
 					await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 				}
 			},
