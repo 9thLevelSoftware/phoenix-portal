@@ -2243,6 +2243,7 @@ async function mobileSyncPushHandler(
           }
         }
       }
+      const gone: string[] = [];
       if (survived.size > 0) {
         // The delete may have landed after this push's write, in which case
         // the edit is already gone: keep its tombstone and report it deleted.
@@ -2259,7 +2260,8 @@ async function mobileSyncPushHandler(
         );
         for (const [id, deletedAt] of survived) {
           if (!stillThere.has(id)) {
-            raced.add(id);
+            // Already deleted by a later delete: report it, keep its tombstone.
+            gone.push(id);
             continue;
           }
           // A delete after the existence check rewrites deleted_at, so this
@@ -2274,17 +2276,33 @@ async function mobileSyncPushHandler(
           if (clearErr) throw new Error(`sync tombstone race clear failed: ${clearErr.message}`);
         }
       }
-      if (raced.size === 0) return [];
-      const racedIds = [...raced];
-      const { error: delErr } = await supabase
-        .from(table)
-        .delete()
-        .eq('user_id', userId)
-        .in('id', racedIds);
-      if (delErr) throw new Error(`${table} race re-delete failed: ${delErr.message}`);
-      console.warn(
-        `Re-deleted ${racedIds.length} ${table} row(s) deleted concurrently with this push`,
+      if (raced.size === 0) return gone;
+      // Compare-and-delete: only while the stored LWW key is still the one
+      // this push wrote (its DTO clock, or the receipt time when undated). A
+      // newer edit that cleared the tombstone and landed meanwhile keeps its
+      // row, and only ids actually deleted are reported.
+      const writtenKey = new Map(
+        rows.map((row) => [normalizeUuid(row.id), row.updatedAt ?? pushReceivedAt]),
       );
+      const racedIds: string[] = [...gone];
+      for (const id of raced) {
+        const key = writtenKey.get(normalizeUuid(id));
+        if (!key) continue;
+        const { data: deleted, error: delErr } = await supabase
+          .from(table)
+          .delete()
+          .eq('user_id', userId)
+          .eq('id', id)
+          .eq('client_updated_at', key)
+          .select('id');
+        if (delErr) throw new Error(`${table} race re-delete failed: ${delErr.message}`);
+        if (Array.isArray(deleted) && deleted.length > 0) racedIds.push(id);
+      }
+      if (racedIds.length > gone.length) {
+        console.warn(
+          `Re-deleted ${racedIds.length - gone.length} ${table} row(s) deleted concurrently with this push`,
+        );
+      }
       return racedIds;
     };
     // 204-D: guard_profile_ownership_update refuses to move a stored session

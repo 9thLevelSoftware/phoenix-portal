@@ -5222,6 +5222,8 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a routine deleted concurrently 
           : [],
         error: null,
       }),
+      // The compare-and-delete finds the row this push wrote.
+      routines: { data: [{ id: TOMB_ROUTINE_ID }], error: null },
     },
   });
   const response = await harness.handler(
@@ -5260,6 +5262,7 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle deleted concurrently wi
         data: filters.entity === "cycle" ? [{ entity_id: TOMB_CYCLE_ID }] : [],
         error: null,
       }),
+      training_cycles: { data: [{ id: TOMB_CYCLE_ID }], error: null },
     },
   });
   const response = await harness.handler(
@@ -5389,6 +5392,33 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle the merge rejected is n
   );
 });
 
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a raced row a newer edit already replaced is not deleted`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    tableResults: {
+      sync_tombstones: (filters) => ({
+        data: filters.entity === "cycle" ? [RACED_TOMBSTONE] : [],
+        error: null,
+      }),
+      // The compare-and-delete matches nothing: the stored key is no longer
+      // the one this push wrote.
+      training_cycles: { data: [], error: null },
+    },
+  });
+  const requestBody = oldBuildRoutineAndCycleBody();
+  const [cycle] = requestBody.cycles as Array<Record<string, unknown>>;
+  requestBody.cycles = [{ ...cycle, updatedAt: "2026-09-01T00:00:00.000Z" }];
+  const response = await harness.handler(requestFromBody(requestBody));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
+  const deletes = harness.adminWriteArgs.filter((call) =>
+    call.table === "training_cycles" && call.method === "delete"
+  );
+  assertEquals(deletes.length, 1, "one keyed compare-and-delete attempt");
+});
+
 Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a concurrent delete as new as the pushed edit wins the race`, async () => {
   const harness = makeHarness(undefined, {
     rpcBehavior: tombstoneRpcBehavior([]),
@@ -5397,6 +5427,7 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a concurrent delete as new as t
         data: filters.entity === "cycle" ? [RACED_TOMBSTONE] : [],
         error: null,
       }),
+      training_cycles: { data: [{ id: TOMB_CYCLE_ID }], error: null },
     },
   });
   const requestBody = oldBuildRoutineAndCycleBody();

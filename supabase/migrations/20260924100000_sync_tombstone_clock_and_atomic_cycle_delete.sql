@@ -125,7 +125,11 @@ BEGIN
     RAISE EXCEPTION 'delete_cycles_clocked: p_deletions must be a JSON array' USING ERRCODE = '22023';
   END IF;
 
-  FOR v_item IN SELECT value FROM jsonb_array_elements(p_deletions)
+  -- Stable id order: two pushes deleting the same cycles in opposite
+  -- payload orders must take the per-cycle locks in the same order.
+  FOR v_item IN
+    SELECT value FROM jsonb_array_elements(p_deletions)
+     ORDER BY (value ->> 'id')::UUID
   LOOP
     v_id := (v_item ->> 'id')::UUID;
     v_clock := (v_item ->> 'updatedAt')::TIMESTAMPTZ;
