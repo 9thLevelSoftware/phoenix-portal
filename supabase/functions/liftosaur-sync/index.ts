@@ -622,6 +622,34 @@ async function runLiftosaurSync(
 						.eq("retry_count", ownedAttempt ?? 0)
 						.select("id");
 					followUpQueued = !handOnError && Array.isArray(handedOn) && handedOn.length > 0;
+					if (!followUpQueued && (handOnError as { code?: string } | null)?.code === "23505") {
+						// This row is `initial` and a non-initial row for the same
+						// user/provider is already pending (sync_queue_one_active
+						// allows one of each class). That pending row is the
+						// continuation: the saved cursor makes it resume this chain.
+						// Complete this run's own row instead of retrying it, which
+						// would restart the initial read from page one.
+						const completed = await completeSyncQueueEntry(supabase, {
+							userId,
+							provider: "liftosaur",
+							queueId: ownedQueueId,
+							claimGeneration: ownedAttempt,
+						});
+						if (completed) {
+							return new Response(
+								JSON.stringify({
+									...base,
+									success: true,
+									partial: true,
+									continuing: true,
+									follow_up_queued: true,
+									queue_row_handed_off: false,
+									backfill_before: outcome.nextBefore,
+								}),
+								{ status: 200, headers: { ...cors, "Content-Type": "application/json" } },
+							);
+						}
+					}
 					if (!followUpQueued) {
 						// Still processing (a write error): the processor re-queues
 						// it and the saved cursor continues the chain. Lost (0 rows):
