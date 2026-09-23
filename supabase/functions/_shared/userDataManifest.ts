@@ -360,6 +360,10 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"vbt_zone",
 		"user_id",
 	]),
+	// A security_invoker VIEW since 20260925200000: one row per sample over
+	// set_telemetry plus any legacy rows not yet folded, with the same columns
+	// the table had, so the export is unchanged. The two backing tables are in
+	// EXCLUDED so no sample is exported twice.
 	owned("rep_telemetry", "cascade", [
 		"id",
 		"set_id",
@@ -1022,6 +1026,23 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
  * account deletion removes its rows.
  */
 export const EXCLUDED: readonly ExcludedUserDataTable[] = [
+	{
+		table: "set_telemetry",
+		reason: "Storage for force-curve samples, one row per set as arrays (20260925200000). Every sample is exported once, per row, through the rep_telemetry view in the manifest.",
+		purge: "cascade",
+		purgeMatch: { column: "user_id" },
+	},
+	{
+		table: "rep_telemetry_legacy",
+		reason: "Per-sample rows written before 20260925200000, kept until the set_telemetry backfill is verified. The rep_telemetry view serves them until then, so they are exported through it and never twice.",
+		// The renamed table keeps its FK to auth.users ON DELETE CASCADE, but
+		// the migration parser cannot see a rename, so the purge is explicit
+		// (always safe) rather than a cascade the tests cannot verify.
+		purge: "explicit",
+		purgeMatch: { column: "user_id" },
+		// Dropped by a later migration once the backfill is verified.
+		mayBeAbsent: true,
+	},
 	{
 		table: "oauth_tokens",
 		reason: "Provider access/refresh tokens and API keys are credentials, not user content; connection metadata is exported via user_integrations.",

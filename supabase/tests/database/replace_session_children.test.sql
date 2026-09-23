@@ -461,8 +461,16 @@ SELECT pg_temp.push(113,
                       pg_temp.ex(152, 113, 'pr20-bench-press', 'Bench Press', 1)),
     jsonb_build_array(pg_temp.st(5151, 151, 1), pg_temp.st(5152, 152, 1)),
     '[]'::jsonb);
-INSERT INTO public.rep_telemetry (set_id, user_id, timestamp_ms, force_n)
-SELECT pg_temp.u(5151), pg_temp.uid(), g, 1 FROM generate_series(1, 49998) AS g;
+-- Seeded straight into per-set storage (20260925200000): the rep_telemetry
+-- view's INSTEAD OF trigger is row-level, which is fine for single
+-- samples but quadratic for 49998 of them.
+INSERT INTO public.set_telemetry
+    (set_id, user_id, sample_count, ids, timestamp_ms, force_n, velocity_mps, position_mm, cable)
+SELECT pg_temp.u(5151), pg_temp.uid(), 49998,
+       array_agg(gen_random_uuid() ORDER BY g), array_agg(g::bigint ORDER BY g),
+       array_agg(1::numeric ORDER BY g), array_agg(NULL::numeric ORDER BY g),
+       array_agg(NULL::numeric ORDER BY g), array_agg(NULL::text ORDER BY g)
+FROM generate_series(1, 49998) AS g;
 SELECT is(
     pg_temp.push(113,
         jsonb_build_array(pg_temp.ex(151, 113, 'pr20-bench-press', 'Bench Press', 0),
@@ -481,8 +489,16 @@ SELECT pg_temp.push(114,
                       pg_temp.ex(162, 114, 'pr20-bench-press', 'Bench Press', 1)),
     jsonb_build_array(pg_temp.st(5161, 161, 1), pg_temp.st(5162, 162, 1)),
     '[]'::jsonb);
-INSERT INTO public.rep_telemetry (set_id, user_id, timestamp_ms, force_n)
-SELECT pg_temp.u(5161), pg_temp.uid(), g, 1 FROM generate_series(1, 49999) AS g;
+-- Seeded straight into per-set storage (20260925200000): the rep_telemetry
+-- view's INSTEAD OF trigger is row-level, which is fine for single
+-- samples but quadratic for 49999 of them.
+INSERT INTO public.set_telemetry
+    (set_id, user_id, sample_count, ids, timestamp_ms, force_n, velocity_mps, position_mm, cable)
+SELECT pg_temp.u(5161), pg_temp.uid(), 49999,
+       array_agg(gen_random_uuid() ORDER BY g), array_agg(g::bigint ORDER BY g),
+       array_agg(1::numeric ORDER BY g), array_agg(NULL::numeric ORDER BY g),
+       array_agg(NULL::numeric ORDER BY g), array_agg(NULL::text ORDER BY g)
+FROM generate_series(1, 49999) AS g;
 SELECT is(
     pg_temp.push(114,
         jsonb_build_array(pg_temp.ex(161, 114, 'pr20-bench-press', 'Bench Press', 0),

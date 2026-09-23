@@ -95,6 +95,22 @@ Deno.test("select: typed filters, order and range, JSON built by Postgres", asyn
   assertEquals(sql.params, ["u1", '{"p1","p\\"2"}']);
 });
 
+Deno.test("select: overlaps is the array && operator on the column's own array type", async () => {
+  const fake = fakeExecutor({
+    columns: { set_telemetry: { set_id: "uuid", ids: "uuid[]" } },
+    results: [{ match: "FROM public.\"set_telemetry\"", rows: [{ j: '[{"set_id":"s1"}]' }] }],
+  });
+  const tx = await beginPushTransaction(fake.executor);
+  const { data, error } = await tx.client.from("set_telemetry")
+    .select("set_id")
+    .overlaps("ids", ["a1", "a2"]);
+  assertEquals(error, null);
+  assertEquals(data, [{ set_id: "s1" }]);
+  const sql = fake.log.find((l) => l.text.includes('FROM public."set_telemetry"'))!;
+  assert(sql.text.includes('WHERE "ids" && $1::text::uuid[]'), sql.text);
+  assertEquals(sql.params, ['{"a1","a2"}']);
+});
+
 Deno.test("upsert: json_populate_recordset, union of keys, DO UPDATE on every column", async () => {
   const fake = fakeExecutor({
     columns: { local_profiles: { user_id: "uuid", id: "text", name: "text" } },
