@@ -19,9 +19,11 @@ import {
 } from "../_shared/flags.ts";
 import {
   broadcastSyncComplete,
+  buildExternalActivityAcks,
   createMobileSyncPushHandler,
   localProfilesPushChangesRows,
 } from "./index.ts";
+import { partitionPersonalRecordRowsBySessionValidity } from "../_shared/personalRecordRow.ts";
 
 interface ByteGoldens {
   version: number;
@@ -4706,10 +4708,11 @@ function tombstoneRpcBehavior(
   return async (name, args) => {
     if (name === "get_sync_tombstones") {
       if (tombstoneError) return { data: null, error: tombstoneError };
-      const ids = new Set(args.p_ids as string[]);
+      // p_ids is uuid[]: Postgres matches regardless of case.
+      const ids = new Set((args.p_ids as string[]).map((id) => id.toLowerCase()));
       return {
         data: tombstones
-          .filter((row) => ids.has(row.entity_id))
+          .filter((row) => ids.has(row.entity_id.toLowerCase()))
           .map((row) => ({ ...row, deleted_at: "2026-07-15T00:00:00.000Z" })),
         error: null,
       };
@@ -10985,7 +10988,9 @@ function storedRoutineExercises(
     const ids = inIds.args[1] as string[];
     return {
       data: stored
-        .filter((row) => ids.includes(row.id as string))
+        .filter((row) =>
+          ids.some((id) => id.toLowerCase() === String(row.id).toLowerCase())
+        )
         .map((row) =>
           Object.fromEntries(
             columns.filter((c) => c in row).map((c) => [c, row[c]]),
@@ -11073,3 +11078,220 @@ for (const bad of [-1, 1.5, "45", 2_147_483_648]) {
     assertNoPrivilegedActivity(harness);
   });
 }
+
+// ---------------------------------------------------------------------------
+// UUID casing (082df8a8, re-applied). iOS sends uppercase UUIDs; everything
+// PostgreSQL returns is lowercase. The fixture ids above are digits-only, so
+// toUpperCase() leaves them unchanged — these tests use ids with hex letters.
+// ---------------------------------------------------------------------------
+const CASE_SESSION_ID = "abcdef00-0000-4000-8000-0000000000a0";
+const CASE_EXERCISE_ID = "abcdef00-0000-4000-8000-0000000000a1";
+const CASE_SET_ID = "abcdef00-0000-4000-8000-0000000000a2";
+const CASE_REP_ID = "abcdef00-0000-4000-8000-0000000000a3";
+const CASE_TELEMETRY_ID = "abcdef00-0000-4000-8000-0000000000a4";
+const CASE_ROUTINE_ID = "abcdef00-0000-4000-8000-0000000000b0";
+const CASE_ROUTINE_EXERCISE_ID = "abcdef00-0000-4000-8000-0000000000b1";
+const CASE_CYCLE_ID = "abcdef00-0000-4000-8000-0000000000c0";
+const CASE_CYCLE_DAY_ID = "abcdef00-0000-4000-8000-0000000000c1";
+const upper = (id: string): string => id.toUpperCase();
+
+Deno.test("case-variant UUID hierarchy keeps children, telemetry and the routine exercise keep-list", async () => {
+  const body = validNestedRelationshipBody();
+  const session = (body.sessions as Record<string, unknown>[])[0];
+  const exercise = (session.exercises as Record<string, unknown>[])[0];
+  const set = (exercise.sets as Record<string, unknown>[])[0];
+  const repSummary = (set.repSummaries as Record<string, unknown>[])[0];
+  const routine = (body.routines as Record<string, unknown>[])[0];
+  const routineExercise = (routine.exercises as Record<string, unknown>[])[0];
+  const cycle = (body.cycles as Record<string, unknown>[])[0];
+  const day = (cycle.days as Record<string, unknown>[])[0];
+
+  session.id = CASE_SESSION_ID;
+  exercise.id = CASE_EXERCISE_ID;
+  exercise.sessionId = upper(CASE_SESSION_ID);
+  set.id = CASE_SET_ID;
+  set.exerciseId = upper(CASE_EXERCISE_ID);
+  repSummary.id = CASE_REP_ID;
+  repSummary.setId = upper(CASE_SET_ID);
+  routine.id = CASE_ROUTINE_ID;
+  routineExercise.id = CASE_ROUTINE_EXERCISE_ID;
+  routineExercise.routineId = upper(CASE_ROUTINE_ID);
+  cycle.id = CASE_CYCLE_ID;
+  day.id = CASE_CYCLE_DAY_ID;
+  day.cycleId = upper(CASE_CYCLE_ID);
+  body.telemetry = [{
+    id: CASE_TELEMETRY_ID,
+    setId: upper(CASE_SET_ID),
+    timestampMs: 10,
+    forceN: 100,
+    velocityMps: 0.5,
+    positionMm: 20,
+    cable: "A",
+  }];
+
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  const replace = harness.adminRpcCalls.find((call) => call.name === "replace_session_children");
+  assert(replace);
+  assertEquals((replace.args.p_exercises as unknown[]).length, 1);
+  assertEquals((replace.args.p_sets as unknown[]).length, 1);
+  assertEquals((replace.args.p_rep_summaries as unknown[]).length, 1);
+  assertEquals((replace.args.p_rep_telemetry as unknown[]).length, 1);
+
+  // The orphan cleanup keeps the pushed exercise: its routine matched.
+  const cleanup = harness.adminQueries.find((query) =>
+    query.table === "routine_exercises" &&
+    query.calls.some((call) => call.method === "delete") &&
+    query.calls.some((call) => call.method === "not")
+  );
+  assert(cleanup);
+  const keepFilter = cleanup.calls.find((call) => call.method === "not");
+  assert(String(keepFilter?.args[2]).includes(CASE_ROUTINE_EXERCISE_ID));
+});
+
+Deno.test("an uppercase push of a routine with a lowercase stored tombstone is skipped, not re-created", async () => {
+  const lowerRoutineId = "abcdef00-0000-4000-8000-0000000000e0";
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([
+      { entity: "routine", entity_id: lowerRoutineId },
+    ]),
+  });
+  const body = JSON.parse(
+    JSON.stringify(oldBuildRoutineAndCycleBody()).replaceAll(
+      TOMB_ROUTINE_ID,
+      upper(lowerRoutineId),
+    ),
+  );
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals(
+    (responseBody.skippedDeleted as { routines: string[] }).routines,
+    [upper(lowerRoutineId)],
+  );
+  assertEquals(parentWriteIds(harness, "routines"), []);
+  assertEquals(upsertedRows(harness, "routine_exercises"), []);
+});
+
+Deno.test("external activity LWW ack retains metadata across UUID casing", () => {
+  const lowercaseId = "abcdef00-0000-4000-8000-0000000000f0";
+  const acknowledgements = buildExternalActivityAcks(
+    [{ id: upper(lowercaseId), external_id: "external-activity-case-variant", provider: "hevy" }],
+    [{ id: lowercaseId, accepted: true, server_updated_at: "2026-07-11T13:00:00.000Z" }],
+    "2026-07-11T14:00:00.000Z",
+  );
+
+  assertEquals(acknowledgements, [{
+    localId: lowercaseId,
+    serverId: lowercaseId,
+    externalId: "external-activity-case-variant",
+    provider: "hevy",
+    updatedAt: "2026-07-11T13:00:00.000Z",
+  }]);
+});
+
+Deno.test("an uppercase active personal record UUID updates its lowercase stored row", async () => {
+  const personalRecordId = "abcdefab-cdef-4abc-8abc-abcdefabcdeb";
+  const harness = makeHarness(undefined, {
+    personalRecordsResult: {
+      data: [{
+        id: personalRecordId,
+        user_id: VALID_USER_ID,
+        local_profile_id: null,
+        exercise_id: null,
+        exercise_name: "Bench Press",
+        achieved_at: "2026-06-01T12:00:00.000Z",
+        record_type: "MAX_WEIGHT",
+        workout_phase: "COMBINED",
+        updated_at: "2026-07-02T12:00:00.000Z",
+        deleted_at: null,
+      }],
+      error: null,
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    personalRecords: [{
+      id: upper(personalRecordId),
+      exerciseName: "Bench Press",
+      recordType: "MAX_WEIGHT",
+      value: 112.5,
+      achievedAt: "2026-06-01T12:00:00.000Z",
+      updatedAt: "2026-07-03T12:00:00.000Z",
+    }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.personalRecordsInserted, 1);
+  const written = upsertedRows(harness, "personal_records");
+  assertEquals(written.length, 1);
+  assertEquals(written[0].id, upper(personalRecordId));
+  assertEquals(written[0].value, 112.5);
+});
+
+Deno.test("personal record retry keeps a case-variant valid session reference", () => {
+  const row = {
+    id: "abcdefab-cdef-4abc-8abc-abcdefabcdec",
+    user_id: VALID_USER_ID,
+    local_profile_id: null,
+    exercise_name: "Bench Press",
+    exercise_id: null,
+    muscle_group: "Chest",
+    record_type: "MAX_WEIGHT",
+    value: 100,
+    unit: "kg",
+    session_id: upper(CASE_SESSION_ID),
+    achieved_at: "2026-07-11T12:00:00.000Z",
+    workout_phase: "COMBINED",
+    source: "dedicated" as const,
+  };
+
+  const partition = partitionPersonalRecordRowsBySessionValidity(
+    [row],
+    new Set([CASE_SESSION_ID]),
+  );
+  assertEquals(partition.validRows, [row]);
+  assertEquals(partition.invalidSessionRows, []);
+  assertEquals(partition.rowsWithInvalidSessionsNulled, [row]);
+});
+
+Deno.test("uppercase routine exercise keeps a lowercase stored duration in a mixed batch", async () => {
+  const caseExerciseId = "abcdef00-0000-4000-8000-0000000000d1";
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    tableResults: {
+      routine_exercises: storedRoutineExercises([{
+        id: caseExerciseId,
+        drop_set_enabled: false,
+        drop_set_min_weight_kg: null,
+        duration_seconds: 55,
+      }]),
+    },
+  });
+  const response = await harness.handler(
+    requestFromBody(routinePushBody([
+      {
+        ...currentMobileRoutineExercise(upper(caseExerciseId)),
+        dropSetEnabled: false,
+        dropSetMinWeightKg: null,
+      },
+      {
+        ...currentMobileRoutineExercise(TIMED_ROUTINE_EXERCISE_ID),
+        orderIndex: 1,
+        durationSeconds: 30,
+        dropSetEnabled: false,
+        dropSetMinWeightKg: null,
+      },
+    ])),
+  );
+
+  assertEquals(response.status, 200);
+  const rows = routineExerciseUpsertRows(harness);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  assertEquals(byId.get(upper(caseExerciseId))?.duration_seconds, 55);
+  assertEquals(byId.get(TIMED_ROUTINE_EXERCISE_ID)?.duration_seconds, 30);
+});
