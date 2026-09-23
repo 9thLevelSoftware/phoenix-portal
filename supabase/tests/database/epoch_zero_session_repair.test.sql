@@ -266,7 +266,7 @@ SELECT is(
     'user A gamification_stats.total_time_seconds recomputed (0 + 0 + 1800, the two repaired sessions plus the normal one)'
 );
 SELECT is(
-    (SELECT total_workouts FROM public.gamification_stats WHERE user_id = 'c1000000-0000-4000-8000-00000000000a'),
+    (SELECT total_workouts::int FROM public.gamification_stats WHERE user_id = 'c1000000-0000-4000-8000-00000000000a'),
     3,
     'user A gamification_stats.total_workouts recomputed (3 sessions)'
 );
@@ -276,7 +276,7 @@ SELECT is(
     'user B gamification_stats.total_time_seconds recomputed (group C kept its duration; the two skipped rows keep theirs too)'
 );
 SELECT is(
-    (SELECT total_workouts FROM public.gamification_stats WHERE user_id = 'c1000000-0000-4000-8000-00000000000b'),
+    (SELECT total_workouts::int FROM public.gamification_stats WHERE user_id = 'c1000000-0000-4000-8000-00000000000b'),
     3,
     'user B gamification_stats.total_workouts recomputed (3 sessions)'
 );
