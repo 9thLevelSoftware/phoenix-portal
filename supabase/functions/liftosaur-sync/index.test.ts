@@ -345,6 +345,24 @@ Deno.test("liftosaur-sync: completion requires the claim generation", async () =
   assertEquals(again.rows("sync_queue")[0].status, "processing", "the replacement's row is not completed");
 });
 
+Deno.test("liftosaur-sync: an initial run with a pending incremental row lets that row continue the chain", async () => {
+  const db = new FakeDb(
+    tables([
+      { ...queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT), retry_count: 0 },
+      { ...queueRow("pending-inc", "incremental", "pending", null), retry_count: 0 },
+    ]),
+    [syncQueueOneActiveIndex],
+  );
+  const res = await harness(db, descendingLiftosaur(4500).fetch)({
+    sync_type: "initial", queue_id: QUEUE_ID, claim_generation: 0,
+  });
+  assertEquals(res.status, 200, await res.clone().text());
+  const body = await res.json();
+  assertEquals([body.continuing, body.follow_up_queued, body.queue_row_handed_off], [true, true, false]);
+  assertEquals(db.rows("sync_queue").map((r) => [r.id, r.status]), [[QUEUE_ID, "completed"], ["pending-inc", "pending"]]);
+  assertEquals(typeof db.rows("user_integrations")[0].backfill_before, "string", "the cursor the pending row resumes from");
+});
+
 Deno.test("liftosaur-sync: a failed follow-up hand-on is retried, never reported as queued", async () => {
   const db = new FakeDb(
     tables([queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)]),

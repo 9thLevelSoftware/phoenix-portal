@@ -227,6 +227,24 @@ export class FakeQuery implements PromiseLike<Result> {
     }
     let matched = this.rows.filter((r) => this.filters.every((f) => f(r)));
     if (this.patch) {
+      // Unique indexes hold for UPDATEs too, all or nothing (as Postgres).
+      const patched = matched.map((r) => ({ ...r, ...this.patch }));
+      const violated = this.uniqueIndexes.find((index) =>
+        patched.some((next, i) => {
+          const key = index.key(next);
+          return key !== null &&
+            this.rows.some((r) => r !== matched[i] && !matched.includes(r) && index.key(r) === key);
+        })
+      );
+      if (violated) {
+        return {
+          data: null,
+          error: {
+            code: '23505',
+            message: `duplicate key value violates unique constraint "${violated.name}"`,
+          },
+        };
+      }
       for (const r of matched) Object.assign(r, this.patch);
     }
     if (this.orderBy) {
