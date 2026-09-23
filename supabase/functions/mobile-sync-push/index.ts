@@ -333,6 +333,12 @@ export function repairEpochZeroSessionStarts(
         ? (session.updatedAt as string)
         : receivedAt;
     session.startedAt = fallbackStartedAt;
+    // The rejected updatedAt is also this row's LWW key (client_updated_at):
+    // replace it too, or any other device's 1970-era edit could beat the
+    // repaired row.
+    if (fallbackStartedAt === receivedAt && session.updatedAt !== undefined && session.updatedAt !== null) {
+      session.updatedAt = receivedAt;
+    }
     repaired.push({
       entity: 'session',
       id: session.id,
