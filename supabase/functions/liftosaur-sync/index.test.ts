@@ -309,6 +309,48 @@ Deno.test("liftosaur-sync: a failed queue completion is retried, never reported 
   assertEquals(typeof db.rows("user_integrations")[0].backfill_before, "string", "the cursor is saved for the retry");
 });
 
+Deno.test("liftosaur-sync: a run whose row a disconnect cancelled writes no final state", async () => {
+  const db = new FakeDb(tables([queueRow(QUEUE_ID, "manual", "processing", CLAIMED_AT)]));
+  const upstream = descendingLiftosaur(5);
+  const fetchAndCancel = (input: string | URL | Request) => {
+    const row = db.rows("sync_queue")[0];
+    if (row) row.status = "cancelled";
+    const integration = db.rows("user_integrations")[0];
+    if (integration) integration.status = "disconnected";
+    return upstream.fetch(input);
+  };
+  const res = await harness(db, fetchAndCancel)({ sync_type: "manual", queue_id: QUEUE_ID });
+  assertEquals(res.status, 409, await res.clone().text());
+  const [integration] = db.rows("user_integrations");
+  assertEquals([integration.status, integration.last_sync_at], ["disconnected", null]);
+});
+
+Deno.test("liftosaur-sync: a failed follow-up insert reopens this run's row as the follow-up", async () => {
+  const db = new FakeDb(
+    tables([queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)]),
+    [syncQueueOneActiveIndex],
+  );
+  const from = db.from.bind(db);
+  db.from = (table: string) => {
+    const query = from(table);
+    if (table === "sync_queue") {
+      query.insert = () => {
+        const failed = {
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve({ data: null, error: { code: "57014", message: "canceling statement" } }).then(resolve),
+        };
+        // deno-lint-ignore no-explicit-any
+        return failed as any;
+      };
+    }
+    return query;
+  };
+  const res = await harness(db, descendingLiftosaur(4500).fetch)({ sync_type: "initial", queue_id: QUEUE_ID });
+  assertEquals(res.status, 200, await res.clone().text());
+  assertEquals((await res.json()).follow_up_queued, true);
+  assertEquals(db.rows("sync_queue").map((r) => [r.id, r.status, r.sync_type]), [[QUEUE_ID, "pending", "incremental"]]);
+});
+
 Deno.test("liftosaur-sync: a history larger than one run is imported over resumable runs (#204)", async () => {
   // PR 52's unique index is in force: a follow-up must never collide with the
   // row that is still running.
@@ -437,7 +479,7 @@ Deno.test("liftosaur-sync: a run that names another user's queue row completes n
   const db = new FakeDb(tables([foreign]));
 
   const res = await harness(db, 1)({ sync_type: "initial", queue_id: QUEUE_ID });
-  assertEquals(res.status, 200);
+  assertEquals(res.status, 409, "not this run's row: no final state is written");
   assertEquals(db.rows("sync_queue")[0].status, "processing");
   assertEquals(db.rows("sync_queue")[0].started_at, CLAIMED_AT);
 });
