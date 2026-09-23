@@ -19,6 +19,7 @@ import { Card } from "@/app/components/ui/card";
 import { EmptyState } from "@/app/components/ui/empty-state";
 import { CardSkeleton, Skeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { fadeUp } from "@/lib/animations";
 import { convertWeight, type WeightUnit } from "@/lib/units";
 import {
 	formatWorkoutPhase,
@@ -250,11 +251,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 	return (
 		<div className="space-y-6">
 			{/* Filter bar */}
-			<motion.div
-				initial={{ opacity: 0, y: 16 }}
-				animate={{ opacity: 1, y: 0 }}
-				transition={{ duration: 0.25 }}
-			>
+			<motion.div {...fadeUp}>
 				{/* Muscle group + view toggle row */}
 				<div className="flex items-center justify-between gap-4 mb-3 flex-wrap">
 					<div className="flex gap-2 overflow-x-auto pb-1 flex-wrap">
@@ -324,9 +321,8 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 
 			{/* Summary stats row */}
 			<motion.div
-				initial={{ opacity: 0, y: 16 }}
-				animate={{ opacity: 1, y: 0 }}
-				transition={{ duration: 0.25, delay: 0.05 }}
+				{...fadeUp}
+				transition={{ ...fadeUp.transition, delay: 0.05 }}
 				className="grid grid-cols-3 gap-4"
 			>
 				<Card className="p-4 bg-surface-2 border-secondary">
@@ -367,14 +363,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 			{/* Main content */}
 			<AnimatePresence mode="wait">
 				{viewMode === "grouped" ? (
-					<motion.div
-						key="grouped"
-						initial={{ opacity: 0, y: 16 }}
-						animate={{ opacity: 1, y: 0 }}
-						exit={{ opacity: 0, y: -16 }}
-						transition={{ duration: 0.25 }}
-						className="space-y-3"
-					>
+					<motion.div {...fadeUp} key="grouped" className="space-y-3">
 						{filteredExercises.length === 0 ? (
 							<div className="text-center py-10 text-muted-foreground">
 								<Trophy className="w-10 h-10 mx-auto mb-3 opacity-40" />
@@ -607,13 +596,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 						)}
 					</motion.div>
 				) : (
-					<motion.div
-						key="timeline"
-						initial={{ opacity: 0, y: 16 }}
-						animate={{ opacity: 1, y: 0 }}
-						exit={{ opacity: 0, y: -16 }}
-						transition={{ duration: 0.25 }}
-					>
+					<motion.div {...fadeUp} key="timeline">
 						<div className="relative">
 							<div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary via-chart-2 to-accent" />
 

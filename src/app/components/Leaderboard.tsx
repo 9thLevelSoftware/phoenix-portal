@@ -16,6 +16,7 @@ import {
 	TabsList,
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
+import { fadeUp } from "@/lib/animations";
 import { useAuth } from "@/providers/AuthProvider";
 import {
 	type GlobalLeaderboard,
@@ -552,12 +553,7 @@ export function Leaderboard() {
 
 	return (
 		<PageShell>
-			<motion.div
-				initial={{ opacity: 0, y: 12 }}
-				animate={{ opacity: 1, y: 0 }}
-				transition={{ duration: 0.3 }}
-				className="flex flex-col gap-6"
-			>
+			<motion.div {...fadeUp} className="flex flex-col gap-6">
 				{/* Page header */}
 				<div className="flex items-center gap-3">
 					<div className="flex size-10 items-center justify-center rounded-xl bg-primary/10">

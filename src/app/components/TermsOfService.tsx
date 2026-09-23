@@ -2,6 +2,7 @@ import { ArrowLeft } from "lucide-react";
 import { motion } from "motion/react";
 import { Link, useNavigate } from "react-router";
 import { Button } from "@/app/components/ui/button";
+import { fadeUp } from "@/lib/animations";
 import { PhoenixLogo } from "./PhoenixLogo";
 
 export function TermsOfService() {
@@ -31,11 +32,7 @@ export function TermsOfService() {
 
 			{/* Content */}
 			<main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					animate={{ opacity: 1, y: 0 }}
-					transition={{ duration: 0.5 }}
-				>
+				<motion.div {...fadeUp}>
 					<h1 className="text-display-1 mb-4">
 						<span className="text-primary">Terms of Service</span>
 					</h1>

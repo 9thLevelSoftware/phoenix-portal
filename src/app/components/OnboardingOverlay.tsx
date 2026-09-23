@@ -17,6 +17,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/app/components/ui/dialog";
+import { fadeUp } from "@/lib/animations";
 
 interface OnboardingOverlayProps {
 	onComplete: () => void;
@@ -105,12 +106,13 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 			<DialogContent className="sm:max-w-md border-primary/30 bg-surface-2 overflow-hidden">
 				<AnimatePresence mode="wait" custom={direction}>
 					<motion.div
+						{...fadeUp}
 						key={currentStep}
 						custom={direction}
 						initial={{ x: direction * 100, opacity: 0 }}
 						animate={{ x: 0, opacity: 1 }}
 						exit={{ x: direction * -100, opacity: 0 }}
-						transition={{ duration: 0.25, ease: "easeInOut" }}
+						transition={{ ...fadeUp.transition, ease: "easeInOut" }}
 					>
 						<DialogHeader>
 							{currentStep === 0 && (

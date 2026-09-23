@@ -2,6 +2,7 @@ import { MotionConfig, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Button } from "@/app/components/ui/button";
+import { fadeUp } from "@/lib/animations";
 import { getConsentStatus, setConsentStatus } from "@/lib/consent";
 
 export function CookieConsentBanner() {
@@ -31,9 +32,8 @@ export function CookieConsentBanner() {
 	return (
 		<MotionConfig reducedMotion="user">
 			<motion.div
-				initial={{ y: 100, opacity: 0 }}
-				animate={{ y: 0, opacity: 1 }}
-				transition={{ duration: 0.4, ease: "easeOut" }}
+				{...fadeUp}
+				initial={{ ...fadeUp.initial, y: 100 }}
 				className="fixed bottom-0 left-0 right-0 z-50 border-t border-secondary bg-[var(--surface-1)] p-4"
 			>
 				<div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">

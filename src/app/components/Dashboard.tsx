@@ -135,7 +135,7 @@ function QuickStatCard({
 	gradient: string;
 }) {
 	return (
-		<motion.div whileHover={hover.lift}>
+		<motion.div whileHover={hover}>
 			<Card variant="stat" padding="sm" className="min-w-[120px] flex-shrink-0">
 				<div
 					className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mb-3 text-white`}
@@ -503,12 +503,10 @@ export function Dashboard() {
 					</motion.div>
 
 					<motion.div
-						variants={staggerContainer}
-						initial="hidden"
-						animate="visible"
+						{...staggerContainer}
 						className="grid grid-cols-1 md:grid-cols-3 gap-6"
 					>
-						<motion.div variants={fadeUp}>
+						<motion.div {...fadeUp}>
 							<Card className="p-6 signal-panel h-full">
 								<div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center mb-4">
 									<TrendingUp className="w-6 h-6 text-foreground" />
@@ -523,7 +521,7 @@ export function Dashboard() {
 							</Card>
 						</motion.div>
 
-						<motion.div variants={fadeUp}>
+						<motion.div {...fadeUp}>
 							<Link to="/routines/new" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
@@ -540,7 +538,7 @@ export function Dashboard() {
 							</Link>
 						</motion.div>
 
-						<motion.div variants={fadeUp}>
+						<motion.div {...fadeUp}>
 							<Link to="/challenges" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center mb-4">
@@ -902,7 +900,7 @@ export function Dashboard() {
 							initial={{ opacity: 0, y: 20 }}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.1 }}
-							whileHover={hover.lift}
+							whileHover={hover}
 							className="col-span-1 lg:col-span-5"
 						>
 							<div className="signal-panel p-8 flex items-center justify-center relative overflow-hidden h-full">
@@ -1300,14 +1298,9 @@ export function Dashboard() {
 						</div>
 
 						{/* Right: PRs, Challenges, Badges */}
-						<motion.div
-							variants={staggerContainer}
-							initial="hidden"
-							animate="visible"
-							className="space-y-6"
-						>
+						<motion.div {...staggerContainer} className="space-y-6">
 							{/* Recent PRs */}
-							<motion.div variants={fadeUp}>
+							<motion.div {...fadeUp}>
 								<Card className="p-5 signal-panel">
 									<h3 className="text-h2 text-foreground mb-4 flex items-center gap-2">
 										<Trophy className="w-5 h-5 text-accent" />
@@ -1368,7 +1361,7 @@ export function Dashboard() {
 							</motion.div>
 
 							{/* Active Challenges */}
-							<motion.div variants={fadeUp}>
+							<motion.div {...fadeUp}>
 								<Card className="p-5 signal-panel">
 									<h3 className="text-h2 text-foreground mb-4">
 										Active Challenges
@@ -1378,7 +1371,7 @@ export function Dashboard() {
 							</motion.div>
 
 							{/* Badge Showcase */}
-							<motion.div variants={fadeUp}>
+							<motion.div {...fadeUp}>
 								<Card className="p-5 signal-panel">
 									<h3 className="text-h2 text-foreground mb-4">
 										Recent Badges

@@ -36,6 +36,7 @@ import { Switch } from "@/app/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 
 import { useAuth } from "@/app/hooks/useAuth";
+import { fadeUp } from "@/lib/animations";
 import { PHOENIX } from "@/lib/colors";
 import { repSummariesOptions, repTelemetryOptions } from "@/queries/telemetry";
 import { sessionDetailOptions, workoutListOptions } from "@/queries/workouts";
@@ -53,12 +54,7 @@ function Section({
 	className?: string;
 }) {
 	return (
-		<motion.div
-			initial={{ opacity: 0, y: 16 }}
-			animate={{ opacity: 1, y: 0 }}
-			transition={{ duration: 0.3 }}
-			className={className}
-		>
+		<motion.div {...fadeUp} className={className}>
 			<Card className="p-5 bg-surface-2 border-secondary">
 				<h3 className="flex items-center gap-2 text-lg font-medium text-foreground mb-4">
 					<Icon className="w-5 h-5 text-primary" />
