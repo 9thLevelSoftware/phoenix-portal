@@ -9,8 +9,6 @@ import {
 
 // Stored and synced by name (mobile's vocabulary), never as hex.
 export type SupersetColor = SupersetColorName;
-import type { WireMode } from "../../../../supabase/functions/_shared/workoutModes.ts";
-export type SupersetColor = "indigo" | "pink" | "green" | "amber";
 
 export interface Superset {
 	id: string;

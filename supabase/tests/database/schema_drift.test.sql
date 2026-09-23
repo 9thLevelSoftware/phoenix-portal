@@ -23,7 +23,9 @@
 -- .github/workflows/prod-migration-drift.yml is owned by PR 32/77):
 --   import_shared_routine(uuid, text), import_shared_cycle(uuid, text),
 --   workout_current_streak(uuid), user_has_min_tier(text),
---   user_subscription_tier(), request_account_deletion()
+--   user_subscription_tier(), request_account_deletion(),
+--   delete_training_cycle_lww, delete_workout_with_tombstone,
+--   verify_profile_recovery_source (20260920120000)
 --
 -- What this file deliberately does NOT cover:
 --   * the migration's gating / idempotency / drifted-with-data behaviour. The
@@ -285,7 +287,13 @@ SELECT ok(
 
 SELECT diag('database:schema-drift-allow-list');
 
-CREATE TEMP TABLE drift_allow_list (ident text PRIMARY KEY, expected_on_clean_apply boolean)
+-- service_role_required: false only where the migration deliberately revokes
+-- service_role (an auth.uid()-bound RPC with nothing to do for a service caller).
+CREATE TEMP TABLE drift_allow_list (
+    ident text PRIMARY KEY,
+    expected_on_clean_apply boolean,
+    service_role_required boolean NOT NULL DEFAULT true
+)
     ON COMMIT DROP;
 INSERT INTO drift_allow_list (ident, expected_on_clean_apply) VALUES
     ('import_shared_routine(uuid, text)', true),
@@ -294,7 +302,13 @@ INSERT INTO drift_allow_list (ident, expected_on_clean_apply) VALUES
     ('user_has_min_tier(text)', true),
     ('user_subscription_tier()', true),
     -- Added by 20260920003200 (PR 32), which is not in this branch's chain.
-    ('request_account_deletion()', false);
+    ('request_account_deletion()', false),
+    -- 20260920120000: auth.uid()-bound portal/mobile RPCs.
+    ('delete_training_cycle_lww(uuid, timestamp with time zone)', true),
+    ('delete_workout_with_tombstone(uuid, uuid, uuid, text, text, timestamp with time zone)', true),
+    ('verify_profile_recovery_source(text, uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[])', true);
+UPDATE drift_allow_list SET service_role_required = false
+ WHERE ident = 'verify_profile_recovery_source(text, uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[])';
 
 SELECT is_empty(
     $sql$
@@ -305,7 +319,7 @@ SELECT is_empty(
         WHERE n.nspname = 'public'
           AND (
             NOT has_function_privilege('authenticated', p.oid, 'EXECUTE')
-            OR NOT has_function_privilege('service_role', p.oid, 'EXECUTE')
+            OR (a.service_role_required AND NOT has_function_privilege('service_role', p.oid, 'EXECUTE'))
           )
     $sql$,
     'every allow-listed function that exists is executable by authenticated and service_role'

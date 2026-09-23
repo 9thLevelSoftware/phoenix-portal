@@ -84,7 +84,7 @@ export function createSessionFixture(
 	const id = overrides.id ?? nextTestUuid();
 	const userId = overrides.user_id ?? DEFAULT_USER_ID;
 
-	return {
+	const base: WorkoutSessionRow = {
 		id,
 		user_id: userId,
 		name: "Test Workout",
@@ -100,6 +100,7 @@ export function createSessionFixture(
 		notes: null,
 		updated_at: DEFAULT_TIMESTAMP,
 		local_profile_id: null,
+		client_updated_at: DEFAULT_TIMESTAMP,
 
 		// Session enrichment fields (GAPs 3-6)
 		avg_velocity_mps: 0.65,
@@ -118,8 +119,8 @@ export function createSessionFixture(
 		echo_level: null,
 		warmup_reps: 15,
 		working_reps: 60,
-		...overrides,
-	} satisfies WorkoutSessionRow;
+	};
+	return Object.assign(base, overrides);
 }
 
 /**
@@ -148,15 +149,17 @@ export function createExerciseFixture(
 ): ExerciseRow {
 	const id = overrides.id ?? nextTestUuid();
 
-	return {
+	const base: ExerciseRow = {
 		id,
 		session_id: overrides.session_id ?? nextTestUuid(),
 		user_id: overrides.user_id ?? DEFAULT_USER_ID,
 		name: "Bench Press",
 		muscle_group: "Chest",
 		order_index: 0,
-		...overrides,
-	} satisfies ExerciseRow;
+		exercise_id: null,
+		cable_count: null,
+	};
+	return Object.assign(base, overrides);
 }
 
 /**

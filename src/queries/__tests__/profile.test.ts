@@ -104,7 +104,7 @@ describe("profileOptions", () => {
 		chain = buildChain({ data: profileRow, error: null });
 		const { profileOptions } = await import("../profile");
 		const opts = profileOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result).not.toBeNull();
 		expect(result?.display_name).toBe("Phoenix User");
@@ -115,7 +115,7 @@ describe("profileOptions", () => {
 		chain = buildChain({ data: null, error: null });
 		const { profileOptions } = await import("../profile");
 		const opts = profileOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toBeNull();
 	});
 
@@ -126,7 +126,7 @@ describe("profileOptions", () => {
 		});
 		const { profileOptions } = await import("../profile");
 		const opts = profileOptions("user-1");
-		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
+		await expect(opts.queryFn!({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "profile error" }),
 		);
 	});
@@ -135,7 +135,7 @@ describe("profileOptions", () => {
 		chain = buildChain({ data: null, error: null });
 		const { profileOptions } = await import("../profile");
 		const opts = profileOptions("user-1");
-		await opts.queryFn?.({} as never);
+		await opts.queryFn!({} as never);
 		expect(fromFn).toHaveBeenCalledWith("profiles");
 	});
 });
@@ -173,7 +173,7 @@ describe("profileStatsOptions", () => {
 		});
 
 		const { profileStatsOptions } = await import("../profile");
-		const result = await profileStatsOptions("user-1", "profile-1").queryFn?.(
+		const result = await profileStatsOptions("user-1", "profile-1").queryFn!(
 			{} as never,
 		);
 
@@ -217,7 +217,7 @@ describe("profileStatsOptions", () => {
 		});
 
 		const { profileStatsOptions } = await import("../profile");
-		const result = await profileStatsOptions("user-1").queryFn?.({} as never);
+		const result = await profileStatsOptions("user-1").queryFn!({} as never);
 
 		expect(result.totalWorkouts).toBe(3);
 		// total_volume is per cable, as stored — never doubled (KD-8).
@@ -233,7 +233,7 @@ describe("profileStatsOptions", () => {
 	it("omits the profile argument instead of passing null", async () => {
 		mockRpc({ data: [], error: null });
 		const { profileStatsOptions } = await import("../profile");
-		await profileStatsOptions("user-1", null).queryFn?.({} as never);
+		await profileStatsOptions("user-1", null).queryFn!({} as never);
 		expect(rpcFn).toHaveBeenCalledWith("profile_workout_stats", {
 			p_tz: "UTC",
 		});
@@ -246,7 +246,7 @@ describe("profileStatsOptions", () => {
 
 		const { profileStatsOptions } = await import("../profile");
 		const opts = profileStatsOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result.totalWorkouts).toBe(0);
 		expect(result.totalVolume).toBe(0);
@@ -258,7 +258,7 @@ describe("profileStatsOptions", () => {
 		mockRpc({ data: null, error: { message: "stats failed" } });
 		const { profileStatsOptions } = await import("../profile");
 		await expect(
-			profileStatsOptions("user-1").queryFn?.({} as never),
+			profileStatsOptions("user-1").queryFn!({} as never),
 		).rejects.toEqual(expect.objectContaining({ message: "stats failed" }));
 	});
 });
@@ -294,7 +294,7 @@ describe("topExercisesOptions", () => {
 		});
 
 		const { topExercisesOptions } = await import("../profile");
-		const result = await topExercisesOptions("user-1", "profile-1").queryFn?.(
+		const result = await topExercisesOptions("user-1", "profile-1").queryFn!(
 			{} as never,
 		);
 
@@ -312,7 +312,7 @@ describe("topExercisesOptions", () => {
 	it("omits the profile argument instead of passing null", async () => {
 		mockRpc({ data: [], error: null });
 		const { topExercisesOptions } = await import("../profile");
-		await topExercisesOptions("user-1", null).queryFn?.({} as never);
+		await topExercisesOptions("user-1", null).queryFn!({} as never);
 		expect(rpcFn).toHaveBeenCalledWith("exercise_frequency", {});
 	});
 
@@ -320,7 +320,7 @@ describe("topExercisesOptions", () => {
 		mockRpc({ data: [], error: null });
 		const { topExercisesOptions } = await import("../profile");
 		const opts = topExercisesOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toEqual([]);
 	});
 
@@ -328,7 +328,7 @@ describe("topExercisesOptions", () => {
 		mockRpc({ data: null, error: { message: "frequency failed" } });
 		const { topExercisesOptions } = await import("../profile");
 		await expect(
-			topExercisesOptions("user-1").queryFn?.({} as never),
+			topExercisesOptions("user-1").queryFn!({} as never),
 		).rejects.toEqual(expect.objectContaining({ message: "frequency failed" }));
 	});
 });
@@ -350,7 +350,7 @@ describe("earnedBadgesOptions", () => {
 		chain = buildChain({ data: [badgeRow], error: null });
 		const { earnedBadgesOptions } = await import("../profile");
 		const opts = earnedBadgesOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result).toHaveLength(1);
 		expect(result[0].badge_name).toBe("First Flame");
@@ -362,7 +362,7 @@ describe("earnedBadgesOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { earnedBadgesOptions } = await import("../profile");
 		const opts = earnedBadgesOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toEqual([]);
 	});
 });
@@ -384,7 +384,7 @@ describe("rpgAttributesOptions", () => {
 		chain = buildChain({ data: rpgRow, error: null });
 		const { rpgAttributesOptions } = await import("../profile");
 		const opts = rpgAttributesOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result).not.toBeNull();
 		expect(result?.strength).toBe(25);
@@ -397,7 +397,7 @@ describe("rpgAttributesOptions", () => {
 		chain = buildChain({ data: null, error: null });
 		const { rpgAttributesOptions } = await import("../profile");
 		const opts = rpgAttributesOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toBeNull();
 	});
 });
@@ -419,7 +419,7 @@ describe("gamificationStatsOptions", () => {
 		chain = buildChain({ data: gamificationRow, error: null });
 		const { gamificationStatsOptions } = await import("../profile");
 		const opts = gamificationStatsOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result).not.toBeNull();
 		expect(result?.total_workouts).toBe(50);
@@ -432,7 +432,7 @@ describe("gamificationStatsOptions", () => {
 		chain = buildChain({ data: null, error: null });
 		const { gamificationStatsOptions } = await import("../profile");
 		const opts = gamificationStatsOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toBeNull();
 	});
 });

@@ -178,7 +178,7 @@ export function createPersonalRecordFixture(
 ): PersonalRecordRow {
 	const id = overrides.id ?? nextTestUuid();
 
-	return {
+	const base: PersonalRecordRow = {
 		id,
 		user_id: overrides.user_id ?? DEFAULT_USER_ID,
 		exercise_name: "Bench Press",
@@ -191,8 +191,14 @@ export function createPersonalRecordFixture(
 		workout_phase: "COMBINED" as WorkoutPhase,
 		local_profile_id: null,
 		updated_at: DEFAULT_TIMESTAMP,
-		...overrides,
-	} satisfies PersonalRecordRow;
+		deleted_at: null,
+		exercise_id: null,
+		reps: null,
+		session_id: null,
+		source: null,
+		weight_kg: null,
+	};
+	return Object.assign(base, overrides);
 }
 
 /**
@@ -250,7 +256,7 @@ export function createRpgAttributesFixture(
 ): RpgAttributesRow {
 	const id = overrides.id ?? nextTestUuid();
 
-	return {
+	const base: RpgAttributesRow = {
 		id,
 		user_id: overrides.user_id ?? DEFAULT_USER_ID,
 		strength: 65, // Heavy lifting focus
@@ -262,8 +268,9 @@ export function createRpgAttributesFixture(
 		level: 15,
 		experience_points: 4500,
 		updated_at: DEFAULT_TIMESTAMP,
-		...overrides,
-	} satisfies RpgAttributesRow;
+		last_workout_at: DEFAULT_TIMESTAMP,
+	};
+	return Object.assign(base, overrides);
 }
 
 /**
@@ -409,7 +416,7 @@ export function createGamificationStatsFixture(
 ): GamificationStatsRow {
 	const id = overrides.id ?? nextTestUuid();
 
-	return {
+	const base: GamificationStatsRow = {
 		id,
 		user_id: overrides.user_id ?? DEFAULT_USER_ID,
 		total_workouts: 150,
@@ -419,8 +426,17 @@ export function createGamificationStatsFixture(
 		current_streak: 12,
 		total_time_seconds: 540000, // 150 hours
 		updated_at: DEFAULT_TIMESTAMP,
-		...overrides,
-	} satisfies GamificationStatsRow;
+		best_streak: 45,
+		pr_count: 20,
+		last_workout_at: DEFAULT_TIMESTAMP,
+		device_current_streak: null,
+		device_longest_streak: null,
+		device_total_reps: null,
+		device_total_time_seconds: null,
+		device_total_volume_kg: null,
+		device_total_workouts: null,
+	};
+	return Object.assign(base, overrides);
 }
 
 /**

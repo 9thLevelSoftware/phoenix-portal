@@ -11,7 +11,7 @@
  *
  * Hard constraint: this file must stay dependency-free and runtime-neutral
  * (no `jsr:`/`npm:` imports, no `Deno`, no `@/` alias, no DOM), because it is
- * type-checked and bundled by Vite as well as run by Deno.
+ * type-checked and bundled by Vite as well as run by the Deno edge runtime.
  *
  * Parity is pinned by a golden fixture, `tests/fixtures/insight-cases.json`,
  * asserted from Deno (`insightRules.test.ts`) and from Vitest

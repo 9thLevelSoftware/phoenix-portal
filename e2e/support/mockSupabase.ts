@@ -414,6 +414,64 @@ export async function installMockSupabase(
 			];
 		}
 
+		// Progress reads. The SPA fetches these as RPCs (POST /rest/v1/rpc/<name>);
+		// the table-name switch below never sees them. Newest-first, matching the
+		// SQL, so a truncated page drops the OLDEST points (F-034).
+		const progressRowsForProfile = () =>
+			(state.exerciseProgress as Array<Record<string, unknown>>).filter(
+				(row) =>
+					!profileId || String(row.local_profile_id ?? "") === profileId,
+			);
+
+		if (fn === "exercise_names") {
+			return [
+				...new Set(
+					progressRowsForProfile().map((row) => String(row.exercise_name)),
+				),
+			].sort();
+		}
+
+		if (fn === "exercise_progress_series") {
+			const exercise = args.p_exercise as string | undefined;
+			const limit = Math.min(Math.max(Number(args.p_limit ?? 200), 1), 1000);
+			return progressRowsForProfile()
+				.filter(
+					(row) => !exercise || String(row.exercise_name) === exercise,
+				)
+				.sort((a, b) =>
+					String(b.recorded_at).localeCompare(String(a.recorded_at)),
+				)
+				.slice(0, limit);
+		}
+
+		if (fn === "exercise_progress_series_many") {
+			// One row per exercise carrying that exercise's newest rows as a
+			// nested array — the shape `progressGroupSchema` parses.
+			const limitPer = Math.min(
+				Math.max(Number(args.p_limit_per_exercise ?? 200), 1),
+				1000,
+			);
+			const byName = new Map<string, Array<Record<string, unknown>>>();
+			for (const row of progressRowsForProfile()) {
+				const name = String(row.exercise_name);
+				const existing = byName.get(name) ?? [];
+				existing.push(row);
+				byName.set(name, existing);
+			}
+			return [...byName.entries()].map(([exercise_name, rows]) => {
+				const sorted = rows.sort((a, b) =>
+					String(b.recorded_at).localeCompare(String(a.recorded_at)),
+				);
+				return {
+					exercise_name,
+					latest_recorded_at: String(
+						sorted[0]?.recorded_at ?? new Date().toISOString(),
+					),
+					rows: sorted.slice(0, limitPer),
+				};
+			});
+		}
+
 		return [];
 	};
 

@@ -304,9 +304,11 @@ describe("progressionWorkbenchOptions", () => {
 
 		const row = result.progressRows[0];
 		expect(row.recorded_at).toBeInstanceOf(Date);
-		// weightTransform doubles stored kilograms.
+		// Was "weightTransform doubles stored kilograms" — that constant is
+		// gone (KD-8). perCableWeight is z.number(), so the parsed value is
+		// the stored per-cable one.
 		const source = PROGRESS.find((seed) => seed.id === row.id);
-		expect(row.max_weight_kg).toBe((source?.max_weight_kg ?? 0) * 2);
+		expect(row.max_weight_kg).toBe(source?.max_weight_kg ?? 0);
 	});
 
 	it("throws when the RPC fails", async () => {

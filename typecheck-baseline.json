@@ -17,7 +17,7 @@
         "TS2345": 1
       },
       "src/app/components/CycleBuilder.tsx": {
-        "TS2345": 9
+        "TS2345": 3
       },
       "src/app/components/ErrorFallback.tsx": {
         "TS18046": 1,
@@ -67,20 +67,11 @@
       "src/hooks/useNotificationSync.ts": {
         "TS2345": 4
       },
-      "src/hooks/useSubscription.ts": {
-        "TS2345": 1
-      },
       "src/lib/community-atlas.ts": {
         "TS2538": 1
       },
-      "src/lib/export/data-export.ts": {
-        "TS2769": 1
-      },
       "src/main.tsx": {
         "TS2322": 1
-      },
-      "src/mutations/cycles.ts": {
-        "TS2322": 2
       },
       "src/queries/community.ts": {
         "TS2590": 2
@@ -100,7 +91,7 @@
         "TS2345": 1
       },
       "src/app/components/CycleBuilder.tsx": {
-        "TS2345": 9
+        "TS2345": 3
       },
       "src/app/components/ErrorFallback.tsx": {
         "TS18046": 1,
@@ -118,12 +109,6 @@
       },
       "src/app/components/WhatsNewBanner.tsx": {
         "TS2554": 1
-      },
-      "src/app/components/__tests__/ErrorBoundary.test.tsx": {
-        "TS2786": 1
-      },
-      "src/app/components/__tests__/RoutineBuilder.test.tsx": {
-        "TS2550": 1
       },
       "src/app/components/analytics/ExerciseDeepDive.tsx": {
         "TS2322": 1
@@ -144,9 +129,6 @@
       "src/app/components/community/CommunityDetailDrawer.tsx": {
         "TS2322": 1
       },
-      "src/app/components/community/__tests__/CommunityContentPreview.test.tsx": {
-        "TS2739": 6
-      },
       "src/app/components/integrations/SyncStatus.tsx": {
         "TS2538": 1
       },
@@ -162,17 +144,8 @@
       "src/hooks/useNotificationSync.ts": {
         "TS2345": 4
       },
-      "src/hooks/useSubscription.ts": {
-        "TS2345": 1
-      },
-      "src/lib/__tests__/analytics-tables.test.ts": {
-        "TS2550": 1
-      },
       "src/lib/__tests__/node-localstorage-options.test.ts": {
         "TS7016": 1
-      },
-      "src/lib/__tests__/pricing-tier-matrix.test.ts": {
-        "TS2550": 1
       },
       "src/lib/__tests__/replay-phase-analytics.test.ts": {
         "TS2353": 1
@@ -193,27 +166,11 @@
       "src/lib/export/csv.test.ts": {
         "TS2741": 1
       },
-      "src/lib/export/data-export.ts": {
-        "TS2769": 1
-      },
       "src/main.tsx": {
         "TS2322": 1
       },
       "src/mutations/__tests__/cycles.test.tsx": {
         "TS2339": 2
-      },
-      "src/mutations/__tests__/goals.test.tsx": {
-        "TS2339": 6
-      },
-      "src/mutations/__tests__/routines.test.tsx": {
-        "TS2345": 1
-      },
-      "src/mutations/cycles.ts": {
-        "TS2322": 2
-      },
-      "src/queries/__tests__/analytics.test.ts": {
-        "TS18048": 8,
-        "TS2556": 1
       },
       "src/queries/__tests__/benchmarks.test.ts": {
         "TS2556": 1
@@ -232,7 +189,6 @@
         "TS2556": 1
       },
       "src/queries/__tests__/exercises.test.ts": {
-        "TS2550": 1,
         "TS2556": 1
       },
       "src/queries/__tests__/freshness.test.ts": {
@@ -247,7 +203,6 @@
         "TS2556": 1
       },
       "src/queries/__tests__/profile.test.ts": {
-        "TS18048": 15,
         "TS2556": 1
       },
       "src/queries/__tests__/progress.test.ts": {
@@ -261,8 +216,6 @@
         "TS2556": 1
       },
       "src/queries/__tests__/workouts.test.ts": {
-        "TS18048": 16,
-        "TS2554": 2,
         "TS2556": 1
       },
       "src/queries/community.ts": {
@@ -277,7 +230,7 @@
       },
       "supabase/functions/_shared/pushPayloadSchema.ts": {
         "TS2307": 1,
-        "TS7006": 48
+        "TS7006": 44
       },
       "supabase/functions/_shared/rateLimit.ts": {
         "TS2307": 1
@@ -289,25 +242,9 @@
         "TS2578": 1,
         "TS7016": 1
       },
-      "tests/sync/fixtures/cycle-fixtures.ts": {
-        "TS1360": 1,
-        "TS2322": 1
-      },
       "tests/sync/fixtures/external-fixtures.ts": {
         "TS1360": 1,
         "TS2719": 1
-      },
-      "tests/sync/fixtures/gamification-fixtures.ts": {
-        "TS1360": 2,
-        "TS2322": 2
-      },
-      "tests/sync/fixtures/routine-fixtures.ts": {
-        "TS1360": 1,
-        "TS2719": 1
-      },
-      "tests/sync/fixtures/workout-fixtures.ts": {
-        "TS1360": 1,
-        "TS2322": 1
       },
       "tests/sync/resolve-sync-preview.test.ts": {
         "TS2578": 1,

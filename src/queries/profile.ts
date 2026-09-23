@@ -92,10 +92,12 @@ export function topExercisesOptions(userId: string, profileId?: string | null) {
 			);
 			if (error) throw error;
 
-			return (data ?? []).slice(0, 5).map((row) => ({
-				name: row.exercise_name,
-				count: row.sessions,
-			}));
+			return (data ?? [])
+				.slice(0, 5)
+				.map((row: { exercise_name: string | null; sessions: number }) => ({
+					name: row.exercise_name,
+					count: row.sessions,
+				}));
 		},
 	});
 }

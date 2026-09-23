@@ -29,6 +29,15 @@ function readMigration(filename: string): string {
 	);
 }
 
+// The push handler is read the same way, by repo-relative path. These two
+// declarations were eaten at a merge seam (the test below still called them),
+// which is why every test in this file threw ReferenceError.
+const MOBILE_SYNC_PUSH_SOURCE = "supabase/functions/mobile-sync-push/index.ts";
+
+function readSource(filename: string): string {
+	return readFileSync(join(process.cwd(), filename), "utf8");
+}
+
 function extractTrainingCycleLwwBody(sql: string): string {
 	const match = sql.match(
 		/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.upsert_training_cycle_lww\s*\([\s\S]*?AS\s+\$\$([\s\S]*?)\$\$;/i,

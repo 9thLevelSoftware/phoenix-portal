@@ -2507,7 +2507,8 @@ Deno.test({
       const report = await res.json();
       assertEquals(report.residue.failed, false);
       assertEquals(report.residue.skipped, [], JSON.stringify(report.residue));
-      assert(report.residue.deleted.sync_tombstones >= 1, JSON.stringify(report.residue));
+      assert(report.residue.deleted.subscription_events >= 1, JSON.stringify(report.residue));
+      assert(report.residue.deleted.paddle_webhook_events >= 1, JSON.stringify(report.residue));
       assert(report.residue.avatar_folders_removed >= 1, JSON.stringify(report.residue));
 
       // Everything keyed by a user_id column is gone. A webhook row whose only

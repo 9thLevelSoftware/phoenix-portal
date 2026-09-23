@@ -77,7 +77,10 @@ export function createCycleFixture(
 ): TrainingCycleRow {
 	const id = overrides.id ?? nextTestUuid();
 
-	return {
+	// The base is annotated rather than `satisfies` on a literal that ends in
+	// `...overrides`: spreading `Partial<Row>` would re-optionalize every key
+	// it names and the completeness check would be against the wrong shape.
+	const base: TrainingCycleRow = {
 		id,
 		user_id: overrides.user_id ?? DEFAULT_USER_ID,
 		name: "4-Week Strength Cycle",
@@ -91,6 +94,11 @@ export function createCycleFixture(
 		last_used_at: DEFAULT_TIMESTAMP,
 		local_profile_id: null,
 		updated_at: DEFAULT_TIMESTAMP,
+		client_updated_at: DEFAULT_TIMESTAMP,
+		template_id: null,
+		progress_state: null,
+		portal_edited_at: null,
+		portal_duration_set_at: null,
 
 		// Progression settings (stored as JSON)
 		progression_settings: {
@@ -107,9 +115,8 @@ export function createCycleFixture(
 			autoDeload: true,
 			fatigueThreshold: 8,
 		} as unknown as Json,
-
-		...overrides,
-	} satisfies TrainingCycleRow;
+	};
+	return Object.assign(base, overrides);
 }
 
 /**
@@ -123,7 +130,7 @@ export function createCycleDayFixture(
 ): CycleDayRow {
 	const id = overrides.id ?? nextTestUuid();
 
-	return {
+	const base: CycleDayRow = {
 		id,
 		cycle_id: overrides.cycle_id ?? nextTestUuid(),
 		day_number: 1,
@@ -134,8 +141,10 @@ export function createCycleDayFixture(
 		rest_override: null, // Override rest periods if needed
 		notes: null,
 		rest_type: null, // Only for rest days
-		...overrides,
-	} satisfies CycleDayRow;
+		eccentric_load_percent: null,
+		echo_level: null,
+	};
+	return Object.assign(base, overrides);
 }
 
 /**
