@@ -131,4 +131,59 @@ COMMENT ON INDEX public.uq_personal_records_legacy_identity IS
   'set_derived rows use uq_personal_records_set_derived_identity; dedicated rows '
   'stay id-keyed (F335).';
 
+-- Rows can also BECOME identical after the fact: deleting a local profile
+-- sets local_profile_id to NULL ('default'), a profile transfer rewrites it,
+-- and deleting a session sets session_id to NULL (both FKs are ON DELETE SET
+-- NULL). A legacy row that an UPDATE makes identical to another live legacy
+-- row would violate the index above and roll back the profile deletion,
+-- transfer or session delete. It is tombstoned instead, exactly as the dedupe
+-- would have: the survivor carries every visible column, so nothing is lost,
+-- and devices converge through get_personal_record_tombstones.
+CREATE OR REPLACE FUNCTION private.personal_records_legacy_identity_collision()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.source IS NULL AND NEW.deleted_at IS NULL AND EXISTS (
+    SELECT 1 FROM public.personal_records pr
+     WHERE pr.id <> NEW.id
+       AND pr.source IS NULL
+       AND pr.deleted_at IS NULL
+       AND pr.user_id = NEW.user_id
+       AND COALESCE(pr.local_profile_id, 'default') = COALESCE(NEW.local_profile_id, 'default')
+       AND (CASE WHEN NULLIF(pr.exercise_id, '') IS NOT NULL
+             THEN 'id:' || pr.exercise_id ELSE 'name:' || pr.exercise_name END)
+           IS NOT DISTINCT FROM
+           (CASE WHEN NULLIF(NEW.exercise_id, '') IS NOT NULL
+             THEN 'id:' || NEW.exercise_id ELSE 'name:' || NEW.exercise_name END)
+       AND date_trunc('milliseconds', pr.achieved_at AT TIME ZONE 'UTC')
+           IS NOT DISTINCT FROM date_trunc('milliseconds', NEW.achieved_at AT TIME ZONE 'UTC')
+       AND pr.record_type IS NOT DISTINCT FROM NEW.record_type
+       AND COALESCE(pr.workout_phase, 'COMBINED') = COALESCE(NEW.workout_phase, 'COMBINED')
+       AND pr.exercise_name IS NOT DISTINCT FROM NEW.exercise_name
+       AND pr.muscle_group IS NOT DISTINCT FROM NEW.muscle_group
+       AND pr.value IS NOT DISTINCT FROM NEW.value
+       AND pr.unit IS NOT DISTINCT FROM NEW.unit
+       AND pr.previous_value IS NOT DISTINCT FROM NEW.previous_value
+       AND pr.weight_kg IS NOT DISTINCT FROM NEW.weight_kg
+       AND pr.reps IS NOT DISTINCT FROM NEW.reps
+       AND pr.session_id IS NOT DISTINCT FROM NEW.session_id
+  ) THEN
+    NEW.deleted_at := now();
+    NEW.updated_at := now();
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.personal_records_legacy_identity_collision()
+  FROM PUBLIC, anon, authenticated, service_role;
+
+DROP TRIGGER IF EXISTS personal_records_legacy_identity_collision ON public.personal_records;
+CREATE TRIGGER personal_records_legacy_identity_collision
+  BEFORE UPDATE ON public.personal_records
+  FOR EACH ROW EXECUTE FUNCTION private.personal_records_legacy_identity_collision();
+
 COMMIT;
