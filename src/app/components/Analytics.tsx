@@ -857,9 +857,22 @@ export function Analytics() {
 	// Derive summary stats from real data
 	const totalVolume = volumeData.reduce((sum, d) => sum + d.volume, 0);
 	const totalWorkouts = volumeData.reduce((sum, d) => sum + d.workouts, 0);
-	const insights = buildLocalInsights(
-		insightComparison,
-		queryPeriodDays(insightPeriod),
+	// The feed's local fallback: insight windows, like generate-insights. Empty
+	// when its comparison failed, so InsightsFeed shows the error rather than
+	// placeholder cards.
+	const insights = insightComparisonError
+		? []
+		: buildLocalInsights(
+				insightComparison,
+				queryPeriodDays(insightPeriod),
+				muscleGroupData,
+				unit,
+			);
+	// The Progress tab's insights describe the charts beside them, so they use
+	// the chart window.
+	const progressInsights = buildLocalInsights(
+		volumeComparison,
+		queryPeriodDays(queryPeriod),
 		muscleGroupData,
 		unit,
 	);
@@ -1755,7 +1768,7 @@ export function Analytics() {
 											prCount={prCount}
 											daysSinceLastPR={daysSinceLastPR}
 											strengthExercises={strengthExercises}
-											insights={insights}
+											insights={progressInsights}
 											phaseFilter={phaseFilter}
 											onPhaseFilterChange={setPhaseFilter}
 											phaseMetricSummary={phaseMetricSummary}
