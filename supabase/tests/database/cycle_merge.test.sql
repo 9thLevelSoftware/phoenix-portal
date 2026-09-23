@@ -74,9 +74,6 @@ VALUES
     ('18181818-0000-4000-8000-000000000002'::uuid, 'cycle-merge-other@example.test')
 ON CONFLICT (id) DO NOTHING;
 
--- Portal cycle writes need EMBER (RLS).
-INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
-VALUES ('18181818-0000-4000-8000-000000000001'::uuid, 'EMBER', 'active', '2099-01-01+00');
 -- Portal cycle writes need FLAME (RLS).
 INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
 VALUES ('18181818-0000-4000-8000-000000000001'::uuid, 'FLAME', 'active', '2099-01-01+00');
@@ -397,8 +394,6 @@ SELECT results_eq(
            "days":[{"day_number":1,"routine_id":"18181818-0000-4000-8000-0000000000a1","rest_type":"full"}]}]',
         false)
     $sql$,
-    $values$ VALUES (true, true, '2026-02-01 00:00:00+00'::timestamptz) $values$,
-    'a new cycle is inserted with the pushed updated_at'
     $values$ VALUES (true, true, now()) $values$,
     'a new cycle is inserted with the server clock as updated_at (NF-12, PR 21)'
 );
@@ -451,7 +446,6 @@ SELECT ok(
 -- Fixtures (as postgres, no claims: nothing is stamped).
 SELECT set_config('request.jwt.claims', '', true);
 INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
-VALUES ('18181818-0000-4000-8000-000000000002'::uuid, 'EMBER', 'active', '2099-01-01+00');
 VALUES ('18181818-0000-4000-8000-000000000002'::uuid, 'FLAME', 'active', '2099-01-01+00');
 INSERT INTO public.routines (id, user_id, name)
 VALUES ('18181818-0000-4000-8000-0000000000a3'::uuid, '18181818-0000-4000-8000-000000000001'::uuid, 'R3');

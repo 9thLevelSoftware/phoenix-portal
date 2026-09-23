@@ -177,6 +177,13 @@ INSERT INTO public.sync_tombstones (user_id, entity, entity_id) VALUES
     ('35353535-0000-4000-8000-000000000002', 'routine', gen_random_uuid());
 
 DELETE FROM auth.users WHERE id = '35353535-0000-4000-8000-0000000000dd'::uuid;
+-- The cascade just removed dd's tombstone. Residue the sweep targets predates
+-- that FK (20260920001600 adds it on re-apply), so seed one with FK
+-- triggers off.
+SET LOCAL session_replication_role = replica;
+INSERT INTO public.sync_tombstones (user_id, entity, entity_id) VALUES
+    ('35353535-0000-4000-8000-0000000000dd', 'routine', gen_random_uuid());
+SET LOCAL session_replication_role = origin;
 INSERT INTO public.rate_limit_tracking (provider, key, user_id) VALUES
     ('due-deletion-app-wide', 'due-deletion-app-wide', NULL);
 INSERT INTO public.paddle_webhook_events (event_type, user_id, payload) VALUES
@@ -293,8 +300,10 @@ SELECT is(
 -- R-23: a table whose user_id column is absent (the prod drift purgeUser's
 -- fallbackColumn hedges against) is reported in `skipped` instead of aborting
 -- the whole function and rolling back the other tables' deletes.
+SET LOCAL session_replication_role = replica;
 INSERT INTO public.sync_tombstones (user_id, entity, entity_id) VALUES
     ('35353535-0000-4000-8000-0000000000dd', 'routine', gen_random_uuid());
+SET LOCAL session_replication_role = origin;
 ALTER TABLE public.rate_limit_tracking DROP COLUMN user_id CASCADE;
 
 CREATE TEMP TABLE drift_result AS

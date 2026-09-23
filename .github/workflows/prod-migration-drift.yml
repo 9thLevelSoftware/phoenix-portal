@@ -362,7 +362,10 @@ jobs:
             ('workout_current_streak(uuid)'),
             ('user_has_min_tier(text)'),
             ('user_subscription_tier()'),
-            ('request_account_deletion()')
+            ('request_account_deletion()'),
+            ('delete_training_cycle_lww(uuid, timestamp with time zone)'),
+            ('delete_workout_with_tombstone(uuid, uuid, uuid, text, text, timestamp with time zone)'),
+            ('verify_profile_recovery_source(text, uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[])')
           ),
           anon_tier_allow(sig) AS (VALUES
             ('user_has_min_tier(text)'),

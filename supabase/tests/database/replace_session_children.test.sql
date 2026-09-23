@@ -35,14 +35,12 @@ SELECT is(
 SELECT ok(
     NOT has_function_privilege('anon',
         'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
-        'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
     'anon cannot execute replace_session_children'
 );
 
 SELECT ok(
     NOT has_function_privilege('authenticated',
         'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
-        'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
     'authenticated cannot execute replace_session_children'
 );
 
@@ -61,10 +59,6 @@ SELECT col_is_null('public', 'exercises', 'cable_count',
     'exercises.cable_count is nullable (NULL = unknown)');
 SELECT col_hasnt_default('public', 'exercises', 'cable_count',
     'exercises.cable_count has no default (never assumed to be 2)');
-
-        'public.replace_session_children(uuid, uuid[], jsonb, jsonb, jsonb, jsonb)', 'EXECUTE'),
-    'service_role can execute replace_session_children'
-);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures and payload helpers
@@ -91,7 +85,6 @@ $$;
 -- p_cable NULL omits the cable_count key entirely (today's mobile shape).
 CREATE FUNCTION pg_temp.ex(p_id INT, p_session INT, p_catalog TEXT, p_name TEXT, p_order INT,
                            p_cable INT DEFAULT NULL)
-CREATE FUNCTION pg_temp.ex(p_id INT, p_session INT, p_catalog TEXT, p_name TEXT, p_order INT)
 RETURNS JSONB LANGUAGE sql AS $$
     SELECT jsonb_build_object(
         'id', pg_temp.u(p_id), 'session_id', pg_temp.u(p_session),
