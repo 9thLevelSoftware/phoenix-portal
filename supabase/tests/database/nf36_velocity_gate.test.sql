@@ -120,6 +120,10 @@ SELECT ok(
     NOT ((public.exercise_progress_series_many(ARRAY['Hardening Press']) -> 0 -> 'rows' -> 0) ? 'zz_server_only'),
     'a new column is absent from exercise_progress_series_many'
 );
+SELECT ok(
+    NOT has_column_privilege('authenticated', 'public.exercise_progress', 'zz_server_only', 'SELECT'),
+    'a new column is not browser-readable either'
+);
 RESET ROLE;
 SELECT set_config('request.jwt.claims', '', true);
 
