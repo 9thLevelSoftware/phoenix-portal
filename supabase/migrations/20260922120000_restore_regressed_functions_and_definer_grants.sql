@@ -25,8 +25,19 @@
 --    sync-tombstones-retention job and then re-created it in the same loop,
 --    with a new jobid on every run. Tombstones are durable deletion evidence
 --    (removed by the auth.users cascade), so the retention row is dropped.
--- 5. guard_profile_ownership_claim() / guard_training_cycle_lww() are trigger
---    functions: triggers do not check EXECUTE, so no client role needs it.
+-- 5. guard_profile_ownership_update / guard_profile_ownership_claim
+--    (20260920120000) compared local_profile_id strictly, so NULL -> 'default'
+--    counted as a cross-profile move. A portal-created row (NULL profile)
+--    re-pushed by the phone under 'default' raised
+--    profile_ownership_transfer_required inside merge_training_cycles_from_push
+--    and the push answered 503 on every retry. NULL and 'default' are the
+--    same profile everywhere else (20260920002101); a real move between two
+--    named profiles still needs the transfer. The update guard also blocked
+--    the ON DELETE SET NULL action of the local_profiles foreign keys, so a
+--    local profile that owned any row could not be deleted; a NULL whose old
+--    profile no longer exists is now let through. guard_profile_ownership_claim()
+--    and guard_training_cycle_lww() are trigger functions: triggers do not
+--    check EXECUTE, so no client role needs it.
 
 BEGIN;
 
@@ -633,6 +644,67 @@ REVOKE ALL ON FUNCTION private.schedule_sync_queue_jobs()
 SELECT private.schedule_sync_queue_jobs();
 
 -- 5 -----------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.guard_profile_ownership_update()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF COALESCE(OLD.local_profile_id, 'default') IS DISTINCT FROM COALESCE(NEW.local_profile_id, 'default')
+     AND COALESCE(current_setting('phoenix.allow_profile_transfer', TRUE), '') <> 'on'
+     -- The profile FKs are ON DELETE SET NULL: deleting a local profile
+     -- detaches its rows. The parent is already gone in this transaction.
+     AND NOT (
+       NEW.local_profile_id IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM public.local_profiles lp
+         WHERE lp.user_id = OLD.user_id AND lp.id = OLD.local_profile_id
+       )
+     ) THEN
+    RAISE EXCEPTION 'profile_ownership_transfer_required' USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.guard_profile_ownership_claim()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_entity_type TEXT;
+  v_entity_id UUID;
+  v_claim RECORD;
+BEGIN
+  v_entity_type := CASE TG_TABLE_NAME
+    WHEN 'workout_sessions' THEN 'workout_session'
+    WHEN 'exercise_progress' THEN 'workout_session'
+    WHEN 'routines' THEN 'routine'
+    WHEN 'training_cycles' THEN 'training_cycle'
+    WHEN 'personal_records' THEN 'personal_record'
+  END;
+  IF TG_TABLE_NAME = 'exercise_progress' THEN
+    v_entity_id := (to_jsonb(NEW)->>'session_id')::UUID;
+  ELSE
+    v_entity_id := (to_jsonb(NEW)->>'id')::UUID;
+  END IF;
+  IF v_entity_id IS NULL THEN RETURN NEW; END IF;
+
+  SELECT c.user_id, c.target_profile_id INTO v_claim
+  FROM public.profile_ownership_claims c
+  WHERE c.entity_type = v_entity_type AND c.entity_id = v_entity_id;
+  IF FOUND AND (
+    v_claim.user_id <> NEW.user_id OR
+    COALESCE(v_claim.target_profile_id, 'default') IS DISTINCT FROM COALESCE(NEW.local_profile_id, 'default')
+  ) THEN
+    RAISE EXCEPTION 'profile_ownership_claim_mismatch' USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
 REVOKE ALL ON FUNCTION public.guard_profile_ownership_claim() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.guard_training_cycle_lww() FROM PUBLIC, anon, authenticated;
 
