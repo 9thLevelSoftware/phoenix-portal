@@ -24,7 +24,13 @@ describe("goalPrBestsOptions", () => {
 		]);
 	});
 
-	it("converts stored per-cable PR values to the total weight shown by goals", async () => {
+	// Was "converts stored per-cable PR values to the total weight shown by
+	// goals" — that title is the pre-KD-8 doubling claim. The assertion has
+	// always been the identity (`personalRecordSchema.value` is
+	// `perCableWeight = z.number()`), and `WEIGHT_MULTIPLIER` is gone from
+	// transforms.ts. Goal PRs carry no cable count, so any total is the display
+	// layer's job.
+	it("returns stored per-cable PR values unchanged", async () => {
 		rpc.mockResolvedValue({
 			data: [
 				{
