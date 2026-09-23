@@ -523,7 +523,14 @@ type Db = { from(table: string): any };
  * rejected, because Postgres checks NOT NULL on the proposed INSERT row
  * before ON CONFLICT. Returns the failure count; callers must not advance the
  * watermark when it is non-zero.
+ *
+ * Inserts go out LIFTOSAUR_WRITE_CHUNK rows per request (like hevy-sync); a
+ * chunk the database refuses is retried row by row so the failure count stays
+ * exact and one bad row does not fail its neighbours. `onRow` receives the
+ * running count of rows handled after each chunk.
  */
+export const LIFTOSAUR_WRITE_CHUNK = 100;
+
 export async function writeLiftosaurRows(
   supabase: Db,
   userId: string,
@@ -533,24 +540,38 @@ export async function writeLiftosaurRows(
 ): Promise<{ written: number; failed: number }> {
   let written = 0;
   let failed = 0;
+  let handled = 0;
   const undated: Array<Record<string, unknown>> = [];
-  for (let i = 0; i < rows.length; i++) {
-    const { undated: isUndated, row } = rows[i];
-    const full = { ...row, ...extraColumns };
-    const { error } = await supabase
-      .from('external_activities')
-      .upsert(full, {
-        onConflict: 'user_id,provider,external_id',
-        ignoreDuplicates: isUndated,
-      });
-    if (error) {
-      failed++;
-      console.error(`Failed to persist Liftosaur record ${String(row.external_id)}:`, error);
-    } else {
-      written++;
-      if (isUndated) undated.push(full);
+  const upsert = (payload: Record<string, unknown> | Array<Record<string, unknown>>, isUndated: boolean) =>
+    supabase.from('external_activities').upsert(payload, {
+      onConflict: 'user_id,provider,external_id',
+      ignoreDuplicates: isUndated,
+    });
+  for (const isUndated of [false, true]) {
+    const group = rows
+      .filter((r) => r.undated === isUndated)
+      .map((r) => ({ ...r.row, ...extraColumns }));
+    for (let i = 0; i < group.length; i += LIFTOSAUR_WRITE_CHUNK) {
+      const chunk = group.slice(i, i + LIFTOSAUR_WRITE_CHUNK);
+      const { error } = await upsert(chunk, isUndated);
+      if (!error) {
+        written += chunk.length;
+        if (isUndated) undated.push(...chunk);
+      } else {
+        for (const full of chunk) {
+          const { error: rowError } = await upsert(full, isUndated);
+          if (rowError) {
+            failed++;
+            console.error(`Failed to persist Liftosaur record ${String(full.external_id)}:`, rowError);
+          } else {
+            written++;
+            if (isUndated) undated.push(full);
+          }
+        }
+      }
+      handled += chunk.length;
+      await onRow?.(handled);
     }
-    await onRow?.(i + 1);
   }
   for (const row of undated) {
     const { user_id: _u, provider: _p, external_id: externalId, started_at: _s, ...changes } = row;
