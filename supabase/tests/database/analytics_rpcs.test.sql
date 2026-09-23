@@ -257,8 +257,7 @@ SELECT is(
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'public'
           AND p.proname IN (
-              'exercise_frequency', 'exercise_names', 'exercise_progress_series',
-              'exercise_progress_series_many', 'personal_record_history',
+              'exercise_frequency', 'exercise_names', 'personal_record_history',
               'personal_record_bests', 'profile_workout_stats', 'session_volume_buckets'
           )
           AND NOT p.prosecdef
@@ -270,8 +269,31 @@ SELECT is(
               WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'
           )
     ),
-    8,
-    'all eight are SECURITY INVOKER, search_path pinned, authenticated-only (no anon, no PUBLIC)'
+    6,
+    'six are SECURITY INVOKER, search_path pinned, authenticated-only (no anon, no PUBLIC)'
+);
+
+-- The two progress series read velocity_estimated_1rm_kg, which is not
+-- client-readable (INFERNO gate, 20260925900000), so they run as DEFINER and
+-- stay caller-scoped by auth.uid(). Same pin and grants otherwise.
+SELECT is(
+    (
+        SELECT count(*)::integer
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public'
+          AND p.proname IN ('exercise_progress_series', 'exercise_progress_series_many')
+          AND p.prosecdef
+          AND 'search_path=""' = ANY (p.proconfig)
+          AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
+          AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')
+          AND NOT EXISTS (
+              SELECT 1 FROM aclexplode(p.proacl) a
+              WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'
+          )
+    ),
+    2,
+    'the two progress series are SECURITY DEFINER, search_path pinned, authenticated-only'
 );
 
 SELECT has_index(
@@ -443,11 +465,16 @@ SELECT is(
         ) AS k
     ),
     (
-        SELECT array_agg(column_name::text ORDER BY column_name::text)
-        FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'exercise_progress'
+        -- The RPC's fixed allow-list (20260925900000), not the table's
+        -- columns: a later column is deliberately not returned.
+        SELECT array_agg(c ORDER BY c)
+        FROM unnest(ARRAY[
+          'id', 'user_id', 'exercise_name', 'session_id', 'recorded_at', 'max_weight_kg',
+          'total_volume_kg', 'estimated_1rm_kg', 'max_reps', 'set_count',
+          'local_profile_id', 'exercise_id', 'velocity_estimated_1rm_kg'
+        ]) AS c
     ),
-    'series_many row objects carry exactly the exercise_progress columns (no rn)'
+    'series_many row objects carry exactly the allow-listed columns (no rn)'
 );
 
 SELECT results_eq(
