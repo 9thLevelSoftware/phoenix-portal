@@ -69,6 +69,53 @@ function cronRequest(headers: Record<string, string> = {}): Request {
   });
 }
 
+Deno.test("process-sync-queue: a row the worker handed back as its follow-up is not completed", async () => {
+  const h = harness(BASE_ENV, {
+    sync_queue: [{
+      id: TASK_ID, user_id: USER_ID, provider: "liftosaur", sync_type: "initial",
+      status: "pending", retry_count: 0, created_at: "2026-01-01T00:00:00.000Z",
+      started_at: null, completed_at: null,
+    }],
+    subscriptions: [{
+      user_id: USER_ID, tier: "FLAME", status: "active", current_period_end: "2099-01-01T00:00:00.000Z",
+    }],
+    rate_limit_tracking: [],
+  }, () => {
+    // The worker handed its row back as pending; another pass claimed it.
+    const row = h.db.tables.sync_queue[0];
+    row.status = "processing";
+    return new Response(JSON.stringify({ success: true, continuing: true, queue_row_handed_off: true }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  });
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(res.status, 200);
+  assertEquals(h.db.tables.sync_queue[0].status, "processing", "the successor's run is left alone");
+});
+
+Deno.test("process-sync-queue: a stale call's failure never requeues its successor's row", async () => {
+  const h = harness(BASE_ENV, {
+    sync_queue: [{
+      id: TASK_ID, user_id: USER_ID, provider: "strava", sync_type: "incremental",
+      status: "pending", retry_count: 0, created_at: "2026-01-01T00:00:00.000Z",
+      started_at: null, completed_at: null,
+    }],
+    subscriptions: [{
+      user_id: USER_ID, tier: "FLAME", status: "active", current_period_end: "2099-01-01T00:00:00.000Z",
+    }],
+    rate_limit_tracking: [],
+  }, () => {
+    // The lease expired mid-call; another pass reclaimed the row (generation 1).
+    const row = h.db.tables.sync_queue[0];
+    row.retry_count = 1;
+    row.status = "processing";
+    return new Response("upstream", { status: 400 });
+  });
+  await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  const row = h.db.tables.sync_queue[0];
+  assertEquals([row.status, row.retry_count], ["processing", 1], "the successor's row is untouched");
+});
+
 Deno.test("process-sync-queue: missing x-cron-secret gives 401 and touches nothing", async () => {
   const h = harness(BASE_ENV);
   const res = await h.handler(cronRequest());
@@ -155,6 +202,8 @@ Deno.test("process-sync-queue: a pending initial task is dispatched and complete
     user_id: USER_ID,
     sync_type: "initial",
     queue_id: TASK_ID,
+    // The generation this invocation claimed (retry_count at the claim).
+    claim_generation: 0,
   });
 
   const task = h.db.tables.sync_queue[0];

@@ -106,6 +106,7 @@ export class FakeQuery implements PromiseLike<Result> {
   private patch: Row | null = null;
   private insertRows: Row[] | null = null;
   private upsertConflict: string[] | null = null;
+  private ignoreDuplicates = false;
   private mode: 'many' | 'single' | 'maybeSingle' = 'many';
   private orderBy: { col: string; asc: boolean } | null = null;
   private max: number | null = null;
@@ -126,9 +127,11 @@ export class FakeQuery implements PromiseLike<Result> {
     this.insertRows = Array.isArray(row) ? row : [row];
     return this;
   }
-  upsert(row: Row | Row[], opts?: { onConflict?: string }) {
+  upsert(row: Row | Row[], opts?: { onConflict?: string; ignoreDuplicates?: boolean }) {
     this.insertRows = Array.isArray(row) ? row : [row];
     this.upsertConflict = (opts?.onConflict ?? 'id').split(',').map((c) => c.trim());
+    // ON CONFLICT DO NOTHING: an existing row is left exactly as it is.
+    this.ignoreDuplicates = opts?.ignoreDuplicates === true;
     return this;
   }
   eq(col: string, value: unknown) {
@@ -185,8 +188,10 @@ export class FakeQuery implements PromiseLike<Result> {
           ? this.rows.find((r) => keys.every((k) => r[k] === row[k]))
           : undefined;
         if (existing) {
-          Object.assign(existing, row);
-          written.push(existing);
+          if (!this.ignoreDuplicates) {
+            Object.assign(existing, row);
+            written.push(existing);
+          }
           continue;
         }
         // Only mint an id when the caller asked for the row back (PostgREST
@@ -222,6 +227,24 @@ export class FakeQuery implements PromiseLike<Result> {
     }
     let matched = this.rows.filter((r) => this.filters.every((f) => f(r)));
     if (this.patch) {
+      // Unique indexes hold for UPDATEs too, all or nothing (as Postgres).
+      const patched = matched.map((r) => ({ ...r, ...this.patch }));
+      const violated = this.uniqueIndexes.find((index) =>
+        patched.some((next, i) => {
+          const key = index.key(next);
+          return key !== null &&
+            this.rows.some((r) => r !== matched[i] && !matched.includes(r) && index.key(r) === key);
+        })
+      );
+      if (violated) {
+        return {
+          data: null,
+          error: {
+            code: '23505',
+            message: `duplicate key value violates unique constraint "${violated.name}"`,
+          },
+        };
+      }
       for (const r of matched) Object.assign(r, this.patch);
     }
     if (this.orderBy) {
@@ -341,6 +364,8 @@ export function fakeClient(
       if (fn === 'check_rate_limit') {
         return Promise.resolve(checkRateLimitRpc(db, args, now()));
       }
+      // A stub the test registered on the db.
+      if (db.rpcHandlers[fn]) return db.rpc(fn, args);
       // Postgres' "function does not exist" — callers that have a fallback
       // path take it, the rest fail closed.
       return Promise.resolve({
