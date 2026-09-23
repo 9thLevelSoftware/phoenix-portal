@@ -1,9 +1,9 @@
-import { expect, test, type Locator, type Route } from "@playwright/test";
+import { expect, type Locator, type Route, test } from "@playwright/test";
 import {
+	createStoredSession,
 	E2E_SUPABASE_ANON_KEY,
 	E2E_SUPABASE_STORAGE_KEY,
 	E2E_SUPABASE_URL,
-	createStoredSession,
 } from "./support/supabase";
 
 /**
@@ -102,7 +102,11 @@ async function installAuthMockImpl(
 		}
 
 		// Pass through otherwise-handled routes with an empty 200
-		await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+		await route.fulfill({
+			status: 200,
+			contentType: "application/json",
+			body: "[]",
+		});
 	});
 }
 
@@ -123,7 +127,9 @@ function getCreateAccountButton(dialog: Locator) {
 }
 
 test.describe("Signup flow", () => {
-	test("valid credentials sign up and redirect to dashboard", async ({ page }) => {
+	test("valid credentials sign up and redirect to dashboard", async ({
+		page,
+	}) => {
 		await installAuthMock(page);
 		const dialog = await openSignUpTab(page);
 
@@ -170,7 +176,9 @@ test.describe("Signup flow", () => {
 		expect(page.url()).not.toMatch(/\/dashboard$/);
 	});
 
-	test("short password (<6 chars) blocks submit with readable error", async ({ page }) => {
+	test("short password (<6 chars) blocks submit with readable error", async ({
+		page,
+	}) => {
 		await installAuthMock(page);
 		const dialog = await openSignUpTab(page);
 

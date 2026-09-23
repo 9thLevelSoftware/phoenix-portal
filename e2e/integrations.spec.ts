@@ -12,7 +12,9 @@ test.describe("Integrations", () => {
 		await expect(page).toHaveURL(/\/integrations$/);
 
 		await page.goto("/integrations?error=auth_failed");
-		await expect(page.getByText("Connection failed: auth_failed")).toBeVisible();
+		await expect(
+			page.getByText("Connection failed: auth_failed"),
+		).toBeVisible();
 		await expect(page).toHaveURL(/\/integrations$/);
 	});
 
