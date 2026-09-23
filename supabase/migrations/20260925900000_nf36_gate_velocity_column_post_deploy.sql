@@ -21,23 +21,13 @@ BEGIN;
 REVOKE SELECT ON public.exercise_progress FROM anon, authenticated;
 REVOKE SELECT (velocity_estimated_1rm_kg) ON public.exercise_progress FROM anon, authenticated;
 
-DO $$
-DECLARE
-  cols text;
-BEGIN
-  -- Every other column, read from the catalog so a drifted table converges.
-  -- A column added later is not client-readable until granted here or in a
-  -- later migration.
-  SELECT string_agg(quote_ident(column_name), ', ' ORDER BY ordinal_position)
-  INTO cols
-  FROM information_schema.columns
-  WHERE table_schema = 'public'
-    AND table_name = 'exercise_progress'
-    AND column_name <> 'velocity_estimated_1rm_kg';
-
-  EXECUTE format('GRANT SELECT (%s) ON public.exercise_progress TO authenticated', cols);
-END
-$$;
+-- A fixed allow-list, never read from the catalog: re-running this file after
+-- a later migration adds a column must not make that column browser-readable.
+GRANT SELECT (
+  id, user_id, exercise_name, session_id, recorded_at, max_weight_kg,
+  total_volume_kg, estimated_1rm_kg, max_reps, set_count, local_profile_id,
+  exercise_id
+) ON public.exercise_progress TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.exercise_progress_series(
   p_exercise text,
