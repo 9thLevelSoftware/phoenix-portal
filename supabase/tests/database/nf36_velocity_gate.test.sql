@@ -105,6 +105,22 @@ SELECT is(
     'the DEFINER series is still caller-scoped: INFERNO sees only its own row'
 );
 RESET ROLE;
+
+-- Fail closed: a column added to exercise_progress later is not returned by
+-- these DEFINER RPCs until it is listed deliberately.
+ALTER TABLE public.exercise_progress ADD COLUMN zz_server_only text;
+UPDATE public.exercise_progress SET zz_server_only = 'secret';
+SET LOCAL ROLE authenticated;
+SELECT is(
+    (SELECT zz_server_only FROM public.exercise_progress_series('Hardening Press')),
+    NULL,
+    'a new column comes back NULL from exercise_progress_series'
+);
+SELECT ok(
+    NOT ((public.exercise_progress_series_many(ARRAY['Hardening Press']) -> 0 -> 'rows' -> 0) ? 'zz_server_only'),
+    'a new column is absent from exercise_progress_series_many'
+);
+RESET ROLE;
 SELECT set_config('request.jwt.claims', '', true);
 
 SELECT * FROM finish();
