@@ -3941,7 +3941,10 @@ Deno.test("routine_exercises upsert failure returns the same retryable 503", asy
 // NF-41: reject_user_id_change raises SQLSTATE 42501 when a write would move a
 // row to another owner. Retrying cannot succeed, so it is the ownership 400,
 // never an opaque 500 or a retryable 503, and nothing is broadcast.
-const OWNER_REFUSAL = { message: "user_id cannot change", code: "42501" };
+const OWNER_REFUSAL = {
+  message: "row owner is immutable: public.workout_sessions may not change user_id",
+  code: "42501",
+};
 
 async function assertOwnerRefusal(
   harness: ReturnType<typeof makeHarness>,
@@ -3982,13 +3985,28 @@ Deno.test("owner refusal on the flag-off routine upsert is a 400, not a 500", as
   await assertOwnerRefusal(harness, response, "routines");
 });
 
-Deno.test("owner refusal from the cycle merge is a 400, not a retryable 503", async () => {
+// The merge reports cross-owner cycles as accepted=false rows, so any error it
+// raises, a 42501 included, stays the retryable partial write: sessions and
+// routines may already be committed.
+Deno.test("a 42501 from the cycle merge stays a retryable 503, not a 400", async () => {
   const harness = makeHarness(undefined, {
     rpcBehavior: async (name) =>
       name === "merge_training_cycles_from_push" ? { data: null, error: OWNER_REFUSAL } : undefined,
   });
   const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
-  await assertOwnerRefusal(harness, response, "training_cycles");
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test("a 42501 that is not the owner trigger keeps the normal failure, not the ownership 400", async () => {
+  const harness = makeHarness(undefined, {
+    syncLwwEnabled: true,
+    rpcBehavior: async (name) =>
+      name === "upsert_workout_session_lww"
+        ? { data: null, error: { code: "42501", message: "permission denied for function upsert_workout_session_lww" } }
+        : undefined,
+  });
+  const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  assertEquals(response.status, 500, JSON.stringify(await json(response)));
 });
 
 Deno.test("retrying the identical payload after a 503 succeeds and replays the same writes", async () => {
