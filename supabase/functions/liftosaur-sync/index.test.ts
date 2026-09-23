@@ -278,7 +278,7 @@ function claim(db: FakeDb, index: number, id: string): void {
   row.started_at = CLAIMED_AT;
 }
 
-Deno.test("liftosaur-sync: a failed queue completion is retried, never reported as a queued follow-up", async () => {
+Deno.test("liftosaur-sync: a failed follow-up hand-on is retried, never reported as queued", async () => {
   const db = new FakeDb(
     tables([queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)]),
     [syncQueueOneActiveIndex],
@@ -289,7 +289,7 @@ Deno.test("liftosaur-sync: a failed queue completion is retried, never reported 
     if (table === "sync_queue") {
       const update = query.update.bind(query);
       query.update = (patch: Row) => {
-        if (patch.status !== "completed") return update(patch);
+        if (patch.status !== "pending") return update(patch);
         const failed = {
           eq: () => failed,
           select: () => failed,
@@ -304,7 +304,7 @@ Deno.test("liftosaur-sync: a failed queue completion is retried, never reported 
   };
   const res = await harness(db, descendingLiftosaur(4500).fetch)({ sync_type: "initial", queue_id: QUEUE_ID });
   assertEquals(res.status, 502, await res.clone().text());
-  assertEquals((await res.json()).code, "queue_complete_failed");
+  assertEquals((await res.json()).code, "follow_up_failed");
   assertEquals(db.rows("sync_queue").map((r) => r.status), ["processing"], "no follow-up, row still processing");
   assertEquals(typeof db.rows("user_integrations")[0].backfill_before, "string", "the cursor is saved for the retry");
 });
@@ -325,7 +325,7 @@ Deno.test("liftosaur-sync: a run whose row a disconnect cancelled writes no fina
   assertEquals([integration.status, integration.last_sync_at], ["disconnected", null]);
 });
 
-Deno.test("liftosaur-sync: a failed follow-up insert reopens this run's row as the follow-up", async () => {
+Deno.test("liftosaur-sync: the follow-up is this run's own row handed on, never a separate insert", async () => {
   const db = new FakeDb(
     tables([queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)]),
     [syncQueueOneActiveIndex],
@@ -373,11 +373,12 @@ Deno.test("liftosaur-sync: a history larger than one run is imported over resuma
   assertEquals(integration.backfill_after, null, "an initial chain reads the full history");
   assertEquals(typeof integration.backfill_before, "string");
   let queue = db.rows("sync_queue");
-  assertEquals(queue.map((r) => [r.sync_type, r.status]), [["initial", "completed"], ["incremental", "pending"]]);
+  // The run's own row is handed on as the follow-up (one atomic update).
+  assertEquals(queue.map((r) => [r.sync_type, r.status]), [["incremental", "pending"]]);
 
   // Run 2 (the queued incremental follow-up): continues BELOW the cursor and
   // truncates again, so its own row must complete before the next follow-up.
-  claim(db, 1, "second");
+  claim(db, 0, "second");
   const second = await call({ sync_type: "incremental", queue_id: "second" });
   assertEquals(second.status, 200, await second.clone().text());
   assertEquals((await second.json()).follow_up_queued, true);
@@ -388,11 +389,11 @@ Deno.test("liftosaur-sync: a history larger than one run is imported over resuma
   [integration] = db.rows("user_integrations");
   assertEquals(integration.last_sync_at, null);
   queue = db.rows("sync_queue");
-  assertEquals(queue.map((r) => r.status), ["completed", "completed", "pending"]);
+  assertEquals(queue.map((r) => [r.id, r.status]), [["second", "pending"]]);
 
   // Run 3: the rest of the history; the chain ends and the watermark lands on
   // the chain's START, so nothing written during the chain is skipped.
-  claim(db, 2, "third");
+  claim(db, 0, "third");
   const third = await call({ sync_type: "incremental", queue_id: "third" });
   assertEquals(third.status, 200, await third.clone().text());
   assertEquals((await third.json()).success, true);
@@ -403,7 +404,7 @@ Deno.test("liftosaur-sync: a history larger than one run is imported over resuma
     [integration.backfill_before, integration.backfill_after, integration.backfill_started_at],
     [null, null, null],
   );
-  assertEquals(db.rows("sync_queue").map((r) => r.status), ["completed", "completed", "completed"]);
+  assertEquals(db.rows("sync_queue").map((r) => r.status), ["completed"]);
 });
 
 Deno.test("liftosaur-sync: a truncated history with no clear date order stores what it read and fails without advancing", async () => {
@@ -603,7 +604,7 @@ Deno.test("liftosaur-sync: a queue row no longer processing is not completed and
     return upstream.fetch(input);
   };
   const res = await harness(db, fetchAndCancel)({ sync_type: "initial", queue_id: QUEUE_ID });
-  assertEquals(res.status, 502, await res.clone().text());
+  assertEquals(res.status, 409, await res.clone().text());
   assertEquals(db.rows("sync_queue").map((r) => r.status), ["cancelled"], "no follow-up queued");
 });
 
