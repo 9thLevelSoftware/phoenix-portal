@@ -219,6 +219,27 @@ BEGIN
       END;
     END IF;
 
+    IF NOT EXISTS (
+      SELECT 1 FROM public.sync_tombstones t
+       WHERE t.user_id = p_user_id AND t.entity = v_entity AND t.entity_id = v_id
+    ) THEN
+      CONTINUE;
+    END IF;
+
+    -- Lock in the order every cycle writer uses: the cycle row, then the
+    -- per-cycle advisory lock, then the tombstone (delete_cycles_clocked
+    -- writes its tombstone last too). Locking the tombstone first deadlocked
+    -- against a concurrent clocked delete once SYNC_PUSH_TRANSACTION held the
+    -- gate's lock until the push's own cycle insert took the advisory lock.
+    IF v_entity = 'cycle' THEN
+      PERFORM 1 FROM public.training_cycles c
+        WHERE c.id = v_id AND c.user_id = p_user_id
+        FOR UPDATE;
+      PERFORM pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtextextended('training-cycle:' || v_id::TEXT, 0)
+      );
+    END IF;
+
     SELECT t.client_deleted_at INTO v_tombstone_clock
       FROM public.sync_tombstones t
      WHERE t.user_id = p_user_id AND t.entity = v_entity AND t.entity_id = v_id
