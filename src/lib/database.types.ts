@@ -1510,7 +1510,7 @@ export type Database = {
 					},
 				];
 			};
-			rep_telemetry: {
+			rep_telemetry_legacy: {
 				Row: {
 					cable: string | null;
 					force_n: number | null;
@@ -1878,6 +1878,56 @@ export type Database = {
 						columns: ["session_id"];
 						isOneToOne: true;
 						referencedRelation: "workout_sessions";
+						referencedColumns: ["id"];
+					},
+				];
+			};
+			set_telemetry: {
+				Row: {
+					cable: string[];
+					created_at: string;
+					force_n: number[];
+					ids: string[];
+					position_mm: number[];
+					sample_count: number;
+					set_id: string;
+					timestamp_ms: number[];
+					updated_at: string;
+					user_id: string;
+					velocity_mps: number[];
+				};
+				Insert: {
+					cable: string[];
+					created_at?: string;
+					force_n: number[];
+					ids: string[];
+					position_mm: number[];
+					sample_count: number;
+					set_id: string;
+					timestamp_ms: number[];
+					updated_at?: string;
+					user_id: string;
+					velocity_mps: number[];
+				};
+				Update: {
+					cable?: string[];
+					created_at?: string;
+					force_n?: number[];
+					ids?: string[];
+					position_mm?: number[];
+					sample_count?: number;
+					set_id?: string;
+					timestamp_ms?: number[];
+					updated_at?: string;
+					user_id?: string;
+					velocity_mps?: number[];
+				};
+				Relationships: [
+					{
+						foreignKeyName: "set_telemetry_set_id_fkey";
+						columns: ["set_id"];
+						isOneToOne: true;
+						referencedRelation: "sets";
 						referencedColumns: ["id"];
 					},
 				];
@@ -2891,6 +2941,19 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			rep_telemetry: {
+				Row: {
+					cable: string | null;
+					force_n: number | null;
+					id: string | null;
+					position_mm: number | null;
+					set_id: string | null;
+					timestamp_ms: number | null;
+					user_id: string | null;
+					velocity_mps: number | null;
+				};
+				Relationships: [];
+			};
 			telemetry_points: {
 				Row: {
 					cable: string | null;
@@ -2902,35 +2965,7 @@ export type Database = {
 					user_id: string | null;
 					velocity_mps: number | null;
 				};
-				Insert: {
-					cable?: string | null;
-					force_n?: number | null;
-					id?: string | null;
-					position_mm?: number | null;
-					set_id?: string | null;
-					timestamp_ms?: number | null;
-					user_id?: string | null;
-					velocity_mps?: number | null;
-				};
-				Update: {
-					cable?: string | null;
-					force_n?: number | null;
-					id?: string | null;
-					position_mm?: number | null;
-					set_id?: string | null;
-					timestamp_ms?: number | null;
-					user_id?: string | null;
-					velocity_mps?: number | null;
-				};
-				Relationships: [
-					{
-						foreignKeyName: "rep_telemetry_set_id_fkey";
-						columns: ["set_id"];
-						isOneToOne: false;
-						referencedRelation: "sets";
-						referencedColumns: ["id"];
-					},
-				];
+				Relationships: [];
 			};
 		};
 		Functions: {
