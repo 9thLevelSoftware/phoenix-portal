@@ -300,3 +300,27 @@ sessions and PRs dated more than a day in the future, caps each session's
 volume contribution at 100,000 kg, and recomputes streaks and workout counts
 from non-future sessions only. Stored workout history is never rewritten by
 ranking.
+
+### Single-transaction push (SYNC_PUSH_TRANSACTION)
+
+When the operator enables `SYNC_PUSH_TRANSACTION`, `mobile-sync-push` runs the
+same writes, in the same order and with the same per-entity outcomes, inside one
+Postgres transaction. Nothing in the request or response changes shape. What
+changes is what a failure leaves behind:
+
+- A push that ran inside the transaction and answers `503 partial_write_retry`
+  has committed **nothing**. With the flag off, earlier writes of that push may
+  already be committed; the retry converges either way, so clients need no
+  change.
+- Exception: when the transaction cannot be opened (no `SUPABASE_DB_URL`, the
+  database unreachable), that push falls back to the per-call writes and logs
+  the fallback, so for that push the flag-off rule applies: a `503` may leave
+  earlier writes committed. The fallback is chosen so an unreachable direct
+  connection never blocks syncing; the retry still converges.
+- A `400` that depends on server state (ownership, parent existence) after the
+  transaction opened also commits nothing.
+- `sync_complete` is broadcast only after COMMIT.
+- A write that the handler tolerates today (an optional table, a reported
+  `failed` list) is still rolled back on its own and reported the same way; it
+  never aborts the rest of the push.
+

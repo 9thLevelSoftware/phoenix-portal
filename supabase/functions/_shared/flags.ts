@@ -8,6 +8,11 @@
  * the unit of rollout.
  */
 
+/** A boolean flag: on only when the secret is "true" (trimmed, any case). */
+function parseBoolFlag(name: string): boolean {
+	return (Deno.env.get(name) ?? "false").trim().toLowerCase() === "true";
+}
+
 /**
  * Gate the Last-Write-Wins upsert path in mobile-sync-push. When false
  * (default), the push handler uses last-push-wins `.upsert()` — the incoming
@@ -28,5 +33,18 @@
  * Resolves audit item #1 when combined with Phases 3.3 and 3.4. See
  * phoenix-portal/docs/dto-drift-matrix.md.
  */
-export const SYNC_LWW_ENABLED =
-	(Deno.env.get("SYNC_LWW_ENABLED") ?? "false").trim().toLowerCase() === "true";
+export const SYNC_LWW_ENABLED = parseBoolFlag("SYNC_LWW_ENABLED");
+
+/**
+ * Run the mobile push's whole write sequence in ONE Postgres transaction
+ * (F-014). When false (default) every write is its own PostgREST request, as
+ * before, so a failure part-way through leaves the earlier writes committed
+ * and the device retries (503 partial_write_retry). When true, the handler
+ * opens a connection with SUPABASE_DB_URL and runs the same Design K calls
+ * inside BEGIN … COMMIT (see _shared/pushTransaction.ts): a failure commits
+ * nothing, and the broadcast happens only after COMMIT. A push must commit
+ * within PUSH_TRANSACTION_TIMEOUT_MS (100 s, inside the pull's two-minute
+ * re-read overlap) or Postgres ends it and the device retries. Exactly
+ * "true" enables it; the response contract is identical either way.
+ */
+export const SYNC_PUSH_TRANSACTION = parseBoolFlag("SYNC_PUSH_TRANSACTION");
