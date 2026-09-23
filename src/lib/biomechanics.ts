@@ -17,19 +17,19 @@ export function calculateAsymmetry(
 
 /**
  * Estimate one-rep max using the canonical hybrid (parity with mobile
- * OneRepMaxCalculator.estimate): Brzycki for reps <= 10, Epley for reps > 10.
- * Returns a rounded integer; 0 for invalid input; weight itself for 1 rep.
+ * OneRepMaxCalculator.estimate and Edge estimateOneRepMaxKg): Brzycki for
+ * reps <= 10, Epley for reps > 10.
+ * Returns the unrounded float; 0 for invalid input; weight itself for 1 rep.
  *
  * NOTE: After 1RM parity, the portal reads estimated_1rm_kg from
  * exercise_progress (mobile-provided). This client computation is a fallback
- * only and MUST use the same formula.
+ * only and MUST use the same formula — never round here.
  */
 export function estimateOneRepMax(weight: number, reps: number): number {
 	if (weight <= 0 || reps <= 0) return 0;
 	if (reps === 1) return weight;
-	const raw =
-		reps <= 10 ? weight * (36 / (37 - reps)) : weight * (1 + reps / 30);
-	return Math.round(raw);
+	if (reps <= 10) return weight * (36 / (37 - reps));
+	return weight * (1 + reps / 30);
 }
 
 /**

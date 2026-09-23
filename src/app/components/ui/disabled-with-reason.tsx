@@ -38,8 +38,18 @@ export function DisabledWithReason({
 		<Tooltip>
 			<TooltipTrigger asChild>
 				{/* Wrapper intercepts hover that disabled children swallow.
-				    cursor-not-allowed signals non-interactivity. */}
-				<span className="inline-flex cursor-not-allowed" title={reason}>
+				    cursor-not-allowed signals non-interactivity. tabIndex + role/
+				    aria-label make the reason reachable for keyboard and screen-reader
+				    users, since the disabled child itself is not focusable. */}
+				{/* biome-ignore lint/a11y/useSemanticElements: a native <button disabled> can't receive the focus/hover this wrapper exists to capture, so a focusable disabled-button span is intentional. */}
+				<span
+					className="inline-flex cursor-not-allowed"
+					tabIndex={0}
+					role="button"
+					aria-disabled="true"
+					aria-label={reason}
+					title={reason}
+				>
 					{/* pointer-events-none prevents clicks from reaching the disabled child,
 					    avoiding confusing "nothing happened" on click. */}
 					<span className="pointer-events-none">{children}</span>

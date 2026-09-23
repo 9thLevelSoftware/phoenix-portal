@@ -1,7 +1,7 @@
 import type { Page, Route } from "@playwright/test";
 import {
-	E2E_SUPABASE_URL,
 	createStoredSession,
+	E2E_SUPABASE_URL,
 	seedStoredSession,
 } from "./supabase";
 
@@ -16,6 +16,13 @@ interface SubscriptionRow {
 	price_id: string | null;
 	current_period_end: string | null;
 	cancel_at_period_end: boolean;
+	/**
+	 * A paid mock user has a real Paddle subscription, so `billingAction`
+	 * (src/hooks/useSubscription.ts) routes them to `manage` — the path a live
+	 * subscriber is actually on. Without it every paid e2e user would be routed
+	 * to `checkout`.
+	 */
+	paddle_subscription_id: string | null;
 }
 
 interface IntegrationRow {
@@ -29,15 +36,16 @@ interface IntegrationRow {
 	error_message: string | null;
 }
 
-interface ExerciseRow {
+type ExerciseRow = {
 	id: string;
 	session_id: string;
 	name: string;
 	muscle_group: string;
 	order_index: number;
-}
+	cable_count?: number | null;
+};
 
-interface SetRow {
+type SetRow = {
 	id: string;
 	exercise_id: string;
 	set_number: number;
@@ -47,6 +55,11 @@ interface SetRow {
 	rpe: number | null;
 	is_pr: boolean;
 	notes: string | null;
+};
+
+interface RepSummaryRow {
+	set_id: string;
+	mean_velocity_mps: number | null;
 }
 
 interface ExternalActivityRow {
@@ -91,16 +104,21 @@ interface MockSupabaseOptions {
 	workoutSessions?: Record<string, unknown>[];
 	exercises?: ExerciseRow[];
 	sets?: SetRow[];
+	repSummaries?: RepSummaryRow[];
 	personalRecords?: Record<string, unknown>[];
 	phaseStatistics?: Record<string, unknown>[];
+	exerciseProgress?: Record<string, unknown>[];
 }
 
 const MONTHLY_PRICE_IDS: Record<MockSubscriptionTier, string | null> = {
 	FREE: null,
-	EMBER: process.env.VITE_PADDLE_EMBER_MONTHLY_PRICE_ID ?? "pri_e2e_ember_monthly",
-	FLAME: process.env.VITE_PADDLE_FLAME_MONTHLY_PRICE_ID ?? "pri_e2e_flame_monthly",
+	EMBER:
+		process.env.VITE_PADDLE_EMBER_MONTHLY_PRICE_ID ?? "pri_e2e_ember_monthly",
+	FLAME:
+		process.env.VITE_PADDLE_FLAME_MONTHLY_PRICE_ID ?? "pri_e2e_flame_monthly",
 	INFERNO:
-		process.env.VITE_PADDLE_INFERNO_MONTHLY_PRICE_ID ?? "pri_e2e_inferno_monthly",
+		process.env.VITE_PADDLE_INFERNO_MONTHLY_PRICE_ID ??
+		"pri_e2e_inferno_monthly",
 };
 
 export async function mockAuthenticatedApp(
@@ -137,6 +155,7 @@ export async function installMockSupabase(
 						price_id: MONTHLY_PRICE_IDS[options.tier],
 						current_period_end: futureBillingPeriodEnd,
 						cancel_at_period_end: false,
+						paddle_subscription_id: "sub_e2e_01",
 					} satisfies SubscriptionRow)
 				: null,
 		integrations: options.integrations ?? [],
@@ -145,8 +164,10 @@ export async function installMockSupabase(
 		workoutSessions: options.workoutSessions ?? [],
 		exercises: options.exercises ?? [],
 		sets: options.sets ?? [],
+		repSummaries: options.repSummaries ?? [],
 		personalRecords: options.personalRecords ?? [],
 		phaseStatistics: options.phaseStatistics ?? [],
+		exerciseProgress: options.exerciseProgress ?? [],
 		onboarding: {
 			id: "onboarding-1",
 			user_id: userId,
@@ -183,7 +204,12 @@ export async function installMockSupabase(
 	) =>
 		rows.filter((row) => {
 			for (const [key, value] of url.searchParams.entries()) {
-				if (key === "select" || key === "order" || key === "limit" || key === "offset") {
+				if (
+					key === "select" ||
+					key === "order" ||
+					key === "limit" ||
+					key === "offset"
+				) {
 					continue;
 				}
 				if (key.includes(".")) {
@@ -207,17 +233,249 @@ export async function installMockSupabase(
 			return true;
 		});
 
+	// Sort rows by a PostgREST order param such as `set_number.asc`.
+	const sortByOrderParam = <TRow extends Record<string, unknown>>(
+		rows: TRow[],
+		orderParam: string | null,
+	) => {
+		if (!orderParam) return rows;
+		const [column, direction] = orderParam.split(",")[0].split(".");
+		const sign = direction === "desc" ? -1 : 1;
+		return [...rows].sort(
+			(a, b) => sign * (Number(a[column]) - Number(b[column])),
+		);
+	};
+
 	const respondRows = async <TRow extends Record<string, unknown>>(
 		route: Route,
 		rows: TRow[],
 		acceptHeader?: string,
 	) => {
-		const wantsObject = acceptHeader?.includes("application/vnd.pgrst.object+json");
+		const wantsObject = acceptHeader?.includes(
+			"application/vnd.pgrst.object+json",
+		);
 		await route.fulfill({
 			status: 200,
 			contentType: "application/json",
 			body: JSON.stringify(wantsObject ? (rows[0] ?? null) : rows),
 		});
+	};
+
+	const pad = (value: number) => String(value).padStart(2, "0");
+
+	const localWeekStart = (startedAt: string) => {
+		const date = new Date(startedAt);
+		const day = date.getDay();
+		const monday = new Date(date);
+		monday.setDate(date.getDate() - day + (day === 0 ? -6 : 1));
+		monday.setHours(0, 0, 0, 0);
+		return `${monday.getFullYear()}-${pad(monday.getMonth() + 1)}-${pad(monday.getDate())}`;
+	};
+
+	const PERIOD_DAYS: Record<string, number | null> = {
+		"1w": 7,
+		"4w": 28,
+		"12w": 84,
+		"52w": 365,
+		all: null,
+	};
+
+	const sessionsForProfile = (profileId?: string | null) =>
+		(state.workoutSessions as Array<Record<string, unknown>>).filter(
+			(session) =>
+				!profileId || String(session.local_profile_id ?? "") === profileId,
+		);
+
+	/**
+	 * The SQL aggregates the SPA reads instead of "every session id, then
+	 * .in(session_id, ids)". Mirrors the shapes of migration 20260920004000.
+	 */
+	const rpcResult = (fn: string, args: Record<string, unknown>): unknown => {
+		const profileId = (args.p_profile_id as string | undefined) ?? null;
+
+		if (fn === "exercise_frequency") {
+			const sessionIds = new Set(
+				sessionsForProfile(profileId).map((session) => String(session.id)),
+			);
+			const byName = new Map<
+				string,
+				{ sessions: Set<string>; muscleGroup: string }
+			>();
+			for (const exercise of state.exercises) {
+				if (!sessionIds.has(exercise.session_id)) continue;
+				const entry = byName.get(exercise.name) ?? {
+					sessions: new Set<string>(),
+					muscleGroup: exercise.muscle_group,
+				};
+				entry.sessions.add(exercise.session_id);
+				if (exercise.muscle_group && exercise.muscle_group !== "General") {
+					entry.muscleGroup = exercise.muscle_group;
+				}
+				byName.set(exercise.name, entry);
+			}
+			return [...byName.entries()]
+				.map(([exercise_name, entry]) => ({
+					exercise_name,
+					muscle_group: entry.muscleGroup,
+					sessions: entry.sessions.size,
+				}))
+				.sort(
+					(a, b) =>
+						b.sessions - a.sessions ||
+						a.exercise_name.localeCompare(b.exercise_name),
+				);
+		}
+
+		if (fn === "session_volume_buckets") {
+			const days = PERIOD_DAYS[(args.p_period as string) ?? "all"] ?? null;
+			const cutoff =
+				days === null ? null : Date.now() - days * 24 * 60 * 60 * 1000;
+			const buckets = new Map<
+				string,
+				{
+					sessions: number;
+					total_volume: number;
+					total_duration_seconds: number;
+					total_sets: number;
+				}
+			>();
+			for (const session of sessionsForProfile(profileId)) {
+				const startedAt = String(session.started_at);
+				if (cutoff !== null && new Date(startedAt).getTime() < cutoff) continue;
+				const key = localWeekStart(startedAt);
+				const bucket = buckets.get(key) ?? {
+					sessions: 0,
+					total_volume: 0,
+					total_duration_seconds: 0,
+					total_sets: 0,
+				};
+				bucket.sessions += 1;
+				bucket.total_volume += Number(session.total_volume ?? 0);
+				bucket.total_duration_seconds += Number(session.duration_seconds ?? 0);
+				bucket.total_sets += Number(session.set_count ?? 0);
+				buckets.set(key, bucket);
+			}
+			return [...buckets.entries()]
+				.map(([week_start, bucket]) => ({ week_start, ...bucket }))
+				.sort((a, b) => a.week_start.localeCompare(b.week_start));
+		}
+
+		if (fn === "personal_record_history") {
+			const limit = Math.min(Math.max(Number(args.p_limit ?? 200), 1), 1000);
+			const before = args.p_before as string | undefined;
+			const beforeId = args.p_before_id as string | undefined;
+			const rows = state.personalRecords
+				.filter(
+					(record) =>
+						!record.deleted_at &&
+						(!profileId || String(record.local_profile_id ?? "") === profileId),
+				)
+				.sort((a, b) => {
+					const byDate = String(b.achieved_at).localeCompare(
+						String(a.achieved_at),
+					);
+					return byDate !== 0
+						? byDate
+						: String(b.id).localeCompare(String(a.id));
+				})
+				.filter((record) => {
+					if (!before || !beforeId) return true;
+					const byDate = String(record.achieved_at).localeCompare(before);
+					return (
+						byDate < 0 ||
+						(byDate === 0 && String(record.id).localeCompare(beforeId) < 0)
+					);
+				});
+			return rows.slice(0, limit);
+		}
+
+		if (fn === "profile_workout_stats") {
+			const sessions = sessionsForProfile(profileId);
+			const utcDays = [
+				...new Set(
+					sessions.map((session) => String(session.started_at).slice(0, 10)),
+				),
+			].sort();
+			let best = utcDays.length > 0 ? 1 : 0;
+			let run = best;
+			for (let i = 1; i < utcDays.length; i++) {
+				const diff =
+					(Date.parse(`${utcDays[i]}T00:00:00Z`) -
+						Date.parse(`${utcDays[i - 1]}T00:00:00Z`)) /
+					86_400_000;
+				run = diff === 1 ? run + 1 : 1;
+				best = Math.max(best, run);
+			}
+			return [
+				{
+					total_workouts: sessions.length,
+					total_volume: sessions.reduce(
+						(sum, session) => sum + Number(session.total_volume ?? 0),
+						0,
+					),
+					best_streak: best,
+					pr_count: state.personalRecords.filter((record) => !record.deleted_at)
+						.length,
+				},
+			];
+		}
+
+		// Progress reads. The SPA fetches these as RPCs (POST /rest/v1/rpc/<name>);
+		// the table-name switch below never sees them. Newest-first, matching the
+		// SQL, so a truncated page drops the OLDEST points (F-034).
+		const progressRowsForProfile = () =>
+			(state.exerciseProgress as Array<Record<string, unknown>>).filter(
+				(row) => !profileId || String(row.local_profile_id ?? "") === profileId,
+			);
+
+		if (fn === "exercise_names") {
+			return [
+				...new Set(
+					progressRowsForProfile().map((row) => String(row.exercise_name)),
+				),
+			].sort();
+		}
+
+		if (fn === "exercise_progress_series") {
+			const exercise = args.p_exercise as string | undefined;
+			const limit = Math.min(Math.max(Number(args.p_limit ?? 200), 1), 1000);
+			return progressRowsForProfile()
+				.filter((row) => !exercise || String(row.exercise_name) === exercise)
+				.sort((a, b) =>
+					String(b.recorded_at).localeCompare(String(a.recorded_at)),
+				)
+				.slice(0, limit);
+		}
+
+		if (fn === "exercise_progress_series_many") {
+			// One row per exercise carrying that exercise's newest rows as a
+			// nested array — the shape `progressGroupSchema` parses.
+			const limitPer = Math.min(
+				Math.max(Number(args.p_limit_per_exercise ?? 200), 1),
+				1000,
+			);
+			const byName = new Map<string, Array<Record<string, unknown>>>();
+			for (const row of progressRowsForProfile()) {
+				const name = String(row.exercise_name);
+				const existing = byName.get(name) ?? [];
+				existing.push(row);
+				byName.set(name, existing);
+			}
+			return [...byName.entries()].map(([exercise_name, rows]) => {
+				const sorted = rows.sort((a, b) =>
+					String(b.recorded_at).localeCompare(String(a.recorded_at)),
+				);
+				return {
+					exercise_name,
+					latest_recorded_at: String(
+						sorted[0]?.recorded_at ?? new Date().toISOString(),
+					),
+					rows: sorted.slice(0, limitPer),
+				};
+			});
+		}
+
+		return [];
 	};
 
 	const completeLatestSync = (provider: IntegrationProvider) => {
@@ -231,7 +489,9 @@ export async function installMockSupabase(
 			syncItem.completed_at = new Date().toISOString();
 		}
 
-		const integration = state.integrations.find((item) => item.provider === provider);
+		const integration = state.integrations.find(
+			(item) => item.provider === provider,
+		);
 		if (integration) {
 			integration.status = "connected";
 			integration.error_message = null;
@@ -269,7 +529,8 @@ export async function installMockSupabase(
 						: integration,
 				);
 				state.syncQueue = state.syncQueue.map((item) =>
-					item.provider === provider && ["pending", "processing"].includes(item.status)
+					item.provider === provider &&
+					["pending", "processing"].includes(item.status)
 						? {
 								...item,
 								status: "failed",
@@ -287,7 +548,9 @@ export async function installMockSupabase(
 			}
 
 			if (functionName === "strava-sync" || functionName === "fitbit-sync") {
-				completeLatestSync(functionName.replace("-sync", "") as IntegrationProvider);
+				completeLatestSync(
+					functionName.replace("-sync", "") as IntegrationProvider,
+				);
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
@@ -340,6 +603,18 @@ export async function installMockSupabase(
 			return;
 		}
 
+		if (pathname.startsWith("/rest/v1/rpc/")) {
+			const fn = pathname.split("/").pop() ?? "";
+			const rawBody = request.postData();
+			const args = rawBody ? JSON.parse(rawBody) : {};
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify(rpcResult(fn, args)),
+			});
+			return;
+		}
+
 		const table = pathname.split("/").pop();
 
 		switch (table) {
@@ -366,6 +641,64 @@ export async function installMockSupabase(
 					return;
 				}
 
+				// Emulate PostgREST resource embedding for the session detail /
+				// comparison select: `*, exercises(*, sets(*[, rep_summaries(...)]))`.
+				// Embedded rows are ordered ONLY by the `exercises.order` /
+				// `exercises.sets.order` params (as PostgREST does); a request that
+				// embeds without them is rejected so a dropped or misnamed
+				// `referencedTable` order fails the e2e instead of passing silently.
+				const select = url.searchParams.get("select") ?? "";
+				if (select.includes("exercises(")) {
+					const embedSets = select.includes("sets(");
+					const embedReps = select.includes("rep_summaries(");
+					const exerciseOrder = url.searchParams.get("exercises.order");
+					const setOrder = url.searchParams.get("exercises.sets.order");
+					if (!exerciseOrder || (embedSets && !setOrder)) {
+						await route.fulfill({
+							status: 400,
+							contentType: "application/json",
+							body: JSON.stringify({
+								code: "E2E_MOCK",
+								message:
+									"embedded exercises/sets requested without exercises.order / exercises.sets.order",
+							}),
+						});
+						return;
+					}
+					const embedded = sessions.map((session) => ({
+						...session,
+						exercises: sortByOrderParam(
+							state.exercises.filter(
+								(exercise) => exercise.session_id === session.id,
+							),
+							exerciseOrder,
+						).map((exercise) =>
+							embedSets
+								? {
+										...exercise,
+										sets: sortByOrderParam(
+											state.sets.filter(
+												(set) => set.exercise_id === exercise.id,
+											),
+											setOrder,
+										).map((set) =>
+											embedReps
+												? {
+														...set,
+														rep_summaries: state.repSummaries.filter(
+															(rep) => rep.set_id === set.id,
+														),
+													}
+												: set,
+										),
+									}
+								: exercise,
+						),
+					}));
+					await respondRows(route, embedded, request.headers().accept);
+					return;
+				}
+
 				await respondRows(route, sessions, request.headers().accept);
 				return;
 			}
@@ -379,6 +712,25 @@ export async function installMockSupabase(
 				await respondRows(route, sets, request.headers().accept);
 				return;
 			}
+			// RPC (POST /rest/v1/rpc/<name>). The portal reads personal records
+			// newest-first through `personal_record_history` keyset pages.
+			case "personal_record_history": {
+				const history = [...state.personalRecords].sort((a, b) =>
+					String(b.achieved_at).localeCompare(String(a.achieved_at)),
+				);
+				await respondRows(route, history, request.headers().accept);
+				return;
+			}
+			case "exercise_names":
+			case "exercise_progress_series":
+			case "exercise_progress_series_many": {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify([]),
+				});
+				return;
+			}
 			case "personal_records": {
 				const records = filterRows(state.personalRecords, url);
 				if (method === "HEAD") {
@@ -387,6 +739,11 @@ export async function installMockSupabase(
 				}
 
 				await respondRows(route, records, request.headers().accept);
+				return;
+			}
+			case "exercise_progress": {
+				const rows = filterRows(state.exerciseProgress, url);
+				await respondRows(route, rows, request.headers().accept);
 				return;
 			}
 			case "session_phase_statistics": {
@@ -471,10 +828,11 @@ export async function installMockSupabase(
 					await route.fulfill({
 						status: 201,
 						contentType: "application/json",
-						body:
-							request.headers().accept?.includes("application/vnd.pgrst.object+json")
-								? JSON.stringify({ id: row.id })
-								: JSON.stringify([row]),
+						body: request
+							.headers()
+							.accept?.includes("application/vnd.pgrst.object+json")
+							? JSON.stringify({ id: row.id })
+							: JSON.stringify([row]),
 					});
 					return;
 				}

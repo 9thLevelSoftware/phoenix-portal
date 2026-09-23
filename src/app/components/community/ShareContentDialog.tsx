@@ -143,8 +143,21 @@ export function ShareContentDialog({
 
 	const isFormValid = selectedSourceId && name.trim() && difficulty;
 
+	// Reset form state whenever the dialog closes (overlay/escape/close button),
+	// so stale source/name/tags/success state don't persist on reopen.
+	const handleOpenChange = (nextOpen: boolean) => {
+		if (!nextOpen) {
+			if (successTimerRef.current) {
+				clearTimeout(successTimerRef.current);
+				successTimerRef.current = null;
+			}
+			resetForm();
+		}
+		setOpen(nextOpen);
+	};
+
 	return (
-		<Dialog open={open} onOpenChange={setOpen}>
+		<Dialog open={open} onOpenChange={handleOpenChange}>
 			{controlledOpen === undefined && (
 				<DialogTrigger asChild>
 					{trigger ?? (

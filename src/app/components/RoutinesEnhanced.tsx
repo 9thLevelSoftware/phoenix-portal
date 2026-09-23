@@ -48,7 +48,12 @@ export function RoutinesEnhanced() {
 	const navigate = useNavigate();
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
-	const { data: routines, isPending } = useQuery({
+	const {
+		data: routines,
+		isPending,
+		isError,
+		refetch,
+	} = useQuery({
 		...routineListOptions(userId),
 		enabled: !!userId,
 	});
@@ -92,6 +97,32 @@ export function RoutinesEnhanced() {
 	};
 
 	const isFavorite = (routine: Routine) => routine.is_favorite;
+
+	if (isError && routines == null) {
+		return (
+			<div className="min-h-screen pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
+					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+						<h1 className="text-display-2 mb-2 text-white">My Routines</h1>
+						<p className="text-muted-foreground">Build your perfect workout</p>
+					</div>
+				</div>
+				<PageShell>
+					<div className="text-center py-16">
+						<p className="text-lg text-white mb-2">
+							Couldn't load your routines
+						</p>
+						<p className="text-sm text-muted-foreground mb-6">
+							Something went wrong. Your routines are safe — please try again.
+						</p>
+						<Button onClick={() => void refetch()} variant="outline">
+							Retry
+						</Button>
+					</div>
+				</PageShell>
+			</div>
+		);
+	}
 
 	if (isPending) {
 		return (

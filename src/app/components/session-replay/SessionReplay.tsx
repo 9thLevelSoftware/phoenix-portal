@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { DataFreshnessStrip } from "@/app/components/analytics/DataFreshnessStrip";
 import { SubscriptionGate } from "@/app/components/SubscriptionGate";
 import { Button } from "@/app/components/ui/button";
@@ -15,6 +15,8 @@ import { detectFatigue } from "@/lib/fatigue-detection";
 import { buildFreshnessState } from "@/lib/freshness";
 import { calculateRepQualityScore } from "@/lib/rep-quality";
 import { buildReplayIntelligence } from "@/lib/replay-intelligence";
+import { buildReplayPhaseAnalytics } from "@/lib/replay-phase-analytics";
+import { FEATURE_MIN_TIER } from "@/lib/tierMatrix";
 import { replaySessionOptions, replayTelemetryOptions } from "@/queries/replay";
 import type { RepSummary, TelemetryPointRow } from "@/schemas/telemetry";
 import { useReplayStore } from "@/stores/useReplayStore";
@@ -24,6 +26,7 @@ import { QualityBadge } from "./QualityBadge";
 import { ReplayAnnotationOverlay } from "./ReplayAnnotationOverlay";
 import { ReplayCanvas } from "./ReplayCanvas";
 import { ReplayIntelligencePanel } from "./ReplayIntelligencePanel";
+import { ReplayPhaseAnalyticsPanel } from "./ReplayPhaseAnalyticsPanel";
 import { SetNavigation } from "./SetNavigation";
 import { TimelineBar } from "./TimelineBar";
 
@@ -37,7 +40,7 @@ export function SessionReplay() {
 	const { sessionId } = useParams<{ sessionId: string }>();
 	const navigate = useNavigate();
 	const isMobile = useIsMobile();
-	const { isFlame } = useSubscription();
+	const { isFlame, isInferno } = useSubscription();
 
 	const {
 		currentSetIndex,
@@ -48,10 +51,13 @@ export function SessionReplay() {
 		reset,
 	} = useReplayStore();
 
-	// Reset playback state on mount
+	// Reset playback state on mount and whenever the session changes, so a set
+	// index retained from a previous (longer) session can't index past the
+	// current session's sets.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: sessionId is an intentional trigger so playback resets on session change, even though it isn't read in the effect body.
 	useEffect(() => {
 		reset();
-	}, [reset]);
+	}, [reset, sessionId]);
 
 	// Fetch session structure
 	const sessionQuery = useQuery({
@@ -104,6 +110,11 @@ export function SessionReplay() {
 			repSummaries,
 			repBoundaries,
 		});
+		const phaseAnalytics = buildReplayPhaseAnalytics({
+			telemetry,
+			repSummaries,
+			repBoundaries,
+		});
 
 		return {
 			telemetry,
@@ -112,6 +123,7 @@ export function SessionReplay() {
 			repBoundaries,
 			fatigue,
 			intelligence,
+			phaseAnalytics,
 		};
 	}, [telemetryQuery.data]);
 
@@ -175,10 +187,19 @@ export function SessionReplay() {
 	useEffect(() => {
 		const el = canvasContainerRef.current;
 		if (!el) return;
+		// Initialize with actual width
+		if (el.clientWidth > 0) setCanvasWidth(el.clientWidth);
+		// ResizeObserver may be unavailable in some environments; fall back to
+		// window resize so the page doesn't throw on render.
+		if (typeof ResizeObserver === "undefined") {
+			const onResize = () => {
+				if (el.clientWidth > 0) setCanvasWidth(el.clientWidth);
+			};
+			window.addEventListener("resize", onResize);
+			return () => window.removeEventListener("resize", onResize);
+		}
 		const observer = new ResizeObserver(handleResize);
 		observer.observe(el);
-		// Initialize with actual width
-		setCanvasWidth(el.clientWidth);
 		return () => observer.disconnect();
 	}, [handleResize]);
 
@@ -191,7 +212,7 @@ export function SessionReplay() {
 	}
 
 	return (
-		<SubscriptionGate requiredTier="FLAME">
+		<SubscriptionGate requiredTier={FEATURE_MIN_TIER.sessionReplay}>
 			<div className="min-h-screen p-4 space-y-4">
 				{/* Header */}
 				<div className="flex items-center gap-3">
@@ -305,6 +326,10 @@ export function SessionReplay() {
 							)}
 						</div>
 
+						<ReplayPhaseAnalyticsPanel
+							analytics={telemetryData.phaseAnalytics}
+						/>
+
 						{/* Timeline */}
 						<TimelineBar
 							durationMs={telemetryData.durationMs}
@@ -323,7 +348,16 @@ export function SessionReplay() {
 					</>
 				)}
 
-				{/* Rep-summary fallback for sets that synced summaries before dense telemetry */}
+				{/* Why there is no force curve. Per-sample telemetry is INFERNO and
+				    is gated in RLS (20260920003800_inferno_read_policies.sql), so a
+				    FLAME user reads zero rows and gets the same empty array as a set
+				    whose dense telemetry has not synced yet. The page says which. */}
+				{telemetryData && telemetryData.telemetry.length === 0 && (
+					<ForceCurveNotice isInferno={isInferno} />
+				)}
+
+				{/* Rep-summary replay: what FLAME pays for, and the fallback for sets
+				    that synced summaries before dense telemetry */}
 				{telemetryData &&
 					telemetryData.telemetry.length === 0 &&
 					telemetryData.repSummaries.length > 0 && (
@@ -333,10 +367,9 @@ export function SessionReplay() {
 								intelligence={telemetryData.intelligence}
 								currentRepIndex={currentRepIndex}
 							/>
-							<div className="rounded-lg border border-secondary bg-surface-2 p-4 text-sm text-muted-foreground">
-								Dense telemetry is not available for this set yet. Showing
-								rep-summary intelligence until the next sync completes.
-							</div>
+							<ReplayPhaseAnalyticsPanel
+								analytics={telemetryData.phaseAnalytics}
+							/>
 							<SetNavigation
 								currentSetIndex={currentSetIndex}
 								totalSets={allSets.length}
@@ -354,8 +387,57 @@ export function SessionReplay() {
 							</p>
 						</div>
 					)}
+
+				{/* Out-of-range state: sets loaded but the selected index is invalid */}
+				{!sessionQuery.isLoading &&
+					!sessionQuery.error &&
+					allSets.length > 0 &&
+					!currentSet && (
+						<div className="p-8 text-center space-y-3">
+							<p className="text-muted-foreground">
+								That set is no longer available. Return to the first set to
+								continue.
+							</p>
+							<Button variant="secondary" onClick={() => reset()}>
+								Go to first set
+							</Button>
+						</div>
+					)}
 			</div>
 		</SubscriptionGate>
+	);
+}
+
+/**
+ * Explicit degrade notice for a set with no per-sample telemetry.
+ *
+ * Force curves are an INFERNO feature and the data is gated server-side, so
+ * the browser cannot tell "you have not paid for this" apart from "this set
+ * has not synced" by looking at the rows — both are an empty array. The tier
+ * is the only thing the browser does know, so it says the true thing for each
+ * case instead of leaving a blank panel.
+ */
+function ForceCurveNotice({ isInferno }: { isInferno: boolean }) {
+	if (isInferno) {
+		return (
+			<div className="rounded-lg border border-secondary bg-surface-2 p-4 text-sm text-muted-foreground">
+				Dense telemetry is not available for this set yet. Showing rep-summary
+				intelligence until the next sync completes.
+			</div>
+		);
+	}
+
+	return (
+		<div className="rounded-lg border border-secondary bg-surface-2 p-4 text-sm space-y-1">
+			<p className="font-medium text-white">Force curves require Inferno</p>
+			<p className="text-muted-foreground">
+				Your plan includes rep-by-rep replay. Upgrade to Inferno for per-sample
+				force and velocity curves.{" "}
+				<Link to="/pricing" className="text-primary underline">
+					See plans
+				</Link>
+			</p>
+		</div>
 	);
 }
 

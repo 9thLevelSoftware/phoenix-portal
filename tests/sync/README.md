@@ -1,6 +1,32 @@
-# Sync Test Suite
+# Sync harness/fixture smoke suite
 
-Comprehensive test suite for validating mobile-to-portal sync via `mobile-sync-push` and `mobile-sync-pull` Edge Functions.
+> **This is not the sync contract suite.** Everything under `tests/sync/`
+> (except `tests/sync/live/`) runs against the in-memory mock in
+> `helpers/mock-edge-functions.ts`. That mock has one global store keyed by
+> entity id: no user scoping, no profile scoping, no LWW, no per-row delta, no
+> cursor or pageSize handling, no tombstones, no tier gate, no rate limit, no
+> RLS. These tests prove that the **fixtures and the push/pull harness** carry
+> a payload of a given shape intact. They cannot prove a single server-side
+> sync invariant, whatever an individual case is named.
+>
+> The sync contract is proven by the **Deno handler suites**,
+> `supabase/functions/mobile-sync-push/index.test.ts` and
+> `supabase/functions/mobile-sync-pull/index.test.ts` (`npm run test:edge`),
+> and by the `integration: `-prefixed real-SQL cases in the same files
+> (`npm run test:edge:integration`, `.github/workflows/edge-integration.yml`).
+> When you need to cover a server behaviour, add it there — not here.
+>
+> Two rules for anything added to this directory:
+> 1. No assertion whose subject is a mock behaviour listed above.
+> 2. No case whose only assertion is `expect(result.success).toBe(true)`, and
+>    no bare `it.skip` (a skip here executes in no mode at all).
+>
+> See [BASELINE.md](./BASELINE.md) for the list of invariants this suite does
+> not prove.
+
+Harness and fixture smoke tests for mobile-to-portal sync payloads, shaped
+around the `mobile-sync-push` and `mobile-sync-pull` Edge Function wire
+formats.
 
 ## Quick Start
 
@@ -8,12 +34,32 @@ Comprehensive test suite for validating mobile-to-portal sync via `mobile-sync-p
 # Run all sync tests with mocks (CI-safe, no Supabase required)
 npm run test:sync
 
-# Run all sync tests with live Supabase (local or staging only)
+# Run the bounded real-service smoke suite with live Supabase
 npm run test:sync:live
 
 # Run specific test file
 npm test -- --run tests/sync/round-trip/workout-roundtrip.test.ts
 ```
+
+## CI labeling (mock vs live)
+
+`npm run test:sync` and the GitHub Actions **Sync Validation Tests (mock)** job
+are **mock Edge**. `MOCK_EDGE_FUNCTIONS=true` is the default in `vitest.config.ts`
+and on every push/PR. That job is not a live `mobile-sync-push` / `mobile-sync-pull`
+run.
+
+Live mode (`npm run test:sync:live`, `MOCK_EDGE_FUNCTIONS=false`) is
+**workflow_dispatch only** (`sync-tests.yml` with `use_mocks=false`). Push and
+`pull_request` never start live tests.
+
+`ci.yml` still splits jobs. `npm run verify:full` is the local handoff command;
+it is not one CI job. Playwright E2E uses a mocked REST harness — the
+DEV `CustomEvent` spec (`e2e/dev-custom-event-cross-tab.spec.ts`) is **not**
+Supabase Broadcast proof.
+
+Deno handler tests (`npm run test:edge`) run `mobile-sync-push/index.test.ts`
+and `mobile-sync-pull/index.test.ts` against in-process doubles (no live
+secrets) in the **Edge Function Deno Check and Handler Tests** job.
 
 ## Test Organization
 
@@ -57,8 +103,17 @@ Mocks provide:
 - Deterministic behavior
 - No Supabase credentials required
 
-Mock limitations:
-- Simplified delta sync (no per-row timestamps)
+Mock limitations (the full list lives in the header of
+`helpers/mock-edge-functions.ts`):
+- No user scoping — the store has no user column and any non-empty bearer
+  token is accepted
+- No profile scoping — `profileId` is ignored on both push and pull
+- No LWW — `Map.set` makes the last push in *arrival order* win, which is not
+  what `upsert_*_lww` does
+- No per-row delta — a pull returns every stored row whenever
+  `lastPushTime > lastSync`
+- No cursor/pageSize handling, no tombstones, no tier gate, no rate limit,
+  no size caps, no weight transform, no telemetry
 - Gamification entities partially stored
 - No RLS policy testing
 
@@ -72,19 +127,59 @@ export SUPABASE_SERVICE_ROLE_KEY=your-service-key
 export MOCK_EDGE_FUNCTIONS=false
 export SYNC_LIVE_TESTS=true
 
-# Run tests
+# Run the bounded real-service smoke suite. The comprehensive sync suite stays
+# in mock mode because it includes mock-only assertions such as in-memory
+# broadcast capture and injected failure behavior.
 npm run test:sync:live
 ```
 
 Live sync tests intentionally refuse the known production Supabase/API hosts.
-Use local Supabase or a disposable staging project with the
-`SYNC_STAGING_SUPABASE_*` GitHub secrets.
+Use local Supabase or an isolated staging/preview project. The GitHub Actions
+workflow supports two fail-closed credential paths:
+
+- Dedicated staging secrets: configure all three of
+  `SYNC_STAGING_SUPABASE_URL`, `SYNC_STAGING_SUPABASE_ANON_KEY`, and
+  `SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY`, plus
+  `SYNC_STAGING_PROJECT_REF`. A partial credential set is rejected.
+- Existing Supabase repository secrets: dispatch the workflow with
+  `use_mocks=false` and `staging_project_ref` set to the expected isolated
+  preview ref. The resolver uses `SUPABASE_ACCESS_TOKEN` and
+  `SUPABASE_PROD_PROJECT_REF` only to list that production project's branch
+  metadata and retrieve the verified preview's API keys. It rejects the
+  production/default/cross-parent/wrong-Git-branch/unhealthy targets, masks the
+  preview keys, and passes them to the live test step through `GITHUB_ENV`.
+
+Both paths require the URL host to exactly match the expected preview ref. The
+production database is never queried or mutated by the resolver or live sync
+tests.
+
+In live mode, the harness creates disposable `sync-test-*@test.local` users
+with the service client's `auth.admin.createUser` API and confirms their email
+without invoking public sign-up. Each user receives one active EMBER
+subscription with a future period end before the anon client signs in for the
+real user session. Tests that intentionally exercise the absent/FREE gate pass
+`{ seedSubscription: false }`; this exception is used only by the harness
+live test and the training-cycle test that inserts its own EMBER row. (The
+push/pull subscription deny paths are pinned by the Deno handler tests under
+`supabase/functions/`, not by live sync tests.)
+
+The live workflow enables sanitized failure labels for non-OK push/pull
+responses and runs an always-run cleanup after the live test step. Cleanup
+revalidates the exact preview host/ref, paginates through Auth users, and
+deletes only the generated test namespace. It logs only the preview ref and
+deletion count, and fails the job if any required cleanup cannot complete.
 
 Live testing provides:
 - Real database behavior
 - RLS policy validation
 - Edge Function runtime testing
 - Performance characteristics
+
+The live command deliberately provisions one disposable user for its legacy
+push/pull and strict workout-hierarchy smoke cases. This keeps Auth traffic
+below its burst limits. The comprehensive `npm run test:sync` suite remains the
+contract and fault-injection gate; profile-preference byte, conflict, and
+cross-owner staging coverage is recorded separately in the Task 10 evidence.
 
 ## Adding New Fixtures
 
@@ -154,10 +249,12 @@ console.log('Stored session:', stored);
 ### 4. Check for transform issues
 
 ```typescript
-// Compare raw DB value to transformed display
+// Loads are per cable end to end; the portal never doubles them.
+// A total is derived only by src/lib/units/loadDisplay.ts when the
+// exercise's cable count is known.
 const rawWeight = 50; // Per-cable
-const displayWeight = rawWeight * 2; // WEIGHT_MULTIPLIER
 expect(pulledSet.weightKg).toBe(rawWeight); // DB stores per-cable
+expect(toLoadDisplay(rawWeight, null)).toEqual({ perCableKg: 50, totalKg: null });
 ```
 
 ### 5. Validate DTO structure
@@ -179,7 +276,7 @@ These values MUST match between mobile and portal:
 
 | Transform           | Mobile                | Portal              | Notes                              |
 | ------------------- | --------------------- | ------------------- | ---------------------------------- |
-| Weight multiplier   | x1 (stores per-cable) | x2 (displays total) | `WEIGHT_MULTIPLIER = 2`            |
+| Weight display      | per cable             | per cable first; total = per cable x cable_count only when known | `src/lib/units/loadDisplay.ts` |
 | Velocity: EXPLOSIVE | >= 1.0 m/s            | >= 1.0 m/s          |                                    |
 | Velocity: FAST      | >= 0.75 m/s           | >= 0.75 m/s         |                                    |
 | Velocity: MODERATE  | >= 0.5 m/s            | >= 0.5 m/s          |                                    |

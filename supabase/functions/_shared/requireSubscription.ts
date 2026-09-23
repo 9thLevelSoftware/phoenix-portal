@@ -1,5 +1,5 @@
-import { type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
-import { isSubscriptionEntitled, type SubscriptionStatus } from './subscriptionEntitlement.ts';
+import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2';
+import { effectiveSubscriptionTier } from './subscriptionEntitlement.ts';
 
 /**
  * Subscription tier hierarchy.
@@ -14,12 +14,41 @@ const TIER_LEVEL: Record<string, number> = {
 
 export type SubscriptionTier = 'FREE' | 'EMBER' | 'FLAME' | 'INFERNO';
 
+const KNOWN_TIERS = new Set<string>(['FREE', 'EMBER', 'FLAME', 'INFERNO']);
+const KNOWN_STATUSES = new Set<string>([
+  'active',
+  'past_due',
+  'canceled',
+  'trialing',
+  'incomplete',
+  'none',
+]);
+
+function configurationError(corsHeaders: Record<string, string>): Response {
+  return new Response(
+    JSON.stringify({
+      error: 'subscription_unavailable',
+      message: 'Subscription status is temporarily unavailable. Please retry shortly.',
+    }),
+    {
+      status: 503,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+        'Retry-After': '30',
+      },
+    },
+  );
+}
+
 /**
  * Check whether a user meets the minimum subscription tier.
  *
- * Returns `{ allowed: true, tier }` if the user's active/trialing subscription
+ * Returns `{ allowed: true, tier }` if the user's effective tier (shared
+ * entitlement predicate, see subscriptionEntitlement.ts)
  * is at or above `minimumTier`, or `{ allowed: false, tier, response }` with a
- * ready-made 402 Response if not.
+ * ready-made 402 Response if not. A failed lookup or a row with an unknown
+ * tier/status gets a retryable 503 instead.
  *
  * Usage:
  * ```ts
@@ -32,20 +61,52 @@ export async function requireSubscription(
   userId: string,
   minimumTier: SubscriptionTier,
   corsHeaders: Record<string, string>,
+  now: Date = new Date(),
 ): Promise<
   | { allowed: true; tier: SubscriptionTier }
   | { allowed: false; tier: SubscriptionTier; response: Response }
 > {
-  const { data: subscription } = await supabase
+  const { data: subscription, error } = await supabase
     .from('subscriptions')
-    .select('tier, status, current_period_end')
+    .select('tier, status, current_period_end, cancel_at_period_end')
     .eq('user_id', userId)
     .maybeSingle();
 
-  const rawTier = (subscription?.tier as SubscriptionTier) ?? 'FREE';
-  const status = (subscription?.status as SubscriptionStatus | undefined) ?? 'none';
-  const entitled = isSubscriptionEntitled(status, subscription?.current_period_end ?? null);
-  const tier: SubscriptionTier = entitled ? rawTier : 'FREE';
+  // fix(F328): A DB outage, RLS/service-role misconfig, schema drift, or
+  // duplicate-row error must NOT be silently treated as "no subscription"
+  // (which would downgrade a paying user to FREE and return a 402). Fail
+  // closed with a retryable 503 so operators see the infra failure instead
+  // of a billing denial.
+  if (error) {
+    console.error('[requireSubscription] subscription lookup failed:', error);
+    return { allowed: false, tier: 'FREE', response: configurationError(corsHeaders) };
+  }
+
+  // The effective tier comes from the shared entitlement predicate (parity
+  // with SQL subscription_tier_for and the SPA; fixture:
+  // tests/fixtures/entitlement-cases.json).
+  //
+  // fix(F329) / design: an unknown tier or status (schema drift, legacy
+  // PHOENIX/ELITE, a new Paddle status) is corrupt data, not a billing state:
+  // fail closed with a retryable 503 and log it, rather than showing an
+  // upgrade prompt. (SQL subscription_tier_for and the SPA map unknown values
+  // to FREE instead; both deny access.)
+  const rawTierValue = subscription?.tier ?? 'FREE';
+  const rawStatusValue = subscription?.status ?? 'none';
+  if (!KNOWN_TIERS.has(rawTierValue) || !KNOWN_STATUSES.has(rawStatusValue)) {
+    console.error(
+      '[requireSubscription] unknown tier/status in subscriptions row:',
+      { tier: rawTierValue, status: rawStatusValue },
+    );
+    return { allowed: false, tier: 'FREE', response: configurationError(corsHeaders) };
+  }
+
+  const tier = effectiveSubscriptionTier(
+    rawTierValue,
+    rawStatusValue,
+    subscription?.current_period_end ?? null,
+    { cancelAtPeriodEnd: Boolean(subscription?.cancel_at_period_end), now },
+  );
   const userLevel = TIER_LEVEL[tier] ?? 0;
   const requiredLevel = TIER_LEVEL[minimumTier] ?? 0;
 

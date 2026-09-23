@@ -1,193 +1,187 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 
 /**
- * Strava OAuth Callback Edge Function
+ * Strava OAuth Callback Edge Function — RELAY ONLY (KD-13, part 2).
  *
- * Handles the redirect from Strava after user authorizes the app.
- * Validates the CSRF state token against oauth_states, exchanges the
- * authorization code for tokens, stores them in oauth_tokens (server-only),
- * and queues an initial sync.
+ * Strava redirects the browser here because this URL is what `initiate-oauth`
+ * registers as `redirect_uri`. This function no longer exchanges the code and
+ * no longer writes `oauth_tokens`, `user_integrations` or `sync_queue`.
+ *
+ * F-046: this endpoint is `verify_jwt = false` (Strava cannot send a portal
+ * JWT), so it has no idea which portal account the browser is signed into. It
+ * used to trust the `oauth_states` row alone and store tokens for whoever that
+ * row named. Now it only forwards to `/integrations/callback` in the portal,
+ * where `complete-oauth` re-checks the state against the *caller's own
+ * session* before anything is stored.
+ *
+ * What it still does is a cheap pre-flight: sweep expired state rows, confirm
+ * the state exists, has not expired and was minted for Strava. That turns the
+ * common failure modes into a clean error page instead of a portal round-trip.
+ * It deliberately does NOT consume the state (`complete-oauth` owns the
+ * single-use DELETE) and deliberately does NOT delete the row it looked up on
+ * any refusal path: the `state` is attacker-supplied on an unauthenticated
+ * endpoint, so a DELETE here would let anyone holding a leaked state token
+ * cancel its owner's in-flight connection.
+ *
+ * PR 63 (no `code`/`state` in a response body, redirect or log line) has one
+ * deliberate exception, and it is the whole point of this function: the success
+ * 302 carries `code` and `state` to the portal route. That hop is how the
+ * provider's response reaches the user's session at all. The portal page reads
+ * them once and immediately `history.replaceState`s them out of the address
+ * bar, and it renders under `<meta name="referrer" content="no-referrer">`.
+ * Every *error* redirect and every log line here stays clean.
  *
  * Expected query params:
  *   - code: Authorization code from Strava
- *   - state: Cryptographic state token (validated against oauth_states table)
- *   - scope: Granted scopes (informational)
+ *   - state: CSRF state token (checked, not consumed, here)
+ *   - error: set instead of `code` when the user pressed Authorize's "Cancel"
  *
  * Environment variables:
- *   - STRAVA_CLIENT_ID
- *   - STRAVA_CLIENT_SECRET
  *   - SUPABASE_URL
  *   - SUPABASE_SERVICE_ROLE_KEY
- *   - APP_URL (portal URL for redirect after OAuth)
+ *   - APP_URL (portal origin; the provider 302 targets it)
  */
 
-const APP_URL = () => Deno.env.get('APP_URL') ?? 'http://localhost:5173';
+const DEFAULT_APP_URL = 'http://localhost:5173';
 
-Deno.serve(async (req) => {
-  const url = new URL(req.url);
+export interface StravaOAuthHandlerDependencies {
+  createAdminClient(): SupabaseClient;
+  /** Portal origin the browser is sent back to. */
+  appUrl(): string;
+  now(): number;
+}
+
+function defaultStravaOAuthDependencies(): StravaOAuthHandlerDependencies {
+  return {
+    createAdminClient() {
+      return createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+        { auth: { persistSession: false, autoRefreshToken: false } },
+      );
+    },
+    appUrl() {
+      return Deno.env.get('APP_URL') ?? DEFAULT_APP_URL;
+    },
+    now() {
+      return Date.now();
+    },
+  };
+}
+
+/**
+ * Build an absolute portal URL. Params go through `URLSearchParams`, never
+ * string interpolation, so a value containing `&` or `#` cannot graft extra
+ * parameters onto the redirect.
+ */
+function portalRedirect(
+  appUrl: string,
+  path: string,
+  params: Record<string, string>,
+): Response {
+  const base = appUrl.replace(/\/+$/, '') || DEFAULT_APP_URL;
+  let url: URL;
+  try {
+    url = new URL(`${base}${path}`);
+  } catch {
+    // A misconfigured APP_URL must not turn into a 500 that strands the user
+    // on a Supabase error page.
+    console.error('strava-oauth: APP_URL is not a valid absolute URL');
+    url = new URL(`${DEFAULT_APP_URL}${path}`);
+  }
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  return Response.redirect(url.toString(), 302);
+}
+
+/** Error redirects never carry `code` or `state`. */
+function failure(appUrl: string, slug: string): Response {
+  return portalRedirect(appUrl, '/integrations', { error: slug });
+}
+
+async function stravaOAuthHandler(
+  req: Request,
+  dependencies: StravaOAuthHandlerDependencies,
+): Promise<Response> {
+  const appUrl = dependencies.appUrl();
+
+  let url: URL;
+  try {
+    url = new URL(req.url);
+  } catch {
+    return failure(appUrl, 'missing_params');
+  }
+
+  // The user pressed Cancel on Strava's consent screen (or Strava refused).
+  // Nothing to forward; the state row is left to expire on its own.
+  if (url.searchParams.get('error')) {
+    return failure(appUrl, 'access_denied');
+  }
+
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
 
-  // ------------------------------------------------------------------
-  // Validate required params
-  // ------------------------------------------------------------------
   if (!code || !state) {
-    return Response.redirect(
-      `${APP_URL()}/integrations?error=missing_params`,
-      302
-    );
+    return failure(appUrl, 'missing_params');
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
+    const supabase = dependencies.createAdminClient();
 
-    // ----------------------------------------------------------------
-    // Clean up expired state tokens (prevents table bloat)
-    // ----------------------------------------------------------------
-    await supabase
-      .from('oauth_states')
-      .delete()
-      .lt('expires_at', new Date().toISOString());
+    const nowMs = dependencies.now();
+    const nowIso = new Date(nowMs).toISOString();
 
-    // ----------------------------------------------------------------
-    // Validate CSRF state token
-    // ----------------------------------------------------------------
+    // Clean up expired state tokens (prevents table bloat). This is the only
+    // DELETE this function issues, and its predicate is time, not the
+    // attacker-supplied `state`.
+    await supabase.from('oauth_states').delete().lt('expires_at', nowIso);
+
     const { data: stateRow, error: stateError } = await supabase
       .from('oauth_states')
-      .select('user_id, provider, expires_at')
+      .select('provider, expires_at')
       .eq('state_token', state)
-      .single();
+      .maybeSingle();
 
     if (stateError || !stateRow) {
-      return Response.redirect(`${APP_URL()}/integrations?error=invalid_state`, 302);
+      return failure(appUrl, 'invalid_state');
     }
 
-    if (new Date(stateRow.expires_at) < new Date()) {
-      // Clean up expired token
-      await supabase.from('oauth_states').delete().eq('state_token', state);
-      return Response.redirect(`${APP_URL()}/integrations?error=state_expired`, 302);
+    if (new Date(stateRow.expires_at).getTime() <= nowMs) {
+      // Refuse, but leave the row for the sweep: see the header note on why
+      // this function never deletes a row keyed by the supplied state.
+      return failure(appUrl, 'state_expired');
     }
 
     if (stateRow.provider !== 'strava') {
-      return Response.redirect(`${APP_URL()}/integrations?error=provider_mismatch`, 302);
+      return failure(appUrl, 'provider_mismatch');
     }
 
-    const userId = stateRow.user_id;
-
-    // Delete used state token (single-use)
-    await supabase.from('oauth_states').delete().eq('state_token', state);
-
-    // ----------------------------------------------------------------
-    // Exchange authorization code for tokens
-    // ----------------------------------------------------------------
-    const tokenResponse = await fetch('https://www.strava.com/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: Deno.env.get('STRAVA_CLIENT_ID'),
-        client_secret: Deno.env.get('STRAVA_CLIENT_SECRET'),
-        code,
-        grant_type: 'authorization_code',
-      }),
-    });
-
-    if (!tokenResponse.ok) {
-      console.error('Strava token exchange failed: status', tokenResponse.status);
-      return Response.redirect(
-        `${APP_URL()}/integrations?error=auth_failed`,
-        302
-      );
-    }
-
-    const tokens = await tokenResponse.json();
-
-    // tokens shape: { token_type, expires_at, expires_in, refresh_token, access_token, athlete: { id, ... } }
-    const providerUserId = String(tokens.athlete.id);
-    const accessToken: string = tokens.access_token;
-    const refreshToken: string = tokens.refresh_token;
-    const tokenExpiresAt = new Date(tokens.expires_at * 1000).toISOString();
-
-    // ----------------------------------------------------------------
-    // Store tokens in oauth_tokens (server-only table)
-    // ----------------------------------------------------------------
-    const { error: tokenError } = await supabase
-      .from('oauth_tokens')
-      .upsert(
-        {
-          user_id: userId,
-          provider: 'strava',
-          access_token: await encryptOAuthSecret(accessToken),
-          refresh_token: await encryptOAuthSecret(refreshToken),
-          token_expires_at: tokenExpiresAt,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id,provider' }
-      );
-
-    if (tokenError) {
-      console.error('Failed to store Strava tokens:', tokenError);
-      return Response.redirect(
-        `${APP_URL()}/integrations?error=save_failed`,
-        302
-      );
-    }
-
-    // ----------------------------------------------------------------
-    // Update user_integrations with non-sensitive fields only
-    // ----------------------------------------------------------------
-    const { error: upsertError } = await supabase
-      .from('user_integrations')
-      .upsert(
-        {
-          user_id: userId,
-          provider: 'strava',
-          provider_user_id: providerUserId,
-          status: 'connected',
-          connected_at: new Date().toISOString(),
-          error_message: null,
-        },
-        { onConflict: 'user_id,provider' }
-      );
-
-    if (upsertError) {
-      console.error('Failed to update Strava integration:', upsertError);
-      return Response.redirect(
-        `${APP_URL()}/integrations?error=save_failed`,
-        302
-      );
-    }
-
-    // ----------------------------------------------------------------
-    // Queue initial sync
-    // ----------------------------------------------------------------
-    const { error: queueError } = await supabase.from('sync_queue').insert({
-      user_id: userId,
+    // Hand the provider's response to the portal session. `complete-oauth`
+    // re-runs every check above against the authenticated caller and is the
+    // only thing that consumes the state or stores a token.
+    return portalRedirect(appUrl, '/integrations/callback', {
       provider: 'strava',
-      sync_type: 'initial',
-      status: 'pending',
+      code,
+      state,
     });
-
-    if (queueError) {
-      // Non-fatal: tokens are saved, sync can be triggered manually later
-      console.error('Failed to queue initial sync:', queueError);
-    }
-
-    // ----------------------------------------------------------------
-    // Redirect back to the portal
-    // ----------------------------------------------------------------
-    return Response.redirect(
-      `${APP_URL()}/integrations?connected=strava`,
-      302
-    );
   } catch (err) {
-    console.error('Strava OAuth error:', err);
-    return Response.redirect(
-      `${APP_URL()}/integrations?error=auth_failed`,
-      302
+    // Name only: a thrown fetch/URL error can carry the request URL, and with
+    // it the authorization code.
+    console.error(
+      'strava-oauth error:',
+      err instanceof Error ? err.name : 'unknown',
     );
+    return failure(appUrl, 'auth_failed');
   }
-});
+}
+
+export function createStravaOAuthHandler(
+  dependencies: StravaOAuthHandlerDependencies = defaultStravaOAuthDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => stravaOAuthHandler(req, dependencies);
+}
+
+if (import.meta.main) {
+  Deno.serve(createStravaOAuthHandler());
+}

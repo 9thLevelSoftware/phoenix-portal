@@ -1,12 +1,24 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import type { IntegrationProvider } from "@/lib/integrations/types";
 import { supabase } from "@/lib/supabase";
+import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { queryKeys } from "@/queries/keys";
 
-const MANUAL_SYNC_PROVIDERS: IntegrationProvider[] = [
+/**
+ * Providers with a `<provider>-sync` Edge Function that the portal may invoke
+ * on demand. Garmin is excluded because it is webhook-driven (there is nothing
+ * to pull); Strong is a local file import; Apple Health and Health Connect are
+ * pushed from the mobile app.
+ *
+ * Must stay aligned with the sync functions that actually exist under
+ * `supabase/functions/` — enforced by src/mutations/__tests__/integrations.test.ts.
+ */
+export const MANUAL_SYNC_PROVIDERS: IntegrationProvider[] = [
 	"strava",
 	"fitbit",
 	"hevy",
+	"liftosaur",
 ];
 
 /**
@@ -47,8 +59,13 @@ export function useDisconnectIntegration() {
 }
 
 /**
- * Trigger manual sync - inserts into sync_queue and invokes provider-specific Edge Function.
+ * Trigger manual sync - invokes the provider-specific Edge Function directly.
  * The Edge Function handles token refresh, API calls, and activity normalization.
+ *
+ * No sync_queue row is inserted: the scheduled process-sync-queue drains
+ * pending rows, so a row inserted here would be claimed by a cron pass while
+ * this direct call is still running and dispatched a second time (PR 31
+ * review R-1). This is the PR 52 plan for useManualSync, taken early.
  */
 export function useManualSync() {
 	const queryClient = useQueryClient();
@@ -67,39 +84,17 @@ export function useManualSync() {
 				);
 			}
 
-			// Insert into sync_queue with manual sync_type
-			const { data: queuedSync, error: queueError } = await supabase
-				.from("sync_queue")
-				.insert({
-					user_id: userId,
-					provider,
-					sync_type: "manual",
-					status: "pending",
-				})
-				.select("id")
-				.single();
-
-			if (queueError) throw queueError;
-
-			// Trigger the provider-specific sync Edge Function
 			const { error: invokeError } = await supabase.functions.invoke(
 				`${provider}-sync`,
 				{
-					body: { user_id: userId, sync_type: "manual" },
+					body: {
+						user_id: userId,
+						sync_type: "manual",
+					},
 				},
 			);
 
-			if (invokeError) {
-				await supabase
-					.from("sync_queue")
-					.update({
-						status: "failed",
-						error_message: invokeError.message,
-						completed_at: new Date().toISOString(),
-					})
-					.eq("id", queuedSync.id);
-				throw invokeError;
-			}
+			if (invokeError) throw invokeError;
 		},
 		onSettled: async (_, __, { userId }) => {
 			await queryClient.invalidateQueries({
@@ -114,54 +109,19 @@ export function useManualSync() {
 				queryKey: queryKeys.integrations.external(userId),
 			});
 		},
-	});
-}
-
-/**
- * Connect integration - for non-OAuth providers (e.g., Hevy API key).
- * OAuth providers (Strava, Fitbit, Garmin) use redirect flow via initiateXxxConnect()
- * functions, not this mutation.
- */
-export function useConnectIntegration() {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async ({
-			userId,
-			provider,
-		}: {
-			userId: string;
-			provider: IntegrationProvider;
-		}) => {
-			// API keys must only flow through provider sync Edge Functions
-			// which store them in oauth_tokens (server-only table).
-			// Never write api_key to user_integrations (client-readable via RLS).
-			const { error } = await supabase.from("user_integrations").upsert(
-				{
-					user_id: userId,
-					provider,
-					status: "connected",
-					connected_at: new Date().toISOString(),
-				},
-				{
-					onConflict: "user_id,provider",
-				},
-			);
-
-			if (error) throw error;
-
-			// Queue initial sync after connecting
-			await supabase.from("sync_queue").insert({
-				user_id: userId,
-				provider,
-				sync_type: "initial",
-				status: "pending",
-			});
-		},
-		onSuccess: (_, { userId }) => {
-			queryClient.invalidateQueries({
-				queryKey: queryKeys.integrations.byUser(userId),
-			});
+		onError: (error: Error) => {
+			console.error("[useManualSync] failed:", error);
+			// The sync_queue INSERT (RLS 42501) and the `<provider>-sync` Edge
+			// Function (402) both refuse below FLAME; the user was told nothing
+			// before this.
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
+			toast.error("Sync failed. Please try again.");
 		},
 	});
 }

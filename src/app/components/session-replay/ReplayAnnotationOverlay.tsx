@@ -1,4 +1,5 @@
 import type { ReplayIntelligence } from "@/lib/replay-intelligence";
+import { useReplayStore } from "@/stores/useReplayStore";
 
 interface ReplayAnnotationOverlayProps {
 	intelligence: ReplayIntelligence;
@@ -26,6 +27,8 @@ export function ReplayAnnotationOverlay({
 	width,
 	height,
 }: ReplayAnnotationOverlayProps) {
+	const currentTimeMs = useReplayStore((state) => state.currentTimeMs);
+
 	if (intelligence.status === "empty" || intelligence.durationMs <= 0) {
 		return null;
 	}
@@ -58,8 +61,15 @@ export function ReplayAnnotationOverlay({
 
 			{intelligence.stickingPoints.map((point) => {
 				const x = xForTime(point.timestampMs, intelligence.durationMs, width);
+				// Dim sticking points the playhead hasn't reached yet, matching the
+				// canvas renderer which de-emphasizes future events. Kept rendered
+				// (not removed) so annotation positions stay stable.
+				const isFuture = point.timestampMs > currentTimeMs;
 				return (
-					<g key={`${point.repNumber}-${point.timestampMs}`}>
+					<g
+						key={`${point.repNumber}-${point.timestampMs}`}
+						opacity={isFuture ? 0.25 : 1}
+					>
 						<line
 							x1={x}
 							x2={x}

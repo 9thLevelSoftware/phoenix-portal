@@ -5,6 +5,7 @@ import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import type { ProgressionWorkbenchModel } from "@/lib/progression-workbench";
 import type { WeightUnit } from "@/lib/units";
+import { perCableUnitLabel } from "@/lib/units/loadDisplay";
 import {
 	WORKOUT_PHASE_FILTERS,
 	type WorkoutPhaseFilter,
@@ -166,7 +167,7 @@ export default function ProgressTab({
 			{/* 1RM Progression */}
 			<Card className="p-6 bg-surface-2 border-secondary">
 				<h3 className="text-xl text-foreground mb-6">
-					Phase Strength Progression ({unit})
+					Phase Strength Progression ({perCableUnitLabel(unit)})
 				</h3>
 				{strengthEChartsOption ? (
 					<EChartsWrapper option={strengthEChartsOption} height={400} />

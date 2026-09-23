@@ -60,6 +60,26 @@ export async function checkRateLimit(
 ): Promise<RateLimitResult> {
   const { key, userId, maxRequests, windowSeconds } = config;
 
+  // fix(F325): Validate the limiter config before any RPC/fallback runs. An
+  // invalid internal configuration (blank key/user, non-positive limits) must
+  // fail closed with a 503 rather than letting the fallback path admit a first
+  // request with a negative `remaining`, or treat every request as a fresh
+  // window because `windowSeconds <= 0` makes the window instantly "expired".
+  if (
+    typeof key !== 'string' || key.trim().length === 0 ||
+    typeof userId !== 'string' || userId.trim().length === 0 ||
+    !Number.isFinite(maxRequests) || !Number.isInteger(maxRequests) || maxRequests < 1 ||
+    !Number.isFinite(windowSeconds) || !Number.isInteger(windowSeconds) || windowSeconds < 1
+  ) {
+    console.error('[rateLimit] invalid rate-limit configuration:', {
+      key,
+      userId,
+      maxRequests,
+      windowSeconds,
+    });
+    return rateLimitUnavailable(corsHeaders);
+  }
+
   // Use atomic RPC function if available (eliminates race condition).
   // fix(audit): C7 — Distinguish "RPC not deployed" (fall through to fallback)
   // from "RPC failed unexpectedly" (fail closed with 503). Never allow the
@@ -144,7 +164,12 @@ export async function checkRateLimit(
     return rateLimitUnavailable(corsHeaders);
   }
 
-  // Fallback: Atomic increment with conflict resolution
+  // Fallback: Atomic increment with conflict resolution.
+  // fix(F326): The RPC is the production-required atomic path; this fallback is
+  // a multi-query optimistic loop and is NOT transactional. Surface its use so
+  // contention turning into 503s is observable rather than a silent outage mode
+  // (the atomic SQL RPC should be deployed everywhere — see migration notes).
+  console.warn('[rateLimit] using non-atomic fallback path (check_rate_limit RPC missing)');
   const now = new Date();
   const windowMs = windowSeconds * 1000;
 

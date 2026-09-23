@@ -11,6 +11,7 @@ import { bisector } from "@visx/vendor/d3-array";
 import { useCallback } from "react";
 
 import { PHOENIX } from "@/lib/colors";
+import { classifyVbtZone, type SimplifiedZoneInfo } from "@/lib/vbt";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,7 +26,7 @@ interface DataPoint {
 interface TooltipPayload {
 	force: number;
 	velocity: number;
-	zone: { name: string; color: string };
+	zone: SimplifiedZoneInfo;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,19 +55,6 @@ const SAMPLE_DATA: DataPoint[] = [
 
 // Phase divider — approximate transition from concentric to eccentric
 const PHASE_DIVIDER_TIME = 1.8;
-
-// ---------------------------------------------------------------------------
-// Velocity zone classification (parity-critical with project spec)
-// ---------------------------------------------------------------------------
-
-function getVelocityZone(v: number): { name: string; color: string } {
-	const abs = Math.abs(v);
-	if (abs >= 1.0) return { name: "Explosive", color: PHOENIX().ember };
-	if (abs >= 0.75) return { name: "Fast", color: PHOENIX().gold };
-	if (abs >= 0.5) return { name: "Moderate", color: PHOENIX().forgeGreen };
-	if (abs >= 0.25) return { name: "Slow", color: PHOENIX().ashGray };
-	return { name: "Grind", color: PHOENIX().moltenSteel };
-}
 
 // ---------------------------------------------------------------------------
 // Chart margins & accessors
@@ -132,7 +120,7 @@ export function Chart({ width, height }: { width: number; height: number }) {
 			}
 
 			if (nearest) {
-				const zone = getVelocityZone(nearest.velocity);
+				const zone = classifyVbtZone(Math.abs(nearest.velocity));
 				showTooltip({
 					tooltipData: {
 						force: nearest.force,
@@ -299,7 +287,7 @@ export function Chart({ width, height }: { width: number; height: number }) {
 								marginTop: 2,
 							}}
 						>
-							{tooltipData.zone.name}
+							{tooltipData.zone.label}
 						</div>
 					</div>
 				)}
@@ -329,8 +317,12 @@ export function ForceCurveDemo() {
 			<div style={{ height: CHART_HEIGHT }}>
 				<ParentSize>
 					{({ width }) => {
-						if (width <= 0) {
-							// Fallback for SSR / test environments where container has no width
+						// Total horizontal margin is 60px (left 44 + right 16). Below a
+						// usable plot width, innerWidth would go negative and produce a
+						// reversed x-scale / invalid geometry — fall back to a fixed size
+						// (also covers SSR / tests where the container has no width).
+						const MIN_USABLE_WIDTH = MARGINS.left + MARGINS.right + 40;
+						if (width < MIN_USABLE_WIDTH) {
 							return <Chart width={400} height={CHART_HEIGHT} />;
 						}
 						return <Chart width={width} height={CHART_HEIGHT} />;
@@ -346,9 +338,9 @@ export function ForceCurveDemo() {
 
 			{/* Explanatory copy */}
 			<p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-				Force output and velocity zones from a single Vitruvian rep. Every rep
-				is captured at millisecond resolution so you can analyze concentric vs
-				eccentric phases.
+				Force output and velocity zones from a single rep. Every rep is captured
+				at millisecond resolution so you can analyze concentric vs eccentric
+				phases.
 			</p>
 		</div>
 	);

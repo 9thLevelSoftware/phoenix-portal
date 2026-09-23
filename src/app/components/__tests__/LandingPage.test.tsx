@@ -55,6 +55,14 @@ function mockAuthSettings({
 	});
 }
 
+function mockAuthSettingsFailure() {
+	fetchMock.mockRejectedValue(new Error("settings unavailable"));
+}
+
+function mockAuthSettingsPending() {
+	fetchMock.mockReturnValue(new Promise(() => undefined));
+}
+
 async function renderLandingPage({
 	apple = false,
 	google = false,
@@ -63,6 +71,14 @@ async function renderLandingPage({
 	google?: boolean;
 } = {}) {
 	mockAuthSettings({ apple, google });
+	renderWithProviders(<LandingPage />);
+	await waitFor(() => {
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+}
+
+async function renderLandingPageWithAuthSettingsFailure() {
+	mockAuthSettingsFailure();
 	renderWithProviders(<LandingPage />);
 	await waitFor(() => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -113,8 +129,10 @@ describe("LandingPage", () => {
 		const badges = screen.getAllByText(/^(EMBER|FLAME|INFERNO)$/);
 		expect(badges.length).toBeGreaterThanOrEqual(6);
 		expect(screen.getAllByText("EMBER")).toHaveLength(2);
-		expect(screen.getAllByText("FLAME")).toHaveLength(2);
-		expect(screen.getAllByText("INFERNO")).toHaveLength(2);
+		expect(screen.getAllByText("FLAME")).toHaveLength(3);
+		expect(screen.getAllByText("INFERNO")).toHaveLength(1);
+		expect(screen.getByText("Session Replay")).toBeInTheDocument();
+		expect(screen.getByText("Records, Goals & Recovery")).toBeInTheDocument();
 	});
 
 	it("renders section eyebrow labels", async () => {
@@ -144,6 +162,39 @@ describe("LandingPage", () => {
 			).not.toBeInTheDocument();
 			expect(screen.queryByText(/or continue with/i)).not.toBeInTheDocument();
 		});
+	});
+
+	it("keeps social sign-in buttons hidden while provider settings are still loading", async () => {
+		const user = userEvent.setup();
+		mockAuthSettingsPending();
+		renderWithProviders(<LandingPage />);
+		await waitFor(() => {
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+		});
+
+		await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+		expect(
+			screen.queryByRole("button", { name: /sign in with google/i }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /sign in with apple/i }),
+		).not.toBeInTheDocument();
+		expect(screen.queryByText(/or continue with/i)).not.toBeInTheDocument();
+	});
+
+	it("keeps social sign-in buttons available when provider settings cannot be loaded", async () => {
+		const user = userEvent.setup();
+		await renderLandingPageWithAuthSettingsFailure();
+
+		await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+		expect(
+			await screen.findByRole("button", { name: /sign in with google/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /sign in with apple/i }),
+		).toBeInTheDocument();
 	});
 
 	it("renders only enabled social sign-in providers", async () => {

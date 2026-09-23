@@ -30,5 +30,17 @@ describe("generateRecordsCSV record type labels", () => {
 	it("maps 1RM to 'Estimated 1RM'", () => {
 		const csv = generateRecordsCSV([record("1RM")] as Records);
 		expect(csv).toContain("Estimated 1RM");
+		expect(csv).not.toContain("Max Weight");
+	});
+});
+
+describe("generateRecordsCSV per-cable unit (KD-8)", () => {
+	it("labels kg record values per cable and keeps the stored value", () => {
+		const csv = generateRecordsCSV([record("MAX_WEIGHT")] as Records);
+		const [header, row] = csv.split("\n");
+		const cols = header.split(",");
+		const values = row.split(",");
+		expect(values[cols.indexOf("Unit")]).toBe("kg per cable");
+		expect(values[cols.indexOf("Value")]).toBe("100");
 	});
 });

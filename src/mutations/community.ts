@@ -2,9 +2,17 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Database, Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
+import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
+import {
+	normalizeEccentricLoad,
+	toEchoLevel,
+	toRepCountTiming,
+	toStopAtPosition,
+	toSupersetColorName,
+} from "../../supabase/functions/_shared/workoutModes.ts";
 
 // ---------- useVote (confirmed pattern) ----------
 
@@ -61,6 +69,18 @@ export function useVote() {
 				});
 			}
 		},
+
+		onError: (error: Error) => {
+			console.error("[useVote] failed:", error);
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
+			toast.error("Failed to register your vote. Please try again.");
+		},
 	});
 }
 
@@ -107,7 +127,9 @@ function routineExerciseSnapshot(exercise: RoutineExerciseRow) {
 		mode: exercise.mode,
 		order_index: exercise.order_index,
 		superset_id: exercise.superset_id,
-		superset_color: exercise.superset_color,
+		// Published in mobile's vocabulary (a DB trigger also normalizes on
+		// import, which covers snapshots published before this).
+		superset_color: toSupersetColorName(exercise.superset_color),
 		superset_order: exercise.superset_order,
 		per_set_weights: exercise.per_set_weights,
 		per_set_rest: exercise.per_set_rest,
@@ -116,12 +138,14 @@ function routineExerciseSnapshot(exercise: RoutineExerciseRow) {
 		is_amrap: exercise.is_amrap,
 		is_bodyweight: exercise.is_bodyweight,
 		pr_percentage: exercise.pr_percentage,
-		rep_count_timing: exercise.rep_count_timing,
-		stop_at_position: exercise.stop_at_position,
+		rep_count_timing: toRepCountTiming(exercise.rep_count_timing),
+		stop_at_position: toStopAtPosition(exercise.stop_at_position),
 		stall_detection: exercise.stall_detection,
-		eccentric_load: exercise.eccentric_load,
-		echo_level: exercise.echo_level,
+		eccentric_load: normalizeEccentricLoad(exercise.eccentric_load),
+		echo_level: toEchoLevel(exercise.echo_level),
 		warmup_sets: exercise.warmup_sets,
+		drop_set_enabled: exercise.drop_set_enabled,
+		drop_set_min_weight_kg: exercise.drop_set_min_weight_kg,
 	};
 }
 
@@ -312,6 +336,8 @@ export function useFollowCreator() {
 		mutationFn: async ({ followedId }: FollowCreatorArgs) => {
 			if (!user) throw new Error("Must be logged in to follow");
 
+			// TODO: `creator_follows` is not in the generated Supabase types (database.types.ts).
+			// Run `npm run gen:types` after adding the table to the schema to remove these casts.
 			const { data: existing, error: checkError } = await supabase
 				.from("creator_follows" as never)
 				.select("id")
@@ -373,6 +399,8 @@ export function useReportContent() {
 		}: ReportContentArgs) => {
 			if (!user) throw new Error("Must be logged in to report content");
 
+			// TODO: `content_reports` is not in the generated Supabase types (database.types.ts).
+			// Run `npm run gen:types` after adding the table to the schema to remove these casts.
 			const { error } = await supabase.from("content_reports" as never).insert({
 				reporter_id: user.id,
 				content_id: contentId,
@@ -511,21 +539,20 @@ export function useDeleteSharedContent() {
 		mutationFn: async ({ contentId, contentType }: DeleteSharedContentArgs) => {
 			if (!user) throw new Error("Must be logged in to delete");
 
-			if (contentType === "routine") {
-				const { error } = await supabase
-					.from("shared_routines")
-					.delete()
-					.eq("id", contentId)
-					.eq("user_id", user.id);
-				if (error) throw error;
-			} else {
-				const { error } = await supabase
-					.from("shared_cycles")
-					.delete()
-					.eq("id", contentId)
-					.eq("user_id", user.id);
-				if (error) throw error;
-			}
+			const table =
+				contentType === "routine" ? "shared_routines" : "shared_cycles";
+			const { data: deleted, error } = await supabase
+				.from(table)
+				.delete()
+				.eq("id", contentId)
+				.eq("user_id", user.id)
+				.select("id")
+				.maybeSingle();
+			if (error) throw error;
+			if (!deleted)
+				throw new Error(
+					"Content not found or you don't have permission to remove it.",
+				);
 		},
 
 		onSuccess: () => {
@@ -593,6 +620,15 @@ export function useSaveItem() {
 
 		onError: (error: Error) => {
 			console.error("[useSaveItem] failed:", error);
+			// import_shared_routine / import_shared_cycle raise FLAME_REQUIRED
+			// (P0001) below FLAME, which a generic toast hides.
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
 			toast.error("Failed to save content. Please try again.");
 		},
 	});

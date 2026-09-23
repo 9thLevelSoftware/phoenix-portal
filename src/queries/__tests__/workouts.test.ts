@@ -11,6 +11,7 @@ function buildChain(terminal: { data: unknown; error: unknown }) {
 	const methods = [
 		"select",
 		"eq",
+		"is",
 		"order",
 		"limit",
 		"gte",
@@ -32,9 +33,13 @@ function buildChain(terminal: { data: unknown; error: unknown }) {
 
 let chain: ReturnType<typeof buildChain>;
 const fromFn = vi.fn(() => chain);
+const rpcFn = vi.fn();
 
 vi.mock("@/lib/supabase", () => ({
-	supabase: { from: (...args: unknown[]) => fromFn(...args) },
+	supabase: {
+		from: (...args: unknown[]) => fromFn(...args),
+		rpc: (...args: unknown[]) => rpcFn(...args),
+	},
 }));
 
 // --- Tests ----------------------------------------------------------------
@@ -51,7 +56,7 @@ describe("workoutListOptions", () => {
 		expect(opts.queryKey).toEqual(queryKeys.workouts.list("user-abc"));
 	});
 
-	it("returns Zod-transformed data (weights doubled, dates as Date, duration as minutes)", async () => {
+	it("returns Zod-transformed data (per-cable weights, dates as Date, duration as seconds)", async () => {
 		const raw = [
 			{
 				id: "11111111-1111-4111-8111-111111111111",
@@ -71,11 +76,11 @@ describe("workoutListOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { workoutListOptions } = await import("../workouts");
 		const opts = workoutListOptions("user-abc");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result).toHaveLength(1);
-		expect(result[0].total_volume).toBe(500); // Phase 40 fix: no longer doubled (already total)
-		expect(result[0].duration_seconds).toBe(60); // minutes
+		expect(result[0].total_volume).toBe(500); // per cable, as stored (KD-8)
+		expect(result[0].duration_seconds).toBe(3600); // raw seconds — no schema transform
 		expect(result[0].started_at).toBeInstanceOf(Date);
 		expect(result[0].workout_mode).toBe("Echo");
 	});
@@ -87,7 +92,7 @@ describe("workoutListOptions", () => {
 		});
 		const { workoutListOptions } = await import("../workouts");
 		const opts = workoutListOptions("user-abc");
-		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
+		await expect(opts.queryFn!({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "DB error" }),
 		);
 	});
@@ -96,7 +101,7 @@ describe("workoutListOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { workoutListOptions } = await import("../workouts");
 		const opts = workoutListOptions("user-abc");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toEqual([]);
 	});
 
@@ -120,10 +125,25 @@ describe("workoutListOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { workoutListOptions } = await import("../workouts");
 		const opts = workoutListOptions("user-abc");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result[0].name).toBe("Untitled Workout");
 	});
 });
+
+const SESSION_ROW = {
+	id: "11111111-1111-4111-8111-111111111111",
+	user_id: "22222222-2222-4222-8222-222222222222",
+	name: "Leg Day",
+	started_at: "2026-03-10T09:00:00Z",
+	duration_seconds: 2400,
+	total_volume: 800,
+	set_count: 6,
+	exercise_count: 2,
+	pr_count: 1,
+	routine_name: null,
+	workout_mode: null,
+	notes: null,
+};
 
 describe("sessionDetailOptions", () => {
 	beforeEach(() => {
@@ -136,70 +156,256 @@ describe("sessionDetailOptions", () => {
 		expect(opts.queryKey).toEqual(queryKeys.workouts.detail("sess-1"));
 	});
 
-	it("assembles session + exercises + sets into nested structure", async () => {
-		const sessionRow = {
-			id: "11111111-1111-4111-8111-111111111111",
-			user_id: "22222222-2222-4222-8222-222222222222",
-			name: "Leg Day",
-			started_at: "2026-03-10T09:00:00Z",
-			duration_seconds: 2400,
-			total_volume: 800,
-			set_count: 6,
-			exercise_count: 2,
-			pr_count: 1,
-			routine_name: null,
-			workout_mode: null,
+	it("loads session + exercises + sets in one embedded request", async () => {
+		const setRow = {
+			id: "bbbb1111-1111-4111-8111-111111111111",
+			exercise_id: "aaaa1111-1111-4111-8111-111111111111",
+			set_number: 1,
+			target_reps: 8,
+			actual_reps: 8,
+			weight_kg: 60,
+			rpe: 7,
+			is_pr: true,
 			notes: null,
 		};
-		const exerciseRows = [
-			{
-				id: "aaaa1111-1111-4111-8111-111111111111",
-				session_id: "11111111-1111-4111-8111-111111111111",
-				name: "Squat",
-				muscle_group: "Legs",
-				order_index: 0,
-			},
-		];
-		const setRows = [
-			{
-				id: "bbbb1111-1111-4111-8111-111111111111",
-				exercise_id: "aaaa1111-1111-4111-8111-111111111111",
-				set_number: 1,
-				target_reps: 8,
-				actual_reps: 8,
-				weight_kg: 60,
-				rpe: 7,
-				is_pr: true,
-				notes: null,
-			},
-		];
+		// Was two orphan plurals (`exerciseRows` / `setRows`) the merge left
+		// beside the live singulars — the plural carried `cable_count: 2` and
+		// the singular lost it at the seam, which is why `cable_count` parsed
+		// to null. The singular is the one the embedded tree uses.
+		const exerciseRow = {
+			id: "aaaa1111-1111-4111-8111-111111111111",
+			session_id: SESSION_ROW.id,
+			name: "Squat",
+			muscle_group: "Legs",
+			order_index: 0,
+			cable_count: 2,
+		};
+		const embeddedRow = {
+			...SESSION_ROW,
+			exercises: [{ ...exerciseRow, sets: [setRow] }],
+		};
 
-		let callCount = 0;
-		fromFn.mockImplementation(() => {
-			callCount++;
-			if (callCount === 1) return buildChain({ data: sessionRow, error: null });
-			if (callCount === 2)
-				return buildChain({ data: exerciseRows, error: null });
-			return buildChain({ data: setRows, error: null });
-		});
+		chain = buildChain({ data: embeddedRow, error: null });
+		fromFn.mockImplementation(() => chain);
 
 		const { sessionDetailOptions } = await import("../workouts");
-		const opts = sessionDetailOptions("11111111-1111-4111-8111-111111111111");
-		const result = await opts.queryFn?.({} as never);
+		const opts = sessionDetailOptions(SESSION_ROW.id);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result.name).toBe("Leg Day");
 		expect(result.exercises).toHaveLength(1);
 		expect(result.exercises[0].name).toBe("Squat");
 		expect(result.exercises[0].sets).toHaveLength(1);
 		expect(result.exercises[0].hasPR).toBe(true);
-		// weight_kg doubled by Zod transform
-		expect(result.exercises[0].sets[0].weight_kg).toBe(120);
+		// weight_kg stays per cable; the cable count rides on the exercise so
+		// the display adapter can add a total (KD-8).
+		expect(result.exercises[0].sets[0].weight_kg).toBe(60);
+		expect(result.exercises[0].cable_count).toBe(2);
+		// Single request against workout_sessions with the embedded tree
+		expect(fromFn).toHaveBeenCalledTimes(1);
+		expect(fromFn).toHaveBeenCalledWith("workout_sessions");
+		expect(chain.select).toHaveBeenCalledWith("*, exercises(*, sets(*))");
+		expect(chain.eq).toHaveBeenCalledWith("id", SESSION_ROW.id);
+		expect(chain.order).toHaveBeenCalledWith("order_index", {
+			ascending: true,
+			referencedTable: "exercises",
+		});
+		expect(chain.order).toHaveBeenCalledWith("set_number", {
+			ascending: true,
+			referencedTable: "exercises.sets",
+		});
+		expect(chain.single).toHaveBeenCalledTimes(1);
+
+		// Parsed shape is unchanged: session fields + exercises with sets/hasPR
+		const { exercises, ...sessionFields } = result as NonNullable<
+			typeof result
+		>;
+		expect(sessionFields).not.toHaveProperty("exercises");
+		expect(result?.name).toBe("Leg Day");
+		expect(result?.started_at).toBeInstanceOf(Date);
+		expect(exercises).toEqual([
+			{
+				...exerciseRow,
+				// Was `weight_kg: 120`, "weight_kg doubled by Zod transform" —
+				// pre-KD-8. setSchema.weight_kg is perCableWeight = z.number(),
+				// so 60 stays 60 (and the expect two dozen lines up already
+				// pins that).
+				sets: [{ ...setRow, weight_kg: 60 }],
+				hasPR: true,
+			},
+		]);
+	});
+
+	it("returns an empty exercise list for a session with no exercises", async () => {
+		chain = buildChain({
+			data: { ...SESSION_ROW, exercises: [] },
+			error: null,
+		});
+		fromFn.mockImplementation(() => chain);
+
+		const { sessionDetailOptions } = await import("../workouts");
+		const result = await sessionDetailOptions(SESSION_ROW.id).queryFn!(
+			{} as never,
+		);
+
+		expect(fromFn).toHaveBeenCalledTimes(1);
+		expect(result?.exercises).toEqual([]);
+	});
+
+	it("throws the PostgREST error from the embedded select", async () => {
+		const error = { message: "boom", code: "PGRST116" };
+		chain = buildChain({ data: null, error });
+		fromFn.mockImplementation(() => chain);
+
+		const { sessionDetailOptions } = await import("../workouts");
+		await expect(
+			sessionDetailOptions(SESSION_ROW.id).queryFn!({} as never),
+		).rejects.toBe(error);
 	});
 
 	it("has enabled: false when sessionId is empty", async () => {
 		const { sessionDetailOptions } = await import("../workouts");
 		const opts = sessionDetailOptions("");
 		expect(opts.enabled).toBe(false);
+	});
+});
+
+describe("comparisonDetailOptions", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("builds a SessionSummary from one embedded request with rep summaries", async () => {
+		const exA = "aaaa1111-1111-4111-8111-111111111111";
+		const exB = "aaaa2222-2222-4222-8222-222222222222";
+		const set = (
+			id: string,
+			exerciseId: string,
+			weight: number,
+			reps: unknown[],
+		) => ({
+			id,
+			exercise_id: exerciseId,
+			set_number: 1,
+			target_reps: 5,
+			actual_reps: 5,
+			weight_kg: weight,
+			rpe: null,
+			is_pr: false,
+			notes: null,
+			rep_summaries: reps,
+		});
+		const setA1 = "bbbb1111-1111-4111-8111-111111111111";
+		const setA2 = "bbbb2222-2222-4222-8222-222222222222";
+		const setB1 = "bbbb3333-3333-4333-8333-333333333333";
+		const embeddedRow = {
+			...SESSION_ROW,
+			exercises: [
+				{
+					id: exA,
+					session_id: SESSION_ROW.id,
+					name: "Squat",
+					muscle_group: "Legs",
+					order_index: 0,
+					sets: [
+						set(setA1, exA, 50, [
+							{ set_id: setA1, mean_velocity_mps: 0.5 },
+							{ set_id: setA1, mean_velocity_mps: null },
+						]),
+						set(setA2, exA, 60, [{ set_id: setA2, mean_velocity_mps: 0.7 }]),
+					],
+				},
+				{
+					id: exB,
+					session_id: SESSION_ROW.id,
+					name: "Row",
+					muscle_group: "Back",
+					order_index: 1,
+					sets: [set(setB1, exB, 20, [])],
+				},
+			],
+		};
+
+		chain = buildChain({ data: embeddedRow, error: null });
+		fromFn.mockImplementation(() => chain);
+
+		const { comparisonDetailOptions } = await import("../workouts");
+		const opts = comparisonDetailOptions(SESSION_ROW.id);
+		expect(opts.queryKey).toEqual(
+			queryKeys.workouts.comparison(SESSION_ROW.id, "detail"),
+		);
+		const result = await opts.queryFn!({} as never);
+
+		expect(fromFn).toHaveBeenCalledTimes(1);
+		expect(fromFn).toHaveBeenCalledWith("workout_sessions");
+		expect(chain.select).toHaveBeenCalledWith(
+			"*, exercises(*, sets(*, rep_summaries(set_id, mean_velocity_mps)))",
+		);
+		expect(chain.order).toHaveBeenCalledWith("order_index", {
+			ascending: true,
+			referencedTable: "exercises",
+		});
+		expect(chain.order).toHaveBeenCalledWith("set_number", {
+			ascending: true,
+			referencedTable: "exercises.sets",
+		});
+
+		// totalVolume / exerciseCount / setCount / prCount come from the session
+		// row (`parsedSession.*`), not from the nested sets — SESSION_ROW is
+		// the fixture and is deliberately independent of the tree below.
+		expect(result).toEqual({
+			id: SESSION_ROW.id,
+			name: "Leg Day",
+			startedAt: new Date("2026-03-10T09:00:00Z"),
+			totalVolume: 800,
+			duration: 40,
+			exerciseCount: 2,
+			setCount: 6,
+			prCount: 1,
+			exercises: [
+				{
+					name: "Squat",
+					// Was "weights doubled by Zod: (100 + 120) * 5" with volume
+					// 1100 / maxWeight 120 — pre-KD-8. The stored loads are
+					// 50 and 60 per cable and stay that way, so (50 + 60) * 5.
+					volume: 550,
+					maxWeight: 60,
+					sets: 2,
+					// null velocity ignored: (0.5 + 0.7) / 2
+					avgVelocity: expect.closeTo(0.6, 10),
+				},
+				// Same collapse: 20 per cable stays 20 (was 40), 20 * 5 = 100.
+				{ name: "Row", volume: 100, maxWeight: 20, sets: 1, avgVelocity: 0 },
+			],
+		});
+	});
+
+	it("throws the PostgREST error from the embedded select", async () => {
+		const error = { message: "boom", code: "PGRST116" };
+		chain = buildChain({ data: null, error });
+		fromFn.mockImplementation(() => chain);
+
+		const { comparisonDetailOptions } = await import("../workouts");
+		await expect(
+			comparisonDetailOptions(SESSION_ROW.id).queryFn!({} as never),
+		).rejects.toBe(error);
+		expect(fromFn).toHaveBeenCalledTimes(1);
+	});
+
+	it("handles a session with no exercises", async () => {
+		chain = buildChain({
+			data: { ...SESSION_ROW, exercises: [] },
+			error: null,
+		});
+		fromFn.mockImplementation(() => chain);
+
+		const { comparisonDetailOptions } = await import("../workouts");
+		const result = await comparisonDetailOptions(SESSION_ROW.id).queryFn!(
+			{} as never,
+		);
+
+		expect(fromFn).toHaveBeenCalledTimes(1);
+		expect(result?.exercises).toEqual([]);
 	});
 });
 
@@ -229,7 +435,7 @@ describe("dashboardStatsOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { dashboardStatsOptions } = await import("../workouts");
 		const opts = dashboardStatsOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		// Raw data returned as-is (no doubling)
 		expect(result[0].total_volume).toBe(400);
 	});
@@ -250,6 +456,57 @@ describe("workoutListPageOptions", () => {
 	});
 });
 
+describe("workoutListInfiniteOptions", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		fromFn.mockImplementation(() => chain);
+	});
+
+	it("uses a query key under workouts.all", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { workoutListInfiniteOptions } = await import("../workouts");
+		const opts = workoutListInfiniteOptions("user-abc");
+		expect(opts.queryKey[0]).toBe("workouts");
+		expect(opts.queryKey).toContain("infinite");
+	});
+
+	it("stops paging when the last page is short", async () => {
+		const { workoutListInfiniteOptions, WORKOUTS_PAGE_SIZE } = await import(
+			"../workouts"
+		);
+		const opts = workoutListInfiniteOptions("user-abc");
+		const shortPage = Array.from({ length: 3 }, () => ({}));
+		// The query-option type declares all four paginator params
+		// (`lastPageParam: number`, `allPageParams: number[]`); the
+		// implementation reads only the first two.
+		expect(
+			opts.getNextPageParam(shortPage as never, [], 0, []),
+		).toBeUndefined();
+		const fullPage = Array.from({ length: WORKOUTS_PAGE_SIZE }, () => ({}));
+		expect(
+			opts.getNextPageParam(fullPage as never, [fullPage as never], 0, [0]),
+		).toBe(WORKOUTS_PAGE_SIZE);
+	});
+});
+
+describe("workoutStreakOptions", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("calls workout_current_streak with the user id", async () => {
+		rpcFn.mockResolvedValue({ data: 51, error: null });
+		const { workoutStreakOptions } = await import("../workouts");
+		const opts = workoutStreakOptions("user-abc");
+		expect(opts.queryKey).toEqual(["workouts", "streak", "user-abc"]);
+		const result = await opts.queryFn!({} as never);
+		expect(rpcFn).toHaveBeenCalledWith("workout_current_streak", {
+			p_user_id: "user-abc",
+		});
+		expect(result).toBe(51);
+	});
+});
+
 describe("recentPRsOptions", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -264,7 +521,7 @@ describe("recentPRsOptions", () => {
 		expect(opts.queryKey).toContain("recent");
 	});
 
-	it("returns Zod-transformed PRs with doubled values", async () => {
+	it("returns Zod-transformed PRs with per-cable values", async () => {
 		const raw = [
 			{
 				id: "11111111-1111-4111-8111-111111111111",
@@ -281,9 +538,38 @@ describe("recentPRsOptions", () => {
 		chain = buildChain({ data: raw, error: null });
 		const { recentPRsOptions } = await import("../workouts");
 		const opts = recentPRsOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
-		expect(result[0].value).toBe(200); // doubled
-		expect(result[0].previous_value).toBe(180); // doubled
+		const result = await opts.queryFn!({} as never);
+		expect(chain.is).toHaveBeenCalledWith("deleted_at", null);
+		expect(result[0].value).toBe(100); // per cable, not doubled
+		expect(result[0].previous_value).toBe(90); // per cable, not doubled
 		expect(result[0].achieved_at).toBeInstanceOf(Date);
+	});
+
+	it("uses the catalog display name when a recent PR name contains a catalog ID", async () => {
+		const raw = [
+			{
+				id: "11111111-1111-4111-8111-111111111111",
+				user_id: "22222222-2222-4222-8222-222222222222",
+				exercise_name: "Barbell_Curl",
+				exercise_id: "Barbell_Curl",
+				muscle_group: "Arms",
+				record_type: "MAX_WEIGHT",
+				value: 40,
+				unit: "kg",
+				achieved_at: "2026-03-15T10:00:00Z",
+				previous_value: null,
+				catalog: {
+					id: "Barbell_Curl",
+					name: "Bayesian Curl",
+					display_name: "Bayesian Curl (Handles)",
+				},
+			},
+		];
+		chain = buildChain({ data: raw, error: null });
+		const { recentPRsOptions } = await import("../workouts");
+		const opts = recentPRsOptions("user-1");
+		const result = await opts.queryFn!({} as never);
+
+		expect(result[0].exercise_name).toBe("Bayesian Curl (Handles)");
 	});
 });

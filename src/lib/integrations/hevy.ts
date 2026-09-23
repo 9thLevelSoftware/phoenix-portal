@@ -86,13 +86,25 @@ export function parseHevyCSV(csvContent: string): NormalizedActivity[] {
 		(row) => `${row.title}|${row.start_time}`,
 	);
 
-	return Object.entries(workoutGroups).map(([_key, rows]) => {
+	const activities: NormalizedActivity[] = [];
+	for (const [_key, rows] of Object.entries(workoutGroups)) {
 		const first = rows[0];
 		const startTime = new Date(first.start_time);
 		const endTime = new Date(first.end_time);
-		const durationSeconds = Math.round(
-			(endTime.getTime() - startTime.getTime()) / 1000,
-		);
+
+		// Skip workouts with an unparseable start_time rather than letting a single
+		// malformed row throw RangeError and abort the entire import.
+		if (!Number.isFinite(startTime.getTime())) {
+			console.warn(
+				`Hevy CSV: skipping workout "${first.title}" with invalid start_time "${first.start_time}"`,
+			);
+			continue;
+		}
+
+		const endMs = endTime.getTime();
+		const durationSeconds = Number.isFinite(endMs)
+			? Math.round((endMs - startTime.getTime()) / 1000)
+			: 0;
 
 		// Generate a deterministic external_id from workout title + timestamp
 		const externalId = `hevy-${first.title}-${startTime.getTime()}`;
@@ -105,7 +117,7 @@ export function parseHevyCSV(csvContent: string): NormalizedActivity[] {
 			);
 		}, 0);
 
-		return {
+		activities.push({
 			external_id: externalId,
 			provider: "hevy" as const,
 			name: first.title,
@@ -118,8 +130,9 @@ export function parseHevyCSV(csvContent: string): NormalizedActivity[] {
 			avg_heart_rate: null,
 			max_heart_rate: null,
 			elevation_gain_meters: null,
-		};
-	});
+		});
+	}
+	return activities;
 }
 
 /**
@@ -247,9 +260,17 @@ export function normalizeHevyActivity(raw: unknown): NormalizedActivity {
 	const workout = hevyApiWorkoutSchema.parse(raw);
 	const startTime = new Date(workout.start_time);
 	const endTime = new Date(workout.end_time);
-	const durationSeconds = Math.round(
-		(endTime.getTime() - startTime.getTime()) / 1000,
-	);
+
+	if (!Number.isFinite(startTime.getTime())) {
+		throw new Error(
+			`Hevy API workout ${workout.id} has invalid start_time "${workout.start_time}"`,
+		);
+	}
+
+	const endMs = endTime.getTime();
+	const durationSeconds = Number.isFinite(endMs)
+		? Math.round((endMs - startTime.getTime()) / 1000)
+		: 0;
 
 	return {
 		external_id: `hevy-${workout.id}`,

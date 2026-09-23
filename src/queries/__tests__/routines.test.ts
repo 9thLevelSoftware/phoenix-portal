@@ -62,6 +62,8 @@ const routineExerciseRow = {
 	stall_detection: false,
 	eccentric_load: null,
 	echo_level: null,
+	drop_set_enabled: false,
+	drop_set_min_weight_kg: null,
 	created_at: "2026-01-01T00:00:00Z",
 };
 

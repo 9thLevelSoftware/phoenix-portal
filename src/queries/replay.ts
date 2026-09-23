@@ -1,6 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "./keys";
+import { fetchSetTelemetry } from "./telemetry";
 
 /**
  * Query options for session replay data.
@@ -31,22 +32,20 @@ export const replaySessionOptions = (sessionId: string) =>
 			return data;
 		},
 		staleTime: 5 * 60 * 1000, // 5 minutes
+		enabled: !!sessionId,
 	});
 
 /**
  * Query options for telemetry data of a specific set.
- * Fetches telemetry points and rep summaries for replay visualization.
+ * Fetches every telemetry point (chart columns only, keyset-paged) and the
+ * rep summaries for replay visualization.
  */
 export const replayTelemetryOptions = (setId: string) =>
 	queryOptions({
 		queryKey: queryKeys.replay.telemetry(setId),
 		queryFn: async () => {
-			const [telemetryRes, summaryRes] = await Promise.all([
-				supabase
-					.from("telemetry_points")
-					.select("*")
-					.eq("set_id", setId)
-					.order("timestamp_ms"),
+			const [telemetry, summaryRes] = await Promise.all([
+				fetchSetTelemetry("telemetry_points", setId),
 				supabase
 					.from("rep_summaries")
 					.select("*")
@@ -54,13 +53,13 @@ export const replayTelemetryOptions = (setId: string) =>
 					.order("rep_number"),
 			]);
 
-			if (telemetryRes.error) throw telemetryRes.error;
 			if (summaryRes.error) throw summaryRes.error;
 
 			return {
-				telemetry: telemetryRes.data,
+				telemetry,
 				repSummaries: summaryRes.data,
 			};
 		},
 		staleTime: 10 * 60 * 1000, // Telemetry is immutable, cache longer
+		enabled: !!setId,
 	});

@@ -9,6 +9,15 @@ export const queryKeys = {
 		all: ["workouts"] as const,
 		list: (userId: string, profileId?: string | null) =>
 			[...queryKeys.workouts.all, "list", userId, profileId ?? "all"] as const,
+		infinite: (userId: string, profileId?: string | null) =>
+			[
+				...queryKeys.workouts.all,
+				"infinite",
+				userId,
+				profileId ?? "all",
+			] as const,
+		streak: (userId: string) =>
+			[...queryKeys.workouts.all, "streak", userId] as const,
 		detail: (sessionId: string) =>
 			[...queryKeys.workouts.all, "detail", sessionId] as const,
 		comparison: (sessionAId: string, sessionBId: string) =>
@@ -230,5 +239,12 @@ export const queryKeys = {
 		all: ["localProfiles"] as const,
 		byUser: (userId: string) =>
 			[...queryKeys.localProfiles.all, userId] as const,
+	},
+	notifications: {
+		all: ["notifications"] as const,
+		challenges: (userId: string) =>
+			["notifications", "challenges", userId] as const,
+		community: (userId: string) =>
+			["notifications", "community", userId] as const,
 	},
 } as const;

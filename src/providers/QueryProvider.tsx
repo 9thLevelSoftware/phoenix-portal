@@ -6,7 +6,7 @@ const queryClient = new QueryClient({
 		queries: {
 			staleTime: 1000 * 60 * 5, // 5 minutes
 			retry: 1,
-			refetchOnWindowFocus: false, // Avoid aggressive refetching during development
+			refetchOnWindowFocus: false, // Disabled in all environments — users navigate away then return; a stale read is preferable to a cascade of refetches on focus
 		},
 	},
 });

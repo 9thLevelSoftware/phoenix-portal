@@ -36,8 +36,9 @@ import { Switch } from "@/app/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 
 import { useAuth } from "@/app/hooks/useAuth";
-import { fadeUp } from "@/lib/animations";
+import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { PHOENIX } from "@/lib/colors";
+import { FEATURE_MIN_TIER } from "@/lib/tierMatrix";
 import { repSummariesOptions, repTelemetryOptions } from "@/queries/telemetry";
 import { sessionDetailOptions, workoutListOptions } from "@/queries/workouts";
 
@@ -111,6 +112,7 @@ export function BiomechanicsContent({
 }: BiomechanicsContentProps) {
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
+	const unit = usePreferredWeightUnit();
 	const showBiomechanics = view === "all" || view === "biomechanics";
 	const showPerformance = view === "all" || view === "performance";
 	const showExpandedSections = view === "all";
@@ -172,12 +174,20 @@ export function BiomechanicsContent({
 	}, [sets, selectedSetId]);
 
 	// ---- Telemetry queries (per selected set) ----
-	const { data: telemetry, isPending: telemetryLoading } = useQuery({
+	const {
+		data: telemetry,
+		isPending: telemetryLoading,
+		isError: telemetryError,
+	} = useQuery({
 		...repTelemetryOptions(effectiveSetId),
 		enabled: !!effectiveSetId,
 	});
 
-	const { data: repSummaries, isPending: summariesLoading } = useQuery({
+	const {
+		data: repSummaries,
+		isPending: summariesLoading,
+		isError: summariesError,
+	} = useQuery({
 		...repSummariesOptions(effectiveSetId),
 		enabled: !!effectiveSetId,
 	});
@@ -392,6 +402,10 @@ export function BiomechanicsContent({
 								</div>
 								{telemetryLoading ? (
 									<Skeleton className="h-[300px] w-full" />
+								) : telemetryError ? (
+									<div className="py-8 text-center text-sm text-muted-foreground">
+										Couldn't load telemetry for this set. Please try again.
+									</div>
 								) : repData.length > 0 ? (
 									<ForceCurve
 										repData={repData}
@@ -449,7 +463,7 @@ export function BiomechanicsContent({
 								</Section>
 
 								<Section title="Body Overview" icon={Activity}>
-									<MuscleHeatmap muscleVolumes={muscleVolumes} />
+									<MuscleHeatmap muscleVolumes={muscleVolumes} unit={unit} />
 								</Section>
 							</div>
 						</>
@@ -524,6 +538,10 @@ export function BiomechanicsContent({
 							<Section title="Form Analysis" icon={Activity}>
 								{summariesLoading ? (
 									<Skeleton className="h-[300px] w-full" />
+								) : summariesError ? (
+									<div className="py-8 text-center text-sm text-muted-foreground">
+										Couldn't load rep data for this set. Please try again.
+									</div>
 								) : repSummaries && repSummaries.length >= 2 ? (
 									<FormAnalysis
 										reps={repSummaries.map((r) => ({
@@ -561,7 +579,7 @@ export function BiomechanicsContent({
 								icon={Activity}
 								className="col-span-full"
 							>
-								<SummaryReport userId={userId} />
+								<SummaryReport userId={userId} unit={unit} />
 							</Section>
 
 							<Section
@@ -590,7 +608,7 @@ export function Biomechanics() {
 				</p>
 			</div>
 
-			<SubscriptionGate requiredTier="INFERNO">
+			<SubscriptionGate requiredTier={FEATURE_MIN_TIER.biomechanics}>
 				<BiomechanicsContent />
 			</SubscriptionGate>
 		</PageShell>

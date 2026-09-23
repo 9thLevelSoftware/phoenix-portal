@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
 	Award,
 	BarChart3,
@@ -26,9 +26,8 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { formatVolume } from "@/lib/units";
 import { profileOptions } from "@/queries/profile";
 import {
-	WORKOUTS_PAGE_SIZE,
-	workoutListOptions,
-	workoutListPageOptions,
+	workoutListInfiniteOptions,
+	workoutStreakOptions,
 } from "@/queries/workouts";
 import type { WorkoutSession } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
@@ -119,20 +118,20 @@ function WorkoutCard({
 				<div className="flex-1 grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-4 sm:gap-6">
 					<div className="text-center">
 						<div className="text-sm text-muted-foreground mb-1">Volume</div>
-						<div className="text-lg font-semibold text-foreground font-data">
+						<div className="text-lg font-semibold text-white font-data">
 							{formatVolume(workout.total_volume, unit)}
 						</div>
 					</div>
 					<div className="text-center">
 						<div className="text-sm text-muted-foreground mb-1">Duration</div>
-						<div className="text-lg font-semibold text-foreground flex items-center justify-center gap-1 font-data">
+						<div className="text-lg font-semibold text-white flex items-center justify-center gap-1 font-data">
 							<Clock className="w-4 h-4" />
-							{workout.duration_seconds}m
+							{Math.round(workout.duration_seconds / 60)}m
 						</div>
 					</div>
 					{workout.pr_count > 0 && (
 						<div className="text-center col-span-2 sm:col-span-1">
-							<Badge className="bg-accent text-foreground border-0">
+							<Badge className="bg-accent text-white border-0">
 								<Award className="w-3 h-3 mr-1" />
 								{workout.pr_count} PR{workout.pr_count > 1 ? "s" : ""}
 							</Badge>
@@ -152,48 +151,36 @@ export function WorkoutHistory() {
 	const navigate = useNavigate();
 	const { user } = useAuth();
 	const { activeProfileId } = useProfileFilterStore();
-	const { data: workouts, isPending } = useQuery(
-		workoutListOptions(user?.id ?? "", activeProfileId),
-	);
+	const {
+		data,
+		fetchNextPage,
+		hasNextPage,
+		isFetchingNextPage,
+		isFetchNextPageError,
+		isPending,
+		isError,
+		refetch,
+	} = useInfiniteQuery({
+		...workoutListInfiniteOptions(user?.id ?? "", activeProfileId),
+		enabled: !!user?.id,
+	});
 	const { data: profile } = useQuery({
 		...profileOptions(user?.id ?? ""),
 		enabled: !!user?.id,
 	});
+	const { data: rpcStreak } = useQuery({
+		...workoutStreakOptions(user?.id ?? ""),
+		enabled: !!user?.id,
+	});
 
-	const { isPremium, tier } = useSubscription();
-	const queryClient = useQueryClient();
+	const { isFlame } = useSubscription();
 	const [dateRange, setDateRange] = useState("Last 30 days");
-
-	// Free-tier history gating: 30-day limit
-	const FREE_HISTORY_DAYS = 30;
-	const PREMIUM_DATE_RANGES = ["Last 90 days", "Last 6 months", "All Time"];
-	const isFreeTierExtendedRange =
-		tier === "FREE" && PREMIUM_DATE_RANGES.includes(dateRange);
-
-	const isEntryLocked = useCallback(
-		(startedAt: Date) => {
-			if (tier !== "FREE") return false;
-			const cutoff = new Date();
-			cutoff.setDate(cutoff.getDate() - FREE_HISTORY_DAYS);
-			return startedAt < cutoff;
-		},
-		[tier],
-	);
 
 	const [compareMode, setCompareMode] = useState(false);
 	const [selectedForCompare, setSelectedForCompare] = useState<string[]>([]);
-
-	// Pagination: load additional pages on demand
-	const [loadedPages, setLoadedPages] = useState(0);
-	const [extraWorkouts, setExtraWorkouts] = useState<WorkoutSession[]>([]);
-	const [isLoadingMore, setIsLoadingMore] = useState(false);
-	const [hasMore, setHasMore] = useState(true);
 	const unit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
-	const allWorkouts = useMemo(() => {
-		if (!workouts) return [];
-		return [...workouts, ...extraWorkouts];
-	}, [workouts, extraWorkouts]);
+	const allWorkouts = useMemo(() => data?.pages.flat() ?? [], [data]);
 
 	// Sidebar stats
 	const workoutDates = useMemo(() => {
@@ -241,29 +228,13 @@ export function WorkoutHistory() {
 		return workoutsByDate.get(key) ?? [];
 	};
 
-	const streak = useStreak(allWorkouts);
+	const listStreak = useStreak(allWorkouts);
+	const streak = typeof rpcStreak === "number" ? rpcStreak : listStreak;
 
-	const handleLoadMore = useCallback(async () => {
-		if (!user?.id || isLoadingMore) return;
-		setIsLoadingMore(true);
-		const nextOffset = (loadedPages + 1) * WORKOUTS_PAGE_SIZE;
-		try {
-			const opts = workoutListPageOptions(user.id, nextOffset);
-			const page = await queryClient.fetchQuery({
-				...opts,
-				queryKey: opts.queryKey,
-				// biome-ignore lint/style/noNonNullAssertion: queryFn always defined in workoutListPageOptions
-				queryFn: opts.queryFn!,
-			});
-			setExtraWorkouts((prev) => [...prev, ...page]);
-			setLoadedPages((prev) => prev + 1);
-			if (page.length < WORKOUTS_PAGE_SIZE) {
-				setHasMore(false);
-			}
-		} finally {
-			setIsLoadingMore(false);
-		}
-	}, [user?.id, isLoadingMore, loadedPages, queryClient]);
+	const handleLoadMore = useCallback(() => {
+		if (!hasNextPage || isFetchingNextPage) return;
+		void fetchNextPage();
+	}, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
 	const toggleCompareSelection = (sessionId: string) => {
 		setSelectedForCompare((prev) => {
@@ -315,6 +286,37 @@ export function WorkoutHistory() {
 		return allWorkouts.filter((w) => w.started_at >= cutoff);
 	}, [allWorkouts, dateRange]);
 
+	// Failed fetch is an error, not “no workouts yet.”
+	if (isError && data == null) {
+		return (
+			<div className="min-h-screen pb-24 md:pb-8">
+				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
+					<div className="max-w-7xl mx-auto">
+						<h1 className="text-display-2 mb-2 text-foreground">
+							Workout History
+						</h1>
+						<p className="text-muted-foreground">
+							Your training journey, documented
+						</p>
+					</div>
+				</div>
+				<PageShell>
+					<div className="text-center py-16">
+						<p className="text-lg text-white mb-2">
+							Couldn't load your workout history
+						</p>
+						<p className="text-sm text-muted-foreground mb-6">
+							Something went wrong. Your sessions are safe — please try again.
+						</p>
+						<Button onClick={() => void refetch()} variant="outline">
+							Retry
+						</Button>
+					</div>
+				</PageShell>
+			</div>
+		);
+	}
+
 	// Loading state
 	if (isPending) {
 		return (
@@ -336,7 +338,7 @@ export function WorkoutHistory() {
 	}
 
 	// Empty state
-	if (!workouts || workouts.length === 0) {
+	if (allWorkouts.length === 0) {
 		return (
 			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary px-4 sm:px-6 lg:px-8 py-6">
@@ -362,14 +364,6 @@ export function WorkoutHistory() {
 		);
 	}
 
-	// Whether the initial page was full (could be more)
-	const initialPageFull = workouts.length >= WORKOUTS_PAGE_SIZE;
-
-	const unlocked = filteredWorkouts.filter((w) => !isEntryLocked(w.started_at));
-	const locked = filteredWorkouts.filter((w) => isEntryLocked(w.started_at));
-	const lockedPreview = locked.slice(0, 3);
-	const hiddenLockedCount = Math.max(0, locked.length - lockedPreview.length);
-
 	return (
 		<div className="min-h-screen pb-24 md:pb-8">
 			{/* Header */}
@@ -390,9 +384,10 @@ export function WorkoutHistory() {
 						</div>
 
 						<div className="flex flex-col sm:flex-row gap-3">
-							{/* Compare Toggle */}
-							{isPremium ? (
+							{/* Compare Toggle — Flame route /compare, not Ember */}
+							{isFlame ? (
 								<Button
+									size="sm"
 									variant={compareMode ? "default" : "outline"}
 									onClick={() => {
 										if (compareMode) {
@@ -423,7 +418,7 @@ export function WorkoutHistory() {
 											variant="outline"
 											className="ml-2 border-primary/30 text-primary text-[10px] px-1.5 py-0"
 										>
-											{tier === "FREE" ? "EMBER" : "UPGRADE"}
+											FLAME
 										</Badge>
 									</Link>
 								</Button>
@@ -443,32 +438,6 @@ export function WorkoutHistory() {
 							</select>
 						</div>
 					</motion.div>
-
-					{/* Free-tier upgrade banner for extended date ranges */}
-					{isFreeTierExtendedRange && (
-						<div className="pt-4">
-							<Card className="p-4 border-primary/20 bg-primary/5">
-								<div className="flex items-center gap-3">
-									<Lock className="w-5 h-5 text-primary shrink-0" />
-									<div className="flex-1">
-										<p className="text-sm font-medium text-zinc-200">
-											Extended history requires Phoenix
-										</p>
-										<p className="text-xs text-zinc-400">
-											Free accounts can view the last 30 days of workout history
-										</p>
-									</div>
-									<Button
-										asChild
-										variant="outline"
-										className="ml-auto min-h-11 px-4 border-primary text-primary hover:bg-primary/10 shrink-0"
-									>
-										<Link to="/pricing">Upgrade</Link>
-									</Button>
-								</div>
-							</Card>
-						</div>
-					)}
 				</div>
 			</div>
 
@@ -495,18 +464,7 @@ export function WorkoutHistory() {
 							</div>
 						)}
 
-						{filteredWorkouts.length === 0 && (
-							<EmptyState
-								icon={BarChart3}
-								title="Adjust your date range"
-								description="No workouts match this range. Expand the range to see more of your training history."
-								actionLabel="View all workouts"
-								onAction={() => setDateRange("All Time")}
-							/>
-						)}
-
-						{/* Unlocked workout cards */}
-						{unlocked.map((workout, index) => {
+						{filteredWorkouts.map((workout, index) => {
 							const isSelected = selectedForCompare.includes(workout.id);
 							return (
 								<motion.div
@@ -532,71 +490,16 @@ export function WorkoutHistory() {
 							);
 						})}
 
-						{/* Locked preview entries (free-tier) */}
-						{lockedPreview.map((workout, index) => (
-							<motion.div
-								key={workout.id}
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 0.5, y: 0 }}
-								transition={{ delay: (unlocked.length + index) * 0.05 }}
-							>
-								<Card className="relative p-4 sm:p-6 bg-surface-2 border-secondary pointer-events-none select-none">
-									{/* Lock overlay */}
-									<div className="absolute inset-0 flex items-center justify-center z-10">
-										<Lock className="w-6 h-6 text-primary/60" />
-									</div>
-									<div className="flex flex-col sm:flex-row sm:items-center gap-4 opacity-40">
-										<div className="flex items-center gap-4">
-											<div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-gradient-to-br from-primary/30 to-chart-2/30 flex items-center justify-center">
-												<Dumbbell className="w-6 h-6 sm:w-7 sm:h-7 text-foreground/50" />
-											</div>
-											<div>
-												<h3 className="text-lg font-semibold text-foreground/60 mb-1">
-													{workout.name}
-												</h3>
-												<div className="text-sm text-muted-foreground/60">
-													{workout.started_at.toLocaleDateString("en-US", {
-														weekday: "short",
-														month: "short",
-														day: "numeric",
-													})}
-												</div>
-											</div>
-										</div>
-									</div>
-								</Card>
-							</motion.div>
-						))}
-
-						{/* Upgrade banner after locked entries */}
-						{locked.length > 0 && (
-							<Card className="p-6 border-primary/20 bg-primary/5 text-center">
-								<Lock className="w-8 h-8 text-primary mx-auto mb-3" />
-								<h3 className="text-lg font-semibold text-zinc-200 mb-1">
-									Unlock your full workout history
-								</h3>
-								<p className="text-sm text-zinc-400 mb-4">
-									{hiddenLockedCount > 0
-										? `${locked.length} older workouts are locked. `
-										: `${locked.length} older workout${locked.length === 1 ? " is" : "s are"} locked. `}
-									Upgrade to Phoenix for unlimited history.
-								</p>
-								<Button asChild>
-									<Link to="/pricing">View Plans</Link>
-								</Button>
-							</Card>
-						)}
-
 						{/* Load More */}
-						{initialPageFull && hasMore && (
-							<div className="text-center pt-4">
+						{hasNextPage && (
+							<div className="text-center pt-4 space-y-2">
 								<Button
 									variant="outline"
 									onClick={handleLoadMore}
-									disabled={isLoadingMore}
+									disabled={isFetchingNextPage}
 									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 								>
-									{isLoadingMore ? (
+									{isFetchingNextPage ? (
 										<>
 											<Loader2 className="w-4 h-4 mr-2 animate-spin" />
 											Loading more workouts...
@@ -605,6 +508,18 @@ export function WorkoutHistory() {
 										"Load more workouts"
 									)}
 								</Button>
+								{isFetchNextPageError && (
+									<p className="text-sm text-destructive">
+										Could not load more workouts.{" "}
+										<button
+											type="button"
+											onClick={handleLoadMore}
+											className="underline text-primary"
+										>
+											Retry
+										</button>
+									</p>
+								)}
 							</div>
 						)}
 					</div>
@@ -622,7 +537,6 @@ export function WorkoutHistory() {
 									setSelectedDay(date);
 								}
 							}}
-							isDateLocked={isEntryLocked}
 						/>
 
 						<WorkoutQuickStats
@@ -707,7 +621,7 @@ export function WorkoutHistory() {
 											<div className="flex items-center justify-between text-secondary-foreground">
 												<span className="text-muted-foreground">Duration</span>
 												<span className="font-data">
-													{workout.duration_seconds} min
+													{Math.round(workout.duration_seconds / 60)} min
 												</span>
 											</div>
 											<div className="flex items-center justify-between text-secondary-foreground">

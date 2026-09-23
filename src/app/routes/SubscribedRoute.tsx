@@ -8,6 +8,7 @@ interface SubscribedRouteProps {
 /**
  * Route-level subscription gate. Wraps child routes with a SubscriptionGate
  * so that users without the required tier see the upgrade prompt.
+ * Billing fetch errors show a retry state instead of an upgrade wall.
  *
  * Usage in route tree:
  *   <Route element={<SubscribedRoute />}>

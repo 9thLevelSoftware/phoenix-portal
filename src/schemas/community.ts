@@ -1,4 +1,20 @@
 import { z } from "zod";
+import {
+	DEFAULT_WIRE_MODE,
+	normalizeEccentricLoad,
+	toEchoLevel,
+	toRepCountTiming,
+	toStopAtPosition,
+	toSupersetColorName,
+} from "../../supabase/functions/_shared/workoutModes.ts";
+
+// Snapshots published before routine settings used mobile's vocabulary still
+// hold legacy portal values; read them as what the phone does with them.
+const nullableSetting = <T>(normalize: (value: unknown) => T | null) =>
+	z
+		.string()
+		.nullish()
+		.transform((value) => normalize(value));
 
 const difficultyEnum = z.enum(["Beginner", "Intermediate", "Advanced"]);
 const itemTypeEnum = z.enum(["routine", "cycle"]);
@@ -17,15 +33,15 @@ export const routineExerciseSnapshotSchema = z.object({
 	name: z.string().default("Exercise"),
 	muscle_group: z.string().default("General"),
 	exercise_id: z.string().nullable().optional(),
-	sets: z.number().default(3),
-	reps: z.number().default(10),
-	weight: z.number().default(0),
-	rest_seconds: z.number().default(90),
-	duration_seconds: z.number().nullable().optional(),
-	mode: z.string().default("OLD_SCHOOL"),
-	order_index: z.number().default(0),
+	sets: z.number().int().nonnegative().default(3),
+	reps: z.number().int().nonnegative().default(10),
+	weight: z.number().finite().nonnegative().default(0),
+	rest_seconds: z.number().finite().nonnegative().default(90),
+	duration_seconds: z.number().finite().nonnegative().nullable().optional(),
+	mode: z.string().default(DEFAULT_WIRE_MODE),
+	order_index: z.number().int().nonnegative().default(0),
 	superset_id: z.string().nullable().optional(),
-	superset_color: z.string().nullable().optional(),
+	superset_color: nullableSetting(toSupersetColorName),
 	superset_order: z.number().nullable().optional(),
 	per_set_weights: nullableUnknownSchema,
 	per_set_rest: nullableUnknownSchema,
@@ -34,12 +50,14 @@ export const routineExerciseSnapshotSchema = z.object({
 	is_amrap: z.boolean().nullable().optional().default(false),
 	is_bodyweight: z.boolean().nullable().optional().default(false),
 	pr_percentage: z.number().nullable().optional(),
-	rep_count_timing: z.string().nullable().optional(),
-	stop_at_position: z.string().nullable().optional(),
+	rep_count_timing: nullableSetting(toRepCountTiming),
+	stop_at_position: nullableSetting(toStopAtPosition),
 	stall_detection: z.boolean().nullable().optional().default(true),
-	eccentric_load: z.string().nullable().optional(),
-	echo_level: z.string().nullable().optional(),
+	eccentric_load: nullableSetting(normalizeEccentricLoad),
+	echo_level: nullableSetting(toEchoLevel),
 	warmup_sets: nullableUnknownSchema,
+	drop_set_enabled: z.boolean().nullable().optional().default(false),
+	drop_set_min_weight_kg: z.number().finite().nullable().optional(),
 });
 
 export const routineExercisesSnapshotSchema = z.array(
@@ -54,8 +72,8 @@ export const embeddedRoutineSnapshotSchema = z.object({
 	source_routine_id: z.string().nullable().optional(),
 	name: z.string().default("Imported Routine"),
 	description: z.string().nullable().optional().default(""),
-	exercise_count: z.number().default(0),
-	estimated_duration: z.number().default(0),
+	exercise_count: z.number().int().nonnegative().default(0),
+	estimated_duration: z.number().finite().nonnegative().default(0),
 	tags: z.array(z.string()).nullable().optional().default([]),
 	exercises: routineExercisesSnapshotSchema.default([]),
 });
@@ -65,21 +83,22 @@ export type EmbeddedRoutineSnapshot = z.infer<
 >;
 
 export const cycleDaySnapshotSchema = z.object({
-	day_number: z.number(),
+	day_number: z.number().int().nonnegative(),
 	day_type: z.string().default("workout"),
 	routine_id: z.string().nullable().optional(),
-	weight_adjustment: z.number().default(0),
-	rep_modifier: z.number().default(0),
-	rest_override: z.number().nullable().optional(),
+	// Adjustments may be negative (e.g. deload weeks), so only require finite.
+	weight_adjustment: z.number().finite().default(0),
+	rep_modifier: z.number().finite().default(0),
+	rest_override: z.number().finite().nonnegative().nullable().optional(),
 	notes: z.string().nullable().optional(),
 	rest_type: z.string().nullable().optional(),
 	routine: embeddedRoutineSnapshotSchema.nullable().optional(),
 });
 
 export const cycleSnapshotSchema = z.object({
-	duration_weeks: z.number(),
-	workout_days: z.number().optional(),
-	rest_days: z.number().optional(),
+	duration_weeks: z.number().int().positive(),
+	workout_days: z.number().int().nonnegative().optional(),
+	rest_days: z.number().int().nonnegative().optional(),
 	progression_settings: nullableUnknownSchema,
 	deload_settings: nullableUnknownSchema,
 	days: z.array(cycleDaySnapshotSchema).default([]),
@@ -92,11 +111,19 @@ const routineSnapshotValueSchema = z
 		(value) => value ?? null,
 		routineExercisesSnapshotSchema.nullable(),
 	)
-	.catch(null);
+	.catch((ctx) => {
+		// Don't fail the whole detail query on a corrupt snapshot, but surface it
+		// instead of silently dropping the preview data.
+		console.error("[community] invalid exercises_snapshot", ctx.error);
+		return null;
+	});
 
 const cycleSnapshotValueSchema = z
 	.preprocess((value) => value ?? null, cycleSnapshotSchema.nullable())
-	.catch(null);
+	.catch((ctx) => {
+		console.error("[community] invalid cycle_snapshot", ctx.error);
+		return null;
+	});
 
 // --- Shared Routine ---
 

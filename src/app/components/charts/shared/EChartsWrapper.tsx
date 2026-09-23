@@ -9,6 +9,7 @@ import {
 	DataZoomComponent,
 	GridComponent,
 	LegendComponent,
+	MarkLineComponent,
 	TitleComponent,
 	ToolboxComponent,
 	TooltipComponent,
@@ -39,9 +40,10 @@ echarts.use([
 	TitleComponent,
 	DataZoomComponent,
 	ToolboxComponent,
+	MarkLineComponent,
 ]);
 
-const CSS_VARIABLES: Record<keyof ThemeTokens | string, string> = {
+const CSS_VARIABLES: Record<string, string> = {
 	"--primary": "primary",
 	"--primary-foreground": "primaryForeground",
 	"--accent": "accent",
@@ -113,6 +115,8 @@ function resolveChartOption<T>(value: T, tokens: ThemeTokens): T {
  * Shared ECharts wrapper with Phoenix theme, responsive sizing, and loading state.
  * Uses tree-shakeable imports to minimize bundle size (~200-300KB vs ~800KB full).
  * Option updates fully replace the previous config (notMerge=true).
+ * Canvas colors resolve CSS variables / color-mix() to concrete values so light
+ * and dark themes both paint correctly.
  */
 interface EChartsWrapperProps {
 	option: echarts.EChartsCoreOption;
@@ -130,6 +134,7 @@ export function EChartsWrapper({
 	onEvents,
 }: EChartsWrapperProps) {
 	const chartRef = useRef<ReactEChartsCore>(null);
+	const containerRef = useRef<HTMLDivElement>(null);
 	useThemeTokens();
 	const resolvedTokens = getThemeTokens();
 	const resolvedOption = useMemo(
@@ -141,29 +146,42 @@ export function EChartsWrapper({
 		return "phoenix";
 	}, [resolvedTokens]);
 
-	// Handle responsive resize
+	// Handle responsive resize: window resize plus container-size changes
+	// (tabs/cards/sidebars can resize the chart without a window resize).
 	useEffect(() => {
-		const handleResize = () => chartRef.current?.getEchartsInstance()?.resize();
-		window.addEventListener("resize", handleResize);
-		return () => window.removeEventListener("resize", handleResize);
+		const resize = () => chartRef.current?.getEchartsInstance()?.resize();
+		window.addEventListener("resize", resize);
+
+		let observer: ResizeObserver | undefined;
+		if (typeof ResizeObserver !== "undefined" && containerRef.current) {
+			observer = new ResizeObserver(() => resize());
+			observer.observe(containerRef.current);
+		}
+
+		return () => {
+			window.removeEventListener("resize", resize);
+			observer?.disconnect();
+		};
 	}, []);
 
 	return (
-		<ReactEChartsCore
-			ref={chartRef}
-			echarts={echarts}
-			option={resolvedOption}
-			theme={themeName}
-			style={{ height, width: "100%" }}
-			className={className}
-			showLoading={loading}
-			loadingOption={{
-				text: "",
-				color: resolvedTokens.primary,
-				maskColor: withAlpha(resolvedTokens.background, 0.8),
-			}}
-			onEvents={onEvents}
-			notMerge
-		/>
+		<div ref={containerRef} style={{ width: "100%", height }}>
+			<ReactEChartsCore
+				ref={chartRef}
+				echarts={echarts}
+				option={resolvedOption}
+				theme={themeName}
+				style={{ height: "100%", width: "100%" }}
+				className={className}
+				showLoading={loading}
+				loadingOption={{
+					text: "",
+					color: resolvedTokens.primary,
+					maskColor: withAlpha(resolvedTokens.background, 0.8),
+				}}
+				onEvents={onEvents}
+				notMerge
+			/>
+		</div>
 	);
 }

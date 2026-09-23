@@ -2,10 +2,18 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Database, Json } from "@/lib/database.types";
 import { supabase } from "@/lib/supabase";
+import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
+import {
+	normalizeEccentricLoad,
+	toEchoLevel,
+	toRepCountTiming,
+	toStopAtPosition,
+	toSupersetColorName,
+	toWireMode,
+} from "../../supabase/functions/_shared/workoutModes.ts";
 
 function estimatedRoutineDurationSeconds(
 	exercises: RoutineExerciseInput[],
@@ -18,20 +26,21 @@ function estimatedRoutineDurationSeconds(
 }
 
 function normalizePerSetWeights(per: unknown): Json | null {
+	// The builder collects per_set_weights per cable, like `weight`, which is
+	// exactly what is stored (KD-8). No conversion.
 	if (per == null) return null;
-	// UI collects per_set_weights in the same "total weight" units as the
-	// single `weight` field (which is divided by WEIGHT_MULTIPLIER before
-	// storage). Divide array entries by the same multiplier so the stored
-	// per-cable representation stays consistent.
-	if (Array.isArray(per)) {
-		return per.map((x) =>
-			typeof x === "number" ? x / WEIGHT_MULTIPLIER : x,
-		) as Json;
-	}
 	return per as Json;
 }
 
 interface RoutineExerciseInput {
+	/**
+	 * The `routine_exercises.id` this exercise already has, when the routine is
+	 * being edited. Sent back on update so the row keeps its identity: mobile
+	 * keys per-exercise rack and scaling defaults by this id, and regenerating
+	 * it on every portal save silently resets them. Ignored on create — the
+	 * create RPC mints its own ids.
+	 */
+	id?: string | null;
 	name: string;
 	muscle_group: string;
 	exercise_id?: string | null;
@@ -56,29 +65,64 @@ interface RoutineExerciseInput {
 	stall_detection?: boolean;
 	eccentric_load?: string | null;
 	echo_level?: string | null;
+	drop_set_enabled?: boolean;
+	drop_set_min_weight_kg?: number | null;
 }
 
-type RoutineExerciseInsert =
-	Database["public"]["Tables"]["routine_exercises"]["Insert"];
+/**
+ * A child element of a create/update RPC payload. `routine_id` is omitted:
+ * both RPCs set it themselves from the parent they just created or matched,
+ * and on create there is no id to send yet.
+ */
+type RoutineExerciseRow = Omit<
+	Database["public"]["Tables"]["routine_exercises"]["Insert"],
+	"routine_id"
+>;
 
-function toRoutineExerciseRows(
-	routineId: string,
+/**
+ * Mobile only understands wire mode names (OLD_SCHOOL, ECHO, ...). Normalize
+ * display names / legacy aliases and refuse anything else rather than storing
+ * a value mobile would silently turn into Old School.
+ *
+ * `preservedModes` are unrecognized values that were already stored on the
+ * routine being edited (e.g. a mode from a newer mobile build). They are
+ * written back verbatim so a portal edit never downgrades them; the DB
+ * trigger likewise passes unknown values through.
+ */
+function requireWireMode(
+	mode: string,
+	preservedModes: readonly string[] = [],
+): string {
+	const wire = toWireMode(mode);
+	if (wire) return wire;
+	if (preservedModes.includes(mode)) return mode;
+	throw new Error(`Unknown workout mode: ${mode}`);
+}
+
+export function toRoutineExerciseRows(
 	exercises: RoutineExerciseInput[],
-): RoutineExerciseInsert[] {
+	preservedModes: readonly string[] = [],
+	{ withIds = false }: { withIds?: boolean } = {},
+): RoutineExerciseRow[] {
 	return exercises.map((ex, i) => ({
-		routine_id: routineId,
+		// Only on update, and only when the exercise already has a row: the
+		// create RPC ignores payload ids, so sending them there would be
+		// misleading noise.
+		...(withIds && ex.id ? { id: ex.id } : {}),
 		name: ex.name,
 		muscle_group: ex.muscle_group,
 		exercise_id: ex.exercise_id ?? null,
 		sets: ex.sets,
 		reps: ex.reps,
-		weight: ex.weight / WEIGHT_MULTIPLIER,
+		weight: ex.weight, // per cable, stored as entered (KD-8)
 		rest_seconds: ex.rest_seconds,
 		duration_seconds: ex.duration_seconds ?? null,
-		mode: ex.mode,
+		mode: requireWireMode(ex.mode, preservedModes),
 		order_index: i,
 		superset_id: ex.superset_id ?? null,
-		superset_color: ex.superset_color ?? null,
+		// Settings are stored in mobile's vocabulary. Anything outside it is
+		// stored as null, which is the default mobile would parse it to.
+		superset_color: toSupersetColorName(ex.superset_color),
 		superset_order: ex.superset_order ?? null,
 		per_set_weights: normalizePerSetWeights(ex.per_set_weights),
 		per_set_rest: (ex.per_set_rest ?? null) as Json,
@@ -86,11 +130,13 @@ function toRoutineExerciseRows(
 		is_amrap: ex.is_amrap ?? false,
 		is_bodyweight: ex.is_bodyweight ?? false,
 		pr_percentage: ex.pr_percentage ?? null,
-		rep_count_timing: ex.rep_count_timing ?? null,
-		stop_at_position: ex.stop_at_position ?? null,
+		rep_count_timing: toRepCountTiming(ex.rep_count_timing),
+		stop_at_position: toStopAtPosition(ex.stop_at_position),
 		stall_detection: ex.stall_detection ?? true,
-		eccentric_load: ex.eccentric_load ?? null,
-		echo_level: ex.echo_level ?? null,
+		eccentric_load: normalizeEccentricLoad(ex.eccentric_load),
+		echo_level: toEchoLevel(ex.echo_level),
+		drop_set_enabled: ex.drop_set_enabled ?? false,
+		drop_set_min_weight_kg: ex.drop_set_min_weight_kg ?? null,
 	}));
 }
 
@@ -102,6 +148,8 @@ interface SaveRoutineInput {
 
 interface UpdateRoutineInput extends SaveRoutineInput {
 	routineId: string;
+	/** Unrecognized modes already stored on this routine; saved verbatim. */
+	preservedModes?: readonly string[];
 }
 
 export function useSaveRoutine() {
@@ -111,39 +159,39 @@ export function useSaveRoutine() {
 	return useMutation({
 		mutationFn: async (input: SaveRoutineInput) => {
 			if (!user) throw new Error("Must be logged in to save routines");
+			// Atomic create via RPC: the routine row and its exercises are
+			// inserted in one transaction, so a rejected exercise can no longer
+			// leave an orphaned routine behind, and there is no best-effort
+			// compensating delete left to fail silently.
+			// `toRoutineExerciseRows` rejects an unknown mode, and it runs before
+			// the call, so nothing is written for one.
+			const exercises = toRoutineExerciseRows(input.exercises);
+			// Validate modes before the parent insert so an unknown mode can't
+			// leave an orphaned routine row behind.
+			for (const ex of input.exercises) requireWireMode(ex.mode);
 
-			// Create the routine row
-			const { data: routine, error: routineError } = await supabase
-				.from("routines")
-				.insert({
-					user_id: user.id,
-					local_profile_id: useProfileFilterStore.getState().activeProfileId,
-					name: input.name,
-					description: input.description ?? "",
-					exercise_count: input.exercises.length,
-					estimated_duration: estimatedRoutineDurationSeconds(input.exercises),
-					times_completed: 0,
-					is_favorite: false,
-					tags: [],
-				})
-				.select("id")
-				.single();
+			const { data: routineId, error } = await supabase.rpc(
+				"create_routine_with_exercises",
+				{
+					p_name: input.name,
+					p_description: input.description ?? "",
+					p_exercise_count: input.exercises.length,
+					p_estimated_duration: estimatedRoutineDurationSeconds(
+						input.exercises,
+					),
+					p_exercises: exercises as unknown as Json,
+					// NULL = the default profile. `routines.local_profile_id` carries
+					// a composite FK to local_profiles(user_id, id), so the only
+					// non-null value that can be stored is one of this user's own
+					// profile ids — which is what the filter store holds.
+					p_local_profile_id: useProfileFilterStore.getState().activeProfileId,
+				},
+			);
 
-			if (routineError) throw routineError;
+			if (error) throw error;
+			if (!routineId) throw new Error("Routine was not created");
 
-			// Insert exercises
-			if (input.exercises.length > 0) {
-				const routineExercises = toRoutineExerciseRows(
-					routine.id,
-					input.exercises,
-				);
-				const { error: exError } = await supabase
-					.from("routine_exercises")
-					.insert(routineExercises);
-				if (exError) throw exError;
-			}
-
-			return routine;
+			return { id: routineId };
 		},
 
 		onSuccess: () => {
@@ -153,10 +201,23 @@ export function useSaveRoutine() {
 
 		onError: (error: Error) => {
 			console.error("[useSaveRoutine] failed:", error);
+			// Routine authoring is FLAME-only and enforced server-side, so a
+			// plan that lapsed while the builder was open fails here. "Try
+			// again" would be a lie; say what actually has to change.
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
 			toast.error("Failed to save routine. Please try again.");
 		},
 	});
 }
+
+/** Sentinel for "the favourite UPDATE matched no row". */
+const ROUTINE_NOT_UPDATED = "Routine was not updated";
 
 export function useToggleFavorite() {
 	const { user } = useAuth();
@@ -171,18 +232,40 @@ export function useToggleFavorite() {
 			isFavorite: boolean;
 		}) => {
 			if (!user) throw new Error("Must be logged in");
-			const { error } = await supabase
+			// `.select("id")` so a 0-row UPDATE is observable. The routines
+			// UPDATE policy is owner AND FLAME, so a user whose plan lapsed
+			// while this page was open matches no row and PostgREST returns
+			// success with an empty body — silently doing nothing.
+			const { data: updated, error } = await supabase
 				.from("routines")
 				.update({ is_favorite: isFavorite })
 				.eq("id", routineId)
-				.eq("user_id", user.id);
+				.eq("user_id", user.id)
+				.select("id")
+				.maybeSingle();
 			if (error) throw error;
+			if (!updated) throw new Error(ROUTINE_NOT_UPDATED);
 			return { routineId, isFavorite };
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({
 				queryKey: queryKeys.routines.all,
 			});
+		},
+		onError: (error: Error) => {
+			console.error("[useToggleFavorite] failed:", error);
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
+			toast.error(
+				error.message === ROUTINE_NOT_UPDATED
+					? "Routine not found, or you can no longer edit it."
+					: "Failed to update this routine. Please try again.",
+			);
 		},
 	});
 }
@@ -195,37 +278,39 @@ export function useUpdateRoutine() {
 		mutationFn: async (input: UpdateRoutineInput) => {
 			if (!user) throw new Error("Must be logged in to update routines");
 
-			// Update routine row
-			const { error: routineError } = await supabase
-				.from("routines")
-				.update({
-					name: input.name,
-					description: input.description ?? "",
-					exercise_count: input.exercises.length,
-					estimated_duration: estimatedRoutineDurationSeconds(input.exercises),
-				})
-				.eq("id", input.routineId);
+			// Atomic update via RPC: the parent update + exercise delete/replace
+			// run in one transaction (server-side), scoped to auth.uid(), so a
+			// failed insert can no longer leave the routine with zero exercises.
+			const { data: updatedId, error } = await supabase.rpc(
+				"update_routine_with_exercises",
+				{
+					p_routine_id: input.routineId,
+					p_name: input.name,
+					p_description: input.description ?? "",
+					p_exercise_count: input.exercises.length,
+					p_estimated_duration: estimatedRoutineDurationSeconds(
+						input.exercises,
+					),
+					// `withIds`: an exercise that already has a row sends its id
+					// back, so the row survives the save instead of being
+					// regenerated. Mobile keys per-exercise rack and scaling
+					// defaults by that id.
+					p_exercises: toRoutineExerciseRows(
+						input.exercises,
+						input.preservedModes,
+						{ withIds: true },
+					).map((row) => ({
+						...row,
+						routine_id: input.routineId,
+					})) as unknown as Json,
+				},
+			);
 
-			if (routineError) throw routineError;
-
-			// Delete old exercises, insert new ones
-			const { error: deleteError } = await supabase
-				.from("routine_exercises")
-				.delete()
-				.eq("routine_id", input.routineId);
-
-			if (deleteError) throw deleteError;
-
-			if (input.exercises.length > 0) {
-				const routineExercises = toRoutineExerciseRows(
-					input.routineId,
-					input.exercises,
+			if (error) throw error;
+			if (!updatedId)
+				throw new Error(
+					"Routine not found or you don't have permission to update it",
 				);
-				const { error: exError } = await supabase
-					.from("routine_exercises")
-					.insert(routineExercises);
-				if (exError) throw exError;
-			}
 
 			return { id: input.routineId };
 		},
@@ -240,6 +325,13 @@ export function useUpdateRoutine() {
 
 		onError: (error: Error) => {
 			console.error("[useUpdateRoutine] failed:", error);
+			if (isTierDenied(error)) {
+				toast.error(TIER_DENIED_MESSAGE);
+				queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.all,
+				});
+				return;
+			}
 			toast.error("Failed to update routine. Please try again.");
 		},
 	});

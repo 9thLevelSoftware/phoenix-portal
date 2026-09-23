@@ -8,6 +8,7 @@ import {
 	buildCommunityPercentileRankings,
 	buildEstimatedCommunityPercentileRankings,
 } from "@/lib/community-atlas";
+import { FEATURE_MIN_TIER } from "@/lib/tierMatrix";
 import { convertWeight, type WeightUnit } from "@/lib/units";
 import { communityBenchmarksOptions } from "@/queries/benchmarks";
 import { userRankingOptions } from "@/queries/leaderboard";
@@ -98,7 +99,7 @@ export default function PerformanceTab({
 			/>
 
 			<SubscriptionGate
-				requiredTier="INFERNO"
+				requiredTier={FEATURE_MIN_TIER.biomechanics}
 				featureName="Performance Analytics"
 			>
 				{/* Performance Metrics (Velocity, Power, TUT) */}

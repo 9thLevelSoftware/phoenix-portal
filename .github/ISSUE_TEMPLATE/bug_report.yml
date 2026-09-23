@@ -43,7 +43,7 @@ body:
       label: Mobile App Version
       description: >
         Required if you selected **Mobile App only** or **Both** above.
-        What version of the Vitruvian Phoenix app are you using?
+        What version of the Phoenix app are you using?
       placeholder: "e.g., 1.2.0"
     validations:
       required: false

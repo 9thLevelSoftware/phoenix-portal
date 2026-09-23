@@ -38,12 +38,33 @@ import { Switch } from "@/app/components/ui/switch";
 import { Textarea } from "@/app/components/ui/textarea";
 import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
 import { useAuth } from "@/app/hooks/useAuth";
+import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import type { Json } from "@/lib/database.types";
+import {
+	type WeightUnit,
+	weightInputToKg,
+	weightInputValue,
+} from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 import { useSaveCycle, useUpdateCycle } from "@/mutations/cycles";
 import { cycleDetailOptions } from "@/queries/cycles";
 import { routineListOptions } from "@/queries/routines";
+import {
+	buildCycleProgressionSettings,
+	clampFrequencyCycles,
+	MAX_FREQUENCY_CYCLES,
+	MIN_FREQUENCY_CYCLES,
+	MOBILE_DEFAULT_FREQUENCY_CYCLES,
+	readCycleProgressionSettings,
+} from "@/schemas/transforms";
 
 interface DayConfig {
+	/**
+	 * `cycle_days.id`, present only for a day loaded from an existing cycle.
+	 * The update mutation sends it back so the row keeps its identity; a day
+	 * added in this session has none and the server mints one.
+	 */
+	id?: string;
 	dayNumber: number;
 	type: "workout" | "rest";
 	routineId?: string;
@@ -72,7 +93,9 @@ export function CycleBuilder() {
 
 	const [cycleName, setCycleName] = useState("Untitled Cycle");
 	const [description, setDescription] = useState("");
-	const [duration, setDuration] = useState(7);
+	// Cycle length in WEEKS — persisted to `duration_weeks`. Distinct from the
+	// day-template length, which is derived from `days.length`.
+	const [durationWeeks, setDurationWeeks] = useState(4);
 	const [startDate, setStartDate] = useState<string>("");
 	const [days, setDays] = useState<DayConfig[]>([
 		{ dayNumber: 1, type: "workout" },
@@ -88,26 +111,36 @@ export function CycleBuilder() {
 	const [showRoutinePicker, setShowRoutinePicker] = useState(false);
 	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-	const [formErrors, setFormErrors] = useState<string[]>([]);
 
-	// Progression settings
+	// Progression settings. Defaults mirror what the phone does when a cycle
+	// has no progression keys (no weight increase, every 2 cycles), because
+	// untouched controls never write mobile keys (see
+	// buildCycleProgressionSettings).
 	const [progressionType, setProgressionType] = useState<
 		"percentage" | "fixed" | "manual"
-	>("percentage");
+	>("manual");
 	const [progressionAmount, setProgressionAmount] = useState(2.5);
-	const [progressionFrequency, setProgressionFrequency] = useState(1);
+	const [progressionFrequency, setProgressionFrequency] = useState(
+		MOBILE_DEFAULT_FREQUENCY_CYCLES,
+	);
+	// Mobile-mapped controls the user changed in this session.
+	const [weightTouched, setWeightTouched] = useState(false);
+	const [frequencyTouched, setFrequencyTouched] = useState(false);
 	const [progressionTrigger, setProgressionTrigger] = useState<
 		"all_sets" | "target_rpe" | "cycle_complete"
 	>("target_rpe");
 	const [upperBodyIncrement, setUpperBodyIncrement] = useState(2.5);
 	const [lowerBodyIncrement, setLowerBodyIncrement] = useState(5.0);
-	const [includeDeload, setIncludeDeload] = useState(true);
+	// Deload is a portal-only planning aid (mobile has no deload yet), so it
+	// is off unless the user opts in or the stored cycle already has one.
+	const [includeDeload, setIncludeDeload] = useState(false);
 	const [deloadFrequency, setDeloadFrequency] = useState(4);
 	const [deloadIntensity, setDeloadIntensity] = useState(60);
 	const [deloadVolume, setDeloadVolume] = useState(50);
 
 	// Fetch real routines from Supabase
 	const { user } = useAuth();
+	const unit = usePreferredWeightUnit();
 	const { data: routinesRaw } = useQuery({
 		...routineListOptions(user?.id ?? ""),
 		enabled: !!user?.id,
@@ -130,7 +163,7 @@ export function CycleBuilder() {
 		if (existingCycle) {
 			setCycleName(existingCycle.name);
 			setDescription(existingCycle.description ?? "");
-			setDuration(existingCycle.duration_weeks);
+			setDurationWeeks(existingCycle.duration_weeks || 4);
 			setStartDate(
 				existingCycle.started_at
 					? existingCycle.started_at.toISOString().split("T")[0]
@@ -139,6 +172,7 @@ export function CycleBuilder() {
 			if (existingCycle.cycle_days.length > 0) {
 				setDays(
 					existingCycle.cycle_days.map((d) => ({
+						id: d.id,
 						dayNumber: d.day_number,
 						type: d.day_type as "workout" | "rest",
 						routineId: d.routine_id ?? undefined,
@@ -151,16 +185,19 @@ export function CycleBuilder() {
 				);
 			}
 			if (existingCycle.progression_settings) {
-				const ps = existingCycle.progression_settings as Record<
-					string,
-					Json | undefined
-				>;
+				// Values are strings (mobile's Map<String, String> schema), numbers
+				// on legacy rows, or mobile keys only on phone-authored cycles.
+				const ps = readCycleProgressionSettings(
+					existingCycle.progression_settings,
+				);
 				if (ps.type) setProgressionType(ps.type);
-				if (ps.amount) setProgressionAmount(ps.amount);
-				if (ps.frequency) setProgressionFrequency(ps.frequency);
+				if (ps.amount !== undefined) setProgressionAmount(ps.amount);
+				if (ps.frequency !== undefined) setProgressionFrequency(ps.frequency);
 				if (ps.trigger) setProgressionTrigger(ps.trigger);
-				if (ps.upperIncrement) setUpperBodyIncrement(ps.upperIncrement);
-				if (ps.lowerIncrement) setLowerBodyIncrement(ps.lowerIncrement);
+				if (ps.upperIncrement !== undefined)
+					setUpperBodyIncrement(ps.upperIncrement);
+				if (ps.lowerIncrement !== undefined)
+					setLowerBodyIncrement(ps.lowerIncrement);
 			}
 			if (existingCycle.deload_settings) {
 				const ds = existingCycle.deload_settings as Record<
@@ -208,26 +245,20 @@ export function CycleBuilder() {
 	};
 
 	const handleSave = () => {
-		const validationErrors = [
-			...(cycleName.trim() ? [] : ["Enter a name for this training cycle."]),
-			...(duration >= 1 && duration <= 52
-				? []
-				: ["Set a cycle duration between 1 and 52 weeks."]),
-		];
-		if (validationErrors.length > 0) {
-			setFormErrors(validationErrors);
-			return;
-		}
-		setFormErrors([]);
-
-		const progressionSettings = {
-			type: progressionType,
-			amount: progressionAmount,
-			frequency: progressionFrequency,
-			trigger: progressionTrigger,
-			upperIncrement: upperBodyIncrement,
-			lowerIncrement: lowerBodyIncrement,
-		};
+		// Every value is a string so mobile's Map<String, String> decode
+		// succeeds; mobile reads frequencyCycles / weightIncreasePercent.
+		const progressionSettings = buildCycleProgressionSettings(
+			{
+				type: progressionType,
+				amount: progressionAmount,
+				frequency: progressionFrequency,
+				trigger: progressionTrigger,
+				upperIncrement: upperBodyIncrement,
+				lowerIncrement: lowerBodyIncrement,
+			},
+			existingCycle?.progression_settings,
+			{ weight: weightTouched, frequency: frequencyTouched },
+		);
 
 		const deloadSettings = includeDeload
 			? {
@@ -238,11 +269,15 @@ export function CycleBuilder() {
 			: null;
 
 		const payload = {
-			name: cycleName.trim(),
+			name: cycleName,
 			description,
-			duration_weeks: duration,
+			duration_weeks: durationWeeks,
 			started_at: startDate || null,
 			days: days.map((d) => ({
+				// Present only for days loaded from an existing cycle. The update
+				// mutation sends it so the row survives the save; the create
+				// mutation drops it.
+				id: d.id,
 				day_number: d.dayNumber,
 				day_type: d.type,
 				routine_id: d.routineId ?? null,
@@ -325,7 +360,6 @@ export function CycleBuilder() {
 			type: "workout",
 		};
 		setDays([...days, newDay]);
-		setDuration(days.length + 1);
 		setHasUnsavedChanges(true);
 	};
 
@@ -336,7 +370,14 @@ export function CycleBuilder() {
 				.filter((d) => d.dayNumber !== dayNumber)
 				.map((d, i) => ({ ...d, dayNumber: i + 1 })),
 		);
-		setDuration(days.length - 1);
+		// Reconcile the selected day after reindexing so the editor doesn't end up
+		// pointing at a different (reindexed) day than the user had open.
+		setSelectedDay((current) => {
+			if (current == null) return current;
+			if (current === dayNumber) return null; // removed the open day -> close editor
+			// Days after the removed one shift down by one.
+			return current > dayNumber ? current - 1 : current;
+		});
 		setHasUnsavedChanges(true);
 	};
 
@@ -436,43 +477,42 @@ export function CycleBuilder() {
 					animate={{ opacity: 1, y: 0 }}
 				>
 					<Card className="p-6 bg-surface-2 border-secondary">
-						<h2 className="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
+						<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
 							<Calendar className="w-5 h-5 text-primary" />
 							Cycle Details
 						</h2>
 
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 							<div>
-								<Label
-									htmlFor="cycle-duration"
-									className="text-secondary-foreground mb-2"
-								>
-									Duration (Days)
+								<Label className="text-secondary-foreground mb-2">
+									Cycle Length (Weeks)
 								</Label>
 								<div className="flex items-center gap-2">
 									<Input
-										id="cycle-duration"
 										type="number"
-										value={duration}
+										value={durationWeeks}
 										onChange={(e) => {
-											setDuration(parseInt(e.target.value, 10) || 7);
+											const parsed = parseInt(e.target.value, 10);
+											setDurationWeeks(
+												Number.isFinite(parsed) ? Math.max(1, parsed) : 1,
+											);
 											setHasUnsavedChanges(true);
 										}}
 										className="bg-background border-secondary w-24"
 										min="1"
 									/>
 									<div className="flex gap-2">
-										{[3, 4, 5, 6, 7].map((num) => (
+										{[4, 6, 8, 12, 16].map((num) => (
 											<Button
 												key={num}
 												size="sm"
-												variant={duration === num ? "default" : "outline"}
+												variant={durationWeeks === num ? "default" : "outline"}
 												onClick={() => {
-													setDuration(num);
+													setDurationWeeks(num);
 													setHasUnsavedChanges(true);
 												}}
 												className={
-													duration === num
+													durationWeeks === num
 														? "bg-primary border-0"
 														: "border-secondary"
 												}
@@ -482,6 +522,10 @@ export function CycleBuilder() {
 										))}
 									</div>
 								</div>
+								<p className="text-xs text-muted-foreground mt-1">
+									The day schedule below defines one repeating week (
+									{days.length} day{days.length !== 1 ? "s" : ""}).
+								</p>
 							</div>
 
 							<div className="md:col-span-2">
@@ -563,6 +607,7 @@ export function CycleBuilder() {
 										onClick={() => handleDayClick(day.dayNumber)}
 										onRemove={() => handleRemoveDay(day.dayNumber)}
 										isSelected={selectedDay === day.dayNumber}
+										canRemove={days.length > 1}
 									/>
 								))}
 							</div>
@@ -610,16 +655,19 @@ export function CycleBuilder() {
 						progressionType={progressionType}
 						onProgressionTypeChange={(v: "percentage" | "fixed" | "manual") => {
 							setProgressionType(v);
+							setWeightTouched(true);
 							setHasUnsavedChanges(true);
 						}}
 						progressionAmount={progressionAmount}
 						onProgressionAmountChange={(v: number) => {
 							setProgressionAmount(v);
+							setWeightTouched(true);
 							setHasUnsavedChanges(true);
 						}}
 						progressionFrequency={progressionFrequency}
 						onProgressionFrequencyChange={(v: number) => {
 							setProgressionFrequency(v);
+							setFrequencyTouched(true);
 							setHasUnsavedChanges(true);
 						}}
 						progressionTrigger={progressionTrigger}
@@ -659,6 +707,7 @@ export function CycleBuilder() {
 							setDeloadVolume(v);
 							setHasUnsavedChanges(true);
 						}}
+						unit={unit}
 					/>
 				</motion.div>
 
@@ -747,7 +796,7 @@ export function CycleBuilder() {
 				cycle={{
 					name: cycleName,
 					description,
-					duration,
+					duration: days.length,
 					days,
 					progression: {
 						type: progressionType,
@@ -763,6 +812,7 @@ export function CycleBuilder() {
 							}
 						: null,
 				}}
+				unit={unit}
 			/>
 
 			{/* Unsaved Changes Dialog */}
@@ -788,11 +838,13 @@ function DayCard({
 	onClick,
 	onRemove,
 	isSelected,
+	canRemove,
 }: {
 	day: DayConfig;
 	onClick: () => void;
 	onRemove: () => void;
 	isSelected: boolean;
+	canRemove: boolean;
 }) {
 	return (
 		<motion.div
@@ -846,16 +898,18 @@ function DayCard({
 					</div>
 				)}
 
-				<button
-					type="button"
-					onClick={(e) => {
-						e.stopPropagation();
-						onRemove();
-					}}
-					className="absolute top-2 right-2 p-1 bg-destructive/20 hover:bg-destructive/40 rounded transition-colors"
-				>
-					<X className="w-3 h-3 text-destructive" />
-				</button>
+				{canRemove && (
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							onRemove();
+						}}
+						className="absolute top-2 right-2 p-1 bg-destructive/20 hover:bg-destructive/40 rounded transition-colors"
+					>
+						<X className="w-3 h-3 text-destructive" />
+					</button>
+				)}
 			</Card>
 		</motion.div>
 	);
@@ -1135,6 +1189,7 @@ function ProgressionRules({
 	onDeloadIntensityChange,
 	deloadVolume,
 	onDeloadVolumeChange,
+	unit,
 }: {
 	progressionType: "percentage" | "fixed" | "manual";
 	onProgressionTypeChange: (v: "percentage" | "fixed" | "manual") => void;
@@ -1158,10 +1213,17 @@ function ProgressionRules({
 	onDeloadIntensityChange: (v: number) => void;
 	deloadVolume: number;
 	onDeloadVolumeChange: (v: number) => void;
+	unit: WeightUnit;
 }) {
+	const progressionAmountDisplay =
+		progressionType === "fixed"
+			? weightInputValue(progressionAmount, unit)
+			: progressionAmount;
+	const fixedStep = unit === "lbs" ? 0.5 : 0.25;
+
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
-			<h2 className="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
+			<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
 				<Settings className="w-5 h-5 text-primary" />
 				Progression Rules
 			</h2>
@@ -1211,17 +1273,21 @@ function ProgressionRules({
 							>
 								{progressionType === "percentage"
 									? "Increase (%)"
-									: "Increase (kg)"}
+									: `Increase (${unit})`}
 							</Label>
 							<Input
 								id="progression-amount"
 								type="number"
-								value={progressionAmount}
+								value={progressionAmountDisplay}
 								onChange={(e) =>
-									onProgressionAmountChange(parseFloat(e.target.value) || 0)
+									onProgressionAmountChange(
+										progressionType === "fixed"
+											? weightInputToKg(e.target.value, unit)
+											: parseFloat(e.target.value) || 0,
+									)
 								}
 								className="bg-background border-secondary"
-								step={progressionType === "percentage" ? 0.5 : 0.25}
+								step={progressionType === "percentage" ? 0.5 : fixedStep}
 								min={0}
 							/>
 						</div>
@@ -1235,20 +1301,25 @@ function ProgressionRules({
 							htmlFor="progression-frequency"
 							className="text-secondary-foreground mb-2"
 						>
-							Progression Frequency (weeks)
+							Progress every N cycles
 						</Label>
 						<Input
 							id="progression-frequency"
 							type="number"
 							value={progressionFrequency}
 							onChange={(e) =>
-								onProgressionFrequencyChange(parseInt(e.target.value, 10) || 1)
+								onProgressionFrequencyChange(
+									clampFrequencyCycles(parseInt(e.target.value, 10) || 1),
+								)
 							}
 							className="bg-background border-secondary"
-							min={1}
+							min={MIN_FREQUENCY_CYCLES}
+							max={MAX_FREQUENCY_CYCLES}
+							step={1}
 						/>
 						<p className="text-xs text-muted-foreground mt-1">
-							How often to apply progression
+							The phone applies progression after every N completed runs through
+							the cycle (1-10), not every N weeks.
 						</p>
 					</div>
 
@@ -1288,40 +1359,36 @@ function ProgressionRules({
 				{/* Body-specific Increments */}
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 					<div>
-						<Label
-							htmlFor="upper-body-increment"
-							className="text-secondary-foreground mb-2"
-						>
-							Upper Body Increment (kg)
+						<Label className="text-secondary-foreground mb-2">
+							Upper Body Increment ({unit})
 						</Label>
 						<Input
-							id="upper-body-increment"
 							type="number"
-							value={upperBodyIncrement}
+							value={weightInputValue(upperBodyIncrement, unit)}
 							onChange={(e) =>
-								onUpperBodyIncrementChange(parseFloat(e.target.value) || 0)
+								onUpperBodyIncrementChange(
+									weightInputToKg(e.target.value, unit),
+								)
 							}
 							className="bg-background border-secondary"
-							step={0.25}
+							step={fixedStep}
 							min={0}
 						/>
 					</div>
 					<div>
-						<Label
-							htmlFor="lower-body-increment"
-							className="text-secondary-foreground mb-2"
-						>
-							Lower Body Increment (kg)
+						<Label className="text-secondary-foreground mb-2">
+							Lower Body Increment ({unit})
 						</Label>
 						<Input
-							id="lower-body-increment"
 							type="number"
-							value={lowerBodyIncrement}
+							value={weightInputValue(lowerBodyIncrement, unit)}
 							onChange={(e) =>
-								onLowerBodyIncrementChange(parseFloat(e.target.value) || 0)
+								onLowerBodyIncrementChange(
+									weightInputToKg(e.target.value, unit),
+								)
 							}
 							className="bg-background border-secondary"
-							step={0.5}
+							step={fixedStep}
 							min={0}
 						/>
 					</div>
@@ -1334,6 +1401,9 @@ function ProgressionRules({
 							<Label className="text-foreground text-base">Deload Week</Label>
 							<p className="text-xs text-muted-foreground">
 								Periodically reduce intensity for recovery
+							</p>
+							<p className="text-xs text-warning mt-1">
+								Planning aid — not applied on the machine yet
 							</p>
 						</div>
 						<Switch
@@ -1413,6 +1483,7 @@ function PreviewModal({
 	isOpen,
 	onClose,
 	cycle,
+	unit,
 }: {
 	isOpen: boolean;
 	onClose: () => void;
@@ -1429,6 +1500,7 @@ function PreviewModal({
 		};
 		deload: { frequency: number; intensity: number; volume: number } | null;
 	};
+	unit: WeightUnit;
 }) {
 	const workoutDays = cycle.days.filter((d) => d.type === "workout").length;
 	const restDays = cycle.days.filter((d) => d.type === "rest").length;
@@ -1510,18 +1582,19 @@ function PreviewModal({
 							Progression
 						</h4>
 						<div className="p-3 bg-background rounded-lg border border-secondary space-y-1">
-							<div className="text-sm text-foreground">
+							<div className="text-sm text-white">
 								Type:{" "}
 								<span className="text-primary capitalize">
 									{cycle.progression.type}
 								</span>
 							</div>
 							{cycle.progression.type !== "manual" && (
-								<div className="text-sm text-foreground">
+								<div className="text-sm text-white">
 									Amount:{" "}
 									<span className="text-primary">
-										{cycle.progression.amount}
-										{cycle.progression.type === "percentage" ? "%" : "kg"}
+										{cycle.progression.type === "percentage"
+											? `${cycle.progression.amount}%`
+											: formatLoad(cycle.progression.amount, null, unit)}
 									</span>
 								</div>
 							)}

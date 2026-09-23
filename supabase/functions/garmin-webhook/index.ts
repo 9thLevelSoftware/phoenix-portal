@@ -2,10 +2,12 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
+  buildGarminWebhookPersistRow,
   resolveGarminWebhookIdentity,
   type GarminIdentityCandidate,
 } from '../_shared/garminIdentity.ts';
 import { decryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
+import { hmacSha256Hex } from '../_shared/hmac.ts';
 
 /**
  * Garmin Connect webhook handler for activity push notifications.
@@ -82,10 +84,10 @@ function mapGarminActivityType(garminType: string): string {
 function normalizeGarminWebhookActivity(
   activity: GarminActivitySummary,
 ): Record<string, unknown> {
-  // Convert epoch seconds to ISO string
-  const startedAt = new Date(
-    (activity.startTimeInSeconds + (activity.startTimeOffsetInSeconds ?? 0)) * 1000,
-  ).toISOString();
+  // startTimeInSeconds is an absolute Unix epoch timestamp. startTimeOffsetInSeconds
+  // describes the local timezone offset and must NOT be added to the epoch — doing so
+  // stores local wall-clock time as UTC and shifts activities by hours for non-UTC users.
+  const startedAt = new Date(activity.startTimeInSeconds * 1000).toISOString();
 
   return {
     external_id: String(activity.activityId),
@@ -127,7 +129,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Validate webhook shared secret — mandatory, reject if not configured
+    // Validate HMAC-SHA256 signature — mandatory, reject if not configured
     const WEBHOOK_SECRET = Deno.env.get('GARMIN_WEBHOOK_SECRET');
     if (!WEBHOOK_SECRET) {
       console.error('[GARMIN_WEBHOOK] GARMIN_WEBHOOK_SECRET not configured');
@@ -137,20 +139,30 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check common webhook authentication headers
-    const providedSecret = req.headers.get('x-webhook-secret')
-      ?? req.headers.get('authorization')?.replace('Bearer ', '');
-    if (!providedSecret) {
+    // Read raw body text first so we can verify the signature over the exact bytes
+    // Garmin sends before we attempt JSON parsing.
+    const rawBody = await req.text();
+
+    // Garmin signs the request body with HMAC-SHA256 using the consumer secret and
+    // sends the hex digest in the x-garmin-signature header.
+    const providedSignature = req.headers.get('x-garmin-signature');
+    if (!providedSignature) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
 
-    // Timing-safe comparison to prevent timing side-channel attacks
+    // Compute expected HMAC-SHA256 of the raw request body keyed with the consumer secret.
+    const expectedSignature = await hmacSha256Hex(WEBHOOK_SECRET, rawBody);
+
+    // Timing-safe comparison: encode both hex strings and XOR byte-by-byte so the
+    // comparison time does not leak information about the correct signature.
     const encoder = new TextEncoder();
-    const a = encoder.encode(providedSecret);
-    const b = encoder.encode(WEBHOOK_SECRET);
+    const a = encoder.encode(providedSignature);
+    const b = encoder.encode(expectedSignature);
+    // Length check is safe to do outside the loop because HMAC-SHA256 hex output is
+    // always 64 chars — a length mismatch only reveals that the header was malformed.
     if (a.length !== b.length) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
@@ -168,8 +180,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    const payload: GarminWebhookPayload = await req.json();
-    const activities = payload.activities ?? payload.activityDetails ?? [];
+    const payload: GarminWebhookPayload = JSON.parse(rawBody);
+    // Garmin may deliver both `activities` (summaries) and `activityDetails` in the
+    // same payload. Merge and de-duplicate by activityId so detailed records are not
+    // dropped whenever summaries are also present. Details win on conflict.
+    const mergedById = new Map<number, GarminActivitySummary>();
+    for (const summary of payload.activities ?? []) {
+      mergedById.set(summary.activityId, summary);
+    }
+    for (const detail of payload.activityDetails ?? []) {
+      mergedById.set(detail.activityId, detail);
+    }
+    const activities = [...mergedById.values()];
 
     if (activities.length === 0) {
       // Acknowledge receipt even if no activities (could be a ping or other event)
@@ -269,12 +291,12 @@ Deno.serve(async (req) => {
         const { error: upsertError } = await supabase
           .from('external_activities')
           .upsert(
-            {
-              user_id: identity.userId,
-              ...normalized,
-              raw_data: activity,
-              synced_at: new Date().toISOString(),
-            },
+            buildGarminWebhookPersistRow(
+              identity.userId,
+              activity as unknown as Record<string, unknown>,
+              normalized,
+              new Date().toISOString(),
+            ),
             { onConflict: 'user_id,provider,external_id' },
           );
 
@@ -286,12 +308,18 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Update last_sync_at for this user's Garmin integration
-        await supabase
+        // Update last_sync_at for this user's Garmin integration. The activity is
+        // already persisted, so a failed timestamp update is non-fatal — log it but
+        // do not signal a retry (that would re-upsert already-stored activities).
+        const { error: lastSyncError } = await supabase
           .from('user_integrations')
           .update({ last_sync_at: new Date().toISOString() })
           .eq('user_id', identity.userId)
           .eq('provider', 'garmin');
+
+        if (lastSyncError) {
+          console.error('[GARMIN_WEBHOOK] failed to update last_sync_at:', lastSyncError);
+        }
 
         processed++;
       } catch (activityError) {

@@ -5,7 +5,7 @@ import { queryKeys } from "@/queries/keys";
 
 function buildChain(terminal: Record<string, unknown>) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	const methods = ["select", "eq", "order", "in", "maybeSingle"];
+	const methods = ["select", "eq", "is", "order", "in", "maybeSingle"];
 	for (const m of methods) {
 		self[m] = vi.fn();
 	}
@@ -17,10 +17,25 @@ function buildChain(terminal: Record<string, unknown>) {
 
 let chain: ReturnType<typeof buildChain>;
 const fromFn = vi.fn(() => chain);
+const rpcFn = vi.fn();
 
 vi.mock("@/lib/supabase", () => ({
-	supabase: { from: (...args: unknown[]) => fromFn(...args) },
+	supabase: {
+		from: (...args: unknown[]) => fromFn(...args),
+		rpc: (...args: unknown[]) => rpcFn(...args),
+	},
 }));
+
+function mockRpc(result: { data: unknown; error: unknown }) {
+	rpcFn.mockResolvedValue(result);
+}
+
+/** Pin the "browser" zone so UTC-only assertions cannot pass by accident. */
+function stubTimeZone(timeZone: string) {
+	return vi
+		.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions")
+		.mockReturnValue({ timeZone } as Intl.ResolvedDateTimeFormatOptions);
+}
 
 // --- Test data ------------------------------------------------------------
 
@@ -89,7 +104,7 @@ describe("profileOptions", () => {
 		chain = buildChain({ data: profileRow, error: null });
 		const { profileOptions } = await import("../profile");
 		const opts = profileOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result).not.toBeNull();
 		expect(result?.display_name).toBe("Phoenix User");
@@ -100,7 +115,7 @@ describe("profileOptions", () => {
 		chain = buildChain({ data: null, error: null });
 		const { profileOptions } = await import("../profile");
 		const opts = profileOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toBeNull();
 	});
 
@@ -111,7 +126,7 @@ describe("profileOptions", () => {
 		});
 		const { profileOptions } = await import("../profile");
 		const opts = profileOptions("user-1");
-		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
+		await expect(opts.queryFn!({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "profile error" }),
 		);
 	});
@@ -120,121 +135,201 @@ describe("profileOptions", () => {
 		chain = buildChain({ data: null, error: null });
 		const { profileOptions } = await import("../profile");
 		const opts = profileOptions("user-1");
-		await opts.queryFn?.({} as never);
+		await opts.queryFn!({} as never);
 		expect(fromFn).toHaveBeenCalledWith("profiles");
 	});
 });
 
 describe("profileStatsOptions", () => {
 	beforeEach(() => {
+		vi.restoreAllMocks();
 		vi.clearAllMocks();
 		fromFn.mockImplementation(() => chain);
 	});
 
 	it("uses profile.stats query key", async () => {
-		chain = buildChain({ data: [], error: null, count: 0 });
+		mockRpc({ data: [], error: null });
 		const { profileStatsOptions } = await import("../profile");
 		const opts = profileStatsOptions("user-1");
 		expect(opts.queryKey).toEqual(queryKeys.profile.stats("user-1"));
 	});
 
-	it("computes stats with doubled volume and streak", async () => {
-		const sessions = [
-			{ started_at: "2026-03-15T08:00:00Z", total_volume: 500 },
-			{ started_at: "2026-03-16T08:00:00Z", total_volume: 600 },
-			{ started_at: "2026-03-17T08:00:00Z", total_volume: 400 },
-		];
-
-		let callCount = 0;
-		fromFn.mockImplementation(() => {
-			callCount++;
-			if (callCount === 1) return buildChain({ data: sessions, error: null });
-			// PR count query uses { count: "exact", head: true }
-			return buildChain({ data: null, error: null, count: 5 });
+	it("reads the stats from one SQL aggregate, above the 1,000-row read cap", async () => {
+		// The old implementation counted `sessions.length` over an ascending,
+		// unbounded select, so it reported exactly 1,000 workouts (and computed
+		// volume and the best streak from the OLDEST 1,000 rows) from 1,000
+		// sessions on (F-034).
+		const tz = stubTimeZone("America/New_York");
+		mockRpc({
+			data: [
+				{
+					total_workouts: 1500,
+					total_volume: 1500,
+					best_streak: 12,
+					pr_count: 1100,
+				},
+			],
+			error: null,
 		});
 
 		const { profileStatsOptions } = await import("../profile");
-		const opts = profileStatsOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await profileStatsOptions("user-1", "profile-1").queryFn!(
+			{} as never,
+		);
+
+		expect(rpcFn).toHaveBeenCalledTimes(1);
+		expect(rpcFn).toHaveBeenCalledWith("profile_workout_stats", {
+			// UTC on purpose: best_streak is account-wide and the current streak
+			// beside it (useStreak/utcDateKey) is UTC-only, so the browser zone
+			// here could make the current streak exceed the best one.
+			p_tz: "UTC",
+			p_profile_id: "profile-1",
+		});
+		expect(fromFn).not.toHaveBeenCalled();
+		expect(result.totalWorkouts).toBe(1500);
+		// KD-8: the stored per-cable volume is returned as-is, never doubled.
+		expect(result.totalVolume).toBe(1500);
+		expect(result.bestStreak).toBe(12);
+		expect(result.prCount).toBe(1100);
+		tz.mockRestore();
+	});
+
+	// Was "computes stats with per-cable volume and streak" — the client-side
+	// parent summed an ascending `workout_sessions` list and walked streaks
+	// here (and needed a `computeBestStreak` helper the merge left declared
+	// nowhere, which is why every test in this describe threw ReferenceError).
+	// F-034 moved that arithmetic into `profile_workout_stats`;
+	// `analytics_rpcs.test.sql` pins the per-cable sum and the streak there.
+	// What this declaration still owns is the KD-8 identity on the way out
+	// and that the client never recomputes.
+	it("reports the aggregate's per-cable volume and streak unchanged", async () => {
+		mockRpc({
+			data: [
+				{
+					total_workouts: 3,
+					// 500+600+400 as the aggregate sums it, per cable (KD-8).
+					total_volume: 1500,
+					best_streak: 3,
+					pr_count: 5,
+				},
+			],
+			error: null,
+		});
+
+		const { profileStatsOptions } = await import("../profile");
+		const result = await profileStatsOptions("user-1").queryFn!({} as never);
 
 		expect(result.totalWorkouts).toBe(3);
-		// total_volume is per-cable, doubled: (500+600+400)*2 = 3000
-		expect(result.totalVolume).toBe(3000);
+		// total_volume is per cable, as stored — never doubled (KD-8).
+		expect(result.totalVolume).toBe(1500);
 		// 3 consecutive days = streak of 3
 		expect(result.bestStreak).toBe(3);
 		expect(result.prCount).toBe(5);
+		// The parent used to read `workout_sessions` and `personal_records`
+		// here (`is("deleted_at", null)` on the PR count). It must not.
+		expect(fromFn).not.toHaveBeenCalled();
 	});
 
-	it("returns zeros when user has no sessions", async () => {
-		let callCount = 0;
-		fromFn.mockImplementation(() => {
-			callCount++;
-			if (callCount === 1) return buildChain({ data: [], error: null });
-			return buildChain({ data: null, error: null, count: 0 });
+	it("omits the profile argument instead of passing null", async () => {
+		mockRpc({ data: [], error: null });
+		const { profileStatsOptions } = await import("../profile");
+		await profileStatsOptions("user-1", null).queryFn!({} as never);
+		expect(rpcFn).toHaveBeenCalledWith("profile_workout_stats", {
+			p_tz: "UTC",
 		});
+	});
+
+	// Was "returns zeros when user has no sessions" — there is no session
+	// read left to be empty. An aggregate that returns no row is the case.
+	it("returns zeros when the aggregate returns no row", async () => {
+		mockRpc({ data: [], error: null });
 
 		const { profileStatsOptions } = await import("../profile");
 		const opts = profileStatsOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result.totalWorkouts).toBe(0);
 		expect(result.totalVolume).toBe(0);
 		expect(result.bestStreak).toBe(0);
 		expect(result.prCount).toBe(0);
 	});
+
+	it("throws on RPC error", async () => {
+		mockRpc({ data: null, error: { message: "stats failed" } });
+		const { profileStatsOptions } = await import("../profile");
+		await expect(
+			profileStatsOptions("user-1").queryFn!({} as never),
+		).rejects.toEqual(expect.objectContaining({ message: "stats failed" }));
+	});
 });
 
 describe("topExercisesOptions", () => {
 	beforeEach(() => {
+		vi.restoreAllMocks();
 		vi.clearAllMocks();
 		fromFn.mockImplementation(() => chain);
 	});
 
 	it("uses profile.topExercises query key", async () => {
-		chain = buildChain({ data: [], error: null });
+		mockRpc({ data: [], error: null });
 		const { topExercisesOptions } = await import("../profile");
 		const opts = topExercisesOptions("user-1");
 		expect(opts.queryKey).toEqual(queryKeys.profile.topExercises("user-1"));
 	});
 
-	it("returns top 5 exercises by frequency", async () => {
-		const sessions = [{ id: "s1" }, { id: "s2" }];
-		const exercises = [
-			{ name: "Bench Press" },
-			{ name: "Bench Press" },
-			{ name: "Bench Press" },
-			{ name: "Squat" },
-			{ name: "Squat" },
-			{ name: "Row" },
-			{ name: "Deadlift" },
-			{ name: "OHP" },
-			{ name: "Curl" },
-		];
-
-		let callCount = 0;
-		fromFn.mockImplementation(() => {
-			callCount++;
-			if (callCount === 1) return buildChain({ data: sessions, error: null });
-			return buildChain({ data: exercises, error: null });
+	it("returns the top 5 exercises from one RPC with no session id list", async () => {
+		// Ordered by the RPC (sessions DESC, name ASC); the first entry is counted
+		// over 1,200 sessions, which the old "every session id, then .in()" read
+		// could neither address (URL limit) nor count (1,000-row cap).
+		mockRpc({
+			data: [
+				{ exercise_name: "Bench Press", muscle_group: "Chest", sessions: 1200 },
+				{ exercise_name: "Squat", muscle_group: "Legs", sessions: 900 },
+				{ exercise_name: "Row", muscle_group: "Back", sessions: 3 },
+				{ exercise_name: "Deadlift", muscle_group: "Back", sessions: 2 },
+				{ exercise_name: "OHP", muscle_group: "Shoulders", sessions: 2 },
+				{ exercise_name: "Curl", muscle_group: "Arms", sessions: 1 },
+			],
+			error: null,
 		});
 
 		const { topExercisesOptions } = await import("../profile");
-		const opts = topExercisesOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await topExercisesOptions("user-1", "profile-1").queryFn!(
+			{} as never,
+		);
 
+		expect(rpcFn).toHaveBeenCalledTimes(1);
+		expect(rpcFn).toHaveBeenCalledWith("exercise_frequency", {
+			p_profile_id: "profile-1",
+		});
+		expect(fromFn).not.toHaveBeenCalled();
 		expect(result).toHaveLength(5);
-		expect(result[0].name).toBe("Bench Press");
-		expect(result[0].count).toBe(3);
-		expect(result[1].name).toBe("Squat");
-		expect(result[1].count).toBe(2);
+		expect(result[0]).toEqual({ name: "Bench Press", count: 1200 });
+		expect(result[1]).toEqual({ name: "Squat", count: 900 });
+		expect(result.some((row) => row.name === "Curl")).toBe(false);
+	});
+
+	it("omits the profile argument instead of passing null", async () => {
+		mockRpc({ data: [], error: null });
+		const { topExercisesOptions } = await import("../profile");
+		await topExercisesOptions("user-1", null).queryFn!({} as never);
+		expect(rpcFn).toHaveBeenCalledWith("exercise_frequency", {});
 	});
 
 	it("returns empty array when no sessions exist", async () => {
-		chain = buildChain({ data: [], error: null });
+		mockRpc({ data: [], error: null });
 		const { topExercisesOptions } = await import("../profile");
 		const opts = topExercisesOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toEqual([]);
+	});
+
+	it("throws on RPC error", async () => {
+		mockRpc({ data: null, error: { message: "frequency failed" } });
+		const { topExercisesOptions } = await import("../profile");
+		await expect(
+			topExercisesOptions("user-1").queryFn!({} as never),
+		).rejects.toEqual(expect.objectContaining({ message: "frequency failed" }));
 	});
 });
 
@@ -255,7 +350,7 @@ describe("earnedBadgesOptions", () => {
 		chain = buildChain({ data: [badgeRow], error: null });
 		const { earnedBadgesOptions } = await import("../profile");
 		const opts = earnedBadgesOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result).toHaveLength(1);
 		expect(result[0].badge_name).toBe("First Flame");
@@ -267,7 +362,7 @@ describe("earnedBadgesOptions", () => {
 		chain = buildChain({ data: [], error: null });
 		const { earnedBadgesOptions } = await import("../profile");
 		const opts = earnedBadgesOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toEqual([]);
 	});
 });
@@ -289,7 +384,7 @@ describe("rpgAttributesOptions", () => {
 		chain = buildChain({ data: rpgRow, error: null });
 		const { rpgAttributesOptions } = await import("../profile");
 		const opts = rpgAttributesOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result).not.toBeNull();
 		expect(result?.strength).toBe(25);
@@ -302,7 +397,7 @@ describe("rpgAttributesOptions", () => {
 		chain = buildChain({ data: null, error: null });
 		const { rpgAttributesOptions } = await import("../profile");
 		const opts = rpgAttributesOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toBeNull();
 	});
 });
@@ -324,7 +419,7 @@ describe("gamificationStatsOptions", () => {
 		chain = buildChain({ data: gamificationRow, error: null });
 		const { gamificationStatsOptions } = await import("../profile");
 		const opts = gamificationStatsOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 
 		expect(result).not.toBeNull();
 		expect(result?.total_workouts).toBe(50);
@@ -337,7 +432,7 @@ describe("gamificationStatsOptions", () => {
 		chain = buildChain({ data: null, error: null });
 		const { gamificationStatsOptions } = await import("../profile");
 		const opts = gamificationStatsOptions("user-1");
-		const result = await opts.queryFn?.({} as never);
+		const result = await opts.queryFn!({} as never);
 		expect(result).toBeNull();
 	});
 });

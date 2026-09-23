@@ -1,0 +1,199 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+	type CycleDto,
+	callPushEndpoint,
+	createMinimalPushPayload,
+} from "./helpers/edge-function-harness";
+import {
+	createTrackedTestUser,
+	getServiceClient,
+	liveIt,
+	setupSyncTests,
+} from "./setup";
+
+setupSyncTests();
+
+const LWW_RPC_MIGRATION = "20260920120000_sync_reliability_contract.sql";
+const PULL_RPC_MIGRATION = "20260707140000_update_pull_rpc_template_id.sql";
+const CYCLE_MERGE_MIGRATION =
+	"20260920001800_merge_training_cycles_from_push.sql";
+const CYCLE_PULL_SIGNATURE =
+	"public.get_cycles_excluding_ids(UUID, UUID[], TEXT, TIMESTAMPTZ, UUID, INT, TIMESTAMPTZ)";
+
+function readMigration(filename: string): string {
+	return readFileSync(
+		join(process.cwd(), "supabase", "migrations", filename),
+		"utf8",
+	);
+}
+
+// The push handler is read the same way, by repo-relative path. These two
+// declarations were eaten at a merge seam (the test below still called them),
+// which is why every test in this file threw ReferenceError.
+const MOBILE_SYNC_PUSH_SOURCE = "supabase/functions/mobile-sync-push/index.ts";
+
+function readSource(filename: string): string {
+	return readFileSync(join(process.cwd(), filename), "utf8");
+}
+
+function extractTrainingCycleLwwBody(sql: string): string {
+	const match = sql.match(
+		/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.upsert_training_cycle_lww\s*\([\s\S]*?AS\s+\$\$([\s\S]*?)\$\$;/i,
+	);
+	expect(match).not.toBeNull();
+	return match?.[1] ?? "";
+}
+
+describe("Training cycle template_id migration safeguards", () => {
+	it("preserves existing template_id values in the final cycle LWW function", () => {
+		const body = extractTrainingCycleLwwBody(readMigration(LWW_RPC_MIGRATION));
+
+		expect(body).toMatch(
+			/template_id\s*=\s*COALESCE\s*\(\s*EXCLUDED\.template_id\s*,\s*c\.template_id\s*\)/i,
+		);
+	});
+
+	it("preserves LWW insert defaults for training cycle NOT NULL fields", () => {
+		const body = extractTrainingCycleLwwBody(readMigration(LWW_RPC_MIGRATION));
+		const expectedDefaults = [
+			/COALESCE\s*\(\s*rec\.duration_weeks\s*,\s*4\s*\)/i,
+			/COALESCE\s*\(\s*rec\.workout_days\s*,\s*0\s*\)/i,
+			/COALESCE\s*\(\s*rec\.rest_days\s*,\s*0\s*\)/i,
+			/COALESCE\s*\(\s*rec\.current_week\s*,\s*1\s*\)/i,
+			/COALESCE\s*\(\s*rec\.status\s*,\s*'draft'\s*\)/i,
+		];
+
+		for (const expectedDefault of expectedDefaults) {
+			expect(body).toMatch(expectedDefault);
+		}
+	});
+
+	it("locks the recreated cycle pull RPC down to service_role", () => {
+		const sql = readMigration(PULL_RPC_MIGRATION);
+
+		expect(sql).toContain(
+			`REVOKE ALL ON FUNCTION ${CYCLE_PULL_SIGNATURE} FROM PUBLIC;`,
+		);
+		expect(sql).toContain(
+			`REVOKE ALL ON FUNCTION ${CYCLE_PULL_SIGNATURE} FROM anon;`,
+		);
+		expect(sql).toContain(
+			`REVOKE ALL ON FUNCTION ${CYCLE_PULL_SIGNATURE} FROM authenticated;`,
+		);
+		expect(sql).toContain(
+			`GRANT EXECUTE ON FUNCTION ${CYCLE_PULL_SIGNATURE} TO service_role;`,
+		);
+	});
+});
+
+describe("Training cycle template_id push handling", () => {
+	// KD-6 (PR 18): both flag paths merge cycles in SQL, so the old
+	// Edge-side template_id probe is gone and the merge keeps a stored
+	// template_id when the push omits or nulls it.
+	it("preserves template_id in the SQL cycle merge used by both flag paths", () => {
+		const source = readSource(MOBILE_SYNC_PUSH_SOURCE);
+		expect(source).toContain("'merge_training_cycles_from_push'");
+		expect(source).not.toContain("cycleIdsMissingTemplateId");
+		expect(source).not.toMatch(
+			/\.from\(\s*['"]training_cycles['"]\s*\)\s*\.upsert\(/,
+		);
+
+		const sql = readMigration(CYCLE_MERGE_MIGRATION);
+		expect(sql).toMatch(
+			/n_template_id\s*:=\s*COALESCE\s*\(\s*rec\.template_id\s*,\s*v_existing\.template_id\s*\)/i,
+		);
+		expect(sql).toMatch(
+			/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.upsert_training_cycle_lww[\s\S]*merge_training_cycles_from_push/i,
+		);
+	});
+
+	liveIt(
+		"preserves an existing training_cycles.template_id when a newer mobile cycle omits it",
+		async () => {
+			const testUser = await createTrackedTestUser(undefined, undefined, {
+				seedSubscription: false,
+			});
+			const serviceClient = getServiceClient();
+			const cycleId = crypto.randomUUID();
+			const startedAt = new Date("2026-07-07T12:00:00.000Z").toISOString();
+			const existingTemplateId = "template_531";
+			const subscriptionEndsAt = new Date(
+				"2027-07-07T12:00:00.000Z",
+			).toISOString();
+
+			const { error: subscriptionError } = await serviceClient
+				.from("subscriptions")
+				.insert({
+					user_id: testUser.id,
+					tier: "EMBER",
+					status: "active",
+					current_period_end: subscriptionEndsAt,
+				});
+			expect(subscriptionError).toBeNull();
+
+			const seedCycle: CycleDto = {
+				id: cycleId,
+				userId: testUser.id,
+				name: "Existing Template Cycle",
+				description: "Seed row for legacy non-LWW preservation",
+				durationWeeks: 4,
+				workoutDays: 4,
+				restDays: 3,
+				currentWeek: 1,
+				status: "active",
+				startedAt,
+				lastUsedAt: startedAt,
+				progressionSettings: null,
+				deloadSettings: null,
+				templateId: existingTemplateId,
+				updatedAt: "2026-07-07T12:00:00.000Z",
+				days: [],
+			};
+			const seedPushResult = await callPushEndpoint(
+				createMinimalPushPayload(testUser.id, { cycles: [seedCycle] }),
+				testUser.accessToken,
+			);
+			expect(seedPushResult.success).toBe(true);
+
+			const cycle: CycleDto = {
+				id: cycleId,
+				userId: testUser.id,
+				name: "Updated Template Cycle",
+				description: "Incoming payload omits template identity",
+				durationWeeks: 6,
+				workoutDays: 5,
+				restDays: 2,
+				currentWeek: 2,
+				status: "active",
+				startedAt,
+				lastUsedAt: startedAt,
+				progressionSettings: null,
+				deloadSettings: null,
+				templateId: null,
+				updatedAt: "2026-07-07T13:00:00.000Z",
+				days: [],
+			};
+
+			const pushResult = await callPushEndpoint(
+				createMinimalPushPayload(testUser.id, { cycles: [cycle] }),
+				testUser.accessToken,
+			);
+			expect(pushResult.success).toBe(true);
+
+			const { data: storedCycle, error: fetchError } = await serviceClient
+				.from("training_cycles")
+				.select("id, name, duration_weeks, template_id")
+				.eq("id", cycleId)
+				.single();
+			expect(fetchError).toBeNull();
+			expect(storedCycle).toMatchObject({
+				id: cycleId,
+				name: "Updated Template Cycle",
+				duration_weeks: 6,
+				template_id: existingTemplateId,
+			});
+		},
+	);
+});

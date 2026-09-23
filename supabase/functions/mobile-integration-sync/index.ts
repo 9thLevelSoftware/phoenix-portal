@@ -1,8 +1,25 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { redactTokenShapedJson } from '../_shared/garminIdentity.ts';
+import {
+  createHevyPageFetcher,
+  fetchHevyBackfill,
+  HevyAuthError,
+} from '../_shared/hevySync.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import {
+  defaultProviderRevokeDependencies,
+  type ProviderRevokeDependencies,
+  revokeAndDisconnect,
+} from '../_shared/providerRevoke.ts';
+
+/**
+ * Loose Supabase client type for helper signatures. The bare
+ * `ReturnType<typeof createClient>` collapses table payload types to `never`.
+ */
+type DbClient = SupabaseClient<any, any, any>;
 
 /**
  * Mobile Integration Sync Edge Function
@@ -28,7 +45,6 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
 // Provider API configuration
 // =============================================================================
 
-const HEVY_API_BASE = 'https://api.hevyapp.com/v1';
 const LIFTOSAUR_API_BASE = 'https://www.liftosaur.com/api/v1';
 
 const ALLOWED_PROVIDERS = new Set(['hevy', 'liftosaur']);
@@ -131,25 +147,25 @@ function parseLiftoscriptMetadata(text: string): {
 // Provider fetch logic
 // =============================================================================
 
+/**
+ * Shares the paginator with hevy-sync (../_shared/hevySync.ts) so the mobile
+ * and portal import paths cannot drift on page size or termination logic.
+ * Only the returned DTO shape differs — mobile takes camelCase.
+ */
 async function fetchHevyActivities(apiKey: string): Promise<ActivityDto[]> {
-  const response = await fetch(`${HEVY_API_BASE}/workouts`, {
-    headers: {
-      'api-key': apiKey,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (response.status === 401 || response.status === 403) {
-    throw new ApiKeyError('Hevy API access denied. Verify your API key and Hevy PRO subscription.');
-  }
-  if (!response.ok) {
-    throw new Error(`Hevy API returned ${response.status}`);
+  let allWorkouts: HevyWorkout[];
+  try {
+    const fetchPage = createHevyPageFetcher(apiKey);
+    const result = await fetchHevyBackfill(fetchPage);
+    allWorkouts = result.workouts as HevyWorkout[];
+  } catch (err) {
+    if (err instanceof HevyAuthError) {
+      throw new ApiKeyError(err.message);
+    }
+    throw err;
   }
 
-  const data = await response.json();
-  const workouts: HevyWorkout[] = data.workouts ?? data ?? [];
-
-  return workouts.map((w) => {
+  return allWorkouts.map((w) => {
     const startTime = new Date(w.start_time);
     const endTime = new Date(w.end_time);
     const durationSeconds = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
@@ -238,7 +254,50 @@ class ApiKeyError extends Error {
 // Handler
 // =============================================================================
 
-Deno.serve(async (req) => {
+interface MobileIntegrationAuthClient {
+  auth: {
+    getUser(): Promise<{ data: { user: { id: string } | null } }>;
+  };
+}
+
+export interface MobileIntegrationSyncDependencies {
+  /** Client acting as the caller (their JWT), used only to identify them. */
+  createAuthClient(authorization: string): MobileIntegrationAuthClient;
+  /** Service-role client for DB operations (bypasses RLS). */
+  createAdminClient(): DbClient;
+  /** Provider revoke HTTP + credentials; injected so tests never hit a provider. */
+  revoke: ProviderRevokeDependencies;
+}
+
+function defaultMobileIntegrationSyncDependencies(): MobileIntegrationSyncDependencies {
+  return {
+    createAuthClient(authorization: string) {
+      return createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authorization } } }
+      );
+    },
+    createAdminClient() {
+      return createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      );
+    },
+    revoke: defaultProviderRevokeDependencies(),
+  };
+}
+
+export function createMobileIntegrationSyncHandler(
+  deps: MobileIntegrationSyncDependencies = defaultMobileIntegrationSyncDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => mobileIntegrationSyncHandler(req, deps);
+}
+
+async function mobileIntegrationSyncHandler(
+  req: Request,
+  deps: MobileIntegrationSyncDependencies,
+): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -266,15 +325,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
     const {
       data: { user },
-    } = await supabaseAuth.auth.getUser();
+    } = await deps.createAuthClient(authHeader).auth.getUser();
 
     if (!user) {
       return new Response(
@@ -288,10 +341,7 @@ Deno.serve(async (req) => {
     // =========================================================================
     // 2. Service-role client for DB operations (bypasses RLS)
     // =========================================================================
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
+    const supabase = deps.createAdminClient();
 
     const rateCheck = await checkRateLimit(supabase, {
       key: 'mobile-integration-sync',
@@ -334,22 +384,18 @@ Deno.serve(async (req) => {
     // 4. Handle DISCONNECT
     // =========================================================================
     if (action === 'disconnect') {
-      await Promise.all([
-        supabase
-          .from('oauth_tokens')
-          .delete()
-          .eq('user_id', userId)
-          .eq('provider', provider),
-        supabase
-          .from('user_integrations')
-          .update({
-            status: 'disconnected',
-            connected_at: null,
-            error_message: null,
-          })
-          .eq('user_id', userId)
-          .eq('provider', provider),
-      ]);
+      // Same path as the portal's disconnect-integration (FP-5): revoke (a
+      // no-op for these API-key providers), then disconnect_integration
+      // deletes the key, resets the integration and cancels queued syncs in
+      // one transaction. Stays ahead of the subscription gate so a lapsed
+      // user can always disconnect.
+      const result = await revokeAndDisconnect(supabase, userId, provider, deps.revoke);
+      if (!result.ok) {
+        return new Response(
+          JSON.stringify({ status: 'error', error: 'Failed to disconnect integration. Please try again.' }),
+          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
 
       return new Response(
         JSON.stringify({ status: 'disconnected' }),
@@ -413,30 +459,18 @@ Deno.serve(async (req) => {
           ? await fetchHevyActivities(apiKey)
           : await fetchLiftosaurActivities(apiKey);
       } catch (fetchErr) {
-        const isApiKeyError = fetchErr instanceof ApiKeyError;
-        const errorMessage = (fetchErr as Error).message;
-
-        // Update integration status to error
-        await supabase
-          .from('user_integrations')
-          .update({
-            status: 'error',
-            error_message: errorMessage,
-          })
-          .eq('user_id', userId)
-          .eq('provider', provider);
-
-        return new Response(
-          JSON.stringify({ status: 'error', error: errorMessage }),
-          {
-            status: isApiKeyError ? 403 : 502,
-            headers: { ...cors, 'Content-Type': 'application/json' },
-          }
+        return await providerFetchFailureResponse(
+          supabase, userId, provider, fetchErr, cors,
         );
       }
 
       if (activities.length > 0) {
-        await persistActivities(supabase, userId, provider, activities);
+        const failedCount = await persistActivities(supabase, userId, provider, activities);
+        if (failedCount > 0) {
+          return await partialPersistFailureResponse(
+            supabase, userId, provider, failedCount, activities.length, cors,
+          );
+        }
       }
 
       // Update last sync timestamp
@@ -464,13 +498,26 @@ Deno.serve(async (req) => {
     // =========================================================================
     // action === 'sync'
 
-    // Retrieve stored API key
-    const { data: tokenData } = await supabase
+    // Retrieve stored API key. Use maybeSingle so a genuinely-missing row is
+    // null (handled below as "connect first"), and surface a real DB error as a
+    // retryable 500 instead of silently treating it as "no key found" (F355).
+    const { data: tokenData, error: tokenError } = await supabase
       .from('oauth_tokens')
       .select('api_key')
       .eq('user_id', userId)
       .eq('provider', provider)
-      .single();
+      .maybeSingle();
+
+    if (tokenError) {
+      console.error('mobile-integration-sync stored-token lookup failed:', tokenError);
+      return new Response(
+        JSON.stringify({
+          status: 'error',
+          error: 'Failed to read stored integration credentials. Please retry shortly.',
+        }),
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const storedApiKey = (await decryptOAuthSecret(tokenData?.api_key)) ?? '';
 
@@ -491,29 +538,18 @@ Deno.serve(async (req) => {
         ? await fetchHevyActivities(storedApiKey)
         : await fetchLiftosaurActivities(storedApiKey);
     } catch (fetchErr) {
-      const isApiKeyError = fetchErr instanceof ApiKeyError;
-      const errorMessage = (fetchErr as Error).message;
-
-      await supabase
-        .from('user_integrations')
-        .update({
-          status: 'error',
-          error_message: errorMessage,
-        })
-        .eq('user_id', userId)
-        .eq('provider', provider);
-
-      return new Response(
-        JSON.stringify({ status: 'error', error: errorMessage }),
-        {
-          status: isApiKeyError ? 403 : 502,
-          headers: { ...cors, 'Content-Type': 'application/json' },
-        }
+      return await providerFetchFailureResponse(
+        supabase, userId, provider, fetchErr, cors,
       );
     }
 
     if (activities.length > 0) {
-      await persistActivities(supabase, userId, provider, activities);
+      const failedCount = await persistActivities(supabase, userId, provider, activities);
+      if (failedCount > 0) {
+        return await partialPersistFailureResponse(
+          supabase, userId, provider, failedCount, activities.length, cors,
+        );
+      }
     }
 
     // Update last sync timestamp
@@ -535,13 +571,23 @@ Deno.serve(async (req) => {
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
+    // The thrown message can carry DB internals or provider text; it is
+    // logged here and summarised to the caller as a stable code.
     console.error('mobile-integration-sync error:', err);
     return new Response(
-      JSON.stringify({ status: 'error', error: (err as Error).message ?? 'Internal server error' }),
+      JSON.stringify({
+        status: 'error',
+        error: 'Internal server error',
+        code: 'internal_error',
+      }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   }
-});
+}
+
+if (import.meta.main) {
+  Deno.serve(createMobileIntegrationSyncHandler());
+}
 
 // =============================================================================
 // Helpers
@@ -550,13 +596,18 @@ Deno.serve(async (req) => {
 /**
  * Persist normalized activities to external_activities table.
  * Maps ActivityDto camelCase fields to snake_case columns.
+ *
+ * Returns the number of activities that failed to persist so callers can avoid
+ * advancing `last_sync_at` past data that was never written (which would skip
+ * those activities permanently on the next incremental sync).
  */
 async function persistActivities(
-  supabase: ReturnType<typeof createClient>,
+  supabase: DbClient,
   userId: string,
   provider: string,
   activities: ActivityDto[]
-): Promise<void> {
+): Promise<number> {
+  let failedCount = 0;
   for (const activity of activities) {
     const { error } = await supabase
       .from('external_activities')
@@ -574,14 +625,88 @@ async function persistActivities(
           avg_heart_rate: activity.avgHeartRate ?? null,
           max_heart_rate: activity.maxHeartRate ?? null,
           elevation_gain_meters: activity.elevationGainMeters ?? null,
-          raw_data: activity.rawData ? JSON.parse(activity.rawData) : null,
+          raw_data: activity.rawData
+            ? redactTokenShapedJson(JSON.parse(activity.rawData))
+            : null,
           synced_at: new Date().toISOString(),
         },
         { onConflict: 'user_id,provider,external_id' }
       );
 
     if (error) {
-      console.warn(`Failed to persist activity ${activity.externalId}:`, error.message);
+      failedCount++;
+      console.error(`Failed to persist activity ${activity.externalId}:`, error.message);
     }
   }
+  return failedCount;
+}
+
+/**
+ * Mark the integration as a partial-persistence failure and build the 502 the
+ * caller should return. Does NOT advance `last_sync_at` so the next sync retries.
+ */
+/**
+ * Shared failure path for `fetchHevyActivities` / `fetchLiftosaurActivities`.
+ *
+ * The thrown message is NOT returned and NOT stored. Our own throws are fixed
+ * sentences, but the fetch+parse is wrapped as a whole: an unguarded
+ * `await response.json()` on a 200 with a non-JSON body (an upstream HTML
+ * error page, say) throws a `SyntaxError` whose message quotes a slice of that
+ * body, and a transport failure throws a fetch/TLS internal.
+ * `user_integrations.error_message` is browser-readable and rendered by the
+ * integration card, so it gets fixed text and the detail goes to the log.
+ */
+async function providerFetchFailureResponse(
+  supabase: DbClient,
+  userId: string,
+  provider: string,
+  fetchErr: unknown,
+  cors: Record<string, string>,
+): Promise<Response> {
+  const isApiKeyError = fetchErr instanceof ApiKeyError;
+  console.error(`mobile-integration-sync ${provider} fetch failed:`, fetchErr);
+
+  await supabase
+    .from('user_integrations')
+    .update({
+      status: 'error',
+      error_message: isApiKeyError
+        ? 'API key rejected by the provider. Reconnect to resume syncing.'
+        : 'Provider sync failed; will retry',
+    })
+    .eq('user_id', userId)
+    .eq('provider', provider);
+
+  return new Response(
+    JSON.stringify({
+      status: 'error',
+      error: isApiKeyError ? 'Provider rejected the API key' : 'Provider request failed',
+      code: isApiKeyError ? 'provider_auth_failed' : 'provider_fetch_failed',
+    }),
+    {
+      status: isApiKeyError ? 403 : 502,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    }
+  );
+}
+
+async function partialPersistFailureResponse(
+  supabase: DbClient,
+  userId: string,
+  provider: string,
+  failedCount: number,
+  total: number,
+  cors: Record<string, string>,
+): Promise<Response> {
+  const failMessage = `Failed to persist ${failedCount} of ${total} activities`;
+  await supabase
+    .from('user_integrations')
+    .update({ status: 'error', error_message: failMessage })
+    .eq('user_id', userId)
+    .eq('provider', provider);
+
+  return new Response(
+    JSON.stringify({ status: 'error', error: failMessage }),
+    { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+  );
 }

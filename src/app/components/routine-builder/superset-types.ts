@@ -1,6 +1,14 @@
 // Superset Type Definitions for Routine Builder
 
-export type SupersetColor = "indigo" | "pink" | "green" | "amber";
+import {
+	SUPERSET_COLOR_HEX,
+	SUPERSET_COLOR_NAMES,
+	type SupersetColorName,
+	type WireMode,
+} from "../../../../supabase/functions/_shared/workoutModes.ts";
+
+// Stored and synced by name (mobile's vocabulary), never as hex.
+export type SupersetColor = SupersetColorName;
 
 export interface Superset {
 	id: string;
@@ -29,23 +37,19 @@ export interface SetConfig {
 	rpe?: number;
 }
 
-export type ProgramMode = "Old School" | "Echo" | "Pump" | "Power";
+// Routine modes are stored and synced as wire names (OLD_SCHOOL, ECHO, ...).
+export type ProgramMode = WireMode;
 
-export const SUPERSET_COLORS: SupersetColor[] = [
-	"indigo",
-	"pink",
-	"green",
-	"amber",
-];
+export const SUPERSET_COLORS: SupersetColor[] = [...SUPERSET_COLOR_NAMES];
 
 export const SUPERSET_COLOR_MAP: Record<
 	SupersetColor,
 	{ hex: string; label: string }
 > = {
-	indigo: { hex: "var(--chart-5)", label: "A" },
-	pink: { hex: "var(--chart-5)", label: "B" },
-	green: { hex: "var(--success)", label: "C" },
-	amber: { hex: "var(--accent)", label: "D" },
+	indigo: { hex: SUPERSET_COLOR_HEX.indigo, label: "A" },
+	pink: { hex: SUPERSET_COLOR_HEX.pink, label: "B" },
+	green: { hex: SUPERSET_COLOR_HEX.green, label: "C" },
+	amber: { hex: SUPERSET_COLOR_HEX.amber, label: "D" },
 };
 
 export function getNextSupersetColor(

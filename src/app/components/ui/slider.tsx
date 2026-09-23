@@ -1,5 +1,3 @@
-"use client";
-
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import * as React from "react";
 
@@ -19,8 +17,10 @@ function Slider({
 				? value
 				: Array.isArray(defaultValue)
 					? defaultValue
-					: [min, max],
-		[value, defaultValue, min, max],
+					: // Default to a single thumb (matching Radix's default) unless the
+						// caller explicitly supplies a multi-value value/defaultValue.
+						[min],
+		[value, defaultValue, min],
 	);
 
 	return (

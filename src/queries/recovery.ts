@@ -59,16 +59,29 @@ export function wearableRecoveryOptions(userId: string) {
  * Fetch the user's active training cycle position.
  * Returns null if no active cycle exists.
  */
-export function activeCyclePositionOptions(userId: string) {
+export function activeCyclePositionOptions(
+	userId: string,
+	profileId?: string | null,
+) {
 	return queryOptions({
-		queryKey: [...queryKeys.cycles.all, "active-position", userId] as const,
+		queryKey: [
+			...queryKeys.cycles.all,
+			"active-position",
+			userId,
+			profileId ?? "all",
+		] as const,
 		queryFn: async () => {
-			const { data, error } = await supabase
+			let query = supabase
 				.from("training_cycles")
 				.select("current_week, duration_weeks, status")
 				.eq("user_id", userId)
-				.eq("status", "active")
-				.maybeSingle();
+				.eq("status", "active");
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query.maybeSingle();
 			if (error) throw error;
 			if (!data) return null;
 			return activeCycleSchema.parse(data);

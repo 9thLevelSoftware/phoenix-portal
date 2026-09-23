@@ -3,6 +3,7 @@ import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import type { ProgressionWorkbenchModel } from "@/lib/progression-workbench";
 import type { WeightUnit } from "@/lib/units";
+import { perCableUnitLabel } from "@/lib/units/loadDisplay";
 
 interface ProgressionWorkbenchProps {
 	model: ProgressionWorkbenchModel;
@@ -140,7 +141,7 @@ export function ProgressionWorkbench({
 						</div>
 						<div className="text-right">
 							<div className="text-2xl font-semibold text-foreground">
-								{selected.currentOneRm} {unit}
+								{selected.currentOneRm} {perCableUnitLabel(unit)}
 							</div>
 							<div className="text-xs text-muted-foreground">current 1RM</div>
 						</div>

@@ -1,0 +1,291 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { TIER_PRICING } from "@/lib/pricing";
+import { FEATURE_MIN_TIER, type GatedFeature } from "@/lib/tierMatrix";
+
+function readRepoFile(relativePath: string): string {
+	return readFileSync(join(process.cwd(), relativePath), "utf8").replace(
+		/\r\n/g,
+		"\n",
+	);
+}
+
+function tierByName(tier: "EMBER" | "FLAME" | "INFERNO") {
+	const found = TIER_PRICING.find((entry) => entry.tier === tier);
+	if (!found) {
+		throw new Error(`TIER_PRICING is missing ${tier}`);
+	}
+	return found;
+}
+
+function featureBlob(tier: "EMBER" | "FLAME" | "INFERNO"): string {
+	return tierByName(tier).features.join(" | ").toLowerCase();
+}
+
+/** Feature key of the nearest SubscribedRoute gate before `path`. */
+function nearestGateFeature(source: string, path: string): string | undefined {
+	const needle = `path="${path}"`;
+	const pathIdx = source.indexOf(needle);
+	if (pathIdx < 0) {
+		throw new Error(`${path} must appear in src/app/routes/index.tsx`);
+	}
+	const preceding = [
+		...source
+			.slice(0, pathIdx)
+			.matchAll(/requiredTier=\{FEATURE_MIN_TIER\.(\w+)\}/g),
+	];
+	return preceding.at(-1)?.[1];
+}
+
+function nearestRequiredTier(source: string, path: string): string | undefined {
+	const feature = nearestGateFeature(source, path);
+	return feature === undefined
+		? undefined
+		: FEATURE_MIN_TIER[feature as GatedFeature];
+}
+
+function providerCardBlock(source: string, provider: string): string {
+	const start = source.indexOf(`provider="${provider}"`);
+	if (start < 0) {
+		throw new Error(`${provider} ProviderCard must exist`);
+	}
+	const nextProvider = source.indexOf("provider=", start + 1);
+	const end = nextProvider === -1 ? source.length : nextProvider;
+	return source.slice(start, end);
+}
+
+describe("KD-24 route × TIER_PRICING matrix", () => {
+	const routes = readRepoFile("src/app/routes/index.tsx");
+	const integrations = readRepoFile("src/app/components/Integrations.tsx");
+	const sessionReplay = readRepoFile(
+		"src/app/components/session-replay/SessionReplay.tsx",
+	);
+	const performanceTab = readRepoFile(
+		"src/app/components/analytics/PerformanceTab.tsx",
+	);
+	const mobilePerformanceTab = readRepoFile(
+		"src/app/components/analytics/MobilePerformanceTab.tsx",
+	);
+	const biomechanics = readRepoFile("src/app/components/Biomechanics.tsx");
+
+	it("keeps Ember features on sync/dashboard/history — not leaderboards", () => {
+		const ember = featureBlob("EMBER");
+		expect(ember).toContain("cloud sync");
+		expect(ember).toContain("dashboard");
+		expect(ember).toContain("session detail");
+		expect(ember).toContain("goals");
+		expect(ember).toContain("recovery");
+		expect(ember).not.toContain("leaderboard");
+		expect(ember).not.toContain("challenge");
+		expect(ember).not.toContain("replay");
+		expect(ember).not.toContain("biomechanics");
+	});
+
+	it("keeps Flame features on analytics/community/integrations/replay", () => {
+		const flame = featureBlob("FLAME");
+		expect(flame).toContain("analytics");
+		expect(flame).toContain("community");
+		expect(flame).toContain("routines");
+		expect(flame).toContain("cycles");
+		expect(flame).toContain("leaderboards");
+		expect(flame).toContain("challenges");
+		expect(flame).toContain("compare");
+		expect(flame).toContain("integrations");
+		expect(flame).toContain("strava");
+		expect(flame).toContain("hevy");
+		expect(flame).toContain("liftosaur");
+		expect(flame).toContain("session replay");
+		// PR 38 / KD-12: force curves are INFERNO, so the FLAME line must say
+		// which half of replay it sells.
+		expect(flame).toContain("rep-by-rep");
+		expect(flame).not.toContain("force curve");
+		expect(flame).not.toContain("biomechanics");
+		expect(flame).not.toContain("garmin");
+		expect(flame).not.toContain("fitbit");
+	});
+
+	it("keeps Inferno purchasable and scoped to biomechanics", () => {
+		const inferno = tierByName("INFERNO");
+		expect(inferno.comingSoon).toBe(false);
+		const blob = inferno.features.join(" | ").toLowerCase();
+		expect(blob).toContain("biomechanics");
+		expect(blob).toContain("force");
+		expect(blob).toContain("vbt");
+		expect(blob).toContain("rom");
+		expect(blob).toContain("sra");
+		expect(blob).not.toContain("session replay");
+		expect(blob).not.toContain("leaderboard");
+	});
+
+	it("gates listed Ember and Flame routes at the matching SubscribedRoute tier", () => {
+		const emberPaths = [
+			"/dashboard",
+			"/history",
+			"/history/:sessionId",
+			"/goals",
+			"/recovery",
+		];
+		const flamePaths = [
+			"/challenges",
+			"/analytics",
+			"/community",
+			"/leaderboard",
+			"/routines",
+			"/cycles",
+			"/compare",
+			"/integrations",
+			"/replay/:sessionId",
+		];
+
+		for (const path of emberPaths) {
+			expect(nearestRequiredTier(routes, path)).toBe("EMBER");
+		}
+		for (const path of flamePaths) {
+			expect(nearestRequiredTier(routes, path)).toBe("FLAME");
+		}
+
+		const profileIdx = routes.indexOf('path="/profile"');
+		const pricingIdx = routes.indexOf('path="/pricing"');
+		const firstGated = routes.indexOf("requiredTier=");
+		expect(profileIdx).toBeGreaterThan(-1);
+		expect(pricingIdx).toBeGreaterThan(-1);
+		expect(profileIdx).toBeLessThan(firstGated);
+		expect(pricingIdx).toBeLessThan(firstGated);
+
+		expect(routes).not.toMatch(/requiredTier="INFERNO"/);
+		expect(nearestRequiredTier(routes, "/replay/:sessionId")).toBe("FLAME");
+		// The page gate reads the same matrix entry as the route gate — no
+		// second source of truth for the replay tier.
+		expect(sessionReplay).toMatch(
+			/requiredTier=\{FEATURE_MIN_TIER\.sessionReplay\}/,
+		);
+		expect(sessionReplay).not.toMatch(/requiredTier="/);
+		expect(FEATURE_MIN_TIER.sessionReplay).toBe("FLAME");
+		// Was one more assertion, `toMatch(/requiredTier="FLAME"/)` — the
+		// pre-matrix form of the same gate, and it directly contradicts
+		// `not.toMatch(/requiredTier="/)` two lines up. The page gate reads
+		// FEATURE_MIN_TIER.sessionReplay; the constant is FLAME. Collapsed
+		// onto the landed form.
+		// Force curves / VBT / ROM / SRA are INFERNO; session replay without
+		// them stays FLAME.
+		expect(performanceTab).toMatch(
+			/requiredTier=\{FEATURE_MIN_TIER\.biomechanics\}/,
+		);
+	});
+
+	it("tells a FLAME user in the replay page why the force curves are missing", () => {
+		// PR 38 / KD-12: rep_telemetry is INFERNO-gated in RLS, so a FLAME
+		// user's telemetry query returns zero rows and the page must name the
+		// reason instead of showing a blank chart. The wording is pinned
+		// because the pricing copy promises exactly this split.
+		expect(sessionReplay).toContain("Force curves require Inferno");
+		expect(featureBlob("INFERNO")).toContain("force curves");
+	});
+
+	it("wires every INFERNO biomechanics gate to FEATURE_MIN_TIER.biomechanics", () => {
+		// KD-12: the matrix is declared once and consumed. Before this, the
+		// inner gates hard-coded "INFERNO" and `biomechanics` was read only by
+		// this test, so the two could drift apart silently.
+		expect(FEATURE_MIN_TIER.biomechanics).toBe("INFERNO");
+
+		for (const [label, source] of [
+			["PerformanceTab", performanceTab],
+			["MobilePerformanceTab", mobilePerformanceTab],
+			["Biomechanics", biomechanics],
+		] as const) {
+			expect(source, label).toMatch(
+				/requiredTier=\{FEATURE_MIN_TIER\.biomechanics\}/,
+			);
+			expect(source, label).not.toMatch(/requiredTier="INFERNO"/);
+		}
+	});
+
+	it("reads every route gate from FEATURE_MIN_TIER (src/lib/tierMatrix.ts)", () => {
+		// Each gated route and the matrix feature that must guard it.
+		const routeFeature: Record<string, GatedFeature> = {
+			"/dashboard": "dashboard",
+			"/history": "history",
+			"/history/:sessionId": "history",
+			"/goals": "goals",
+			"/recovery": "recovery",
+			"/challenges": "challenges",
+			"/analytics": "analytics",
+			"/biomechanics": "analytics",
+			"/community": "community",
+			"/leaderboard": "leaderboard",
+			"/routines": "routines",
+			"/routines/new": "routines",
+			"/routines/:routineId/view": "routines",
+			"/routines/:routineId": "routines",
+			"/cycles": "cycles",
+			"/cycles/new": "cycles",
+			"/cycles/:cycleId": "cycles",
+			"/compare": "compare",
+			"/integrations": "integrations",
+			"/replay/:sessionId": "sessionReplay",
+		};
+
+		// No hard-coded tier literals left in the route table.
+		expect(routes).not.toMatch(/requiredTier="/);
+
+		for (const [path, feature] of Object.entries(routeFeature)) {
+			expect(nearestGateFeature(routes, path), path).toBe(feature);
+		}
+
+		// Every authenticated route after the first gate is listed above, so a
+		// new route cannot slip in without a matrix entry.
+		const firstGated = routes.indexOf("requiredTier=");
+		const gatedPaths = [...routes.slice(firstGated).matchAll(/path="([^"]+)"/g)]
+			.map((m) => m[1])
+			.filter((p) => p !== "*");
+		expect(gatedPaths.sort()).toEqual(Object.keys(routeFeature).sort());
+
+		// The OAuth completion landing (KD-13 / PR 47) is the one integrations
+		// route that must sit OUTSIDE the FLAME gate: `complete-oauth` re-checks
+		// the tier server-side, and a stale client tier must not swallow the
+		// callback before the POST. Assert the placement so it cannot drift into
+		// the gated block (where it would strand a legitimate connect) without a
+		// deliberate change here.
+		expect(routes).toContain('path="/integrations/callback"');
+		expect(routes.indexOf('path="/integrations/callback"')).toBeLessThan(
+			firstGated,
+		);
+
+		// Server-enforced FLAME features (RLS / Edge) stay FLAME in the matrix.
+		for (const feature of [
+			"challenges",
+			"community",
+			"routines",
+			"cycles",
+			"integrations",
+		] as const) {
+			expect(FEATURE_MIN_TIER[feature]).toBe("FLAME");
+		}
+		expect(FEATURE_MIN_TIER.biomechanics).toBe("INFERNO");
+	});
+
+	it("gates OAuth start at FLAME before any state is written", () => {
+		const initiateOauth = readRepoFile(
+			"supabase/functions/initiate-oauth/index.ts",
+		);
+		// The call alone is not the gate: deleting the `if (!gate.allowed)`
+		// line leaves the call in place and hands every FREE/EMBER user an
+		// OAuth URL. Assert the call AND its short-circuit, as one match.
+		const gate =
+			/requireSubscription\(\s*supabase,\s*user\.id,\s*'FLAME',\s*cors\s*\)[\s\S]{0,160}?if\s*\(\s*!gate\.allowed\s*\)\s*(\{\s*)?return\s+gate\.response;/;
+		const gateIdx = initiateOauth.search(gate);
+		expect(gateIdx).toBeGreaterThan(-1);
+		expect(gateIdx).toBeLessThan(initiateOauth.indexOf("from('oauth_states')"));
+		expect(FEATURE_MIN_TIER.integrations).toBe("FLAME");
+	});
+
+	it("keeps Fitbit and Garmin Connect comingSoon on the Flame integrations page", () => {
+		const fitbit = providerCardBlock(integrations, "fitbit");
+		const garmin = providerCardBlock(integrations, "garmin");
+		expect(fitbit).toMatch(/\bcomingSoon\b/);
+		expect(garmin).toMatch(/\bcomingSoon\b/);
+		expect(fitbit).not.toMatch(/comingSoon=\{false\}/);
+		expect(garmin).not.toMatch(/comingSoon=\{false\}/);
+	});
+});

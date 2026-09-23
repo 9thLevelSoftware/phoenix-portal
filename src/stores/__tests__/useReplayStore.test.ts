@@ -88,13 +88,14 @@ describe("useReplayStore", () => {
 		expect(useReplayStore.getState().currentRepIndex).toBe(5);
 	});
 
-	it("reset() resets isPlaying, currentTimeMs, currentRepIndex but preserves speed/viewMode/currentSetIndex", () => {
+	it("reset() restores the full initial state (including currentSetIndex)", () => {
 		useReplayStore.setState({
 			isPlaying: true,
 			currentTimeMs: 5000,
 			speed: 2,
 			viewMode: "session",
 			currentSetIndex: 3,
+			activeChart: "velocity",
 			currentRepIndex: 7,
 		});
 
@@ -103,9 +104,25 @@ describe("useReplayStore", () => {
 		expect(state.isPlaying).toBe(false);
 		expect(state.currentTimeMs).toBe(0);
 		expect(state.currentRepIndex).toBe(0);
-		// These should be preserved
-		expect(state.speed).toBe(2);
-		expect(state.viewMode).toBe("session");
-		expect(state.currentSetIndex).toBe(3);
+		// Full reset: session/playback fields all return to their initial values so
+		// a shorter follow-up session starts at set 0.
+		expect(state.speed).toBe(1);
+		expect(state.viewMode).toBe("set");
+		expect(state.currentSetIndex).toBe(0);
+		expect(state.activeChart).toBe("force");
+	});
+
+	it("seek() clamps negative/non-finite times to 0", () => {
+		useReplayStore.getState().seek(-100);
+		expect(useReplayStore.getState().currentTimeMs).toBe(0);
+		useReplayStore.getState().seek(Number.NaN);
+		expect(useReplayStore.getState().currentTimeMs).toBe(0);
+	});
+
+	it("setCurrentRepIndex() normalizes to a non-negative integer", () => {
+		useReplayStore.getState().setCurrentRepIndex(-3);
+		expect(useReplayStore.getState().currentRepIndex).toBe(0);
+		useReplayStore.getState().setCurrentRepIndex(2.9);
+		expect(useReplayStore.getState().currentRepIndex).toBe(2);
 	});
 });

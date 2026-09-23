@@ -1,7 +1,18 @@
 import { queryOptions } from "@tanstack/react-query";
+import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { goalListSchema } from "@/schemas/goals";
 import { queryKeys } from "./keys";
+
+const goalPrBestSchema = z.object({
+	exercise_id: z.string().nullable(),
+	exercise_name: z.string(),
+	record_type: z.string(),
+	// Per cable, as stored (KD-8). Same identity as
+	// `personalRecordSchema.value`; any total is the display layer's job
+	// (src/lib/units/loadDisplay.ts), and goal PRs carry no cable count.
+	value: z.number(),
+});
 
 /**
  * Fetch active, completed, and archived goals for a user.
@@ -19,6 +30,25 @@ export function goalsOptions(userId: string) {
 				.order("created_at", { ascending: false });
 			if (error) throw error;
 			return goalListSchema.parse(data);
+		},
+		enabled: !!userId,
+	});
+}
+
+/** Best strength PRs for goal progress, aggregated across the full history. */
+export function goalPrBestsOptions(userId: string, profileId?: string | null) {
+	return queryOptions({
+		queryKey: [
+			...queryKeys.records.byUser(userId, profileId),
+			"goal-pr-bests",
+		] as const,
+		queryFn: async () => {
+			const { data, error } = await supabase.rpc(
+				"personal_record_bests",
+				profileId ? { p_profile_id: profileId } : {},
+			);
+			if (error) throw error;
+			return z.array(goalPrBestSchema).parse(data ?? []);
 		},
 		enabled: !!userId,
 	});

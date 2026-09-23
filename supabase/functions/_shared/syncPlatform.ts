@@ -1,4 +1,15 @@
-export function normalizeSyncPlatform(value: unknown): string {
+/**
+ * Canonicalize a raw platform input to "android" | "ios" | "unknown".
+ *
+ * This MUST match the live `platformSchema` contract in pushPayloadSchema.ts:
+ * anything that is not recognizably Android or iOS collapses to "unknown"
+ * rather than being persisted verbatim (Finding F333). Two diverging platform
+ * normalizers would let a future caller store values the push schema would
+ * never emit.
+ */
+export function normalizeSyncPlatform(
+	value: unknown,
+): "android" | "ios" | "unknown" {
 	if (typeof value !== "string") return "unknown";
 
 	const normalized = value.trim().toLowerCase();
@@ -6,7 +17,7 @@ export function normalizeSyncPlatform(value: unknown): string {
 	if (normalized.includes("android")) return "android";
 	if (normalized.includes("ios")) return "ios";
 
-	return normalized;
+	return "unknown";
 }
 
 /**

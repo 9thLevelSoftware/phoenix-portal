@@ -1,6 +1,6 @@
 import { Sparkles, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/app/components/ui/button";
 
 interface WhatsNewBannerProps {
@@ -20,11 +20,20 @@ const newFeatures = [
  */
 export function WhatsNewBanner({ onDismiss }: WhatsNewBannerProps) {
 	const [visible, setVisible] = useState(true);
+	const dismissTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+	// Clear any pending dismiss timer on unmount so it can't fire after the
+	// component (e.g. on a route change) and mutate onboarding state.
+	useEffect(() => {
+		return () => {
+			if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+		};
+	}, []);
 
 	function handleDismiss() {
 		setVisible(false);
 		// Wait for exit animation to complete before persisting
-		setTimeout(() => onDismiss(), 300);
+		dismissTimerRef.current = setTimeout(() => onDismiss(), 300);
 	}
 
 	return (

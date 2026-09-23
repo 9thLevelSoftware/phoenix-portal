@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Minus, TrendingDown, TrendingUp } from "lucide-react";
+import { Info, Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -22,9 +22,15 @@ import {
 } from "@/app/components/ui/select";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
-import { estimateOneRepMax } from "@/lib/biomechanics";
+import {
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+	Tooltip as UiTooltip,
+} from "@/app/components/ui/tooltip";
 import { PHOENIX } from "@/lib/colors";
-import { convertWeight, getUnitLabel } from "@/lib/units";
+import { convertWeight } from "@/lib/units";
+import { perCableUnitLabel } from "@/lib/units/loadDisplay";
 import { profileOptions } from "@/queries/profile";
 import {
 	exerciseListOptions,
@@ -91,52 +97,110 @@ function DirectionIcon({ direction }: { direction: "up" | "down" | "flat" }) {
 	return <Minus className="w-4 h-4 text-muted-foreground" />;
 }
 
+// Distinct hue for the velocity (VBT) estimate so it never reads as the same
+// metric as the green rep-based estimate.
+const VELOCITY_COLOR = "#8B7CF6";
+
+const VELOCITY_HELP =
+	"Velocity-based (VBT) estimate from cable speed (mean concentric velocity) captured by the trainer — distinct from the stored mobile estimated 1RM.";
+
+/** Small info icon with a hover/focus tooltip. Reuses the shared Radix tooltip. */
+function InfoTooltip({ text }: { text: string }) {
+	return (
+		<TooltipProvider delayDuration={150}>
+			<UiTooltip>
+				<TooltipTrigger asChild>
+					<button
+						type="button"
+						aria-label="More info"
+						className="text-muted-foreground hover:text-white focus:outline-none"
+					>
+						<Info className="w-3.5 h-3.5" />
+					</button>
+				</TooltipTrigger>
+				<TooltipContent className="max-w-xs text-xs">{text}</TooltipContent>
+			</UiTooltip>
+		</TooltipProvider>
+	);
+}
+
+/**
+ * Current-value stat for the velocity-based (VBT) 1RM. Rendered only when a
+ * value is present, visually distinct from the rep-based estimate.
+ */
+function VelocityStatCard({ value, unit }: { value: number; unit: string }) {
+	return (
+		<Card className="p-4 bg-surface-2 border-secondary">
+			<div className="flex items-center gap-1 mb-1">
+				<span className="text-sm text-muted-foreground">
+					Velocity 1RM (VBT)
+				</span>
+				<InfoTooltip text={VELOCITY_HELP} />
+			</div>
+			<div
+				className="text-4xl font-bold tabular-nums"
+				style={{ color: VELOCITY_COLOR }}
+			>
+				{value} {unit}
+			</div>
+			<div className="mt-2 text-xs text-muted-foreground">Latest estimate</div>
+		</Card>
+	);
+}
+
 function StatCard({
 	label,
 	stat,
 	color,
 	unit,
+	info,
 }: {
 	label: string;
-	stat: TrendStat;
+	stat: TrendStat | null;
 	color: string;
 	unit: string;
+	info?: string;
 }) {
 	return (
 		<Card className="p-4 bg-surface-2 border-secondary">
-			<div className="text-sm text-muted-foreground mb-1">{label}</div>
+			<div className="flex items-center gap-1 mb-1">
+				<span className="text-sm text-muted-foreground">{label}</span>
+				{info && <InfoTooltip text={info} />}
+			</div>
 			<div className="text-4xl font-bold tabular-nums" style={{ color }}>
-				{stat.current} {unit}
+				{stat == null ? "—" : `${stat.current} ${unit}`}
 			</div>
-			<div className="flex items-center gap-2 mt-2">
-				{stat.changePercent !== 0 && (
-					<span
-						className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium ${
-							stat.changePercent > 0
-								? "bg-emerald-500/15 text-emerald-400"
-								: "bg-red-500/15 text-red-400"
-						}`}
-					>
-						{stat.changePercent > 0 ? "\u2191" : "\u2193"}{" "}
-						{Math.abs(stat.changePercent)}%
-					</span>
-				)}
-				<div className="flex items-center gap-1 text-xs">
-					<DirectionIcon direction={stat.direction} />
-					<span
-						className={
-							stat.direction === "up"
-								? "text-success"
-								: stat.direction === "down"
-									? "text-chart-2"
-									: "text-muted-foreground"
-						}
-					>
-						{stat.change > 0 ? "+" : ""}
-						{stat.change} {unit}
-					</span>
+			{stat != null && (
+				<div className="flex items-center gap-2 mt-2">
+					{stat.changePercent !== 0 && (
+						<span
+							className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium ${
+								stat.changePercent > 0
+									? "bg-emerald-500/15 text-emerald-400"
+									: "bg-red-500/15 text-red-400"
+							}`}
+						>
+							{stat.changePercent > 0 ? "\u2191" : "\u2193"}{" "}
+							{Math.abs(stat.changePercent)}%
+						</span>
+					)}
+					<div className="flex items-center gap-1 text-xs">
+						<DirectionIcon direction={stat.direction} />
+						<span
+							className={
+								stat.direction === "up"
+									? "text-success"
+									: stat.direction === "down"
+										? "text-chart-2"
+										: "text-muted-foreground"
+							}
+						>
+							{stat.change > 0 ? "+" : ""}
+							{stat.change} {unit}
+						</span>
+					</div>
 				</div>
-			</div>
+			)}
 		</Card>
 	);
 }
@@ -151,17 +215,26 @@ export function ExerciseProgress({
 	const [timeRange, setTimeRange] = useState<string>("3M");
 	const { activeProfileId } = useProfileFilterStore();
 
-	const { data: exercises, isPending: exercisesPending } = useQuery(
-		exerciseListOptions(userId, activeProfileId),
-	);
+	const {
+		data: exercises,
+		isPending: exercisesPending,
+		isError: exercisesError,
+	} = useQuery({
+		...exerciseListOptions(userId, activeProfileId),
+		enabled: !!userId,
+	});
 	const { data: profile } = useQuery({
 		...profileOptions(userId),
 		enabled: !!userId,
 	});
 
-	const { data: progressRaw, isPending: progressPending } = useQuery({
+	const {
+		data: progressRaw,
+		isPending: progressPending,
+		isError: progressError,
+	} = useQuery({
 		...exerciseProgressOptions(userId, selectedExercise, activeProfileId),
-		enabled: !!selectedExercise,
+		enabled: !!userId && !!selectedExercise,
 	});
 	const unit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
@@ -171,13 +244,23 @@ export function ExerciseProgress({
 		}
 	}, [exercises, selectedExercise]);
 
+	// Keep the chart in sync when the parent (e.g. BiomechanicsContent) changes
+	// the exercise via the initialExercise prop.
+	useEffect(() => {
+		if (initialExercise) {
+			setSelectedExercise(initialExercise);
+		}
+	}, [initialExercise]);
+
 	const days = TIME_RANGES.find((r) => r.label === timeRange)?.days ?? 90;
 	const filteredData = useMemo(
 		() => filterByTimeRange(progressRaw ?? [], days),
 		[progressRaw, days],
 	);
 
-	// Chart data
+	// Chart data. All loads are per cable (exercise_progress carries no cable
+	// count, so no total is shown; KD-8). Stored estimated_1rm_kg (including 0) is never replaced with
+	// a portal formula. Legacy rows that omit the column show as a gap / "—".
 	const chartData = useMemo(
 		() =>
 			filteredData.map((d) => ({
@@ -185,12 +268,10 @@ export function ExerciseProgress({
 				rawDate: d.recorded_at.getTime(),
 				maxWeight: convertWeight(d.max_weight_kg, unit),
 				totalVolume: convertWeight(d.total_volume_kg, unit),
-				estimated1RM: convertWeight(
-					d.estimated_1rm_kg > 0
-						? d.estimated_1rm_kg
-						: estimateOneRepMax(d.max_weight_kg, d.max_reps),
-					unit,
-				),
+				estimated1RM:
+					typeof d.estimated_1rm_kg === "number"
+						? convertWeight(d.estimated_1rm_kg, unit)
+						: null,
 			})),
 		[filteredData, unit],
 	);
@@ -204,10 +285,28 @@ export function ExerciseProgress({
 		() => computeTrend(chartData.map((d) => d.totalVolume)),
 		[chartData],
 	);
-	const oneRmTrend = useMemo(
-		() => computeTrend(chartData.map((d) => d.estimated1RM)),
-		[chartData],
-	);
+	const oneRmTrend = useMemo(() => {
+		const values = chartData
+			.map((d) => d.estimated1RM)
+			.filter((value): value is number => value != null);
+		return values.length === 0 ? null : computeTrend(values);
+	}, [chartData]);
+
+	// Velocity-based (VBT) 1RM is a rolling CURRENT value (not as-of-session), so
+	// we surface the most-recent non-null reading as a single current-value stat
+	// rather than a trend series. Hidden entirely when there is no VBT data.
+	// Per cable, as stored (KD-8); convertWeight only does kg↔lbs.
+	const velocity1RM = useMemo(() => {
+		for (let i = filteredData.length - 1; i >= 0; i--) {
+			const v = filteredData[i].velocity_estimated_1rm_kg;
+			if (v != null) {
+				// Round to 1 decimal to match the rep-based stat (computeTrend rounds
+				// current the same way); avoids long lbs decimal trails.
+				return Math.round(convertWeight(v, unit) * 10) / 10;
+			}
+		}
+		return null;
+	}, [filteredData, unit]);
 
 	if (exercisesPending) {
 		return (
@@ -223,6 +322,20 @@ export function ExerciseProgress({
 					<Skeleton className="h-[300px]" />
 					<Skeleton className="h-[300px]" />
 				</div>
+			</div>
+		);
+	}
+
+	// Surface a load failure instead of implying there's simply no data.
+	if (exercisesError) {
+		return (
+			<div className="text-center py-16">
+				<h3 className="text-2xl font-semibold text-white mb-2">
+					Couldn't load exercise progress
+				</h3>
+				<p className="text-muted-foreground max-w-md mx-auto">
+					Something went wrong while loading your progress. Please try again.
+				</p>
 			</div>
 		);
 	}
@@ -282,6 +395,10 @@ export function ExerciseProgress({
 					<Skeleton className="h-[300px]" />
 					<Skeleton className="h-[300px]" />
 				</div>
+			) : progressError ? (
+				<div className="text-center py-12 text-muted-foreground">
+					Couldn't load progress for this exercise. Please try again.
+				</div>
 			) : chartData.length === 0 ? (
 				<div className="text-center py-12 text-muted-foreground">
 					No progress data for this exercise in the selected time range
@@ -290,7 +407,9 @@ export function ExerciseProgress({
 				<>
 					{/* Summary stats */}
 					<motion.div
-						className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+						className={`grid grid-cols-1 sm:grid-cols-3 gap-4${
+							velocity1RM != null ? " lg:grid-cols-4" : ""
+						}`}
 						initial={{ opacity: 0, y: 10 }}
 						animate={{ opacity: 1, y: 0 }}
 					>
@@ -298,20 +417,27 @@ export function ExerciseProgress({
 							label="Overall Max Weight"
 							stat={weightTrend}
 							color={PHOENIX().ember}
-							unit={getUnitLabel(unit)}
+							unit={perCableUnitLabel(unit)}
 						/>
 						<StatCard
 							label="Overall Volume"
 							stat={volumeTrend}
 							color={PHOENIX().gold}
-							unit={getUnitLabel(unit)}
+							unit={perCableUnitLabel(unit)}
 						/>
 						<StatCard
-							label="Overall Est. 1RM"
+							label="Estimated 1RM (mobile)"
 							stat={oneRmTrend}
 							color={PHOENIX().forgeGreen}
-							unit={getUnitLabel(unit)}
+							unit={perCableUnitLabel(unit)}
+							info="Stored from the mobile app (hybrid Brzycki ≤10 / Epley >10). Not recomputed here."
 						/>
+						{velocity1RM != null && (
+							<VelocityStatCard
+								value={velocity1RM}
+								unit={perCableUnitLabel(unit)}
+							/>
+						)}
 					</motion.div>
 
 					{/* Three trend chart panels */}
@@ -367,7 +493,7 @@ export function ExerciseProgress({
 											<Area
 												type="monotone"
 												dataKey="maxWeight"
-												name={`Max Weight (${getUnitLabel(unit)})`}
+												name={`Max Weight (${perCableUnitLabel(unit)})`}
 												stroke={PHOENIX().ember}
 												strokeWidth={2}
 												fill="url(#weightGradient)"
@@ -436,7 +562,7 @@ export function ExerciseProgress({
 											<Area
 												type="monotone"
 												dataKey="totalVolume"
-												name={`Volume (${getUnitLabel(unit)})`}
+												name={`Volume (${perCableUnitLabel(unit)})`}
 												stroke={PHOENIX().gold}
 												strokeWidth={2}
 												fill="url(#volumeGradientProgress)"
@@ -459,7 +585,7 @@ export function ExerciseProgress({
 						>
 							<Card className="p-4 bg-surface-2 border-secondary">
 								<h4 className="text-sm font-medium text-muted-foreground mb-4">
-									Overall Estimated 1RM Trend
+									Estimated 1RM Trend (mobile)
 								</h4>
 								<div
 									role="img"
@@ -505,7 +631,7 @@ export function ExerciseProgress({
 											<Area
 												type="monotone"
 												dataKey="estimated1RM"
-												name={`Est. 1RM (${getUnitLabel(unit)})`}
+												name={`Est. 1RM, mobile (${perCableUnitLabel(unit)})`}
 												stroke={PHOENIX().forgeGreen}
 												strokeWidth={2}
 												fill="url(#oneRmGradient)"

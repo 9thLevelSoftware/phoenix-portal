@@ -110,15 +110,26 @@ export function useOnboarding() {
 		mutationFn: async ({ hintId }: { hintId: string }) => {
 			if (!user) throw new Error("Not authenticated");
 
-			// Merge the new hint into existing dismissed_hints JSONB
-			const currentHints =
-				onboarding?.dismissed_hints ?? ({} as Record<string, boolean>);
-			const updatedHints = { ...currentHints, [hintId]: true };
+			// Fetch the latest dismissed_hints directly from the DB to avoid
+			// overwriting concurrent updates from other tabs (stale cache risk).
+			const { data: current, error: fetchError } = await supabase
+				.from("user_onboarding")
+				.select("dismissed_hints")
+				.eq("user_id", user.id)
+				.single();
+			if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
+
+			const merged = {
+				...((current?.dismissed_hints as Record<string, boolean>) ?? {}),
+				[hintId]: true,
+			};
 
 			const { error } = await supabase
 				.from("user_onboarding")
-				.update({ dismissed_hints: updatedHints })
-				.eq("user_id", user.id);
+				.upsert(
+					{ user_id: user.id, dismissed_hints: merged },
+					{ onConflict: "user_id" },
+				);
 			if (error) throw error;
 		},
 		onSuccess: () => {

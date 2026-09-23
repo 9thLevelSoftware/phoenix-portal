@@ -37,23 +37,96 @@ vi.mock("react-router", async () => {
 });
 
 // --- Supabase mock ---
-vi.mock("@/lib/supabase", () => ({
-	supabase: {
-		from: () => ({
-			select: () => ({
-				eq: () => ({
-					maybeSingle: () => Promise.resolve({ data: null, error: null }),
-					order: () => Promise.resolve({ data: [], error: null }),
-					single: () =>
-						Promise.resolve({ data: null, error: { message: "not found" } }),
-				}),
+// Table-aware, so a test can serve a real session with rep summaries and
+// ZERO telemetry rows. That is exactly what a FLAME user gets once
+// rep_telemetry / telemetry_points are INFERNO-gated in RLS
+// (20260920003800_inferno_read_policies.sql): the rows are filtered away
+// server-side and PostgREST reports success with an empty array, not an
+// error. Defaults keep the pre-existing "session not found" behaviour.
+const mockDb = vi.hoisted(() => ({
+	session: null as unknown,
+	rows: {} as Record<string, unknown[]>,
+}));
+
+// `fetchSetTelemetry` pages through `fetchAllKeysetPages`, whose query shape
+// (.gte/.or/.limit, thenable) the chainable supabase double below cannot serve,
+// so every telemetry read threw and SessionReplay took its error path. Route it
+// at the same table-aware `mockDb.rows` the tests already fill —
+// `telemetry_points: []` is then exactly the RLS-filtered empty array the
+// comment above describes.
+vi.mock("@/queries/telemetry", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/queries/telemetry")>();
+	return {
+		...actual,
+		fetchSetTelemetry: (source: "rep_telemetry" | "telemetry_points") =>
+			Promise.resolve((mockDb.rows[source] ?? []) as never),
+	};
+});
+
+vi.mock("@/lib/supabase", () => {
+	const chainFor = (table: string) => {
+		const chain = {
+			select: () => chain,
+			eq: () => chain,
+			maybeSingle: () => Promise.resolve({ data: null, error: null }),
+			order: () =>
+				Promise.resolve({ data: mockDb.rows[table] ?? [], error: null }),
+			single: () =>
+				Promise.resolve(
+					mockDb.session
+						? { data: mockDb.session, error: null }
+						: { data: null, error: { message: "not found" } },
+				),
+		};
+		return chain;
+	};
+
+	return {
+		supabase: {
+			from: (table: string) => chainFor(table),
+			channel: () => ({
+				on: () => ({ subscribe: () => ({}) }),
 			}),
-		}),
-		channel: () => ({
-			on: () => ({ subscribe: () => ({}) }),
-		}),
-		removeChannel: vi.fn(),
-	},
+			removeChannel: vi.fn(),
+		},
+	};
+});
+
+const SESSION_WITH_ONE_SET = {
+	id: "test-session-123",
+	started_at: "2026-09-01T10:00:00Z",
+	exercises: [
+		{
+			id: "ex-1",
+			exercise_name: "Barbell Squat",
+			sets: [{ id: "set-1", set_number: 1 }],
+		},
+	],
+};
+
+const REP_SUMMARIES = [1, 2, 3].map((repNumber) => ({
+	id: `0000000${repNumber}-0000-4000-8000-00000000000${repNumber}`,
+	set_id: "set-1",
+	rep_number: repNumber,
+	mean_velocity_mps: 0.6,
+	peak_velocity_mps: 0.9,
+	mean_force_n: 500,
+	peak_force_n: 700,
+	power_watts: 300,
+	rom_mm: 500,
+	tut_ms: 2000,
+	left_force_avg: 250,
+	right_force_avg: 250,
+	asymmetry_pct: 0,
+	vbt_zone: "STRENGTH",
+}));
+
+const TELEMETRY_POINTS = Array.from({ length: 12 }, (_, i) => ({
+	timestamp_ms: i * 100,
+	force_n: 500 + i,
+	velocity_mps: 0.5,
+	position_mm: i * 10,
+	cable: "A",
 }));
 
 // --- useSubscription mock ---
@@ -141,6 +214,8 @@ describe("SessionReplay", () => {
 		mockReplayStore.currentSetIndex = 0;
 		mockReplayStore.isPlaying = false;
 		mockReplayStore.currentTimeMs = 0;
+		mockDb.session = null;
+		mockDb.rows = {};
 	});
 
 	// ---------------------------------------------------------------
@@ -220,6 +295,76 @@ describe("SessionReplay", () => {
 		setupSubscription("FLAME");
 		renderWithProviders(<SessionReplay />);
 		expect(mockReplayStore.reset).toHaveBeenCalled();
+	});
+
+	// ---------------------------------------------------------------
+	// PR 38: force curves are INFERNO and the data is gated in RLS, so a
+	// FLAME user's telemetry query comes back empty. Replay must keep
+	// working rep-by-rep and say why the curves are missing.
+	// ---------------------------------------------------------------
+	it("gives a FLAME user rep-by-rep replay and an explicit Inferno notice when telemetry comes back empty", async () => {
+		setupSubscription("FLAME");
+		mockDb.session = SESSION_WITH_ONE_SET;
+		mockDb.rows.telemetry_points = [];
+		mockDb.rows.rep_summaries = REP_SUMMARIES;
+
+		renderWithProviders(<SessionReplay />);
+
+		expect(
+			await screen.findByText("Force curves require Inferno"),
+		).toBeInTheDocument();
+		expect(screen.getByRole("link", { name: /see plans/i })).toHaveAttribute(
+			"href",
+			"/pricing",
+		);
+
+		// Rep-by-rep replay — what FLAME actually pays for — is still there.
+		expect(screen.getByText("Set 1 of 1")).toBeInTheDocument();
+		expect(screen.getByText("Barbell Squat - Set 1")).toBeInTheDocument();
+
+		// The force/velocity curve UI is not, and nothing looks broken.
+		expect(screen.queryByTestId("replay-canvas")).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("tab", { name: /velocity/i }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/no telemetry data available/i),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/failed to load replay data/i),
+		).not.toBeInTheDocument();
+	});
+
+	it("shows the force curves to an INFERNO user and drops the notice", async () => {
+		setupSubscription("INFERNO");
+		mockDb.session = SESSION_WITH_ONE_SET;
+		mockDb.rows.telemetry_points = TELEMETRY_POINTS;
+		mockDb.rows.rep_summaries = REP_SUMMARIES;
+
+		renderWithProviders(<SessionReplay />);
+
+		expect(await screen.findByTestId("replay-canvas")).toBeInTheDocument();
+		expect(screen.getByRole("tab", { name: /velocity/i })).toBeInTheDocument();
+		expect(
+			screen.queryByText("Force curves require Inferno"),
+		).not.toBeInTheDocument();
+	});
+
+	it("tells an INFERNO user the set has not synced rather than blaming their plan", async () => {
+		setupSubscription("INFERNO");
+		mockDb.session = SESSION_WITH_ONE_SET;
+		mockDb.rows.telemetry_points = [];
+		mockDb.rows.rep_summaries = REP_SUMMARIES;
+
+		renderWithProviders(<SessionReplay />);
+
+		expect(
+			await screen.findByText(/dense telemetry is not available for this set/i),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText("Force curves require Inferno"),
+		).not.toBeInTheDocument();
+		expect(screen.getByText("Set 1 of 1")).toBeInTheDocument();
 	});
 });
 

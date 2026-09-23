@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
 	Activity,
 	AlertCircle,
@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { lazy, Suspense, useMemo, useState } from "react";
-import type { ExtendedBodyPart, Slug } from "react-muscle-highlighter";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { DataFreshnessStrip } from "@/app/components/analytics/DataFreshnessStrip";
@@ -45,10 +44,15 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
+import { useBodyMuscleAnalytics } from "@/hooks/useBodyMuscleAnalytics";
 import { PHOENIX } from "@/lib/colors";
 import { getExerciseProfile } from "@/lib/exercise-muscles";
 import { downloadCSV } from "@/lib/export/csv";
 import { buildFreshnessState } from "@/lib/freshness";
+import {
+	generateInsights as runInsightRules,
+	type TrainingInsight,
+} from "@/lib/insights";
 import { buildProgressionWorkbenchModel } from "@/lib/progression-workbench";
 import type { Recommendation } from "@/lib/recommendations";
 import {
@@ -59,7 +63,13 @@ import {
 import type { MuscleRecovery } from "@/lib/sra-recovery";
 import { computeSraStatus } from "@/lib/sra-recovery";
 import { calculateRTL, classifyTrainingLoad } from "@/lib/training-load";
-import { convertWeight, formatVolume, type WeightUnit } from "@/lib/units";
+import {
+	convertWeight,
+	convertWeightFromUnit,
+	formatVolume,
+	isWeightUnit,
+	type WeightUnit,
+} from "@/lib/units";
 import type { ExerciseSessionData } from "@/lib/volume-landmarks";
 import { computeWeeklyVolume } from "@/lib/volume-landmarks";
 import {
@@ -69,6 +79,7 @@ import {
 import {
 	muscleGroupOptions,
 	phaseStatisticsTrendOptions,
+	periodToDays as queryPeriodDays,
 	strengthProgressOptions,
 	volumeComparisonOptions,
 	volumeTrendOptions,
@@ -79,9 +90,12 @@ import { insightsOptions } from "@/queries/insights";
 import { externalActivitiesOptions } from "@/queries/integrations";
 import { profileOptions } from "@/queries/profile";
 import { progressionWorkbenchOptions } from "@/queries/progress";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
+import { personalRecordsOptions } from "@/queries/records";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
-import { buildPhaseMetricSummary } from "./analytics/phaseStatisticsTransforms";
+import {
+	buildPhaseMetricSummary,
+	type PhaseMetricPair,
+} from "./analytics/phaseStatisticsTransforms";
 import {
 	buildMobileStrengthPhaseData,
 	buildStrengthPhaseSeries,
@@ -185,34 +199,40 @@ function periodToInsightPeriod(timePeriod: string): string {
 	}
 }
 
-// Bucket volume data into weekly aggregates for chart display
-function bucketByWeek(
-	data: Array<{ started_at: string; total_volume: number }>,
-) {
-	if (!data || data.length === 0) {
-		return [];
-	}
-	const weeks = new Map<string, { volume: number; workouts: number }>();
-	for (const item of data) {
-		const date = new Date(item.started_at);
-		// Get ISO week start (Monday)
-		const day = date.getDay();
-		const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-		const weekStart = new Date(date);
-		weekStart.setDate(diff);
-		const key = weekStart.toLocaleDateString("en-US", {
-			month: "short",
-			day: "numeric",
-		});
-		const existing = weeks.get(key) ?? { volume: 0, workouts: 0 };
-		existing.volume += item.total_volume * WEIGHT_MULTIPLIER;
-		existing.workouts += 1;
-		weeks.set(key, existing);
-	}
-	return Array.from(weeks.entries()).map(([date, { volume, workouts }]) => ({
-		date,
-		volume: Math.round(volume),
-		workouts,
+/** A weekly bucket as `session_volume_buckets` returns it (Monday, local). */
+interface VolumeBucket {
+	week_start: string;
+	sessions: number;
+	total_volume: number;
+}
+
+/**
+ * `week_start` is a DATE ("2026-03-02"). Parse its parts instead of letting
+ * `new Date(string)` read it as UTC midnight, which would show the previous
+ * day in negative-offset zones.
+ */
+function weekStartLabel(weekStart: string, withYear: boolean): string {
+	const [year, month, day] = weekStart.split("-").map(Number);
+	return new Date(year, (month ?? 1) - 1, day).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+		...(withYear ? { year: "numeric" as const } : {}),
+	});
+}
+
+/**
+ * Map the SQL weekly buckets onto the chart series. Rows stay keyed by
+ * `week_start`, so the same calendar week in different years stays distinct on
+ * the "ALL" period (the old client-side bucketing keyed weeks by a month+day
+ * label and silently merged them).
+ */
+export function toWeeklyVolumeSeries(buckets: VolumeBucket[], period: string) {
+	const withYear = period === "all";
+	return buckets.map((bucket) => ({
+		key: bucket.week_start,
+		date: weekStartLabel(bucket.week_start, withYear),
+		volume: Math.round(Number(bucket.total_volume ?? 0)),
+		workouts: bucket.sessions ?? 0,
 	}));
 }
 
@@ -228,10 +248,153 @@ function convertStrengthSeriesPoint(
 	) as Record<string, string | number>;
 }
 
-function getExerciseColors(): string[] {
-	const phoenix = PHOENIX();
-	return [phoenix.ember, phoenix.flameRed, phoenix.gold];
+function toNumber(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value)
+		? value
+		: undefined;
 }
+
+function roundDisplayMetric(value: number, unit: string): number {
+	if (isWeightUnit(unit)) {
+		return Number(value.toFixed(unit === "lbs" ? 1 : 0));
+	}
+	return value;
+}
+
+function formatMetricText(value: number, unit: string): string {
+	if (isWeightUnit(unit)) {
+		return `${roundDisplayMetric(value, unit).toLocaleString()} ${unit}`;
+	}
+	return `${value.toLocaleString()}${unit}`;
+}
+
+function normalizeInsightType(value: unknown): InsightItem["type"] {
+	return value === "success" ||
+		value === "warning" ||
+		value === "info" ||
+		value === "achievement"
+		? value
+		: "info";
+}
+
+function mapServerInsight(
+	item: Record<string, unknown>,
+	unit: WeightUnit,
+): InsightItem {
+	const sourceUnit = item.metric_unit;
+	const rawValue = toNumber(item.metric_value);
+	const rawDelta = toNumber(item.metric_delta);
+	const metricName = item.metric_name;
+	const metric =
+		typeof metricName === "string" && rawValue !== undefined
+			? {
+					name: metricName,
+					value: isWeightUnit(sourceUnit)
+						? roundDisplayMetric(
+								convertWeightFromUnit(rawValue, sourceUnit, unit),
+								unit,
+							)
+						: rawValue,
+					unit: isWeightUnit(sourceUnit) ? unit : String(sourceUnit ?? ""),
+					delta:
+						rawDelta !== undefined
+							? isWeightUnit(sourceUnit)
+								? roundDisplayMetric(
+										convertWeightFromUnit(rawDelta, sourceUnit, unit),
+										unit,
+									)
+								: rawDelta
+							: undefined,
+				}
+			: undefined;
+	const title = (item.title as string) ?? "";
+	const description = (item.description as string) ?? "";
+	const normalizedDescription =
+		metric && isWeightUnit(metric.unit) && title.startsWith("New PR:")
+			? metric.delta !== undefined
+				? `You set a personal record on ${metric.name} -- ${formatMetricText(metric.value, metric.unit)} (up ${formatMetricText(metric.delta, metric.unit)} from ${formatMetricText(metric.value - metric.delta, metric.unit)}).`
+				: `You set a personal record on ${metric.name} -- ${formatMetricText(metric.value, metric.unit)}.`
+			: description;
+
+	return {
+		id: (item.id as string) ?? `${title}-${normalizedDescription}`,
+		type: normalizeInsightType(item.insight_type ?? item.type),
+		title,
+		description: normalizedDescription,
+		recommendation: item.recommendation as string | undefined,
+		metric,
+	};
+}
+
+/**
+ * Loading/error state for the feed. The local fallback reads the insight-period
+ * comparison, so while it is the source that query's state is the feed's too;
+ * a fresh server batch does not depend on it.
+ */
+export function insightsFeedState(
+	source: "server" | "local",
+	server: { pending: boolean; error: boolean },
+	fallback: { pending: boolean; error: boolean },
+): { pending: boolean; error: boolean } {
+	if (source === "server") return server;
+	return {
+		pending: server.pending || fallback.pending,
+		error: server.error || fallback.error,
+	};
+}
+
+/**
+ * KD-14 precedence: the feed shows a FRESH server batch or the browser
+ * fallback, never a mix, so the two can never contradict each other and no
+ * item can be listed twice.
+ *
+ * A server row counts only while `expires_at` is in the future.
+ * `insightsOptions` already filters on it in SQL; repeating it here means a
+ * query result cached across the 36-hour boundary flips to the fallback
+ * instead of presenting a stale batch as current, and it keeps the whole rule
+ * in one testable place. Server items keep the server row's `id`.
+ */
+export function selectInsightsFeed(
+	serverRows: unknown,
+	localInsights: Array<{
+		type: Insight["type"];
+		title: string;
+		description: string;
+	}>,
+	unit: WeightUnit,
+	now: number = Date.now(),
+): { items: InsightItem[]; source: "server" | "local" } {
+	const fresh = Array.isArray(serverRows)
+		? (serverRows as Array<Record<string, unknown>>).filter((item) => {
+				const expiresAt = item.expires_at;
+				return typeof expiresAt === "string" && Date.parse(expiresAt) > now;
+			})
+		: [];
+
+	if (fresh.length > 0) {
+		return {
+			items: fresh.map((item) => mapServerInsight(item, unit)),
+			source: "server",
+		};
+	}
+
+	return {
+		items: localInsights.map((i, idx) => ({
+			id: `local-${idx}`,
+			type:
+				i.type === "positive"
+					? ("success" as const)
+					: i.type === "warning"
+						? ("warning" as const)
+						: ("info" as const),
+			title: i.title,
+			description: i.description,
+		})),
+		source: "local",
+	};
+}
+
+const EXERCISE_COLORS = [PHOENIX().ember, PHOENIX().flameRed, PHOENIX().gold];
 
 interface Insight {
 	type: "positive" | "warning" | "neutral";
@@ -240,137 +403,94 @@ interface Insight {
 	icon: typeof TrendingUp;
 }
 
-function generateInsights(
-	volumeData: Array<{ date: string; volume: number; workouts: number }>,
-	muscleGroupData: Array<{ name: string; value: number; color: string }>,
-	strengthExercises: string[],
-	totalWorkouts: number,
+const INSIGHT_ICONS: Record<TrainingInsight["type"], typeof TrendingUp> = {
+	success: TrendingUp,
+	achievement: Target,
+	warning: AlertCircle,
+	info: Activity,
+};
+
+/**
+ * The browser fallback shown while no fresh server batch exists. It runs the
+ * SAME rule engine as the scheduled `generate-insights` Edge Function
+ * (KD-14 / F-059, `@/lib/insights`), fed the same current-vs-previous period
+ * windows, so the two can never disagree on a threshold (NF-38). Inputs the
+ * browser does not have here (streaks, PR deltas, plateaus, training load)
+ * are left neutral, so those rules stay server-only rather than guessed.
+ */
+export function buildLocalInsights(
+	comparison:
+		| {
+				current: Array<{ total_volume: number | null }>;
+				previous: Array<{ total_volume: number | null }>;
+		  }
+		| undefined,
+	periodDays: number,
+	muscleGroupData: Array<{ name: string; value: number }>,
+	unit: WeightUnit,
 ): Insight[] {
-	const insights: Insight[] = [];
+	const sum = (rows: Array<{ total_volume: number | null }>) =>
+		rows.reduce((total, row) => total + (row.total_volume ?? 0), 0);
+	const current = comparison?.current ?? [];
+	const shared = runInsightRules(
+		{
+			currentVolume: sum(current),
+			previousVolume: sum(comparison?.previous ?? []),
+			muscleGroups: Object.fromEntries(
+				muscleGroupData.map((group) => [group.name, group.value]),
+			),
+			avgSessionsPerWeek:
+				periodDays > 0 ? (current.length / periodDays) * 7 : 0,
+			currentStreak: 0,
+			bestStreak: 0,
+			recentPRs: [],
+			plateauExercises: [],
+			trainingLoadScore: 0,
+		},
+		unit,
+	);
+	const insights: Insight[] = shared.map((insight) => ({
+		type:
+			insight.type === "warning"
+				? "warning"
+				: insight.type === "info"
+					? "neutral"
+					: "positive",
+		title: insight.title,
+		description: insight.description,
+		icon: INSIGHT_ICONS[insight.type],
+	}));
 
-	// 1. Volume Trend (requires >= 2 data points)
-	if (volumeData.length >= 2) {
-		const current = volumeData[volumeData.length - 1].volume;
-		const previous = volumeData[volumeData.length - 2].volume;
-		if (previous > 0) {
-			const changeRaw = ((current - previous) / previous) * 100;
-			const change = Math.abs(Math.round(changeRaw));
-			if (changeRaw > 0) {
-				insights.push({
-					type: "positive",
-					title: "Volume Trending Up",
-					description: `${change}% increase vs previous week`,
-					icon: TrendingUp,
-				});
-			} else if (changeRaw <= -20) {
-				insights.push({
-					type: "warning",
-					title: "Volume Drop Detected",
-					description: `${change}% decrease -- consider if this is an intentional deload or missed sessions`,
-					icon: TrendingDown,
-				});
-			} else {
-				insights.push({
-					type: "neutral",
-					title: "Volume Stable",
-					description: `Slight ${change}% decrease -- within normal variation`,
-					icon: Activity,
-				});
-			}
-		}
-	}
-
-	// 2. Muscle Balance (requires >= 2 muscle groups)
-	if (muscleGroupData.length >= 2) {
-		const sorted = [...muscleGroupData].sort((a, b) => b.value - a.value);
-		const dominant = sorted[0];
-		const weakest = sorted[sorted.length - 1];
-		if (weakest.value > 0 && dominant.value > 3 * weakest.value) {
-			insights.push({
-				type: "warning",
-				title: "Muscle Imbalance",
-				description: `${dominant.name} at ${dominant.value}% vs ${weakest.name} at ${weakest.value}% -- consider more ${weakest.name} work`,
-				icon: AlertCircle,
-			});
-		} else {
-			insights.push({
-				type: "positive",
-				title: "Balanced Training",
-				description: `Good distribution across ${muscleGroupData.length} muscle groups`,
-				icon: Target,
-			});
-		}
-	}
-
-	// 3. Consistency (requires workouts > 0)
-	if (totalWorkouts > 0) {
-		const avgPerWeek = Math.round(
-			totalWorkouts / Math.max(volumeData.length, 1),
-		);
-		if (avgPerWeek >= 3) {
-			insights.push({
-				type: "positive",
-				title: "Great Consistency",
-				description: `Averaging ${avgPerWeek} workouts per week`,
-				icon: Activity,
-			});
-		} else {
-			insights.push({
-				type: "neutral",
-				title: "Room to Grow",
-				description: `Averaging ${avgPerWeek} workouts per week -- 3+ is ideal for progress`,
-				icon: Activity,
-			});
-		}
-	}
-
-	// 4. Strength Tracking (requires exercises)
-	if (strengthExercises.length > 0) {
-		const displayNames = strengthExercises.slice(0, 3).join(", ");
-		insights.push({
-			type: "positive",
-			title: "Strength Tracking Active",
-			description: `Tracking progress on ${strengthExercises.length} exercises: ${displayNames}`,
-			icon: TrendingUp,
-		});
-	}
-
-	// 5. Fallback -- guaranteed at least one insight
+	// Presentation only, not a rule: never render an empty card.
 	if (insights.length === 0) {
-		insights.push({
-			type: "neutral",
-			title: "Building Your Profile",
-			description:
-				"Complete more workouts to unlock personalized training insights",
-			icon: Activity,
-		});
+		insights.push(
+			current.length > 0
+				? {
+						type: "neutral",
+						title: "Nothing Needs Attention",
+						description:
+							"No volume, balance or consistency flags for this period",
+						icon: Activity,
+					}
+				: {
+						type: "neutral",
+						title: "Building Your Profile",
+						description:
+							"Complete more workouts to unlock personalized training insights",
+						icon: Activity,
+					},
+		);
 	}
 
 	return insights;
 }
 
-// Mobile-specific: bucket by week returning W1, W2... labels
-function bucketByWeekMobile(
-	data: Array<{ started_at: string; total_volume: number }>,
-) {
-	if (!data || data.length === 0) return [];
-	const weeks = new Map<string, number>();
-	for (const item of data) {
-		const date = new Date(item.started_at);
-		const day = date.getDay();
-		const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-		const weekStart = new Date(date);
-		weekStart.setDate(diff);
-		const weekKey = weekStart.toISOString().slice(0, 10);
-		weeks.set(
-			weekKey,
-			(weeks.get(weekKey) ?? 0) + item.total_volume * WEIGHT_MULTIPLIER,
-		);
-	}
-	let i = 1;
-	return Array.from(weeks.entries()).map(([, volume]) => ({
-		date: `W${i++}`,
-		volume: Math.round(volume),
+// Mobile-specific: the same weekly buckets labelled W1, W2...
+function toWeeklyVolumeSeriesMobile(buckets: VolumeBucket[]) {
+	return buckets.map((bucket, index) => ({
+		key: bucket.week_start,
+		date: `W${index + 1}`,
+		volume: Math.round(Number(bucket.total_volume ?? 0)),
 	}));
 }
 
@@ -427,25 +547,6 @@ function percentDelta(current: number, previous: number): number | null {
 	return Math.round(((current - previous) / previous) * 100);
 }
 
-// Map muscle group names → react-muscle-highlighter slugs for body heatmap
-const muscleSlugToGroup: Record<string, string> = {
-	chest: "Chest",
-	deltoids: "Shoulders",
-	trapezius: "Shoulders",
-	biceps: "Arms",
-	triceps: "Arms",
-	forearm: "Arms",
-	abs: "Core",
-	obliques: "Core",
-	quadriceps: "Legs",
-	hamstring: "Legs",
-	calves: "Legs",
-	adductors: "Legs",
-	gluteal: "Legs",
-	"upper-back": "Back",
-	"lower-back": "Back",
-};
-
 export function Analytics() {
 	const { user } = useAuth();
 	const [timePeriod, setTimePeriod] = useState("30D");
@@ -494,6 +595,7 @@ export function Analytics() {
 		isFetching: volumeFetching,
 		dataUpdatedAt: volumeUpdatedAt,
 		error: volumeError,
+		refetch: refetchVolume,
 	} = useQuery(volumeTrendOptions(userId, queryPeriod, activeProfileId));
 	const {
 		data: muscleGroupRaw,
@@ -501,6 +603,7 @@ export function Analytics() {
 		isFetching: muscleFetching,
 		dataUpdatedAt: muscleUpdatedAt,
 		error: muscleError,
+		refetch: refetchMuscle,
 	} = useQuery(muscleGroupOptions(userId, activeProfileId));
 	const {
 		data: strengthRaw,
@@ -508,6 +611,7 @@ export function Analytics() {
 		isFetching: strengthFetching,
 		dataUpdatedAt: strengthUpdatedAt,
 		error: strengthError,
+		refetch: refetchStrength,
 	} = useQuery(strengthProgressOptions(userId, activeProfileId));
 	const {
 		data: phaseStatsRaw,
@@ -515,6 +619,7 @@ export function Analytics() {
 		isFetching: phaseStatsFetching,
 		dataUpdatedAt: phaseStatsUpdatedAt,
 		error: phaseStatsError,
+		refetch: refetchPhaseStats,
 	} = useQuery(
 		phaseStatisticsTrendOptions(userId, queryPeriod, activeProfileId),
 	);
@@ -522,11 +627,27 @@ export function Analytics() {
 		...externalActivitiesOptions(userId),
 		enabled: !!user,
 	});
+	// The chart's window (4w = 28 days): totals, deltas, training load,
+	// consistency and efficiency all describe the same sessions.
 	const { data: volumeComparison } = useQuery({
 		...volumeComparisonOptions(userId, queryPeriod, activeProfileId),
 		enabled: !!userId,
 	});
-	const { data: insightsData, isPending: insightsPending } = useQuery({
+	// The insight window (30D = 30 days, as generate-insights computes it),
+	// used only by the local insight fallback so it agrees with the server.
+	const {
+		data: insightComparison,
+		isPending: insightComparisonPending,
+		isError: insightComparisonError,
+	} = useQuery({
+		...volumeComparisonOptions(userId, insightPeriod, activeProfileId, "fixed"),
+		enabled: !!userId,
+	});
+	const {
+		data: insightsData,
+		isPending: insightsPending,
+		isError: insightsError,
+	} = useQuery({
 		...insightsOptions(userId, insightPeriod),
 		enabled: !!userId,
 	});
@@ -543,6 +664,11 @@ export function Analytics() {
 		...progressionWorkbenchOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
+	// The workbench shares the Records tab's personal-record query, so the two
+	// together issue one request for records instead of one each.
+	const { data: personalRecords } = useInfiniteQuery(
+		personalRecordsOptions(userId, activeProfileId),
+	);
 	const {
 		data: dashboardFreshness,
 		isFetching: freshnessFetching,
@@ -571,6 +697,18 @@ export function Analytics() {
 	const weeklyVolume = useMemo(
 		() => computeWeeklyVolume(exerciseSessionData),
 		[exerciseSessionData],
+	);
+	// The body-muscle map is ~1.7 MB, so it is fetched only once the Body tab
+	// opens. The tab's own chunk loads in parallel and renders immediately;
+	// only its heatmap section waits for (or reports failure of) the map.
+	const { analytics: bodyMuscleAnalytics, failed: bodyMuscleMapFailed } =
+		useBodyMuscleAnalytics(activeTab === "body");
+	const bodyMuscleModel = useMemo(
+		() =>
+			bodyMuscleAnalytics
+				? bodyMuscleAnalytics.buildBodyMuscleFocusModel(bodyIntelData ?? [])
+				: null,
+		[bodyMuscleAnalytics, bodyIntelData],
 	);
 
 	// Group exercises by primary muscle group for ExerciseDeepDive
@@ -674,30 +812,11 @@ export function Analytics() {
 		type: activity.activity_type,
 		isExternal: true,
 	}));
-	const volumeData = bucketByWeek(volumeRaw ?? []).map((entry) => ({
-		...entry,
-		volume: Math.round(convertWeight(entry.volume, unit) * 10) / 10,
-	}));
+	const volumeData = toWeeklyVolumeSeries(volumeRaw ?? [], queryPeriod);
 	const muscleGroupData = (muscleGroupRaw ?? []).map((m) => ({
 		...m,
 		color: MUSCLE_GROUP_COLORS[m.name] ?? PHOENIX().ashGray,
 	}));
-
-	const muscleHighlighterData: ExtendedBodyPart[] = useMemo(() => {
-		if (muscleGroupData.length === 0) return [];
-		const maxVal = Math.max(...muscleGroupData.map((m) => m.value), 1);
-		const groupToIntensity: Record<string, number> = {};
-		for (const m of muscleGroupData) {
-			groupToIntensity[m.name] = Math.max(
-				1,
-				Math.round((m.value / maxVal) * 5),
-			);
-		}
-		return Object.entries(muscleSlugToGroup).map(([slug, group]) => ({
-			slug: slug as Slug,
-			intensity: groupToIntensity[group] ?? 0,
-		}));
-	}, [muscleGroupData]);
 
 	const strengthSeries = useMemo(
 		() => buildStrengthPhaseSeries(strengthRaw ?? [], phaseFilter),
@@ -709,36 +828,64 @@ export function Analytics() {
 	const strengthExercises = strengthSeries.series.map((item) => item.name);
 	const phaseMetricSummary = useMemo(() => {
 		const summary = buildPhaseMetricSummary(phaseStatsRaw ?? []);
+		// session_phase_statistics rows carry concentric AND eccentric columns,
+		// so the phase filter scopes WHICH side is surfaced rather than which
+		// rows are aggregated. Zero out the non-selected side when a single
+		// phase is chosen; "all"/"Combined" keep both sides visible.
+		const scopePair = (pair: PhaseMetricPair): PhaseMetricPair => {
+			if (phaseFilter === "Concentric") {
+				return { ...pair, eccentricAvg: 0, eccentricMax: 0 };
+			}
+			if (phaseFilter === "Eccentric") {
+				return { ...pair, concentricAvg: 0, concentricMax: 0 };
+			}
+			return pair;
+		};
 		return {
 			...summary,
-			load: {
+			load: scopePair({
 				concentricAvg: convertWeight(summary.load.concentricAvg, unit),
 				concentricMax: convertWeight(summary.load.concentricMax, unit),
 				eccentricAvg: convertWeight(summary.load.eccentricAvg, unit),
 				eccentricMax: convertWeight(summary.load.eccentricMax, unit),
-			},
+			}),
+			velocity: scopePair(summary.velocity),
+			power: scopePair(summary.power),
 		};
-	}, [phaseStatsRaw, unit]);
+	}, [phaseStatsRaw, unit, phaseFilter]);
 
 	// Derive summary stats from real data
 	const totalVolume = volumeData.reduce((sum, d) => sum + d.volume, 0);
 	const totalWorkouts = volumeData.reduce((sum, d) => sum + d.workouts, 0);
-	const insights = generateInsights(
-		volumeData,
+	// The feed's local fallback: insight windows, like generate-insights. Empty
+	// when its comparison failed, so InsightsFeed shows the error rather than
+	// placeholder cards.
+	const insights = insightComparisonError
+		? []
+		: buildLocalInsights(
+				insightComparison,
+				queryPeriodDays(insightPeriod),
+				muscleGroupData,
+				unit,
+			);
+	// The Progress tab's insights describe the charts beside them, so they use
+	// the chart window.
+	const progressInsights = buildLocalInsights(
+		volumeComparison,
+		queryPeriodDays(queryPeriod),
 		muscleGroupData,
-		strengthExercises,
-		totalWorkouts,
+		unit,
 	);
 
 	// --- Hero stat deltas from volume comparison ---
 	const heroDeltas = useMemo(() => {
 		if (!volumeComparison) return { volume: null, workouts: null };
 		const currentVol = volumeComparison.current.reduce(
-			(s, r) => s + (r.total_volume ?? 0) * WEIGHT_MULTIPLIER,
+			(s, r) => s + (r.total_volume ?? 0),
 			0,
 		);
 		const previousVol = volumeComparison.previous.reduce(
-			(s, r) => s + (r.total_volume ?? 0) * WEIGHT_MULTIPLIER,
+			(s, r) => s + (r.total_volume ?? 0),
 			0,
 		);
 		return {
@@ -753,7 +900,7 @@ export function Analytics() {
 	// --- Training Load from session data ---
 	const trainingLoad = useMemo(() => {
 		const sessions = (volumeComparison?.current ?? []).map((s) => ({
-			totalVolume: (s.total_volume ?? 0) * WEIGHT_MULTIPLIER,
+			totalVolume: s.total_volume ?? 0,
 			durationSeconds: s.duration_seconds ?? 0,
 			setCount: s.set_count ?? 0,
 		}));
@@ -764,7 +911,10 @@ export function Analytics() {
 
 	// --- Consistency widget data ---
 	const consistencyData = useMemo(() => {
-		const raw = volumeRaw ?? [];
+		// Per-session rows (day-of-week, week counts) now come from the volume
+		// comparison query: the volume trend itself is pre-aggregated per week in
+		// SQL and no longer carries individual sessions.
+		const raw = volumeComparison?.current ?? [];
 		const now = new Date();
 		const startOfWeek = (d: Date) => {
 			const day = d.getDay();
@@ -826,7 +976,7 @@ export function Analytics() {
 			hitRate,
 			mostActiveDay,
 		};
-	}, [volumeRaw]);
+	}, [volumeComparison]);
 
 	// --- ECharts: Volume Over Time (area + bar combo) ---
 	const volumeEChartsOption = useMemo(() => {
@@ -858,7 +1008,9 @@ export function Analytics() {
 				{
 					name: "Volume",
 					type: "line",
-					data: volumeData.map((d) => d.volume),
+					data: volumeData.map((d) =>
+						Math.round(convertWeight(d.volume, unit)),
+					),
 					smooth: true,
 					areaStyle: {
 						color: {
@@ -989,7 +1141,9 @@ export function Analytics() {
 				{
 					name: "Volume",
 					type: "line",
-					data: volumeData.map((d) => d.volume),
+					data: volumeData.map((d) =>
+						Math.round(convertWeight(d.volume, unit)),
+					),
 					smooth: true,
 					areaStyle: {
 						color: {
@@ -1011,36 +1165,16 @@ export function Analytics() {
 		};
 	}, [volumeData, unit]);
 
-	// --- Insights feed data (from server or local fallback) ---
-	const insightsFeedItems: InsightItem[] = useMemo(() => {
-		// If we have server-generated insights, use them
-		if (
-			insightsData &&
-			Array.isArray(insightsData) &&
-			insightsData.length > 0
-		) {
-			return insightsData.map((item: Record<string, unknown>) => ({
-				id: (item.id as string) ?? String(Math.random()),
-				type: ((item.type as string) ?? "info") as InsightItem["type"],
-				title: (item.title as string) ?? "",
-				description: (item.description as string) ?? "",
-				recommendation: item.recommendation as string | undefined,
-				metric: item.metric as InsightItem["metric"],
-			}));
-		}
-		// Fallback: convert local insights to InsightsFeed format
-		return insights.map((i, idx) => ({
-			id: `local-${idx}`,
-			type:
-				i.type === "positive"
-					? ("success" as const)
-					: i.type === "warning"
-						? ("warning" as const)
-						: ("info" as const),
-			title: i.title,
-			description: i.description,
-		}));
-	}, [insightsData, insights]);
+	// --- Insights feed: a fresh server batch OR local, never both (KD-14) ---
+	const { items: insightsFeedItems, source: insightsSource } = useMemo(
+		() => selectInsightsFeed(insightsData, insights, unit),
+		[insightsData, insights, unit],
+	);
+	const feedState = insightsFeedState(
+		insightsSource,
+		{ pending: insightsPending, error: insightsError },
+		{ pending: insightComparisonPending, error: insightComparisonError },
+	);
 
 	// --- Muscle radar data ---
 	const muscleRadarData = useMemo(() => {
@@ -1063,12 +1197,18 @@ export function Analytics() {
 		() =>
 			buildProgressionWorkbenchModel({
 				progressRows: progressionWorkbenchData?.progressRows ?? [],
-				records: progressionWorkbenchData?.records ?? [],
+				records: personalRecords ?? [],
 				selectedExercise: selectedProgressionExercise,
 				phaseFilter,
 				unit,
 			}),
-		[progressionWorkbenchData, selectedProgressionExercise, phaseFilter, unit],
+		[
+			progressionWorkbenchData,
+			personalRecords,
+			selectedProgressionExercise,
+			phaseFilter,
+			unit,
+		],
 	);
 
 	const analyticsFreshness = useMemo(() => {
@@ -1125,10 +1265,12 @@ export function Analytics() {
 	]);
 
 	// Mobile-specific derived data
-	const mobileVolumeData = bucketByWeekMobile(volumeRaw ?? []).map((entry) => ({
-		...entry,
-		volume: Math.round(convertWeight(entry.volume, unit) * 10) / 10,
-	}));
+	const mobileVolumeData = toWeeklyVolumeSeriesMobile(volumeRaw ?? []).map(
+		(entry) => ({
+			...entry,
+			volume: Math.round(convertWeight(entry.volume, unit) * 10) / 10,
+		}),
+	);
 	const mobileMusclData = (muscleGroupRaw ?? []).map((m) => ({
 		...m,
 		color: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX().ashGray,
@@ -1145,9 +1287,21 @@ export function Analytics() {
 				: item.exercise,
 		weight: Math.round(convertWeight(item.weight, unit) * 10) / 10,
 	}));
-	const mobileTotalWorkouts = (volumeRaw ?? []).length;
+	const mobileTotalWorkouts = (volumeRaw ?? []).reduce(
+		(sum, bucket) => sum + (bucket.sessions ?? 0),
+		0,
+	);
+	// Records/phase/progression/body intelligence each drive their own tabs, so
+	// the page-level empty state must consider every observable data source --
+	// otherwise a user with only e.g. phase stats or PRs loses access to all tabs.
+	const hasTabData =
+		(strengthRaw?.length ?? 0) > 0 ||
+		(phaseStatsRaw?.length ?? 0) > 0 ||
+		(progressionWorkbenchData?.progressRows.length ?? 0) > 0 ||
+		(personalRecords?.length ?? 0) > 0 ||
+		(bodyIntelData?.length ?? 0) > 0;
 	const mobileHasData =
-		mobileVolumeData.length > 0 || mobileMusclData.length > 0;
+		mobileVolumeData.length > 0 || mobileMusclData.length > 0 || hasTabData;
 
 	if (isPending) {
 		return (
@@ -1192,7 +1346,40 @@ export function Analytics() {
 
 	const externalCount = externalActivities?.length ?? 0;
 	const hasData =
-		volumeData.length > 0 || muscleGroupData.length > 0 || externalCount > 0;
+		volumeData.length > 0 ||
+		muscleGroupData.length > 0 ||
+		externalCount > 0 ||
+		hasTabData;
+	const hasLoadError =
+		!hasData &&
+		(volumeError != null ||
+			muscleError != null ||
+			strengthError != null ||
+			phaseStatsError != null);
+	const retryAnalytics = () => {
+		void refetchVolume();
+		void refetchMuscle();
+		void refetchStrength();
+		void refetchPhaseStats();
+	};
+
+	const analyticsEmpty = hasLoadError ? (
+		<div className="text-center py-16">
+			<p className="text-lg text-white mb-2">Couldn't load analytics</p>
+			<p className="text-sm text-muted-foreground mb-6">
+				Something went wrong while loading your training data. Please try again.
+			</p>
+			<Button onClick={retryAnalytics} variant="outline">
+				Retry
+			</Button>
+		</div>
+	) : (
+		<EmptyState
+			icon={TrendingUp}
+			title="Your analytics await"
+			description="Complete a few workouts to unlock insights into your training volume, strength trends, and muscle balance."
+		/>
+	);
 
 	return (
 		<div className="min-h-screen pb-20 md:pb-8">
@@ -1323,11 +1510,7 @@ export function Analytics() {
 				{/* Mobile Content */}
 				<div className="px-4 py-4 space-y-4">
 					{!mobileHasData ? (
-						<EmptyState
-							icon={TrendingUp}
-							title="Your analytics await"
-							description="Complete a few workouts to unlock insights into your training volume, strength trends, and muscle balance."
-						/>
+						analyticsEmpty
 					) : (
 						<>
 							{activeTab === "overview" && (
@@ -1337,7 +1520,9 @@ export function Analytics() {
 										trainingLoad={trainingLoad}
 										consistencyData={consistencyData}
 										insightsFeedItems={insightsFeedItems}
-										insightsPending={insightsPending}
+										insightsPending={feedState.pending}
+										insightsError={feedState.error}
+										insightsSource={insightsSource}
 									/>
 								</Suspense>
 							)}
@@ -1366,6 +1551,8 @@ export function Analytics() {
 										muscleRadarData={muscleRadarData}
 										mobileMusclData={mobileMusclData}
 										weeklyVolume={weeklyVolume}
+										bodyMuscleModel={bodyMuscleModel}
+										bodyMuscleMapFailed={bodyMuscleMapFailed}
 										totalSessions={totalSessions}
 										muscleRecoveries={muscleRecoveries}
 										recommendations={recommendations}
@@ -1423,7 +1610,11 @@ export function Analytics() {
 								className="border-primary text-primary hover:bg-primary/10"
 								onClick={() => {
 									const rows = volumeData.map((d) =>
-										[d.date, d.volume, d.workouts].join(","),
+										[
+											d.date,
+											Math.round(convertWeight(d.volume, unit)),
+											d.workouts,
+										].join(","),
 									);
 									const header = `Week,Volume (${unit}),Workouts`;
 									const csv = [header, ...rows].join("\n");
@@ -1443,11 +1634,7 @@ export function Analytics() {
 					<DataFreshnessStrip state={analyticsFreshness} className="mb-8" />
 
 					{!hasData ? (
-						<EmptyState
-							icon={TrendingUp}
-							title="Your analytics await"
-							description="Complete a few workouts to unlock insights into your training volume, strength trends, and muscle balance."
-						/>
+						analyticsEmpty
 					) : (
 						<>
 							{/* Hero Stats Row -- 5 cards */}
@@ -1565,7 +1752,9 @@ export function Analytics() {
 											trainingLoad={trainingLoad}
 											consistencyData={consistencyData}
 											insightsFeedItems={insightsFeedItems}
-											insightsPending={insightsPending}
+											insightsPending={feedState.pending}
+											insightsError={feedState.error}
+											insightsSource={insightsSource}
 										/>
 									</Suspense>
 								</TabsContent>
@@ -1580,7 +1769,7 @@ export function Analytics() {
 											prCount={prCount}
 											daysSinceLastPR={daysSinceLastPR}
 											strengthExercises={strengthExercises}
-											insights={insights}
+											insights={progressInsights}
 											phaseFilter={phaseFilter}
 											onPhaseFilterChange={setPhaseFilter}
 											phaseMetricSummary={phaseMetricSummary}
@@ -1599,8 +1788,8 @@ export function Analytics() {
 											muscleGroupData={muscleGroupData}
 											muscleDonutOption={muscleDonutOption}
 											muscleRadarData={muscleRadarData}
-											muscleHighlighterData={muscleHighlighterData}
-											muscleSlugToGroup={muscleSlugToGroup}
+											bodyMuscleModel={bodyMuscleModel}
+											bodyMuscleMapFailed={bodyMuscleMapFailed}
 											weeklyVolume={weeklyVolume}
 											totalSessions={totalSessions}
 											muscleRecoveries={muscleRecoveries}
@@ -1635,7 +1824,6 @@ export function Analytics() {
 					)}
 				</PageShell>
 			</div>
-			;
 		</div>
 	);
 }

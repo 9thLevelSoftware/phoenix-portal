@@ -1,12 +1,14 @@
 import NumberFlow from "@number-flow/react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import {
+	AlertCircle,
 	ArrowRight,
 	Award,
 	Calendar,
 	ChevronRight,
 	Dumbbell,
 	Flame,
+	HeartPulse,
 	Target,
 	TrendingUp,
 	Trophy,
@@ -35,14 +37,11 @@ import {
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
-import { fadeUpVariants, hover, staggerContainer } from "@/lib/animations";
+import { fadeUp, hover, staggerContainer } from "@/lib/animations";
+import { formatChallengeValue } from "@/lib/challenges";
 import { PHOENIX } from "@/lib/colors";
-import {
-	convertWeight,
-	formatVolume,
-	formatWeight,
-	type WeightUnit,
-} from "@/lib/units";
+import { convertWeight, formatVolume, type WeightUnit } from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 import {
 	formatWorkoutPhase,
 	isNonCombinedWorkoutPhase,
@@ -52,14 +51,15 @@ import {
 	userChallengesOptions,
 } from "@/queries/challenges";
 import { cycleListOptions } from "@/queries/cycles";
+import { goalsOptions } from "@/queries/goals";
 import { earnedBadgesOptions, profileOptions } from "@/queries/profile";
 import {
 	dashboardStatsOptions,
 	recentPRsOptions,
 	workoutListOptions,
+	workoutStreakOptions,
 } from "@/queries/workouts";
 import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { GoalDashboardWidget } from "./GoalDashboardWidget";
 import { NextWorkoutWidget } from "./NextWorkoutWidget";
@@ -80,8 +80,8 @@ function deriveWeeklyVolume(
 	if (stats) {
 		for (const row of stats) {
 			const dayName = days[new Date(row.started_at).getDay()];
-			// total_volume is per-cable in DB; multiply by 2 for display
-			volumeByDay[dayName] += row.total_volume * WEIGHT_MULTIPLIER;
+			// total_volume is per cable as stored (KD-8) — no multiplier
+			volumeByDay[dayName] += row.total_volume;
 		}
 	}
 
@@ -111,12 +111,13 @@ function getDaysRemaining(endDate: string): number {
 	return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
 }
 
-function formatPersonalRecordValue(
+export function formatPersonalRecordValue(
 	record: PersonalRecord,
 	unit: WeightUnit,
 ): string {
 	if (record.unit === "kg") {
-		return formatWeight(record.value, unit);
+		// Records are per cable and carry no cable count (KD-8).
+		return formatLoad(record.value, null, unit);
 	}
 	return `${record.value} ${record.unit}`;
 }
@@ -191,7 +192,13 @@ function MobileRecentActivityCard({
 	);
 }
 
-function ActiveChallengesSection({ userId }: { userId: string }) {
+function ActiveChallengesSection({
+	userId,
+	unit,
+}: {
+	userId: string;
+	unit: WeightUnit;
+}) {
 	const {
 		data: userChallenges,
 		isPending,
@@ -289,8 +296,12 @@ function ActiveChallengesSection({ userId }: { userId: string }) {
 									{challenge.name}
 								</h4>
 								<p className="text-xs text-muted-foreground">
-									{challenge.target_value.toLocaleString()}
-									{challenge.target_unit ? ` ${challenge.target_unit}` : ""}{" "}
+									{formatChallengeValue(
+										challenge.target_value,
+										challenge.challenge_type,
+										unit,
+										challenge.target_unit,
+									)}{" "}
 									target
 								</p>
 							</div>
@@ -310,7 +321,15 @@ function ActiveChallengesSection({ userId }: { userId: string }) {
 						<Progress value={progress?.percentage ?? 0} className="h-2" />
 						<p className="mt-2 text-xs text-muted-foreground">
 							{progress
-								? `${Math.round(progress.current).toLocaleString()} / ${Math.round(progress.target).toLocaleString()}`
+								? `${formatChallengeValue(
+										Math.round(progress.current),
+										challenge.challenge_type,
+										unit,
+									)} / ${formatChallengeValue(
+										Math.round(progress.target),
+										challenge.challenge_type,
+										unit,
+									)}`
 								: "Calculating progress..."}
 						</p>
 					</div>
@@ -332,8 +351,17 @@ export function Dashboard() {
 	const userId = user?.id ?? "";
 	const { activeProfileId } = useProfileFilterStore();
 
-	const { data: workouts, isPending: workoutsLoading } = useQuery({
+	const {
+		data: workouts,
+		isPending: workoutsLoading,
+		isError: workoutsError,
+		refetch: refetchWorkouts,
+	} = useQuery({
 		...workoutListOptions(userId, activeProfileId),
+		enabled: !!userId,
+	});
+	const { data: rpcStreak } = useQuery({
+		...workoutStreakOptions(userId),
 		enabled: !!userId,
 	});
 	const { data: weeklyStats, isPending: statsLoading } = useQuery({
@@ -356,19 +384,22 @@ export function Dashboard() {
 		...cycleListOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
+	const { data: goals } = useQuery({
+		...goalsOptions(userId),
+		enabled: !!userId,
+	});
 
-	const streak = useStreak(workouts);
+	const listStreak = useStreak(workouts);
+	const streak = typeof rpcStreak === "number" ? rpcStreak : listStreak;
 	const activeCycle = cycles?.find((c) => c.status === "active");
+	const activeGoalCount =
+		goals?.filter((g) => g.status === "active").length ?? 0;
 	const unit: WeightUnit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
 	const recentWorkouts = workouts?.slice(0, 5) ?? [];
 	const recentBadges = earnedBadges?.slice(0, 3) ?? [];
-	const weeklyVolumeData = deriveWeeklyVolume(weeklyStats ?? undefined).map(
-		(row) => ({
-			...row,
-			volume: Math.round(convertWeight(row.volume, unit) * 10) / 10,
-		}),
-	);
+	// Keep weeklyVolumeData in raw kg; formatVolume handles the single unit conversion at render time
+	const weeklyVolumeData = deriveWeeklyVolume(weeklyStats ?? undefined);
 	const weeklyTotal = weeklyVolumeData.reduce((sum, d) => sum + d.volume, 0);
 
 	// Weekly estimated calories from dashboard stats
@@ -382,9 +413,30 @@ export function Dashboard() {
 	const maxVolume = Math.max(...dailyVolumes, 1);
 	const barHeights = dailyVolumes.map((v) => Math.round((v / maxVolume) * 100));
 
-	// Zero-session welcome view
+	// Failed fetch is an error, not “no workouts yet.”
+	if (workoutsError && workouts == null) {
+		return (
+			<div className="min-h-screen pb-20 md:pb-8">
+				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+					<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
+					<h1 className="text-xl font-semibold text-white mb-2">
+						Couldn't load your workouts
+					</h1>
+					<p className="text-sm text-muted-foreground mb-6">
+						Something went wrong while loading your dashboard. Your sessions are
+						safe — please try again.
+					</p>
+					<Button onClick={() => void refetchWorkouts()} variant="outline">
+						Retry
+					</Button>
+				</div>
+			</div>
+		);
+	}
+
+	// Zero-session welcome view — only after a successful empty fetch.
 	const hasNoWorkouts =
-		!workoutsLoading && (!workouts || workouts.length === 0);
+		!workoutsLoading && !workoutsError && (workouts?.length ?? 0) === 0;
 
 	if (hasNoWorkouts) {
 		return (
@@ -436,18 +488,18 @@ export function Dashboard() {
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.2 }}
 						>
-							<Link to="/routines/new">
+							<Link to="/goals">
 								<Card className="p-5 signal-panel">
 									<div className="flex items-center gap-4">
 										<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center flex-shrink-0">
-											<Dumbbell className="w-5 h-5 text-foreground" />
+											<Target className="w-5 h-5 text-white" />
 										</div>
 										<div>
-											<h3 className="text-h3 font-semibold text-foreground">
-												Build custom routines
+											<h3 className="font-semibold text-white">
+												Set training goals
 											</h3>
 											<p className="text-xs text-muted-foreground">
-												Create tailored workout programs
+												Frequency, volume, and PR targets
 											</p>
 										</div>
 										<ChevronRight className="w-5 h-5 text-muted-foreground ml-auto" />
@@ -461,18 +513,18 @@ export function Dashboard() {
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.3 }}
 						>
-							<Link to="/challenges">
+							<Link to="/recovery">
 								<Card className="p-5 signal-panel">
 									<div className="flex items-center gap-4">
 										<div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
-											<Trophy className="w-5 h-5 text-foreground" />
+											<HeartPulse className="w-5 h-5 text-white" />
 										</div>
 										<div>
-											<h3 className="text-h3 font-semibold text-foreground">
-												Join challenges
+											<h3 className="font-semibold text-white">
+												Check recovery
 											</h3>
 											<p className="text-xs text-muted-foreground">
-												Compete with other athletes
+												Readiness after your sessions
 											</p>
 										</div>
 										<ChevronRight className="w-5 h-5 text-muted-foreground ml-auto" />
@@ -523,35 +575,34 @@ export function Dashboard() {
 							</Card>
 						</motion.div>
 
-						<motion.div variants={fadeUpVariants}>
-							<Link to="/routines/new" className="block h-full">
+						<motion.div variants={fadeUp}>
+							<Link to="/goals" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
-										<Dumbbell className="w-6 h-6 text-foreground" />
+										<Target className="w-6 h-6 text-white" />
 									</div>
-									<h3 className="text-h3 font-semibold text-foreground mb-2">
-										Build custom routines
+									<h3 className="text-lg font-semibold text-white mb-2">
+										Set training goals
 									</h3>
 									<p className="text-sm text-muted-foreground">
-										Create workout routines tailored to your goals with
-										drag-and-drop exercise management.
+										Track workout frequency, volume, or personal-record targets
+										on Ember.
 									</p>
 								</Card>
 							</Link>
 						</motion.div>
 
-						<motion.div variants={fadeUpVariants}>
-							<Link to="/challenges" className="block h-full">
+						<motion.div variants={fadeUp}>
+							<Link to="/recovery" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center mb-4">
-										<Trophy className="w-6 h-6 text-foreground" />
+										<HeartPulse className="w-6 h-6 text-white" />
 									</div>
-									<h3 className="text-h3 font-semibold text-foreground mb-2">
-										Join challenges
+									<h3 className="text-lg font-semibold text-white mb-2">
+										Check recovery
 									</h3>
 									<p className="text-sm text-muted-foreground">
-										Compete with other athletes in community challenges and earn
-										recognition.
+										See recovery readiness after sessions without leaving Ember.
 									</p>
 								</Card>
 							</Link>
@@ -723,12 +774,15 @@ export function Dashboard() {
 										gradient="from-chart-2 to-primary"
 									/>
 								)}
-								<QuickStatCard
-									icon={<Target className="w-5 h-5" />}
-									value="--"
-									label="Goals"
-									gradient="from-indigo-500 to-indigo-600"
-								/>
+								{activeGoalCount > 0 && (
+									<QuickStatCard
+										icon={<Target className="w-5 h-5" />}
+										value={String(activeGoalCount)}
+										numericValue={activeGoalCount}
+										label="Goals"
+										gradient="from-indigo-500 to-indigo-600"
+									/>
+								)}
 							</div>
 						)}
 					</motion.div>
@@ -845,7 +899,7 @@ export function Dashboard() {
 									<Dumbbell className="w-10 h-10 text-secondary mb-3" />
 									<p className="text-muted-foreground mb-1">No workouts yet</p>
 									<p className="text-sm text-muted-foreground">
-										Sync from the Vitruvian mobile app to see your activity
+										Sync from the Phoenix mobile app to see your activity
 									</p>
 								</div>
 							</Card>
@@ -857,7 +911,7 @@ export function Dashboard() {
 										title={workout.name}
 										time={formatRelativeTime(workout.started_at)}
 										volume={formatVolume(workout.total_volume, unit)}
-										duration={`${workout.duration_seconds} min`}
+										duration={`${Math.round(workout.duration_seconds / 60)} min`}
 										prs={workout.pr_count}
 									/>
 								))}
@@ -1180,7 +1234,7 @@ export function Dashboard() {
 												No workouts yet
 											</p>
 											<p className="text-sm text-muted-foreground">
-												Sync your first workout from the Vitruvian mobile app
+												Sync your first workout from the Phoenix mobile app
 											</p>
 										</div>
 									) : (
@@ -1211,7 +1265,7 @@ export function Dashboard() {
 															{formatVolume(workout.total_volume, unit)}
 														</div>
 														<div className="text-sm text-muted-foreground font-data">
-															{workout.duration_seconds} min
+															{Math.round(workout.duration_seconds / 60)} min
 														</div>
 													</div>
 												</div>
@@ -1273,8 +1327,22 @@ export function Dashboard() {
 														fontSize: 11,
 														fontFamily: "Inter, sans-serif",
 													}}
+													tickFormatter={(v) => {
+														const c = convertWeight(v, unit);
+														if (Math.abs(c) >= 1_000_000)
+															return `${(c / 1_000_000).toFixed(1)}M`;
+														if (Math.abs(c) >= 1_000)
+															return `${(c / 1_000).toFixed(0)}K`;
+														return String(Math.round(c));
+													}}
 												/>
-												<Tooltip content={<RechartsTooltip />} />
+												<Tooltip
+													content={
+														<RechartsTooltip
+															formatValue={(v) => formatVolume(v, unit)}
+														/>
+													}
+												/>
 												<Area
 													type="monotone"
 													dataKey="volume"
@@ -1368,21 +1436,20 @@ export function Dashboard() {
 							</motion.div>
 
 							{/* Active Challenges */}
-							<motion.div variants={fadeUpVariants}>
+							<motion.div variants={fadeUp}>
 								<Card className="p-5 signal-panel">
-									<h3 className="text-h2 text-foreground mb-4">
-										Active Challenges
-									</h3>
-									<ActiveChallengesSection userId={user?.id ?? ""} />
+									<h3 className="text-xl text-white mb-4">Active Challenges</h3>
+									<ActiveChallengesSection
+										userId={user?.id ?? ""}
+										unit={unit}
+									/>
 								</Card>
 							</motion.div>
 
 							{/* Badge Showcase */}
-							<motion.div variants={fadeUpVariants}>
+							<motion.div variants={fadeUp}>
 								<Card className="p-5 signal-panel">
-									<h3 className="text-h2 text-foreground mb-4">
-										Recent Badges
-									</h3>
+									<h3 className="text-xl text-white mb-4">Recent Badges</h3>
 									{badgesLoading ? (
 										<div className="space-y-3">
 											{["sk-a", "sk-b", "sk-c"].map((k) => (

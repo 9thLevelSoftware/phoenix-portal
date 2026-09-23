@@ -1,23 +1,51 @@
-# Sync Baseline - 2026-04-12
+# Sync Baseline — mock-only structural checks
 
-This document establishes the baseline sync behavior based on round-trip test results.
-Tests run with `MOCK_EDGE_FUNCTIONS=true` against the mock Edge Function implementations.
+> **BANNER — read before quoting anything below.**
+>
+> Everything in this file comes from `npm run test:sync`, which runs with
+> `MOCK_EDGE_FUNCTIONS=true` against the in-memory mock in
+> `helpers/mock-edge-functions.ts`. That mock has one global store keyed by
+> entity id, with no user scoping, no profile scoping, no LWW, no per-row
+> delta, no cursor/pageSize handling, no tombstones, no tier gate, no rate
+> limit, no size caps and no RLS.
+>
+> So a checked box below means **"a payload of this shape survives the test
+> harness's push → pull with its fields and nesting intact"**. It does **not**
+> mean the behaviour works against the deployed Edge Functions or the real
+> database, and "Broken: none" below means only "no mock round-trip fails".
+>
+> The invariants that actually matter are listed under
+> [Not proven here](#not-proven-here). Server behaviour is proven by the Deno
+> handler suites (`npm run test:edge`) and the `integration: `-prefixed
+> real-SQL cases (`npm run test:edge:integration`), not by this file.
+>
+> Per-suite pass counts were removed on 2026-09-20: they were stale (the mode
+> suite was recorded as 25 cases when it had 32) and they rot on every change.
+> Run `npm run test:sync` for the current numbers.
 
-## Test Summary
+## Not proven here
 
-| Test Suite           | Tests   | Pass    | Fail  | Coverage                                            |
-| -------------------- | ------- | ------- | ----- | --------------------------------------------------- |
-| Round-Trip: Workout  | 19      | 19      | 0     | Sessions, exercises, sets, rep summaries            |
-| Round-Trip: Entity   | 25      | 25      | 0     | Routines, cycles, gamification, external activities |
-| Transforms: Weight   | 16      | 16      | 0     | Per-cable storage, x2 multiplier, edge cases        |
-| Transforms: Mode     | 25      | 25      | 0     | All 6 modes + CLASSIC alias                         |
-| Transforms: Velocity | 28      | 28      | 0     | Zone boundaries, asymmetry threshold                |
-| Fixtures             | 25      | 25      | 0     | Fixture factory validation                          |
-| **Total**            | **138** | **138** | **0** |                                                     |
+None of the following has a passing mock test, and none of them would turn
+this suite red if the server lost it. Each line names where it is (or is not)
+actually covered.
 
-## Working
+| Invariant | Real coverage on this branch |
+| --------- | ---------------------------- |
+| LWW direction for sessions (a stale push must be rejected) | `mobile-sync-push/index.test.ts` — "PR 24: with LWW on, a rejected session is in neither p_session_ids nor p_progress, so its stored progress is kept" |
+| LWW direction for **routines and cycles** | Real SQL: `supabase/tests/database/lww_clock.test.sql` (drives `upsert_routine_lww` and `merge_training_cycles_from_push`) and `cycle_merge.test.sql`; through the handler, the `integration: lww clock (LWW=…)` and `integration: cycle merge (LWW=…)` tests in `mobile-sync-push/index.test.ts` (`npm run test:edge:integration`, run under both flag values). `tests/sync/training-cycle-template-id.test.ts` still only regex-matches SQL text |
+| Delta filtering and the commit-time overlap | `mobile-sync-pull/index.test.ts` — "parity RPCs get lastSync minus the commit-time overlap when lastSync > 0", "every lastSync-based table filter uses lastSync minus the overlap", "lastSync 0 keeps the epoch stale bound (no negative overlap)" |
+| Profile scoping on pull (`p_profile_id`) | `mobile-sync-pull/index.test.ts` — the two tests above assert `p_profile_id` on every parity RPC; "real lastSync with empty known ids uses every id RPC and no timestamp-only table read" covers the no-known-ids arm. Cross-profile isolation against real SQL: the Docker-gated "integration: real mutation canonicals equal isolated first-page pull and absence never creates" |
+| Composite `(updated_at, id)` cursor stability | `mobile-sync-pull/index.test.ts` — "identical-timestamp sessions are each returned exactly once when paged one at a time" and "identical-microsecond personal records produce a distinct nextCursor" |
+| Personal-record precedence and tombstones | `mobile-sync-push/index.test.ts` — "a newer active personal record cannot resurrect a stored tombstone", "deletedAt is the LWW timestamp when a tombstone omits updatedAt" |
+| Routine/cycle **delete** propagation | Real SQL: `supabase/tests/database/sync_tombstones.test.sql` (trigger, RPC, RLS); through the handler, the `integration: tombstones (LWW=…)` tests in `mobile-sync-push/index.test.ts`. `tests/sync/cycle-deletion.test.ts` is mock-only |
+| Tier gate, rate limit, payload size caps, RLS | Deno handler suites only; the mock accepts any non-empty bearer token |
+| Badge union merge against the real server | **No executed test.** The mock's union keying is smoke-tested in `multi-device.test.ts` ("should accumulate unique badges from both devices"), which proves the harness, not the server |
 
-These entities and transforms pass round-trip validation with mocks:
+## Working (mock round-trip only)
+
+These entities and transforms survive the mock harness's push → pull with
+their fields and nesting intact. Re-read the banner before treating any of
+them as evidence about production:
 
 ### Workout Entities
 - [x] Session core fields (id, name, timestamps, counts)
@@ -57,7 +85,7 @@ These entities and transforms pass round-trip validation with mocks:
 - [x] Multi-provider batch
 
 ### Transforms
-- [x] Weight stored as per-cable (WEIGHT_MULTIPLIER = 2)
+- [x] Weight stored and displayed per cable (total only with a known cable count)
 - [x] Weight edge cases: 0, 1, 110 (max per-cable)
 - [x] Workout modes: OLD_SCHOOL, ECHO, PUMP, TUT, TUT_BEAST, ECCENTRIC_ONLY
 - [x] CLASSIC legacy alias maps to Old School
@@ -88,7 +116,9 @@ These behaviors differ between mock and production:
 
 ## Broken
 
-No sync functionality is broken based on mock tests.
+No **mock round-trip** fails. This says nothing about whether sync works: the
+mock cannot fail on any of the invariants in
+[Not proven here](#not-proven-here), because it does not implement them.
 
 **Note**: This baseline only covers mock behavior. Live Supabase testing is required to identify:
 - Database constraint violations
@@ -147,5 +177,7 @@ These features sync but may have edge cases:
 ---
 
 *Baseline established: 2026-04-12*
+*Relabelled 2026-09-20 as mock-only structural checks; per-suite counts dropped
+and the "Not proven here" gap list added.*
 *Test infrastructure: Plan 01-01, 01-02*
 *Round-trip tests: Plan 01-03*

@@ -7,7 +7,22 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+		"includes": [
+			"src/**/*.ts",
+			"src/**/*.tsx",
+			"!src/lib/body-muscle-map.generated.ts",
+			"vite.config.ts",
+			"vitest.config.ts",
+			"playwright.config.ts",
+			"tests/**/*.ts",
+			"tests/**/*.tsx",
+			"e2e/**/*.ts",
+			"playwright.pwa.config.ts",
+			"scripts/**/*.ts",
+			"scripts/resolve-sync-preview.mjs",
+			"scripts/cleanup-sync-preview-users.mjs",
+			"scripts/migration-list-applied.mjs"
+		]
 	},
 	"formatter": {
 		"enabled": true,
@@ -36,7 +51,8 @@
 			},
 			"correctness": {
 				"noUnusedFunctionParameters": "warn",
-				"noUnusedVariables": "warn"
+				"noUnusedVariables": "error",
+				"noUnusedImports": "error"
 			},
 			"style": {
 				"noNonNullAssertion": "warn"

@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { redirectToValidatedOAuthUrl } from "./oauthRedirect";
+import {
+	oauthInitiateError,
+	redirectToValidatedOAuthUrl,
+} from "./oauthRedirect";
 import type { NormalizedActivity } from "./types";
 
 // =============================================================================
@@ -63,10 +66,8 @@ function mapGarminActivityType(garminType: string): string {
 export function normalizeGarminActivity(raw: unknown): NormalizedActivity {
 	const activity = garminActivitySchema.parse(raw);
 
-	// Convert epoch seconds to ISO string, accounting for timezone offset
-	const startedAt = new Date(
-		(activity.startTimeInSeconds + activity.startTimeOffsetInSeconds) * 1000,
-	).toISOString();
+	// Convert epoch seconds to ISO string; epoch is already UTC, offset is not needed for storage
+	const startedAt = new Date(activity.startTimeInSeconds * 1000).toISOString();
 
 	return {
 		external_id: String(activity.activityId),
@@ -111,9 +112,7 @@ export async function initiateGarminConnect(
 	});
 
 	if (!response.ok) {
-		throw new Error(
-			`Failed to initiate Garmin OAuth: ${await response.text()}`,
-		);
+		throw await oauthInitiateError("Garmin", response);
 	}
 
 	const { url } = await response.json();

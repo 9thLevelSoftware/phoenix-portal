@@ -39,8 +39,14 @@ export function ReplayIntelligencePanel({
 		);
 	}
 
-	const selectedRep =
-		intelligence.repInsights[currentRepIndex] ?? intelligence.repInsights[0];
+	// Clamp the index to the valid rep range so a stale/out-of-range index shows
+	// the nearest valid rep instead of silently defaulting to Rep 1.
+	const repCount = intelligence.repInsights.length;
+	const clampedRepIndex =
+		repCount > 0
+			? Math.min(Math.max(0, Math.floor(currentRepIndex)), repCount - 1)
+			: 0;
+	const selectedRep = intelligence.repInsights[clampedRepIndex];
 
 	return (
 		<Card className="space-y-4 border-secondary bg-surface-2 p-4">

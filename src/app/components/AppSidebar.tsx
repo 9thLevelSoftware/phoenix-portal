@@ -2,6 +2,7 @@ import {
 	BarChart3,
 	ChevronDown,
 	Dumbbell,
+	HeartPulse,
 	History,
 	LayoutDashboard,
 	Repeat,
@@ -62,13 +63,14 @@ const navGroups: NavGroup[] = [
 			{ path: "/history", label: "Workouts", icon: History },
 			{ path: "/routines", label: "Routines", icon: Dumbbell },
 			{ path: "/cycles", label: "Training Cycles", icon: Repeat },
+			{ path: "/goals", label: "Goals", icon: Target },
+			{ path: "/recovery", label: "Recovery", icon: HeartPulse },
 		],
 	},
 	{
 		label: "Explore",
 		items: [
 			{ path: "/analytics", label: "Analytics", icon: BarChart3 },
-			{ path: "/goals", label: "Goals", icon: Target },
 			{ path: "/leaderboard", label: "Leaderboard", icon: Trophy },
 			{ path: "/community", label: "Community", icon: Users },
 			{ path: "/challenges", label: "Challenges", icon: Trophy },

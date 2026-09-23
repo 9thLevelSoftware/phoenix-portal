@@ -28,7 +28,7 @@ function ProgressRing({
 	cy,
 }: RingConfig & { cx: number; cy: number }) {
 	const circumference = 2 * Math.PI * radius;
-	const fill = target > 0 ? Math.min(sessions / target, 1) : 0;
+	const fill = target > 0 ? Math.max(0, Math.min(sessions / target, 1)) : 0;
 	const dashOffset = circumference - fill * circumference;
 
 	return (

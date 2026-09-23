@@ -21,22 +21,27 @@ interface CommunityState {
 	resetAll: () => void;
 }
 
-const initialState = {
+// Factory so every reset produces a fresh state object with a fresh Set,
+// rather than re-sharing a single module-level instance (whose mutation would
+// silently leak across resets and bypass Zustand subscribers).
+const createInitialState = () => ({
 	activeTab: "routines" as const,
 	sort: "top" as const,
 	search: "",
-	filters: {},
-	selectedItemId: null,
+	filters: {} as CommunityFilters,
+	selectedItemId: null as string | null,
 	blockedUserIds: new Set<string>(),
-};
+});
 
 export const useCommunityStore = create<CommunityState>()((set) => ({
-	...initialState,
+	...createInitialState(),
 	setActiveTab: (activeTab) => set({ activeTab }),
 	setSort: (sort) => set({ sort }),
 	setSearch: (search) => set({ search }),
 	setFilters: (filters) => set({ filters }),
 	setSelectedItemId: (selectedItemId) => set({ selectedItemId }),
-	setBlockedUserIds: (blockedUserIds) => set({ blockedUserIds }),
-	resetAll: () => set(initialState),
+	// Defensively copy into a fresh Set so callers can't later mutate the stored
+	// instance without going through `set`.
+	setBlockedUserIds: (ids) => set({ blockedUserIds: new Set(ids) }),
+	resetAll: () => set(createInitialState()),
 }));

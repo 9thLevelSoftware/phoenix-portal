@@ -24,24 +24,52 @@ refresh_token_reuse_interval = 60
 # Keep every deployed Edge Function listed here so Supabase production and
 # preview deploys use explicit JWT-verification settings.
 [functions.compute-rankings]
+# Auth: handler JWT. The handler requires an Authorization header and calls
+# auth.getUser() with it; no valid user returns 401.
 verify_jwt = false
 
-[functions.delete-account]
+# Auth: two modes, both checked in the handler. The hourly pg_cron job
+# (`delete-due-accounts`, via private.invoke_edge_function) POSTs
+# {"mode":"process_due"} with no JWT and the `x-cron-secret` header, compared
+# in constant time against CRON_SECRET (_shared/cronSecret.ts). "Delete now"
+# from the portal sends the user's JWT, verified with auth.getUser(); only
+# that user can be deleted. verify_jwt must stay false or the gateway returns
+# 401 to pg_net and no scheduled deletion ever runs.
+# The session-bound OAuth completion endpoint (KD-13). It must only ever run
+# with the completing user's JWT — that binding is the whole point (F-046).
+[functions.complete-oauth]
 verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = false
 
 [functions.disconnect-integration]
 verify_jwt = true
 
+[functions.export-user-data]
+verify_jwt = true
+
 [functions.fitbit-oauth]
+# DISABLED (NF-46): answers 410 Gone to every request, reads no secret and
+# never calls Fitbit (_shared/disabledOAuthCallback.ts). Fitbit is not
+# launched; initiate-oauth refuses to mint 'fitbit' state. verify_jwt stays
+# false because a provider redirect carries no JWT.
 verify_jwt = false
 
 [functions.fitbit-sync]
 verify_jwt = true
 
 [functions.garmin-oauth]
+# DISABLED (NF-46): answers 410 Gone to every request, reads no secret and
+# never calls Garmin (_shared/disabledOAuthCallback.ts). Garmin is not
+# launched; initiate-oauth refuses to mint 'garmin' state. verify_jwt stays
+# false because a provider redirect carries no JWT.
 verify_jwt = false
 
 [functions.garmin-webhook]
+# Auth: HMAC. The handler requires x-garmin-signature to equal the
+# HMAC-SHA256 of the raw body keyed with GARMIN_WEBHOOK_SECRET
+# (constant-time compare); it returns 503 when the secret is unset.
 verify_jwt = false
 
 [functions.hevy-sync]
@@ -57,9 +85,17 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.mobile-sync-pull]
+# Auth: handler JWT. Gateway verification is intentionally disabled: the
+# handler calls auth.getUser(userJwt) before constructing its service-role
+# client so mobile retries can distinguish definitive credential failures
+# (401) from Auth outages (503).
 verify_jwt = false
 
 [functions.mobile-sync-push]
+# Auth: handler JWT. Gateway verification is intentionally disabled: the
+# handler calls auth.getUser(userJwt) before constructing its service-role
+# client so mobile retries can distinguish definitive credential failures
+# (401) from Auth outages (503).
 verify_jwt = false
 
 [functions.paddle-cancel-subscription]
@@ -75,12 +111,36 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.paddle-webhooks]
+# Auth: HMAC. The handler requires Paddle-Signature (ts;h1) to match
+# HMAC-SHA256 of "ts:raw_body" keyed with PADDLE_WEBHOOK_SECRET, with a
+# 5-minute timestamp window (constant-time compare).
 verify_jwt = false
 
+# Gateway verification is intentionally disabled (KD-10 / R-18): pg_cron calls
+# this through private.invoke_edge_function with no JWT. The handler accepts
+# either the `x-cron-secret` header (constant-time compare against CRON_SECRET)
+# or an exact service-role bearer key, and returns 401 otherwise.
 [functions.process-sync-queue]
+# Auth: cron secret. The handler requires x-cron-secret to equal
+# PROCESS_SYNC_QUEUE_SECRET (or CRON_SYNC_QUEUE_SECRET), or
+# Authorization: Bearer <service-role key> (constant-time compare);
+# otherwise it returns 401.
 verify_jwt = false
 
 [functions.strava-oauth]
+# Auth: none of handler JWT, HMAC, or cron secret. This is the browser
+# redirect from Strava, which carries no JWT. The handler accepts only an
+# unexpired oauth_states token issued to the user by initiate-oauth for
+# provider 'strava'; the token is deleted after a successful exchange.
+verify_jwt = false
+
+# Gateway verification is intentionally disabled (KD-14 / R-18): pg_cron calls
+# this through private.invoke_edge_function with no JWT. Auth: the handler
+# accepts EITHER the `x-cron-secret` header (constant-time compare against
+# CRON_SECRET) for `{mode:'batch'}`, OR a user JWT it verifies itself with
+# auth.getUser() and then gates at FLAME. Neither credential can reach the
+# other path; anything else is 401.
+[functions.generate-insights]
 verify_jwt = false
 
 [functions.strava-sync]

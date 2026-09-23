@@ -17,7 +17,8 @@ import {
 	TabsList,
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
-import { fadeUp } from "@/lib/animations";
+import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
+import { formatLeaderboardValue, type WeightUnit } from "@/lib/units";
 import { useAuth } from "@/providers/AuthProvider";
 import {
 	type GlobalLeaderboard,
@@ -62,9 +63,9 @@ function getRankBg(rank: number): string {
 	return "bg-card border-border";
 }
 
-function formatValue(value: number, metric: string): string {
+function formatValue(value: number, metric: string, unit: WeightUnit): string {
 	if (metric.toLowerCase().includes("volume")) {
-		return value >= 1000 ? `${(value / 1000).toFixed(1)}k kg` : `${value} kg`;
+		return formatLeaderboardValue(value, metric, unit);
 	}
 	if (
 		metric.toLowerCase().includes("streak") ||
@@ -81,10 +82,11 @@ function formatValue(value: number, metric: string): string {
 interface EntryRowProps {
 	entry: LeaderboardEntry;
 	metric: string;
+	unit: WeightUnit;
 	isCurrentUser: boolean;
 }
 
-function EntryRow({ entry, metric, isCurrentUser }: EntryRowProps) {
+function EntryRow({ entry, metric, unit, isCurrentUser }: EntryRowProps) {
 	return (
 		<motion.div
 			initial={{ opacity: 0, x: -8 }}
@@ -117,7 +119,7 @@ function EntryRow({ entry, metric, isCurrentUser }: EntryRowProps) {
 			</div>
 
 			<span className="shrink-0 text-sm font-semibold text-foreground">
-				{formatValue(entry.value, metric)}
+				{formatValue(entry.value, metric, unit)}
 			</span>
 		</motion.div>
 	);
@@ -130,6 +132,7 @@ interface RankingCardProps {
 	icon: React.ReactNode;
 	entries: LeaderboardEntry[];
 	metric: string;
+	unit: WeightUnit;
 	currentUserId: string | undefined;
 	userEntry?: LeaderboardEntry;
 }
@@ -139,6 +142,7 @@ function RankingCard({
 	icon,
 	entries,
 	metric,
+	unit,
 	currentUserId,
 	userEntry,
 }: RankingCardProps) {
@@ -166,6 +170,7 @@ function RankingCard({
 							key={entry.userId}
 							entry={entry}
 							metric={metric}
+							unit={unit}
 							isCurrentUser={entry.userId === currentUserId}
 						/>
 					))
@@ -178,7 +183,12 @@ function RankingCard({
 							<span className="text-xs text-muted-foreground">your rank</span>
 							<div className="h-px flex-1 bg-border" />
 						</div>
-						<EntryRow entry={userEntry} metric={metric} isCurrentUser />
+						<EntryRow
+							entry={userEntry}
+							metric={metric}
+							unit={unit}
+							isCurrentUser
+						/>
 					</>
 				)}
 			</CardContent>
@@ -208,12 +218,14 @@ function RankingCardSkeleton() {
 interface GlobalRankingsProps {
 	data: GlobalLeaderboard | undefined;
 	isLoading: boolean;
+	unit: WeightUnit;
 	currentUserId: string | undefined;
 }
 
 function GlobalRankings({
 	data,
 	isLoading,
+	unit,
 	currentUserId,
 }: GlobalRankingsProps) {
 	if (isLoading) {
@@ -300,6 +312,7 @@ function GlobalRankings({
 					icon={icon}
 					entries={data[key]}
 					metric={metricLabel}
+					unit={unit}
 					currentUserId={currentUserId}
 					userEntry={findUserEntry(data[key], currentUserId)}
 				/>
@@ -313,12 +326,14 @@ function GlobalRankings({
 interface WeeklyChallengeProps {
 	data: WeeklyCompetition | undefined;
 	isLoading: boolean;
+	unit: WeightUnit;
 	currentUserId: string | undefined;
 }
 
 function WeeklyChallengeTab({
 	data,
 	isLoading,
+	unit,
 	currentUserId,
 }: WeeklyChallengeProps) {
 	if (isLoading) {
@@ -408,6 +423,7 @@ function WeeklyChallengeTab({
 								key={entry.userId}
 								entry={entry}
 								metric={data.metric}
+								unit={unit}
 								isCurrentUser={entry.userId === currentUserId}
 							/>
 						))
@@ -424,6 +440,7 @@ interface MyRankingsProps {
 	data: UserRanking[] | undefined;
 	isLoading: boolean;
 	isLoggedIn: boolean;
+	unit: WeightUnit;
 }
 
 const METRIC_META: Record<
@@ -433,7 +450,7 @@ const METRIC_META: Record<
 	totalVolume: {
 		label: "Total Volume",
 		icon: <TrendingUp className="size-4 text-primary" />,
-		unit: "kg",
+		unit: "",
 	},
 	workoutCount: {
 		label: "Workout Count",
@@ -462,7 +479,7 @@ const METRIC_META: Record<
 	},
 };
 
-function MyRankingsTab({ data, isLoading, isLoggedIn }: MyRankingsProps) {
+function MyRankingsTab({ data, isLoading, isLoggedIn, unit }: MyRankingsProps) {
 	if (!isLoggedIn) {
 		return (
 			<Card className="border-border p-8 text-center text-sm text-muted-foreground">
@@ -498,6 +515,9 @@ function MyRankingsTab({ data, isLoading, isLoggedIn }: MyRankingsProps) {
 		<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 			{data.map((ranking, index) => {
 				const meta = METRIC_META[ranking.metric];
+				const valueLabel = ranking.metric.toLowerCase().includes("volume")
+					? formatLeaderboardValue(ranking.value, ranking.metric, unit)
+					: `${ranking.value.toLocaleString()} ${meta?.unit ?? ""}`;
 				return (
 					<motion.div
 						key={ranking.metric}
@@ -530,7 +550,7 @@ function MyRankingsTab({ data, isLoading, isLoggedIn }: MyRankingsProps) {
 											Top {ranking.percentile}%
 										</p>
 										<p className="text-xs text-muted-foreground">
-											{ranking.value.toLocaleString()} {meta?.unit ?? ""}
+											{valueLabel}
 										</p>
 									</div>
 								</div>
@@ -547,6 +567,7 @@ function MyRankingsTab({ data, isLoading, isLoggedIn }: MyRankingsProps) {
 
 export function Leaderboard() {
 	const { user } = useAuth();
+	const unit = usePreferredWeightUnit();
 
 	const { data: globalData, isLoading: globalLoading } = useQuery(
 		globalLeaderboardOptions(),
@@ -597,6 +618,7 @@ export function Leaderboard() {
 						<GlobalRankings
 							data={globalData}
 							isLoading={globalLoading}
+							unit={unit}
 							currentUserId={user?.id}
 						/>
 					</TabsContent>
@@ -605,6 +627,7 @@ export function Leaderboard() {
 						<WeeklyChallengeTab
 							data={weeklyData}
 							isLoading={weeklyLoading}
+							unit={unit}
 							currentUserId={user?.id}
 						/>
 					</TabsContent>
@@ -614,6 +637,7 @@ export function Leaderboard() {
 							data={userRankings}
 							isLoading={userRankingsLoading}
 							isLoggedIn={user != null}
+							unit={unit}
 						/>
 					</TabsContent>
 				</Tabs>

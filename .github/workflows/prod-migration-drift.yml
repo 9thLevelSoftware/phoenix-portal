@@ -1,0 +1,456 @@
+name: Prod Migration Drift
+
+# Detects the migration-drift class documented in:
+#   - CLAUDE.md -> "Migration Workflow Discipline" -> "CI coverage"
+#   - .phoenix-review/ci-cd-&-workflows.md -> Finding 4
+#   - Project Phoenix RCA for mobile cloud-sync issue #602 (cross-repo link:
+#     9thLevelSoftware/Project-Phoenix-MP#602)
+#
+# Background: the existing `.github/workflows/migrations.yml` clean-applies
+# every migration into a fresh local stack on PRs, but it intentionally does
+# not compare against the live production project. Migration
+# `20260627000000_add_velocity_estimated_1rm_kg.sql` shipped in `phoenix-portal`
+# main without ever being pushed to live Supabase, while the matching
+# `mobile-sync-push` Edge Function was redeployed afterwards. Live PostgREST
+# then rejected inserts with:
+#   Could not find the 'velocity_estimated_1rm_kg' column of 'exercise_progress'
+#   in the schema cache
+#
+# Scope and limits of THIS workflow (please read before merging):
+#   - This is a *detector* only; its result blocks nothing. The Edge Function
+#     deploy path is gated separately: `.github/workflows/deploy-edge-functions.yml`
+#     runs its own copy of this check before every deploy.
+#   - It runs on a daily schedule, on `workflow_dispatch`, and on `main` push
+#     only when this very file changes. It does NOT run on PRs (PR-side forks
+#     cannot reach the prod secrets required by `supabase migration list --linked`).
+#   - When it detects drift, it fails its own run and emits remediation steps.
+#     The drift is informational until a human operator pushes the missing
+#     migration via `supabase db push`. The user-visible issue #602 stays open
+#     until that operational push completes and the reporter path is verified.
+#   - It distinguishes "drift" from "this result cannot be trusted". A CLI
+#     error, output the parser rejects, a remote version that is not a plain
+#     number, or an empty applied set all fail the run WITHOUT producing a
+#     drift list, and say so: acting on a false maximal drift report would
+#     replay the whole migration history against prod. Only a parsed,
+#     non-empty applied set ever reaches the report step.
+#   - This PR adds the detector only; it does NOT itself fix or close the
+#     live Supabase schema/cache state that drives the mobile sync error.
+#   - A second read-only step checks that no SECURITY DEFINER function in
+#     `public` is executable by anon/authenticated outside the browser
+#     allow-list (see 20260920000100_lockdown_definer_function_grants.sql).
+#
+# Required `production` environment secrets (production read-only from this job's POV):
+#   - SUPABASE_ACCESS_TOKEN      Personal access token from
+#                                https://supabase.com/dashboard/account/tokens
+#   - SUPABASE_PROD_PROJECT_REF  Project ref of the prod Supabase project
+#                                (the 20-char string in the dashboard URL)
+#   - SUPABASE_PROD_DB_PASSWORD  Database password for the prod project (used
+#                                by `supabase link` / `supabase migration list
+#                                --linked` and by the read-only grant check;
+#                                the CLI uses it transiently and does not write
+#                                it back to the project). Passed to the CLI as
+#                                SUPABASE_DB_PASSWORD in the step env and to
+#                                psql as PGPASSWORD — never on a command line,
+#                                matching deploy-edge-functions.yml.
+
+on:
+  # Daily at 06:17 UTC so drift alerts surface ahead of any user-visible
+  # breakage window.
+  schedule:
+    - cron: "17 6 * * *"
+  # Manual run only from main. This job needs production Supabase credentials
+  # that should never be exposed to PR-side forks or non-main refs, so we
+  # deliberately do NOT run on pull_request.
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/prod-migration-drift.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prod-migration-drift-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  drift-check:
+    name: Detect unapplied migrations in prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Production drift checks must only run from main. This job uses the
+    # protected `production` environment so the DB password can be stored as an
+    # environment secret with branch restrictions instead of as a broad
+    # repository secret.
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      # Defense-in-depth for workflow_dispatch: fail before installing tools or
+      # touching any production secret if a run somehow starts from a non-main
+      # ref. Keep this before every secret-consuming step.
+      - name: Enforce main-only drift checks
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Prod migration drift checks are restricted to refs/heads/main (got $GITHUB_REF). Re-run from main."
+            exit 1
+          fi
+
+      # Single source for the CLI version: .supabase-cli-version (same pin as
+      # migrations.yml, deploy-edge-functions.yml and scripts/supabase-cli.mjs).
+      # The validation is inlined rather than shared with
+      # scripts/supabase-cli.mjs because this step runs before setup-node, so
+      # there is no Node here yet; the regex is the one that script uses. An
+      # empty or malformed value would make setup-cli fall back to its own
+      # default, i.e. query production on an unreviewed CLI while reporting
+      # success — the pin must not be able to evaporate silently.
+      - name: Read pinned Supabase CLI version
+        id: cli
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -r .supabase-cli-version ]; then
+            echo "::error::.supabase-cli-version is missing or unreadable; refusing to run against production with an unpinned Supabase CLI."
+            exit 1
+          fi
+          version="$(tr -d '[:space:]' < .supabase-cli-version)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::.supabase-cli-version must hold a plain x.y.z version (got '${version}'); refusing to run against production with an unpinned Supabase CLI."
+            exit 1
+          fi
+          echo "Pinned Supabase CLI: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@b60b5899c73b63a2d2d651b1e90db8d4c9392f51 # v1.6.0
+        with:
+          version: ${{ steps.cli.outputs.version }}
+
+      # Runs scripts/migration-list-applied.mjs (dependency-free; no npm ci).
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Validate required secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROD_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+          SUPABASE_PROD_DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
+        run: |
+          missing=""
+          [ -z "$SUPABASE_ACCESS_TOKEN" ] && missing="$missing SUPABASE_ACCESS_TOKEN"
+          [ -z "$SUPABASE_PROD_PROJECT_REF" ] && missing="$missing SUPABASE_PROD_PROJECT_REF"
+          [ -z "$SUPABASE_PROD_DB_PASSWORD" ] && missing="$missing SUPABASE_PROD_DB_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secrets:$missing. See the header comment in this workflow for provisioning steps."
+            exit 1
+          fi
+
+      - name: Link prod project (read-only)
+        id: link
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+          # The CLI reads the DB password from this variable, keeping it out of
+          # argv (where any process on the runner could read it from /proc, and
+          # a CLI usage/crash path could echo it). Same mechanism as
+          # deploy-edge-functions.yml -> "Gate on prod migrations".
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
+        run: |
+          # `supabase link` writes the project-ref + transient DB password to
+          # ~/.supabase/. The home dir is ephemeral on the runner, so this
+          # does not leak between jobs. Subsequent `migration list --linked`
+          # invocations reuse this link.
+          supabase link --project-ref "$PROJECT_REF"
+
+      - name: List local migrations
+        id: local
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          # `version` is the numeric prefix that
+          # `supabase/migrations/<version>_<name>.sql` uses. Emit just the
+          # version, one per line, sorted/unique. Matches
+          # `schema_migrations.version` exactly.
+          : > local_migrations.txt
+          for f in supabase/migrations/*.sql; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f")
+            version=$(echo "$base" | sed -E 's/^([0-9]+)_.*/\1/')
+            echo "$version" >> local_migrations.txt
+          done
+          sort -u -o local_migrations.txt local_migrations.txt
+          count=$(wc -l < local_migrations.txt | tr -d ' ')
+          echo "Local migration count: $count"
+          {
+            echo "versions<<EOF"
+            cat local_migrations.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: List prod-applied migrations
+        id: remote
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Parse the CLI's JSON output (`--output-format json`); the pinned
+          # CLI also prints JSON by default when stdout is piped, so the old
+          # text-table parser no longer applies. scripts/migration-list-applied.mjs
+          # is covered by tests/ci/migration-list-applied.test.ts. Keep stderr
+          # visible enough to diagnose failures without printing credentials.
+          #
+          # Every failure path below is terminal and says "do NOT db push".
+          # This step must never hand the report step a result it cannot
+          # trust: an empty applied set there would render as "all 90-odd
+          # local migrations are unapplied", and acting on that would replay
+          # the entire migration history against prod.
+          : > remote_migrations.txt
+          if ! supabase migration list --linked --output-format json > migration_list.json 2> migration_list.err; then
+            echo "::error::Failed to query remote migrations. Check SUPABASE_ACCESS_TOKEN, SUPABASE_PROD_PROJECT_REF, SUPABASE_PROD_DB_PASSWORD, and that the project is linked."
+            if [ -s migration_list.err ]; then
+              echo "Supabase CLI stderr:"
+              sed -E 's#(postgres(ql)?://[^:[:space:]]+:)[^@[:space:]]+@#\1***@#g; s#(password=)[^[:space:]]+#\1***#g' migration_list.err
+            fi
+            exit 1
+          fi
+          if node scripts/migration-list-applied.mjs migration_list.json > remote_migrations.txt; then
+            parse_status=0
+          else
+            parse_status=$?
+          fi
+          if [ "$parse_status" -eq 3 ]; then
+            echo "::error::'supabase migration list --linked' returned a remote version that is not a plain number (the parser message above names it). The CLI output shape is fine and this script is fine: inspect that supabase_migrations.schema_migrations row in prod. This is not a drift result: do NOT run db push."
+            exit 1
+          fi
+          if [ "$parse_status" -ne 0 ]; then
+            echo "::error::Could not parse 'supabase migration list --linked --output-format json' (the CLI output shape may have changed). This is not a drift result: do NOT run db push; fix scripts/migration-list-applied.mjs, then re-run."
+            exit 1
+          fi
+          if [ ! -s remote_migrations.txt ]; then
+            # Parsed fine, but prod lists nothing as applied. Prod demonstrably
+            # has migrations, so this means the wrong project or a parse that
+            # produced nothing — never "push everything".
+            echo "::error::Prod reports no applied migrations at all (every remote entry is empty). The drift result cannot be trusted, so no drift report is produced: confirm SUPABASE_PROD_PROJECT_REF points at the production project and that SUPABASE_ACCESS_TOKEN can read it. Do NOT run db push on the strength of this run."
+            exit 1
+          fi
+          sort -u -o remote_migrations.txt remote_migrations.txt
+          count=$(wc -l < remote_migrations.txt | tr -d ' ')
+          echo "Remote applied count: $count"
+          {
+            echo "applied<<EOF"
+            cat remote_migrations.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Report unapplied migrations
+        env:
+          LOCAL: ${{ steps.local.outputs.versions }}
+          APPLIED: ${{ steps.remote.outputs.applied }}
+        run: |
+          set -euo pipefail
+          # Treat the remote list as the source of truth. Any local version
+          # not in the remote list is unapplied to prod. Drift like
+          # `20260627000000_add_velocity_estimated_1rm_kg.sql` shows up here.
+          # NOTE: this is a detection/reporting step only. It does not block
+          # any deploy path; the Edge deploy workflow runs its own copy of it.
+          : > local_sorted.txt
+          : > applied_sorted.txt
+          echo "$LOCAL" | sort -u > local_sorted.txt
+          echo "$APPLIED" | sort -u > applied_sorted.txt
+
+          # Defense in depth: the previous step already fails hard on an empty
+          # applied set. If one ever reached here, `comm -23` would list every
+          # local migration as drift — a maximal false positive that must not
+          # be printed as a remediation recipe.
+          if [ -z "${APPLIED//[[:space:]]/}" ]; then
+            echo "::error::No applied migrations were carried over from the previous step. The drift result cannot be trusted, so none is reported: confirm SUPABASE_PROD_PROJECT_REF points at the production project. Do NOT run db push on the strength of this run."
+            exit 1
+          fi
+
+          unapplied=$(comm -23 local_sorted.txt applied_sorted.txt)
+          if [ -z "$unapplied" ]; then
+            echo "No drift: every local migration is applied to prod."
+            exit 0
+          fi
+
+          echo "::error::Drift detected. The following local migrations are NOT applied to prod:"
+          echo "$unapplied" | sed 's/^/  - /'
+          echo ""
+          echo "The operator applies them from a main checkout, after supabase link:"
+          echo "  supabase db push"
+          echo "then verifies each migration's artifact in prod. Do not reach for"
+          echo "'db push --include-all' or a raw 'psql -f' of the migration file:"
+          echo "--include-all replays history, and psql runs the DDL without"
+          echo "recording it in supabase_migrations.schema_migrations (CLAUDE.md ->"
+          echo "'Migration Workflow Discipline'). If the DDL already ran in prod"
+          echo "under a different version, fix only the tracking with"
+          echo "'supabase migration repair'; never repair a version whose DDL has"
+          echo "not executed."
+          echo "After applying, reload the PostgREST schema if clients still report cache errors:"
+          echo "  NOTIFY pgrst, 'reload schema';"
+          echo ""
+          echo "Reminder: Edge Function deploys are blocked by their own copy of this check until this drift is fixed. Issue"
+          echo "9thLevelSoftware/Project-Phoenix-MP#602 stays open until the migration"
+          echo "is applied AND the reporter's Android Sync Now path is verified."
+          exit 1
+
+      # Read-only grant check (Operator Action 1 query). Fails the daily run if
+      # any SECURITY DEFINER function in public is executable by anon or
+      # authenticated outside the browser allow-list, which catches definer
+      # functions created outside migrations (dashboard) or without
+      # `REVOKE ... FROM PUBLIC`. Runs even when the drift report above fails.
+      # Allow-list: this step writes the browser-callable signatures ONCE, in
+      # the `browser_allow` CTE, and both halves of the query (the "exposed"
+      # check and the "missing grant" check) read that one list, so they
+      # cannot drift apart. `anon_tier_allow` is the named anon subset, also
+      # written once. anon on a tier helper is tolerated only while a
+      # PUBLIC/anon SELECT/ALL policy calls it, the same predicate the
+      # migration's block 3b uses.
+      #
+      # The same list is restated, by design, in these other places — a new
+      # browser-callable SECURITY DEFINER function must be added to every one
+      # of them, and nothing enforces that automatically:
+      #   - supabase/migrations/20260920000100_lockdown_definer_function_grants.sql
+      #     (authoritatively restated by 20260920007600_reconcile_prod_schema_drift.sql
+      #     once PR 76 lands; restate it in the newest migration, never edit an
+      #     applied one)
+      #   - supabase/tests/database/definer_function_grants.test.sql
+      #   - supabase/tests/database/schema_drift.test.sql (arrives with PR 76;
+      #     it carries the pgTAP counterpart of the "missing grant" check below)
+      #   - this step
+      # It also fails when an allow-listed browser function EXISTS in prod but
+      # authenticated has lost EXECUTE on it (a missing expected grant breaks
+      # the browser caller). A function that does not exist yet is not
+      # flagged here; the migration drift report above covers that.
+      #
+      # Connection: the IPv4 pooler URL that `supabase link` writes to
+      # supabase/.temp/pooler-url. The direct-host fallback is usually
+      # IPv6-only, which GitHub runners cannot reach, so it gets its own error.
+      # The operator must trigger one manual `workflow_dispatch` run on main
+      # right after this step merges to confirm the connection path works.
+      - name: Check SECURITY DEFINER grants in prod (read-only)
+        if: ${{ !cancelled() && steps.link.outcome == 'success' }}
+        env:
+          PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+          PGPASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client
+          fi
+          # `supabase link` records the IPv4 pooler URL under supabase/.temp;
+          # fall back to the direct host. Strip any embedded password (or
+          # placeholder) so PGPASSWORD always authenticates. Never echo the URL.
+          conn_source="pooler"
+          if [ -s supabase/.temp/pooler-url ]; then
+            db_url=$(tr -d '\r\n' < supabase/.temp/pooler-url | sed -E 's#(://[^:/@]+):[^@]*@#\1@#')
+          else
+            conn_source="direct"
+            echo "::warning::supabase/.temp/pooler-url not found after link; falling back to the direct database host (often IPv6-only)."
+            db_url="postgresql://postgres@db.${PROJECT_REF}.supabase.co:5432/postgres"
+          fi
+          export PGSSLMODE=require PGCONNECT_TIMEOUT=20
+          if ! psql "$db_url" -X -q -At -F '|' -v ON_ERROR_STOP=1 > grant_check.txt 2> grant_check.err <<'SQL'
+          BEGIN READ ONLY;
+          WITH browser_allow(sig) AS (VALUES
+            ('import_shared_routine(uuid, text)'),
+            ('import_shared_cycle(uuid, text)'),
+            ('workout_current_streak(uuid)'),
+            ('user_has_min_tier(text)'),
+            ('user_subscription_tier()'),
+            ('request_account_deletion()'),
+            ('delete_training_cycle_lww(uuid, timestamp with time zone)'),
+            ('delete_workout_with_tombstone(uuid, uuid, uuid, text, text, timestamp with time zone)'),
+            ('verify_profile_recovery_source(text, uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[])')
+          ),
+          anon_tier_allow(sig) AS (VALUES
+            ('user_has_min_tier(text)'),
+            ('user_subscription_tier()')
+          ),
+          public_functions AS (
+            SELECT p.oid,
+                   p.proname,
+                   p.prosecdef,
+                   format('%s(%s)', p.proname, oidvectortypes(p.proargtypes)) AS sig,
+                   NOT EXISTS (
+                     SELECT 1 FROM pg_depend d
+                     WHERE d.classid = 'pg_proc'::regclass
+                       AND d.objid = p.oid
+                       AND d.deptype = 'e'
+                   ) AS own_object
+            FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'public'
+          )
+          SELECT 'exposed' AS kind, f.sig, r.rolname
+          FROM public_functions f
+          CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(rolname)
+          WHERE f.prosecdef
+            AND f.own_object
+            AND has_function_privilege(r.rolname, f.oid, 'EXECUTE')
+            AND NOT (
+              r.rolname = 'authenticated'
+              AND f.sig IN (SELECT sig FROM browser_allow)
+            )
+            AND NOT (
+              r.rolname = 'anon'
+              AND f.sig IN (SELECT sig FROM anon_tier_allow)
+              AND EXISTS (
+                SELECT 1
+                FROM pg_policies pol
+                WHERE pol.roles && ARRAY['public', 'anon']::name[]
+                  AND pol.cmd IN ('SELECT', 'ALL')
+                  AND (
+                    coalesce(pol.qual, '') LIKE '%' || f.proname || '(%'
+                    OR coalesce(pol.with_check, '') LIKE '%' || f.proname || '(%'
+                  )
+              )
+            )
+          UNION ALL
+          SELECT 'missing' AS kind, a.sig, 'authenticated'
+          FROM browser_allow a
+          JOIN public_functions f ON f.sig = a.sig
+          WHERE NOT has_function_privilege('authenticated', f.oid, 'EXECUTE')
+          ORDER BY 1, 2, 3;
+          ROLLBACK;
+          SQL
+          then
+            if [ "$conn_source" = "direct" ]; then
+              echo "::error::Could not reach prod via the direct database host (no pooler URL from supabase link). GitHub runners have no IPv6; fix the pooler URL source rather than the password."
+            else
+              echo "::error::Could not run the read-only grant check against prod via the pooler. Check SUPABASE_PROD_DB_PASSWORD and pooler reachability."
+            fi
+            sed -E 's#(postgres(ql)?://[^:[:space:]]+:)[^@[:space:]]+@#\1***@#g; s#(password=)[^[:space:]]+#\1***#g' grant_check.err || true
+            exit 1
+          fi
+          awk -F'|' '$1 == "exposed" { print $2 "|" $3 }' grant_check.txt > exposed_definers.txt
+          awk -F'|' '$1 == "missing" { print $2 "|" $3 }' grant_check.txt > missing_grants.txt
+          failed=0
+          if [ -s exposed_definers.txt ]; then
+            failed=1
+            echo "::error::SECURITY DEFINER functions executable by anon/authenticated outside the allow-list (function|role):"
+            sed 's/^/  - /' exposed_definers.txt
+            echo ""
+            echo "Remediate with a migration that runs, for each function:"
+            echo "  REVOKE ALL ON FUNCTION public.<fn>(<args>) FROM PUBLIC, anon, authenticated;"
+            echo "  GRANT EXECUTE ON FUNCTION public.<fn>(<args>) TO service_role;"
+            echo "Or, if a browser caller needs it, add it to every allow-list copy named in"
+            echo "the comment above this step (this workflow's browser_allow CTE, the newest"
+            echo "migration restating the definer lockdown list, and the pgTAP grant tests)."
+          fi
+          if [ -s missing_grants.txt ]; then
+            failed=1
+            echo "::error::Allow-listed browser functions exist in prod but are NOT executable by the expected role (function|role):"
+            sed 's/^/  - /' missing_grants.txt
+            echo ""
+            echo "Remediate with a migration that runs, for each function:"
+            echo "  GRANT EXECUTE ON FUNCTION public.<fn>(<args>) TO authenticated;"
+          fi
+          if [ "$failed" -ne 0 ]; then
+            exit 1
+          fi
+          echo "No SECURITY DEFINER function outside the allow-list is executable by anon/authenticated, and every existing allow-listed browser function is executable by authenticated."

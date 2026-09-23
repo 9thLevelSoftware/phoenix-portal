@@ -18,6 +18,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import { toast } from "sonner";
 import { SelectionModeBar } from "@/app/components/routine-builder/SelectionModeBar";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -42,23 +43,49 @@ import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog
 import { useExerciseCatalog } from "@/hooks/useExerciseCatalog";
 import {
 	convertWeight,
-	formatWeight,
 	getUnitLabel,
 	toKg,
 	type WeightUnit,
+	weightInputValue,
 } from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 import { useSaveRoutine, useUpdateRoutine } from "@/mutations/routines";
 import { useAuth } from "@/providers/AuthProvider";
 import { profileOptions } from "@/queries/profile";
 import { routineDetailOptions } from "@/queries/routines";
 import { formatEquipment } from "@/schemas/transforms";
+import {
+	DEFAULT_WIRE_MODE,
+	ECCENTRIC_LOAD_LABELS,
+	ECCENTRIC_LOADS,
+	ECHO_LEVEL_LABELS,
+	ECHO_LEVELS,
+	eccentricLoadLabel,
+	isWireMode,
+	normalizeEccentricLoad,
+	REP_COUNT_TIMING_LABELS,
+	REP_COUNT_TIMINGS,
+	SUPERSET_COLOR_NAMES,
+	supersetColorHex,
+	toEchoLevel,
+	toRepCountTiming,
+	toStopAtPosition,
+	toSupersetColorName,
+	toWireMode,
+	WIRE_MODE_LABELS,
+	WIRE_MODES,
+	type WireMode,
+	workoutModeLabel,
+} from "../../../supabase/functions/_shared/workoutModes.ts";
 
-const SUPERSET_COLORS = [
-	"var(--chart-5)",
-	"var(--chart-5)",
-	"var(--success)",
-	"var(--accent)",
-] as const;
+const WIRE_MODE_DESCRIPTIONS: Record<WireMode, string> = {
+	OLD_SCHOOL: "Traditional resistance training",
+	PUMP: "High-rep hypertrophy focused training",
+	TUT: "Time under tension for muscle growth",
+	TUT_BEAST: "Extended time under tension with slow eccentrics",
+	ECCENTRIC_ONLY: "Negative-only reps for maximum muscle damage",
+	ECHO: "Alternating intensity echo sets",
+};
 
 interface Exercise {
 	id: string;
@@ -85,6 +112,8 @@ interface Exercise {
 	stallDetection: boolean;
 	eccentricLoad: string | null;
 	echoLevel: string | null;
+	dropSetEnabled: boolean;
+	dropSetMinWeightKg: number | null;
 }
 
 type GroupedExerciseItem =
@@ -96,25 +125,49 @@ type GroupedExerciseItem =
 			exercises: Exercise[];
 	  };
 
+function isInList(list: readonly string[], value: string) {
+	return list.includes(value);
+}
+
+function isOldSchoolMode(mode: string) {
+	return toWireMode(mode) === "OLD_SCHOOL";
+}
+
+function isDropSetEligible(exercise: Pick<Exercise, "mode" | "isBodyweight">) {
+	return isOldSchoolMode(exercise.mode) && !exercise.isBodyweight;
+}
+
+function isDropSetConfigValid(exercise: Exercise) {
+	if (!exercise.dropSetEnabled) return true;
+	// Floor is required whenever the stored flag is true. Leaving Old School
+	// (Echo/bodyweight) hides the control but keeps dropSetEnabled /
+	// dropSetMinWeightKg so mobile can reactivate them.
+	return (
+		exercise.dropSetMinWeightKg != null &&
+		Number.isFinite(exercise.dropSetMinWeightKg) &&
+		exercise.dropSetMinWeightKg > 0
+	);
+}
+
 function getDisplayWeight(weightKg: number, unit: WeightUnit) {
 	const converted = convertWeight(weightKg, unit);
 	return unit === "lbs" ? converted.toFixed(1) : `${Math.round(converted)}`;
 }
 
-function formatExerciseSummary(exercise: Exercise, unit: WeightUnit) {
+export function formatExerciseSummary(exercise: Exercise, unit: WeightUnit) {
 	const loadLabel = exercise.isBodyweight
 		? "Bodyweight"
-		: formatWeight(exercise.weight, unit);
+		: formatLoad(exercise.weight, null, unit);
 
 	if (exercise.durationSeconds) {
-		return `${exercise.sets} sets • ${exercise.durationSeconds}s • ${loadLabel} • ${exercise.mode}`;
+		return `${exercise.sets} sets • ${exercise.durationSeconds}s • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
 	}
 
 	if (exercise.isAmrap) {
-		return `${exercise.sets} sets • AMRAP • ${loadLabel} • ${exercise.mode}`;
+		return `${exercise.sets} sets • AMRAP • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
 	}
 
-	return `${exercise.sets} sets • ${exercise.reps} reps • ${loadLabel} • ${exercise.mode}`;
+	return `${exercise.sets} sets • ${exercise.reps} reps • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
 }
 
 function getPerSetValues(
@@ -138,8 +191,8 @@ function getNextSupersetColor(exercises: Exercise[]) {
 	);
 
 	return (
-		SUPERSET_COLORS.find((color) => !usedColors.has(color)) ??
-		SUPERSET_COLORS[0]
+		SUPERSET_COLOR_NAMES.find((color) => !usedColors.has(color)) ??
+		SUPERSET_COLOR_NAMES[0]
 	);
 }
 
@@ -191,6 +244,9 @@ export function RoutineBuilder() {
 	});
 
 	const [routineName, setRoutineName] = useState("Untitled Routine");
+	// Preserve the routine's existing description even though this builder has no
+	// description field, so editing+saving doesn't erase it.
+	const [description, setDescription] = useState("");
 	const [exercises, setExercises] = useState<Exercise[]>([]);
 	const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
 	const [showExercisePicker, setShowExercisePicker] = useState(false);
@@ -207,6 +263,7 @@ export function RoutineBuilder() {
 	useEffect(() => {
 		if (existingRoutine) {
 			setRoutineName(existingRoutine.name);
+			setDescription(existingRoutine.description ?? "");
 			setExercises(
 				existingRoutine.routine_exercises.map((ex) => ({
 					id: ex.id,
@@ -218,9 +275,15 @@ export function RoutineBuilder() {
 					weight: ex.weight,
 					rest: ex.rest_seconds,
 					durationSeconds: ex.duration_seconds ?? null,
-					mode: ex.mode,
+					// Unknown stored modes (e.g. from a newer mobile build) are kept
+					// verbatim and saved back unchanged; the select shows them as
+					// an extra "unsupported" option with a warning.
+					mode: toWireMode(ex.mode) ?? ex.mode,
 					supersetId: ex.superset_id ?? null,
-					supersetColor: ex.superset_color ?? null,
+					// Settings load in mobile's vocabulary. Legacy portal values
+					// (hex colours, light/low, free text) become what the machine
+					// actually used: the colour name, or null = mobile's default.
+					supersetColor: toSupersetColorName(ex.superset_color),
 					supersetOrder: ex.superset_order ?? null,
 					perSetWeights: ex.per_set_weights ?? null,
 					perSetRest: ex.per_set_rest ?? null,
@@ -228,11 +291,13 @@ export function RoutineBuilder() {
 					isAmrap: ex.is_amrap ?? false,
 					isBodyweight: ex.is_bodyweight ?? false,
 					prPercentage: ex.pr_percentage ?? null,
-					repCountTiming: ex.rep_count_timing ?? null,
-					stopAtPosition: ex.stop_at_position ?? null,
+					repCountTiming: toRepCountTiming(ex.rep_count_timing),
+					stopAtPosition: toStopAtPosition(ex.stop_at_position),
 					stallDetection: ex.stall_detection ?? true,
-					eccentricLoad: ex.eccentric_load ?? null,
-					echoLevel: ex.echo_level ?? null,
+					eccentricLoad: normalizeEccentricLoad(ex.eccentric_load),
+					echoLevel: toEchoLevel(ex.echo_level),
+					dropSetEnabled: ex.drop_set_enabled ?? false,
+					dropSetMinWeightKg: ex.drop_set_min_weight_kg ?? null,
 				})),
 			);
 		}
@@ -266,7 +331,29 @@ export function RoutineBuilder() {
 	};
 
 	const handleDeleteExercise = (id: string) => {
-		setExercises(exercises.filter((ex) => ex.id !== id));
+		setExercises((current) => {
+			const remaining = current.filter((ex) => ex.id !== id);
+			// Ungroup any superset left with fewer than two members after deletion.
+			const countBySuperset = new Map<string, number>();
+			for (const ex of remaining) {
+				if (ex.supersetId) {
+					countBySuperset.set(
+						ex.supersetId,
+						(countBySuperset.get(ex.supersetId) ?? 0) + 1,
+					);
+				}
+			}
+			return remaining.map((ex) =>
+				ex.supersetId && (countBySuperset.get(ex.supersetId) ?? 0) < 2
+					? {
+							...ex,
+							supersetId: null,
+							supersetColor: null,
+							supersetOrder: null,
+						}
+					: ex,
+			);
+		});
 		if (selectedExercise === id) {
 			setSelectedExercise(null);
 		}
@@ -291,17 +378,51 @@ export function RoutineBuilder() {
 
 		const supersetId = crypto.randomUUID();
 		const supersetColor = getNextSupersetColor(exercises);
+		const selectedSet = new Set(selectedIds);
 
+		// Source supersets that lose members to the new group: if any is left with
+		// a single member, ungroup it so we don't strand an invalid 1-exercise
+		// superset.
+		const remainingCountBySource = new Map<string, number>();
+		for (const ex of exercises) {
+			if (ex.supersetId && !selectedSet.has(ex.id)) {
+				remainingCountBySource.set(
+					ex.supersetId,
+					(remainingCountBySource.get(ex.supersetId) ?? 0) + 1,
+				);
+			}
+		}
+		const orphanedSupersetIds = new Set(
+			[...remainingCountBySource.entries()]
+				.filter(([, count]) => count < 2)
+				.map(([id]) => id),
+		);
+
+		// supersetOrder follows the exercises' order in the routine, not the order
+		// in which the user clicked them.
+		let nextOrder = 0;
 		setExercises((current) =>
 			current.map((exercise) => {
-				const supersetOrder = selectedIds.indexOf(exercise.id);
-				if (supersetOrder === -1) return exercise;
-				return {
-					...exercise,
-					supersetId,
-					supersetColor,
-					supersetOrder,
-				};
+				if (selectedSet.has(exercise.id)) {
+					return {
+						...exercise,
+						supersetId,
+						supersetColor,
+						supersetOrder: nextOrder++,
+					};
+				}
+				if (
+					exercise.supersetId &&
+					orphanedSupersetIds.has(exercise.supersetId)
+				) {
+					return {
+						...exercise,
+						supersetId: null,
+						supersetColor: null,
+						supersetOrder: null,
+					};
+				}
+				return exercise;
 			}),
 		);
 		setSelectedExerciseIds(new Set());
@@ -327,6 +448,13 @@ export function RoutineBuilder() {
 
 	const buildExercisePayload = () =>
 		exercises.map((ex, i) => ({
+			// For an exercise loaded from the routine this is its
+			// `routine_exercises.id`; for one added in this session it is a
+			// client-minted uuid the server will replace. The update mutation
+			// sends it so existing rows keep their identity (mobile keys
+			// per-exercise rack and scaling defaults by it); the create
+			// mutation drops it.
+			id: ex.id,
 			name: ex.name,
 			muscle_group: ex.muscleGroup,
 			exercise_id: ex.exerciseId ?? null,
@@ -351,27 +479,42 @@ export function RoutineBuilder() {
 			stall_detection: ex.stallDetection,
 			eccentric_load: ex.eccentricLoad,
 			echo_level: ex.echoLevel,
+			drop_set_enabled: ex.dropSetEnabled,
+			drop_set_min_weight_kg: ex.dropSetMinWeightKg,
 		}));
 
+	// Resolve the selected exercise; may be undefined if the id went stale after
+	// a deletion/mutation, in which case the detail panel shows its empty state.
+	const selectedExerciseData = selectedExercise
+		? exercises.find((ex) => ex.id === selectedExercise)
+		: undefined;
+
+	// Unrecognized modes already stored on this routine may be saved back as-is.
+	const preservedModes = useMemo(
+		() =>
+			(existingRoutine?.routine_exercises ?? [])
+				.map((ex) => ex.mode)
+				.filter((mode) => toWireMode(mode) === null),
+		[existingRoutine],
+	);
+
 	const handleSave = () => {
-		const validationErrors = routineName.trim()
-			? []
-			: ["Enter a name for this routine."];
-		if (validationErrors.length > 0) {
-			setFormErrors(validationErrors);
+		if (exercises.some((exercise) => !isDropSetConfigValid(exercise))) {
+			toast.error(
+				"Drop-set exercises need a minimum weight greater than zero.",
+			);
 			return;
 		}
-		setFormErrors([]);
 
 		const payload = {
-			name: routineName.trim(),
-			description: "",
+			name: routineName,
+			description,
 			exercises: buildExercisePayload(),
 		};
 
 		if (isEditing && routineId) {
 			updateMutation.mutate(
-				{ ...payload, routineId },
+				{ ...payload, routineId, preservedModes },
 				{
 					onSuccess: () => {
 						setHasUnsavedChanges(false);
@@ -545,7 +688,7 @@ export function RoutineBuilder() {
 											key={item.id}
 											className="rounded-xl border border-secondary/70 bg-surface-2/40 p-4"
 											style={{
-												borderLeftColor: item.color ?? undefined,
+												borderLeftColor: supersetColorHex(item.color),
 												borderLeftWidth: 4,
 											}}
 										>
@@ -612,10 +755,9 @@ export function RoutineBuilder() {
 					{/* Right: Exercise Detail Panel */}
 					<div className="lg:col-span-1">
 						<AnimatePresence mode="wait">
-							{selectedExercise ? (
+							{selectedExerciseData ? (
 								<ExerciseDetailPanel
-									// biome-ignore lint/style/noNonNullAssertion: guarded by selectedExercise truthiness check above
-									exercise={exercises.find((ex) => ex.id === selectedExercise)!}
+									exercise={selectedExerciseData}
 									onUpdate={(updated) => {
 										setExercises(
 											exercises.map((ex) =>
@@ -626,11 +768,8 @@ export function RoutineBuilder() {
 									}}
 									onClose={() => setSelectedExercise(null)}
 									onUngroup={() => {
-										const currentExercise = exercises.find(
-											(ex) => ex.id === selectedExercise,
-										);
-										if (currentExercise?.supersetId) {
-											handleUngroupSuperset(currentExercise.supersetId);
+										if (selectedExerciseData.supersetId) {
+											handleUngroupSuperset(selectedExerciseData.supersetId);
 										}
 									}}
 									unit={unit}
@@ -659,7 +798,7 @@ export function RoutineBuilder() {
 								weight: 0,
 								rest: 90,
 								durationSeconds: null,
-								mode: "Old School",
+								mode: DEFAULT_WIRE_MODE,
 								supersetId: null,
 								supersetColor: null,
 								supersetOrder: null,
@@ -674,6 +813,8 @@ export function RoutineBuilder() {
 								stallDetection: true,
 								eccentricLoad: null,
 								echoLevel: null,
+								dropSetEnabled: false,
+								dropSetMinWeightKg: null,
 							};
 							setExercises([...exercises, newExercise]);
 							setShowExercisePicker(false);
@@ -846,6 +987,14 @@ function SortableExerciseItem({
 									Bodyweight
 								</Badge>
 							)}
+							{exercise.dropSetEnabled && (
+								<Badge
+									variant="outline"
+									className="border-primary/40 text-primary text-xs"
+								>
+									Drop set
+								</Badge>
+							)}
 						</div>
 						<p className="text-sm text-muted-foreground">
 							{formatExerciseSummary(exercise, unit)}
@@ -865,6 +1014,7 @@ function SortableExerciseItem({
 							}}
 							className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 							disabled={isSelectionMode}
+							aria-label="Edit exercise"
 						>
 							<Edit className="w-4 h-4" />
 						</Button>
@@ -901,6 +1051,7 @@ function ExerciseDetailPanel({
 	unit: WeightUnit;
 }) {
 	const isDurationBased = exercise.durationSeconds != null;
+	const isEchoMode = toWireMode(exercise.mode) === "ECHO";
 	const weightValues = getPerSetValues(
 		exercise.perSetWeights,
 		exercise.sets,
@@ -989,6 +1140,7 @@ function ExerciseDetailPanel({
 										perSetWeights: checked ? null : exercise.perSetWeights,
 									})
 								}
+								aria-label="Bodyweight"
 							/>
 						</div>
 
@@ -1072,6 +1224,15 @@ function ExerciseDetailPanel({
 						<Label className="text-sm font-medium text-secondary-foreground mb-3 block">
 							Sets
 						</Label>
+						{!exercise.isBodyweight && (
+							<p
+								className="text-xs text-muted-foreground mb-2"
+								data-testid="per-cable-weight-hint"
+							>
+								Weights are per cable, as on the phone. Total load = per-cable
+								weight × cables in use.
+							</p>
+						)}
 						<div className="space-y-2">
 							{Array.from({ length: exercise.sets }).map((_, i) => (
 								<div
@@ -1113,43 +1274,35 @@ function ExerciseDetailPanel({
 															})
 														: updatePerSetReps(i, e.target.value)
 												}
-												className="bg-background border-secondary text-foreground"
+												className="bg-background border-secondary text-white"
 												placeholder={isDurationBased ? "30" : "10"}
 											/>
 										)}
 									</div>
 									{!exercise.isBodyweight && (
 										<div className="space-y-1">
-											<Label
-												htmlFor={`exercise-${exercise.id}-set-${i}-weight`}
-												className="text-xs text-muted-foreground"
-											>
-												Weight ({getUnitLabel(unit)})
+											<Label className="text-xs text-muted-foreground">
+												Weight per cable ({getUnitLabel(unit)})
 											</Label>
 											<Input
-												id={`exercise-${exercise.id}-set-${i}-weight`}
 												type="number"
 												step={unit === "lbs" ? "0.5" : "1"}
 												value={getDisplayWeight(weightValues[i] ?? 0, unit)}
 												onChange={(e) => updatePerSetWeight(i, e.target.value)}
-												className="bg-background border-secondary text-foreground"
+												className="bg-background border-secondary text-white"
 												placeholder={unit === "lbs" ? "45.0" : "20"}
 											/>
 										</div>
 									)}
 									<div className="space-y-1">
-										<Label
-											htmlFor={`exercise-${exercise.id}-set-${i}-rest`}
-											className="text-xs text-muted-foreground"
-										>
+										<Label className="text-xs text-muted-foreground">
 											Rest (sec)
 										</Label>
 										<Input
-											id={`exercise-${exercise.id}-set-${i}-rest`}
 											type="number"
 											value={restValues[i] ?? 0}
 											onChange={(e) => updatePerSetRest(i, e.target.value)}
-											className="bg-background border-secondary text-foreground"
+											className="bg-background border-secondary text-white"
 											placeholder="90"
 										/>
 									</div>
@@ -1180,128 +1333,199 @@ function ExerciseDetailPanel({
 					</div>
 
 					<div>
-						<Label
-							htmlFor={`exercise-${exercise.id}-training-mode`}
-							className="text-sm font-medium text-secondary-foreground mb-2 block"
-						>
+						<Label className="text-sm font-medium text-secondary-foreground mb-2 block">
 							Training Mode
 						</Label>
 						<select
-							id={`exercise-${exercise.id}-training-mode`}
 							value={exercise.mode}
 							onChange={(e) => onUpdate({ mode: e.target.value })}
-							className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
+							className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
 						>
-							<option>Old School</option>
-							<option>Pump</option>
-							<option>TUT</option>
-							<option>TUT Beast</option>
-							<option>Eccentric Only</option>
-							<option>Echo</option>
+							{WIRE_MODES.map((wire) => (
+								<option key={wire} value={wire}>
+									{WIRE_MODE_LABELS[wire]}
+								</option>
+							))}
+							{!isWireMode(exercise.mode) && (
+								<option value={exercise.mode}>
+									{exercise.mode} (unsupported)
+								</option>
+							)}
 						</select>
 						<p className="text-xs text-muted-foreground mt-1">
-							{exercise.mode === "Pump"
-								? "High-rep hypertrophy focused training"
-								: exercise.mode === "TUT"
-									? "Time under tension for muscle growth"
-									: exercise.mode === "TUT Beast"
-										? "Extended time under tension with slow eccentrics"
-										: exercise.mode === "Eccentric Only"
-											? "Negative-only reps for maximum muscle damage"
-											: exercise.mode === "Echo"
-												? "Alternating intensity echo sets"
-												: "Traditional resistance training"}
+							{isWireMode(exercise.mode)
+								? WIRE_MODE_DESCRIPTIONS[exercise.mode]
+								: "This mode isn't supported by the portal. It is kept as-is when you save; the current app trains it as Old School."}
 						</p>
 					</div>
 
+					{isDropSetEligible(exercise) && (
+						<div className="space-y-3 rounded-lg border border-secondary/70 bg-background/60 px-4 py-3">
+							<div className="flex items-center justify-between gap-4">
+								<div>
+									<Label className="text-white">
+										Offer drop set after failure
+									</Label>
+									<p className="text-xs text-muted-foreground">
+										After an Old School stall, rest can offer a 10/20/30% retry.
+										Saved programmed weights stay unchanged.
+									</p>
+								</div>
+								<Switch
+									checked={exercise.dropSetEnabled}
+									onCheckedChange={(checked) =>
+										onUpdate({ dropSetEnabled: checked })
+									}
+									aria-label="Offer drop set after failure"
+								/>
+							</div>
+							{exercise.dropSetEnabled && (
+								<div className="space-y-1">
+									<Label className="text-xs text-muted-foreground">
+										Minimum weight per cable ({getUnitLabel(unit)})
+									</Label>
+									<Input
+										type="number"
+										min={0}
+										step={unit === "lbs" ? "0.5" : "1"}
+										value={weightInputValue(exercise.dropSetMinWeightKg, unit)}
+										onChange={(e) => {
+											const raw = e.target.value;
+											if (raw.trim() === "") {
+												onUpdate({ dropSetMinWeightKg: null });
+												return;
+											}
+											const parsed = Number(raw);
+											if (!Number.isFinite(parsed)) return;
+											onUpdate({
+												dropSetMinWeightKg:
+													unit === "lbs" ? toKg(parsed) : parsed,
+											});
+										}}
+										className="bg-background border-secondary text-white"
+										placeholder={unit === "lbs" ? "45.0" : "20"}
+									/>
+									{(exercise.dropSetMinWeightKg == null ||
+										exercise.dropSetMinWeightKg <= 0) && (
+										<p className="text-xs text-destructive">
+											Enter a minimum weight greater than zero.
+										</p>
+									)}
+								</div>
+							)}
+						</div>
+					)}
+
 					<Collapsible>
-						<CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border border-secondary px-4 py-3 text-sm text-muted-foreground transition-colors hover:text-foreground">
+						<CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border border-secondary px-4 py-3 text-sm text-muted-foreground transition-colors hover:text-white">
 							<span>Advanced Settings</span>
 							<ChevronDown className="h-4 w-4" />
 						</CollapsibleTrigger>
 						<CollapsibleContent className="space-y-4 pt-4">
 							<div className="grid gap-4 sm:grid-cols-2">
+								{/* Options are mobile's enum names; "" stores null, which the
+								    phone reads as its default (shown in the label). Eccentric
+								    load and echo level only apply in Echo mode on the phone, so
+								    they are hidden otherwise; stored values are kept so they
+								    come back when the exercise is switched to Echo again. */}
+								{isEchoMode && (
+									<>
+										<div className="space-y-1">
+											<Label className="text-xs text-muted-foreground">
+												Eccentric Load
+											</Label>
+											<select
+												aria-label="Eccentric Load"
+												value={exercise.eccentricLoad ?? ""}
+												onChange={(e) =>
+													onUpdate({
+														eccentricLoad: normalizeEccentricLoad(
+															e.target.value,
+														),
+													})
+												}
+												className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+											>
+												<option value="">Default (100%)</option>
+												{ECCENTRIC_LOADS.map((load) => (
+													<option key={load} value={load}>
+														{ECCENTRIC_LOAD_LABELS[load]}
+													</option>
+												))}
+												{/* An off-list value from the phone is kept verbatim;
+												    the phone rounds it to the nearest load itself. */}
+												{exercise.eccentricLoad != null &&
+													!isInList(
+														ECCENTRIC_LOADS,
+														exercise.eccentricLoad,
+													) && (
+														<option value={exercise.eccentricLoad}>
+															{`${exercise.eccentricLoad} (trains as ${eccentricLoadLabel(exercise.eccentricLoad)})`}
+														</option>
+													)}
+											</select>
+										</div>
+										<div className="space-y-1">
+											<Label className="text-xs text-muted-foreground">
+												Echo Level
+											</Label>
+											<select
+												aria-label="Echo Level"
+												value={exercise.echoLevel ?? ""}
+												onChange={(e) =>
+													onUpdate({ echoLevel: toEchoLevel(e.target.value) })
+												}
+												className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+											>
+												<option value="">Default (Harder)</option>
+												{ECHO_LEVELS.map((level) => (
+													<option key={level} value={level}>
+														{ECHO_LEVEL_LABELS[level]}
+													</option>
+												))}
+											</select>
+										</div>
+									</>
+								)}
 								<div className="space-y-1">
-									<Label
-										htmlFor={`exercise-${exercise.id}-eccentric-load`}
-										className="text-xs text-muted-foreground"
-									>
-										Eccentric Load
-									</Label>
-									<select
-										id={`exercise-${exercise.id}-eccentric-load`}
-										value={exercise.eccentricLoad ?? ""}
-										onChange={(e) =>
-											onUpdate({
-												eccentricLoad: e.target.value || null,
-											})
-										}
-										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
-									>
-										<option value="">Standard</option>
-										<option value="light">Light</option>
-										<option value="moderate">Moderate</option>
-										<option value="heavy">Heavy</option>
-									</select>
-								</div>
-								<div className="space-y-1">
-									<Label
-										htmlFor={`exercise-${exercise.id}-echo-level`}
-										className="text-xs text-muted-foreground"
-									>
-										Echo Level
-									</Label>
-									<select
-										id={`exercise-${exercise.id}-echo-level`}
-										value={exercise.echoLevel ?? ""}
-										onChange={(e) =>
-											onUpdate({ echoLevel: e.target.value || null })
-										}
-										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
-									>
-										<option value="">Off</option>
-										<option value="low">Low</option>
-										<option value="medium">Medium</option>
-										<option value="high">High</option>
-									</select>
-								</div>
-								<div className="space-y-1">
-									<Label
-										htmlFor={`exercise-${exercise.id}-rep-count-timing`}
-										className="text-xs text-muted-foreground"
-									>
+									<Label className="text-xs text-muted-foreground">
 										Rep Count Timing
 									</Label>
-									<Input
-										id={`exercise-${exercise.id}-rep-count-timing`}
+									<select
+										aria-label="Rep Count Timing"
 										value={exercise.repCountTiming ?? ""}
 										onChange={(e) =>
 											onUpdate({
-												repCountTiming: e.target.value || null,
+												repCountTiming: toRepCountTiming(e.target.value),
 											})
 										}
-										className="bg-background border-secondary text-foreground"
-										placeholder="2-0-2"
-									/>
+										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+									>
+										<option value="">Default (Top)</option>
+										{REP_COUNT_TIMINGS.map((timing) => (
+											<option key={timing} value={timing}>
+												{REP_COUNT_TIMING_LABELS[timing]}
+											</option>
+										))}
+									</select>
 								</div>
 								<div className="space-y-1">
-									<Label
-										htmlFor={`exercise-${exercise.id}-stop-at-position`}
-										className="text-xs text-muted-foreground"
-									>
+									<Label className="text-xs text-muted-foreground">
 										Stop at Position
 									</Label>
-									<Input
-										id={`exercise-${exercise.id}-stop-at-position`}
+									<select
+										aria-label="Stop at Position"
 										value={exercise.stopAtPosition ?? ""}
 										onChange={(e) =>
 											onUpdate({
-												stopAtPosition: e.target.value || null,
+												stopAtPosition: toStopAtPosition(e.target.value),
 											})
 										}
-										className="bg-background border-secondary text-foreground"
-										placeholder="Lockout"
-									/>
+										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+									>
+										<option value="">Don't stop</option>
+										<option value="TOP">Stop at top</option>
+									</select>
 								</div>
 							</div>
 
@@ -1365,12 +1589,18 @@ function ExercisePickerModal({
 		useExerciseCatalog();
 
 	const allExercises = useMemo(() => {
-		return (catalogExercises ?? []).map((ex) => ({
-			name: ex.display_name,
-			muscleGroup: ex.muscle_group,
-			exerciseId: ex.id,
-			equipment: ex.equipment,
-		}));
+		return (catalogExercises ?? []).map((ex) => {
+			return {
+				name: ex.display_name,
+				muscleGroup: ex.muscle_group,
+				exerciseId: ex.id,
+				equipment: ex.equipment,
+				demoThumbnailUrl: ex.thumbnail_url ?? null,
+				source: ex.source ?? null,
+				license: ex.license ?? null,
+				licenseAuthor: ex.license_author ?? null,
+			};
+		});
 	}, [catalogExercises]);
 
 	// Get unique muscle groups for filter buttons
@@ -1486,22 +1716,43 @@ function ExercisePickerModal({
 									className="w-full p-4 rounded-lg bg-surface-2 border border-secondary hover:border-primary transition-all text-left"
 								>
 									<div className="flex items-center justify-between">
-										<div>
-											<h4 className="font-semibold text-foreground mb-1">
-												{exercise.name}
-											</h4>
-											<div className="flex gap-1.5 flex-wrap">
-												<Badge className="bg-primary text-foreground border-0 text-xs">
-													{exercise.muscleGroup}
-												</Badge>
-												{exercise.equipment.length > 0 && (
-													<Badge className="bg-secondary text-muted-foreground border-0 text-xs">
-														{formatEquipment(exercise.equipment)}
+										<div className="flex min-w-0 items-center gap-3">
+											{exercise.demoThumbnailUrl && (
+												<div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md border border-secondary bg-background">
+													<img
+														src={exercise.demoThumbnailUrl}
+														alt={`Demo preview for ${exercise.name}`}
+														loading="lazy"
+														className="h-full w-full object-cover"
+													/>
+												</div>
+											)}
+											<div className="min-w-0">
+												<h4 className="mb-1 truncate font-semibold text-white">
+													{exercise.name}
+												</h4>
+												<div className="flex flex-wrap gap-1.5">
+													<Badge className="bg-primary text-white border-0 text-xs">
+														{exercise.muscleGroup}
 													</Badge>
+													{exercise.equipment.length > 0 && (
+														<Badge className="bg-secondary text-muted-foreground border-0 text-xs">
+															{formatEquipment(exercise.equipment)}
+														</Badge>
+													)}
+												</div>
+												{exercise.source === "wger" && (
+													<p className="mt-1 text-[10px] text-muted-foreground">
+														wger
+														{exercise.licenseAuthor
+															? ` · ${exercise.licenseAuthor}`
+															: ""}
+														{exercise.license ? ` · ${exercise.license}` : ""}
+													</p>
 												)}
 											</div>
 										</div>
-										<Plus className="w-5 h-5 text-muted-foreground" />
+										<Plus className="ml-3 h-5 w-5 flex-shrink-0 text-muted-foreground" />
 									</div>
 								</button>
 							))}

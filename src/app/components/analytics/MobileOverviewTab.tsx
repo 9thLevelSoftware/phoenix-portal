@@ -31,6 +31,9 @@ export interface MobileOverviewTabProps {
 	consistencyData: ConsistencyData;
 	insightsFeedItems: InsightItem[];
 	insightsPending: boolean;
+	insightsError?: boolean;
+	/** Server batch or browser fallback — never a mix (KD-14). */
+	insightsSource?: "server" | "local";
 }
 
 export default function MobileOverviewTab({
@@ -39,6 +42,8 @@ export default function MobileOverviewTab({
 	consistencyData,
 	insightsFeedItems,
 	insightsPending,
+	insightsError = false,
+	insightsSource = "server",
 }: MobileOverviewTabProps) {
 	return (
 		<>
@@ -114,7 +119,12 @@ export default function MobileOverviewTab({
 			</MobileChartCard>
 
 			<MobileChartCard title="INSIGHTS">
-				<InsightsFeed insights={insightsFeedItems} loading={insightsPending} />
+				<InsightsFeed
+					insights={insightsFeedItems}
+					loading={insightsPending}
+					isError={insightsError}
+					source={insightsSource}
+				/>
 			</MobileChartCard>
 		</>
 	);

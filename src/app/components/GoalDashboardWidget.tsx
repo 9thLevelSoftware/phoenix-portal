@@ -4,7 +4,10 @@ import { Link } from "react-router";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { useAuth } from "@/app/hooks/useAuth";
+import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { useSubscription } from "@/hooks/useSubscription";
+import { formatVolume, type WeightUnit } from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 import { goalsOptions } from "@/queries/goals";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { GoalProgressRing } from "./GoalProgressRing";
@@ -12,6 +15,7 @@ import { useGoalProgress } from "./Goals";
 
 export function GoalDashboardWidget() {
 	const { user } = useAuth();
+	const unit = usePreferredWeightUnit();
 	const { isPremium } = useSubscription();
 	const { data: goals } = useQuery({
 		...goalsOptions(user?.id ?? ""),
@@ -98,11 +102,11 @@ export function GoalDashboardWidget() {
 									strokeWidth={4}
 								/>
 								<div className="flex-1 min-w-0">
-									<p className="text-sm text-foreground truncate">
-										{getGoalLabel(goal)}
+									<p className="text-sm text-white truncate">
+										{getGoalLabel(goal, unit)}
 									</p>
 									<p className="text-xs text-muted-foreground">
-										{getGoalProgressText(goal, progress)}
+										{getGoalProgressText(goal, progress, unit)}
 									</p>
 								</div>
 							</div>
@@ -114,19 +118,23 @@ export function GoalDashboardWidget() {
 	);
 }
 
-function getGoalLabel(goal: {
-	goal_type: string;
-	target_value: number;
-	target_unit: string;
-	exercise_name: string | null;
-}): string {
+/** PR targets and session volume are per cable (KD-8). */
+export function getGoalLabel(
+	goal: {
+		goal_type: string;
+		target_value: number;
+		target_unit: string;
+		exercise_name: string | null;
+	},
+	unit: WeightUnit,
+): string {
 	switch (goal.goal_type) {
 		case "frequency":
 			return `${goal.target_value} workouts / ${goal.target_unit === "workouts/month" ? "month" : "week"}`;
 		case "volume":
-			return `${goal.target_value.toLocaleString()} kg / ${goal.target_unit === "kg/month" ? "month" : "week"}`;
+			return `${formatVolume(goal.target_value, unit)} per cable / ${goal.target_unit === "kg/month" ? "month" : "week"}`;
 		case "pr":
-			return `${goal.exercise_name}: ${goal.target_value} kg PR`;
+			return `${goal.exercise_name}: ${formatLoad(goal.target_value, null, unit)} PR`;
 		default:
 			return "Goal";
 	}
@@ -135,13 +143,14 @@ function getGoalLabel(goal: {
 function getGoalProgressText(
 	goal: { goal_type: string; target_value: number },
 	progress: number,
+	unit: WeightUnit,
 ): string {
 	const achieved = Math.round((progress / 100) * goal.target_value);
 	if (goal.goal_type === "frequency") {
 		return `${achieved}/${goal.target_value} workouts`;
 	}
 	if (goal.goal_type === "volume") {
-		return `${achieved.toLocaleString()}/${goal.target_value.toLocaleString()} kg`;
+		return `${formatVolume(achieved, unit)}/${formatVolume(goal.target_value, unit)} per cable`;
 	}
 	return `${progress >= 100 ? "Achieved" : `${Math.round(progress)}%`}`;
 }

@@ -48,7 +48,7 @@ describe("computeWeeklyVolume", () => {
 
 	it("falls back to DB muscle_group for unknown exercises", () => {
 		const exercises: ExerciseSessionData[] = [
-			{ name: "Vitruvian Special Move", muscleGroup: "Back", setCount: 5 },
+			{ name: "Phoenix Special Move", muscleGroup: "Back", setCount: 5 },
 		];
 		const result = computeWeeklyVolume(exercises);
 		expect(result.Back).toBe(5);

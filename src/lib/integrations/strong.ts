@@ -27,6 +27,9 @@ interface StrongCSVRow {
 /** Pounds to kilograms conversion factor */
 const LBS_TO_KG = 0.453592;
 
+/** Miles to meters conversion factor */
+const MILES_TO_METERS = 1609.344;
+
 /**
  * Parse a Strong duration string into seconds.
  * Handles formats like "1h 23m", "45m", "1h 5m 30s", "30s", "1h", etc.
@@ -77,13 +80,16 @@ function groupBy<T>(
  * and produces one NormalizedActivity per workout.
  *
  * @param csvContent  Raw CSV text from a Strong export file.
- * @param weightUnit  The unit the user's Strong app was set to ("kg" or "lbs").
- *                    Strong exports in whatever unit the user has configured --
- *                    there is no standardization in the export.
+ * @param weightUnit    The unit the user's Strong app was set to ("kg" or "lbs").
+ *                      Strong exports in whatever unit the user has configured --
+ *                      there is no standardization in the export.
+ * @param distanceUnit  The unit Strong used for the Distance column ("km" or "miles").
+ *                      Defaults to "km". Values are converted to meters for storage.
  */
 export function parseStrongCSV(
 	csvContent: string,
 	_weightUnit: "kg" | "lbs" = "kg",
+	distanceUnit: "km" | "miles" = "km",
 ): NormalizedActivity[] {
 	const result = Papa.parse<StrongCSVRow>(csvContent, {
 		header: true,
@@ -109,9 +115,19 @@ export function parseStrongCSV(
 		(row) => `${row["Workout Name"]}|${row.Date}`,
 	);
 
-	return Object.entries(workoutGroups).map(([_key, rows]) => {
+	const activities: NormalizedActivity[] = [];
+	for (const [_key, rows] of Object.entries(workoutGroups)) {
 		const first = rows[0];
 		const startTime = new Date(first.Date);
+
+		// Skip workouts with an unparseable Date rather than letting a single
+		// malformed/locale-specific row throw RangeError and cancel the import.
+		if (!Number.isFinite(startTime.getTime())) {
+			console.warn(
+				`Strong CSV: skipping workout "${first["Workout Name"]}" with invalid Date "${first.Date}"`,
+			);
+			continue;
+		}
 
 		// Duration comes from the Duration column (e.g., "1h 23m")
 		const durationSeconds = parseDurationToSeconds(first.Duration);
@@ -121,13 +137,22 @@ export function parseStrongCSV(
 
 		// Weight is already in the user's chosen unit -- convert if lbs
 		// (We don't aggregate weight into the activity, but we note the unit for set detail)
-		// Distance aggregation for cardio exercises
+		// Distance aggregation for cardio exercises.
+		// Strong exports distance in the user's locale unit (km or miles) so we
+		// must convert to meters before storing. The caller supplies distanceUnit.
+		const distanceMultiplier =
+			distanceUnit === "miles" ? MILES_TO_METERS : 1000;
 		const totalDistanceMeters = rows.reduce((sum, row) => {
 			const distance = parseFloat(row.Distance);
-			return sum + (Number.isNaN(distance) || distance === 0 ? 0 : distance);
+			return (
+				sum +
+				(Number.isNaN(distance) || distance === 0
+					? 0
+					: distance * distanceMultiplier)
+			);
 		}, 0);
 
-		return {
+		activities.push({
 			external_id: externalId,
 			provider: "strong" as const,
 			name: first["Workout Name"],
@@ -140,8 +165,9 @@ export function parseStrongCSV(
 			avg_heart_rate: null,
 			max_heart_rate: null,
 			elevation_gain_meters: null,
-		};
-	});
+		});
+	}
+	return activities;
 }
 
 /**

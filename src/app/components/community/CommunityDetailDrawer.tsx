@@ -29,6 +29,7 @@ import {
 	DrawerTitle,
 } from "@/app/components/ui/drawer";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
+import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { PHOENIX } from "@/lib/colors";
 import { useSaveItem, useVote } from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
@@ -73,6 +74,7 @@ function DetailContent({
 	detailError: boolean;
 }) {
 	const { user } = useAuth();
+	const unit = usePreferredWeightUnit();
 	const displayItem = detail ?? item;
 	const isDeletedUser = displayItem.user_id === null;
 	const authorName = isDeletedUser
@@ -191,12 +193,14 @@ function DetailContent({
 							? displayItem.exercises_snapshot
 							: null
 					}
+					unit={unit}
 				/>
 			) : (
 				<CycleSnapshotPreview
 					snapshot={
 						"cycle_snapshot" in displayItem ? displayItem.cycle_snapshot : null
 					}
+					unit={unit}
 				/>
 			)}
 

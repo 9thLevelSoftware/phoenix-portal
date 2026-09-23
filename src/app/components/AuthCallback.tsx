@@ -62,34 +62,55 @@ export function AuthCallback() {
 
 		let isActive = true;
 
-		const resolveSession = async () => {
-			for (let attempt = 0; attempt < 8; attempt += 1) {
-				const {
-					data: { session },
-					error,
-				} = await supabase.auth.getSession();
-
-				if (!isActive) {
-					return;
-				}
-
-				if (error) {
-					setErrorMessage(error.message);
-					return;
-				}
-
-				if (session?.user) {
+		// Listen for a late SIGNED_IN as well as polling, so slow OAuth callback
+		// processing doesn't prematurely fail.
+		const { data: authListener } = supabase.auth.onAuthStateChange(
+			(_event, session) => {
+				if (isActive && session?.user) {
 					navigate("/dashboard", { replace: true });
-					return;
+				}
+			},
+		);
+
+		const resolveSession = async () => {
+			// Give Supabase up to ~6s (20 attempts) to surface a session before
+			// declaring failure; covers slow devices/storage/OAuth processing.
+			const MAX_ATTEMPTS = 20;
+			try {
+				for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+					const {
+						data: { session },
+						error,
+					} = await supabase.auth.getSession();
+
+					if (!isActive) {
+						return;
+					}
+
+					if (error) {
+						setErrorMessage(error.message);
+						return;
+					}
+
+					if (session?.user) {
+						navigate("/dashboard", { replace: true });
+						return;
+					}
+
+					if (attempt < MAX_ATTEMPTS - 1) {
+						await new Promise((resolve) => window.setTimeout(resolve, 300));
+					}
 				}
 
-				if (attempt < 7) {
-					await new Promise((resolve) => window.setTimeout(resolve, 250));
+				if (isActive) {
+					setErrorMessage("Authentication did not complete. Please try again.");
 				}
-			}
-
-			if (isActive) {
-				setErrorMessage("Authentication did not complete. Please try again.");
+			} catch (_err) {
+				if (isActive) {
+					setErrorMessage(
+						"Authentication could not be completed. Please try again.",
+					);
+				}
 			}
 		};
 
@@ -97,6 +118,7 @@ export function AuthCallback() {
 
 		return () => {
 			isActive = false;
+			authListener.subscription.unsubscribe();
 		};
 	}, [callbackParams.error, callbackParams.errorDescription, navigate]);
 

@@ -19,6 +19,13 @@ export interface ProgressExerciseInput {
 	name: string;
 	exerciseId?: string | null;
 	estimatedOneRepMaxKg?: number | null;
+	/**
+	 * Velocity-based (VBT) estimated 1RM (per-cable kg), computed on-device by the
+	 * mobile app from BLE mean concentric velocity. SEPARATE from the rep-based
+	 * estimatedOneRepMaxKg; stored verbatim (no recompute, no fallback) and null
+	 * when absent. Issue #517 Phase 6.
+	 */
+	velocityEstimatedOneRepMaxKg?: number | null;
 	sets: ProgressSetInput[];
 }
 
@@ -38,6 +45,7 @@ export interface ExerciseProgressRow {
 	max_weight_kg: number;
 	total_volume_kg: number;
 	estimated_1rm_kg: number;
+	velocity_estimated_1rm_kg: number | null;
 	max_reps: number;
 	set_count: number;
 }
@@ -50,13 +58,18 @@ export function estimateOneRepMaxKg(weightKg: number, reps: number): number {
 	return weightKg * (1 + reps / 30);
 }
 
+/** 2dp only for the sets fallback — never applied to a mobile verbatim value. */
+function roundTo2dp(value: number): number {
+	return Math.round(value * 100) / 100;
+}
+
 function bestEstimateFromSets(sets: ProgressSetInput[]): number {
 	let best = 0;
 	for (const s of sets) {
 		const e1rm = estimateOneRepMaxKg(s.weightKg, s.actualReps);
 		if (e1rm > best) best = e1rm;
 	}
-	return best;
+	return roundTo2dp(best);
 }
 
 export function buildExerciseProgressRows(
@@ -69,16 +82,28 @@ export function buildExerciseProgressRows(
 		for (const exercise of session.exercises) {
 			if (exercise.sets.length === 0) continue;
 
-			const maxWeight = Math.max(...exercise.sets.map((s) => s.weightKg));
+			// pushPayloadSchema enforces non-negative weights/reps at ingress, but
+			// clamp defensively here too so a direct (non-HTTP) caller cannot write
+			// negative progress snapshots that then propagate back to mobile on
+			// pull (Finding F334).
+			const maxWeight = Math.max(
+				0,
+				...exercise.sets.map((s) => Math.max(0, s.weightKg)),
+			);
 			const totalVolume = exercise.sets.reduce(
-				(sum, s) => sum + s.weightKg * s.actualReps,
+				(sum, s) => sum + Math.max(0, s.weightKg) * Math.max(0, s.actualReps),
 				0,
 			);
-			const maxReps = Math.max(...exercise.sets.map((s) => s.actualReps));
+			const maxReps = Math.max(
+				0,
+				...exercise.sets.map((s) => Math.max(0, s.actualReps)),
+			);
 			const setCount = exercise.sets.length;
 
+			// Mobile estimate is stored verbatim, including 0. Only recompute
+			// (and round to 2dp) when the field is absent from the payload.
 			const estimated1rm =
-				exercise.estimatedOneRepMaxKg != null && exercise.estimatedOneRepMaxKg > 0
+				exercise.estimatedOneRepMaxKg != null
 					? exercise.estimatedOneRepMaxKg
 					: bestEstimateFromSets(exercise.sets);
 
@@ -91,7 +116,11 @@ export function buildExerciseProgressRows(
 				recorded_at: session.startedAt,
 				max_weight_kg: maxWeight,
 				total_volume_kg: totalVolume,
-				estimated_1rm_kg: Math.round(estimated1rm * 100) / 100,
+				estimated_1rm_kg: estimated1rm,
+				// Velocity-based estimate stored verbatim — never recomputed, no
+				// fallback. Null when the mobile payload omits it (legacy / no
+				// passing VBT estimate). Distinct from estimated_1rm_kg above.
+				velocity_estimated_1rm_kg: exercise.velocityEstimatedOneRepMaxKg ?? null,
 				max_reps: maxReps,
 				set_count: setCount,
 			});

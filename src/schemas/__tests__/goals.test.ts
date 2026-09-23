@@ -6,6 +6,7 @@ describe("createGoalSchema", () => {
 		const result = createGoalSchema.safeParse({
 			goal_type: "frequency",
 			target_value: 4,
+			target_unit: "workouts",
 		});
 		expect(result.success).toBe(true);
 	});
@@ -14,6 +15,7 @@ describe("createGoalSchema", () => {
 		const result = createGoalSchema.safeParse({
 			goal_type: "volume",
 			target_value: 50000,
+			target_unit: "kg",
 		});
 		expect(result.success).toBe(true);
 	});
@@ -22,6 +24,7 @@ describe("createGoalSchema", () => {
 		const result = createGoalSchema.safeParse({
 			goal_type: "pr",
 			target_value: 100,
+			target_unit: "kg",
 			exercise_name: "Bench Press",
 		});
 		expect(result.success).toBe(true);
@@ -31,6 +34,7 @@ describe("createGoalSchema", () => {
 		const result = createGoalSchema.safeParse({
 			goal_type: "pr",
 			target_value: 100,
+			target_unit: "kg",
 			exercise_name: "Bench Press",
 			exercise_id: "catalog-bench",
 		});
@@ -44,6 +48,7 @@ describe("createGoalSchema", () => {
 		const result = createGoalSchema.safeParse({
 			goal_type: "pr",
 			target_value: 100,
+			target_unit: "kg",
 		});
 		expect(result.success).toBe(false);
 		if (!result.success) {
@@ -76,6 +81,7 @@ describe("createGoalSchema", () => {
 		const result = createGoalSchema.safeParse({
 			goal_type: "frequency",
 			target_value: 3,
+			target_unit: "workouts",
 		});
 		expect(result.success).toBe(true);
 		if (result.success) {
@@ -87,6 +93,7 @@ describe("createGoalSchema", () => {
 		const result = createGoalSchema.safeParse({
 			goal_type: "volume",
 			target_value: 100000,
+			target_unit: "kg",
 			period: "monthly",
 		});
 		expect(result.success).toBe(true);

@@ -1,10 +1,12 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { mockAuthenticatedApp } from "./support/mockSupabase";
 
 const SEEDED_SESSION_ID = "00000000-0000-4000-8000-000000000101";
 const SEEDED_EXERCISE_ID = "00000000-0000-4000-8000-000000000201";
 
-async function mockAuthedPortal(page: Parameters<typeof mockAuthenticatedApp>[0]) {
+async function mockAuthedPortal(
+	page: Parameters<typeof mockAuthenticatedApp>[0],
+) {
 	await mockAuthenticatedApp(page, {
 		tier: "FLAME",
 		workoutSessions: [
@@ -113,25 +115,25 @@ test.describe("Authenticated pages", () => {
 	});
 
 	test("dashboard loads with key sections", async ({ page }) => {
-			await page.goto("/dashboard");
-			await expect(
-				page.getByText(/Dashboard|Welcome/i).first(),
-			).toBeVisible({ timeout: 10000 });
+		await page.goto("/dashboard");
+		await expect(page.getByText(/Dashboard|Welcome/i).first()).toBeVisible({
+			timeout: 10000,
+		});
 	});
 
 	test("workout history page loads", async ({ page }) => {
-			await page.goto("/history");
-			await expect(
-				page.getByRole("heading", { name: /Workout History/i }),
-			).toBeVisible({ timeout: 10000 });
+		await page.goto("/history");
+		await expect(
+			page.getByRole("heading", { name: /Workout History/i }),
+		).toBeVisible({ timeout: 10000 });
 	});
 
 	test("session detail loads from seeded workout data", async ({ page }) => {
-			await page.goto(`/history/${SEEDED_SESSION_ID}`);
-			await expect(
-				page.getByRole("heading", { name: /Foundation Session/i }),
-			).toBeVisible({ timeout: 10000 });
-			await expect(page.getByText("Bench Press")).toBeVisible({ timeout: 10000 });
+		await page.goto(`/history/${SEEDED_SESSION_ID}`);
+		await expect(
+			page.getByRole("heading", { name: /Foundation Session/i }),
+		).toBeVisible({ timeout: 10000 });
+		await expect(page.getByText("Bench Press")).toBeVisible({ timeout: 10000 });
 	});
 
 	test("analytics page loads", async ({ page }) => {
@@ -148,17 +150,21 @@ test.describe("Authenticated pages", () => {
 			timeout: 10000,
 		});
 		await expect(page.getByRole("button", { name: "All" })).toBeVisible();
-		await expect(page.getByRole("button", { name: "Concentric" })).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Concentric" }),
+		).toBeVisible();
 		await expect(page.getByRole("button", { name: "Eccentric" })).toBeVisible();
-		await expect(page.getByText("Phase Strength Progression (kg)")).toBeVisible();
+		await expect(
+			page.getByText("Phase Strength Progression (kg per cable)"),
+		).toBeVisible();
 		await expect(page.getByText("125 kg")).toBeVisible();
 	});
 
 	test("community page loads", async ({ page }) => {
-			await page.goto("/community");
-			await expect(
-				page.getByRole("heading", { name: /Community/i }),
-			).toBeVisible({ timeout: 10000 });
+		await page.goto("/community");
+		await expect(page.getByRole("heading", { name: /Community/i })).toBeVisible(
+			{ timeout: 10000 },
+		);
 	});
 
 	test("cycles page loads", async ({ page }) => {
@@ -169,17 +175,17 @@ test.describe("Authenticated pages", () => {
 	});
 
 	test("routines page loads", async ({ page }) => {
-			await page.goto("/routines");
-			await expect(
-				page.getByRole("heading", { name: /Routines/i }),
-			).toBeVisible({ timeout: 10000 });
+		await page.goto("/routines");
+		await expect(page.getByRole("heading", { name: /Routines/i })).toBeVisible({
+			timeout: 10000,
+		});
 	});
 
 	test("profile page loads", async ({ page }) => {
 		await page.goto("/profile");
-		await expect(
-			page.getByRole("heading", { name: /^e2e$/i }),
-		).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole("heading", { name: /^e2e$/i })).toBeVisible({
+			timeout: 10000,
+		});
 	});
 
 	test("recovery page loads", async ({ page }) => {

@@ -1,7 +1,31 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { errorMessage } from '../_shared/errorMessage.ts';
+import {
+  createHevyPageFetcher,
+  fetchHevyBackfill,
+  fetchHevyEvents,
+  HEVY_MAX_PAGES,
+  HevyAuthError,
+  hevyExternalId,
+  toExternalActivityRow,
+  type HevyWorkout,
+} from '../_shared/hevySync.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
+import { checkManualSyncRateLimit } from '../_shared/manualSyncRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import {
+  completeSyncQueueEntry,
+  createSyncQueueEntry,
+  type DbClient,
+  heartbeatSyncQueueEntry,
+  noOwnedQueueRow,
+  type OwnedQueueRow,
+  releaseOwnedQueueRow,
+  syncAlreadyQueuedResponse,
+  syncQueueUnavailableResponse,
+} from '../_shared/syncQueue.ts';
+import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
 
 /**
  * Hevy Sync Edge Function
@@ -13,29 +37,73 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
  * - Falls back gracefully if API returns 401/403
  * - Normalizes and upserts to external_activities
  *
- * Note: Hevy API documentation is limited. The CSV import path in
- * the portal UI is the primary import mechanism for most users.
+ * Two fetch modes (see fetchHevyBackfill / fetchHevyEvents):
+ * - Initial / no prior sync: full paginated backfill via GET /v1/workouts.
+ * - Incremental: GET /v1/workouts/events?since=<last_sync_at>, which reports
+ *   both updates and deletions so removed Hevy workouts stop lingering here.
+ *
+ * The CSV import path in the portal UI remains available for non-PRO users.
+ *
+ * When dispatched by process-sync-queue the body also carries `queue_id`: the
+ * run completes that row only, and renews its lease (heartbeat) while it runs.
+ * process-sync-queue reclaims a hevy task after HEARTBEAT_LEASE_MS (5 minutes)
+ * without a heartbeat. The lease is renewed on entry, after every fetched page
+ * and after every upsert chunk, so the longest silent window is one request
+ * (capped by PROVIDER_REQUEST_TIMEOUT_MS) or one upsert chunk.
+ *
+ * A browser-initiated run (user JWT, no `queue_id`) creates its OWN queue row
+ * instead, directly in `processing`, and owns it exactly the same way. A
+ * second concurrent sync loses the `sync_queue_one_active` race and is
+ * answered with 409 `sync_already_queued`.
  */
 
-const HEVY_API_BASE = 'https://api.hevyapp.com/v1';
+/** Per-request ceiling for Hevy calls, so a hung request cannot outlast the lease. */
+const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
 
-interface HevyWorkout {
-  id: string;
-  title: string;
-  start_time: string;
-  end_time: string;
-  exercises: Array<{
-    title: string;
-    sets: Array<{
-      set_type: string;
-      weight_kg: number;
-      reps: number;
-      rpe: number | null;
-    }>;
-  }>;
+export interface HevySyncDependencies {
+  env: (key: string) => string | undefined;
+  // deno-lint-ignore no-explicit-any
+  createClient: (url: string, key: string, options?: any) => DbClient;
+  /** Used for Hevy API calls. */
+  fetch: typeof fetch;
+  now: () => Date;
 }
 
-Deno.serve(async (req) => {
+function defaultHevySyncDependencies(): HevySyncDependencies {
+  return {
+    env: (key) => Deno.env.get(key),
+    createClient: (url, key, options) => createClient(url, key, options),
+    fetch: (input, init) => fetch(input, init),
+    now: () => new Date(),
+  };
+}
+
+export function createHevySyncHandler(
+  dependencies: HevySyncDependencies = defaultHevySyncDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => hevySync(req, dependencies);
+}
+
+if (import.meta.main) {
+  Deno.serve(createHevySyncHandler());
+}
+
+async function hevySync(req: Request, deps: HevySyncDependencies): Promise<Response> {
+  // A browser-initiated run owns the row it created: hand it back when the run
+  // ends badly, so the user's next manual sync is not refused with a 409 until
+  // the lease expires. Queue-dispatched rows deliberately stay `processing`
+  // for process-sync-queue to re-run (PR 51).
+  const owned: OwnedQueueRow = noOwnedQueueRow();
+  const response = await runHevySync(req, deps, owned);
+  if (!response.ok) await releaseOwnedQueueRow(owned);
+  return response;
+}
+
+async function runHevySync(
+  req: Request,
+  deps: HevySyncDependencies,
+  owned: OwnedQueueRow,
+): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -60,9 +128,9 @@ Deno.serve(async (req) => {
     let userId: string;
 
     // Try JWT auth first (browser-initiated calls)
-    const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
+    const supabaseAuth = deps.createClient(
+      deps.env('SUPABASE_URL')!,
+      deps.env('SUPABASE_ANON_KEY')!,
       { global: { headers: { Authorization: authHeader } } },
     );
     const { data: { user: jwtUser } } = await supabaseAuth.auth.getUser();
@@ -71,10 +139,13 @@ Deno.serve(async (req) => {
       // Browser-initiated: use JWT-verified user ID, ignore body.user_id
       userId = jwtUser.id;
     } else {
-      // Not a valid user JWT -- must be service-role call from process-sync-queue
-      // Verify the caller is actually using the service role key
-      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-      const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
+      // Not a valid user JWT -- must be service-role call from process-sync-queue.
+      // Verify the caller is actually using the service role key, in constant
+      // time so the comparison leaks neither the key's bytes nor its length.
+      const isServiceRole = isServiceRoleBearer(
+        authHeader,
+        deps.env('SUPABASE_SERVICE_ROLE_KEY'),
+      );
 
       if (!isServiceRole || !body.user_id) {
         return new Response(
@@ -86,15 +157,67 @@ Deno.serve(async (req) => {
     }
 
     const { api_key, sync_type } = body;
+    const calledByQueueProcessor = !jwtUser;
+    // The dispatched row (queue path only): a browser caller's `queue_id` is
+    // ignored — it may name any row at all — and replaced by its own below.
+    const dispatchedQueueId =
+      calledByQueueProcessor && typeof body.queue_id === 'string' ? body.queue_id : null;
+    // The row this run owns and leases.
+    let ownedQueueId = dispatchedQueueId;
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = deps.createClient(
+      deps.env('SUPABASE_URL')!,
+      deps.env('SUPABASE_SERVICE_ROLE_KEY')!
     );
+
+    // Cap browser-initiated invocations per user. Keyed on the JWT-verified
+    // id, so nobody can spend another user's budget; the queue path (service
+    // role) is exempt and has its own budget under the `hevy` key.
+    //
+    // A call carrying `api_key` is both a credential write and a full sync. It
+    // spends the roomier connect bucket first, then the ordinary sync bucket;
+    // otherwise resending a valid key would bypass the provider-read limit.
+    if (jwtUser) {
+      if (api_key) {
+        const credentialRateCheck = await checkManualSyncRateLimit(
+          supabase,
+          { provider: 'hevy', userId, credentialWrite: true },
+          cors,
+        );
+        if (!credentialRateCheck.allowed) return credentialRateCheck.response!;
+      }
+      const syncRateCheck = await checkManualSyncRateLimit(
+        supabase,
+        { provider: 'hevy', userId },
+        cors,
+      );
+      if (!syncRateCheck.allowed) return syncRateCheck.response!;
+    }
+
+    // Renew the lease immediately: the processor claimed this row before it
+    // called us, so the work below must not run on that claim's clock.
+    await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 
     // Subscription gate — FLAME or higher required for integrations
     const gate = await requireSubscription(supabase, userId, 'FLAME', cors);
     if (!gate.allowed) return gate.response;
+
+    // Browser-initiated: take a queue row of our own so this run is visible to
+    // the portal, holds a lease, and blocks a concurrent duplicate sync.
+    if (!calledByQueueProcessor) {
+      const created = await createSyncQueueEntry(supabase, {
+        userId,
+        provider: 'hevy',
+        syncType: typeof sync_type === 'string' ? sync_type : 'manual',
+        now: deps.now(),
+      });
+      if (created.conflict) return syncAlreadyQueuedResponse(cors);
+      if (!created.queueId) return syncQueueUnavailableResponse(cors);
+      ownedQueueId = created.queueId;
+      owned.supabase = supabase;
+      owned.queueId = ownedQueueId;
+      owned.userId = userId;
+    }
 
     // If api_key provided, store it in oauth_tokens (server-only table)
     if (api_key) {
@@ -158,17 +281,49 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Attempt to fetch workouts from Hevy API
-    let workouts: HevyWorkout[] = [];
-    try {
-      const response = await fetch(`${HEVY_API_BASE}/workouts`, {
-        headers: {
-          'api-key': storedApiKey,
-          'Content-Type': 'application/json',
-        },
-      });
+    // Read the prior watermark to decide between backfill and incremental fetch.
+    const { data: integration } = await supabase
+      .from('user_integrations')
+      .select('last_sync_at')
+      .eq('user_id', userId)
+      .eq('provider', 'hevy')
+      .maybeSingle();
 
-      if (response.status === 401 || response.status === 403) {
+    const lastSyncAt = (integration?.last_sync_at as string | null) ?? null;
+    const useEvents = sync_type !== 'initial' && !!lastSyncAt;
+
+    // Capture the watermark *before* fetching. Anything Hevy records while this
+    // run is in flight then falls inside the next run's `since` window instead
+    // of being skipped. Upserts are idempotent, so the small overlap is free.
+    const syncStartedAt = deps.now().toISOString();
+
+    let workouts: HevyWorkout[] = [];
+    let deletedIds: string[] = [];
+    let truncated = false;
+    let latestEventAt: string | null = null;
+    try {
+      // Renew the queue lease after every page: a 100-page backfill can
+      // outlast process-sync-queue's heartbeat lease before any upsert runs.
+      const fetchWithHeartbeat: typeof fetch = async (input, init) => {
+        const response = await deps.fetch(input, {
+          ...init,
+          signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+        });
+        await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
+        return response;
+      };
+      const fetchPage = createHevyPageFetcher(storedApiKey, fetchWithHeartbeat);
+      const result = useEvents
+        ? await fetchHevyEvents(fetchPage, lastSyncAt!)
+        : await fetchHevyBackfill(fetchPage);
+
+      workouts = result.workouts;
+      deletedIds = result.deletedIds;
+      truncated = result.truncated;
+      latestEventAt = result.latestEventAt;
+    } catch (fetchError) {
+      console.error('Hevy API fetch error:', fetchError);
+      if (fetchError instanceof HevyAuthError) {
         // API key invalid or Hevy PRO required
         await supabase
           .from('user_integrations')
@@ -181,36 +336,31 @@ Deno.serve(async (req) => {
 
         return new Response(
           JSON.stringify({
-            error: 'Hevy API access denied. Verify your API key and Hevy PRO subscription.',
+            error: 'API key invalid or Hevy PRO subscription required',
+            code: 'provider_auth_failed',
             requires_pro: true,
           }),
-          {
-            status: 403,
-            headers: { ...cors, 'Content-Type': 'application/json' },
-          }
+          { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } }
         );
       }
 
-      if (!response.ok) {
-        throw new Error(`Hevy API returned ${response.status}`);
-      }
-
-      const data = await response.json();
-      workouts = data.workouts ?? data ?? [];
-    } catch (fetchError) {
-      console.error('Hevy API fetch error:', fetchError);
-
+      // The thrown error is logged above and goes no further. The fetch+parse is
+      // wrapped as a whole, so besides our own fixed "Hevy API returned N" it
+      // can be a V8 JSON parse message quoting the provider's body, or a
+      // transport/TLS internal. `user_integrations.error_message` is rendered
+      // by ProviderCard and the response body is copied into
+      // `sync_queue.error_message` by the processor, so both get fixed text.
       await supabase
         .from('user_integrations')
         .update({
           status: 'error',
-          error_message: `Sync failed: ${fetchError.message}`,
+          error_message: 'Hevy sync failed; will retry',
         })
         .eq('user_id', userId)
         .eq('provider', 'hevy');
 
       return new Response(
-        JSON.stringify({ error: `Hevy API error: ${fetchError.message}` }),
+        JSON.stringify({ error: 'Hevy API error', code: 'provider_fetch_failed' }),
         {
           status: 502,
           headers: { ...cors, 'Content-Type': 'application/json' },
@@ -218,63 +368,172 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Normalize and upsert workouts to external_activities
-    let importedCount = 0;
-    for (const workout of workouts) {
-      const startTime = new Date(workout.start_time);
-      const endTime = new Date(workout.end_time);
-      const durationSeconds = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
-
-      const { error: activityError } = await supabase
+    // Apply deletions reported by the events feed. These are hard deletes: the
+    // workout no longer exists in Hevy, so leaving it here would strand a row
+    // that no future sync can reconcile.
+    // NOTE: mobile clients that already pulled the activity will not learn of
+    // the removal until external_activities carries a `deleted_at` tombstone
+    // (planned alongside the health data model migration).
+    let deletedCount = 0;
+    if (deletedIds.length > 0) {
+      const externalIds = deletedIds.map(hevyExternalId);
+      const { error: deleteError, count } = await supabase
         .from('external_activities')
-        .upsert(
-          {
-            user_id: userId,
-            external_id: `hevy-${workout.id}`,
-            provider: 'hevy',
-            name: workout.title,
-            activity_type: 'strength',
-            started_at: startTime.toISOString(),
-            duration_seconds: durationSeconds > 0 ? durationSeconds : null,
-            calories: null, // Hevy API does not provide calorie data
-            raw_data: workout,
-          },
-          { onConflict: 'user_id,provider,external_id' }
-        );
+        .delete({ count: 'exact' })
+        .eq('user_id', userId)
+        .eq('provider', 'hevy')
+        .in('external_id', externalIds);
 
-      if (!activityError) {
-        importedCount++;
+      if (deleteError) {
+        console.error('Failed to apply Hevy deletions:', deleteError);
+        await supabase
+          .from('user_integrations')
+          .update({
+            status: 'error',
+            error_message: `Failed to apply ${deletedIds.length} deletion(s)`,
+          })
+          .eq('user_id', userId)
+          .eq('provider', 'hevy');
+
+        return new Response(
+          JSON.stringify({ error: 'Failed to apply Hevy deletions' }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
       }
+      deletedCount = count ?? 0;
     }
 
-    // Update last sync timestamp and status
+    // Normalize and upsert workouts to external_activities
+    let importedCount = 0;
+    let failedCount = 0;
+
+    // Upsert in chunks rather than one round trip per workout — a full backfill
+    // can run to hundreds of workouts and per-row round trips exhaust the Edge
+    // Function wall clock long before the data is in.
+    const UPSERT_CHUNK_SIZE = 100;
+    const rows = workouts.map((workout) => toExternalActivityRow(userId, workout));
+
+    for (let i = 0; i < rows.length; i += UPSERT_CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + UPSERT_CHUNK_SIZE);
+      const { error: activityError } = await supabase
+        .from('external_activities')
+        .upsert(chunk, { onConflict: 'user_id,provider,external_id' });
+
+      if (activityError) {
+        failedCount += chunk.length;
+        console.error(
+          `Failed to persist Hevy workouts ${i}-${i + chunk.length - 1}:`,
+          activityError,
+        );
+      } else {
+        importedCount += chunk.length;
+      }
+      await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
+    }
+
+    // If any activity failed to persist, do NOT advance last_sync_at: the next
+    // incremental sync uses it as the cutoff and would skip the dropped rows.
+    // Returning non-2xx lets the queue processor retry (upserts are idempotent).
+    if (failedCount > 0) {
+      const failMessage = `Failed to persist ${failedCount} of ${workouts.length} workouts`;
+      await supabase
+        .from('user_integrations')
+        .update({ status: 'error', error_message: failMessage })
+        .eq('user_id', userId)
+        .eq('provider', 'hevy');
+
+      return new Response(
+        JSON.stringify({ error: failMessage, imported: importedCount, failed: failedCount }),
+        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // A truncated fetch means pages remain unread, so the watermark cannot jump
+    // to `syncStartedAt` — that would move `since` past events we never saw.
+    //
+    // Whether a retry can make progress depends on which endpoint we were on:
+    //
+    //  - Events feed: the stream is date-ordered, so advancing `since` to the
+    //    newest event actually processed lets the next attempt continue from
+    //    there. Retry is productive; ask for one.
+    //
+    //  - Backfill: /v1/workouts is paged only, with no date filter and no
+    //    resume point derivable from what is already stored. A retry would
+    //    reissue the identical request, truncate identically, and repeat until
+    //    the queue's retry cap — so fail terminally and say why instead of
+    //    burning ten attempts. Resuming properly needs a persisted page cursor
+    //    (planned with the integration_sync_cursors table).
+    if (truncated) {
+      const canResume = useEvents && !!latestEventAt;
+
+      if (canResume) {
+        await supabase
+          .from('user_integrations')
+          .update({
+            last_sync_at: latestEventAt,
+            status: 'connected',
+            error_message:
+              `Hevy fetch hit the ${HEVY_MAX_PAGES}-page budget; ` +
+              `${importedCount} workouts stored, resuming from ${latestEventAt}`,
+          })
+          .eq('user_id', userId)
+          .eq('provider', 'hevy');
+      } else {
+        await supabase
+          .from('user_integrations')
+          .update({
+            status: 'error',
+            error_message:
+              `Hevy backfill exceeded the ${HEVY_MAX_PAGES}-page budget ` +
+              `(${importedCount} workouts stored). Retrying would repeat the ` +
+              'same request; resumable backfill is required for accounts this large.',
+          })
+          .eq('user_id', userId)
+          .eq('provider', 'hevy');
+      }
+
+      const truncMessage = canResume
+        ? `Hevy fetch exceeded the ${HEVY_MAX_PAGES}-page budget; resuming from ${latestEventAt}`
+        : `Hevy backfill exceeded the ${HEVY_MAX_PAGES}-page budget and cannot resume`;
+      console.warn(truncMessage);
+
+      return new Response(
+        JSON.stringify({ error: truncMessage, imported: importedCount, deleted: deletedCount }),
+        {
+          // 502 is retryable per process-sync-queue; 500 is not. Only request a
+          // retry when the next attempt will behave differently.
+          status: canResume ? 502 : 500,
+          headers: { ...cors, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // Update last sync timestamp and status (all activities persisted). Uses the
+    // pre-fetch timestamp so concurrent Hevy writes land in the next window.
     await supabase
       .from('user_integrations')
       .update({
-        last_sync_at: new Date().toISOString(),
+        last_sync_at: syncStartedAt,
         status: 'connected',
         error_message: null,
       })
       .eq('user_id', userId)
       .eq('provider', 'hevy');
 
-    // Mark sync queue entry as completed
-    if (sync_type) {
-      await supabase
-        .from('sync_queue')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-        })
-        .eq('user_id', userId)
-        .eq('provider', 'hevy')
-        .eq('status', 'pending');
-    }
+    // Complete only the row this run owns. Never sweep every pending row:
+    // a second queued task (a kept `initial`) must still run.
+    await completeSyncQueueEntry(supabase, {
+      userId,
+      provider: 'hevy',
+      queueId: ownedQueueId,
+    });
 
     return new Response(
       JSON.stringify({
         success: true,
+        mode: useEvents ? 'incremental' : 'backfill',
         imported: importedCount,
+        deleted: deletedCount,
         total: workouts.length,
       }),
       {
@@ -282,13 +541,16 @@ Deno.serve(async (req) => {
       }
     );
   } catch (err) {
+    // `errorMessage` is a deliberate passthrough of `.message`, which for a
+    // driver error carries constraint/column/relation names and for a parse
+    // failure carries a slice of the provider's body. Log it, return a code.
     console.error('Hevy sync error:', err);
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: 'Hevy sync failed', code: 'internal_error' }),
       {
         status: 500,
         headers: { ...cors, 'Content-Type': 'application/json' },
       }
     );
   }
-});
+}

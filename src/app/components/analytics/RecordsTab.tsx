@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
 	ArrowRight,
@@ -12,22 +12,26 @@ import {
 	Trophy,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { EmptyState } from "@/app/components/ui/empty-state";
 import { CardSkeleton, Skeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
-import { fadeUp } from "@/lib/animations";
-import { convertWeight, type WeightUnit } from "@/lib/units";
+import type { WeightUnit } from "@/lib/units";
+import { formatLoad } from "@/lib/units/loadDisplay";
 import {
 	formatWorkoutPhase,
 	isNonCombinedWorkoutPhase,
 	WORKOUT_PHASE_FILTERS,
 	type WorkoutPhaseFilter,
 } from "@/lib/workout-phases";
-import { personalRecordsOptions } from "@/queries/records";
+import { queryKeys } from "@/queries/keys";
+import {
+	isStalePersonalRecordCursorError,
+	personalRecordsOptions,
+} from "@/queries/records";
 import type { PersonalRecord } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
@@ -64,10 +68,8 @@ function formatRecordMeasurement(
 	if (originalUnit !== "kg") {
 		return `${value} ${originalUnit}`;
 	}
-	const converted = convertWeight(value, unit);
-	return unit === "lbs"
-		? `${converted.toFixed(1)} lbs`
-		: `${Math.round(converted)} kg`;
+	// Records are per cable and carry no cable count, so no total (KD-8).
+	return formatLoad(value, null, unit);
 }
 
 function getMuscleGroupColor(muscleGroup: string): string {
@@ -129,10 +131,27 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 	const userId = user?.id ?? "";
 	const activeProfileId = useProfileFilterStore((s) => s.activeProfileId);
 
-	const { data: records, isPending } = useQuery({
-		...personalRecordsOptions(userId, activeProfileId),
-		enabled: !!userId,
-	});
+	const queryClient = useQueryClient();
+	const {
+		data: records,
+		isPending,
+		isError,
+		error,
+		refetch,
+		fetchNextPage,
+		hasNextPage,
+		isFetchingNextPage,
+	} = useInfiniteQuery(personalRecordsOptions(userId, activeProfileId));
+
+	// A 22023 from `personal_record_history` means our keyset cursor no longer
+	// matches a row (a record changed between pages). Retrying the same cursor
+	// would fail forever, so start again from the newest page.
+	useEffect(() => {
+		if (!isStalePersonalRecordCursorError(error)) return;
+		void queryClient.resetQueries({
+			queryKey: queryKeys.records.byUser(userId, activeProfileId),
+		});
+	}, [error, queryClient, userId, activeProfileId]);
 
 	const [activeFilter, setActiveFilter] = useState("All");
 	const [phaseFilter, setPhaseFilter] = useState<WorkoutPhaseFilter>("all");
@@ -233,6 +252,22 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 						<CardSkeleton key={i} />
 					))}
 				</div>
+			</div>
+		);
+	}
+
+	if (isError && records == null) {
+		return (
+			<div className="text-center py-16">
+				<p className="text-lg text-white mb-2">
+					Couldn't load personal records
+				</p>
+				<p className="text-sm text-muted-foreground mb-6">
+					Something went wrong while loading your PRs. Please try again.
+				</p>
+				<Button onClick={() => void refetch()} variant="outline">
+					Retry
+				</Button>
 			</div>
 		);
 	}
@@ -699,6 +734,21 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 					</motion.div>
 				)}
 			</AnimatePresence>
+
+			{hasNextPage && (
+				<div className="text-center mt-4">
+					<Button
+						variant="outline"
+						disabled={isFetchingNextPage}
+						onClick={() => {
+							void fetchNextPage();
+						}}
+						className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+					>
+						{isFetchingNextPage ? "Loading…" : "Load older records"}
+					</Button>
+				</div>
+			)}
 		</div>
 	);
 }

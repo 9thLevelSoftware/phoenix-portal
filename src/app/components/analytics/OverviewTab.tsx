@@ -40,6 +40,9 @@ export interface OverviewTabProps {
 	consistencyData: ConsistencyData;
 	insightsFeedItems: InsightItem[];
 	insightsPending: boolean;
+	insightsError?: boolean;
+	/** Server batch or browser fallback — never a mix (KD-14). */
+	insightsSource?: "server" | "local";
 }
 
 export default function OverviewTab({
@@ -52,6 +55,8 @@ export default function OverviewTab({
 	consistencyData,
 	insightsFeedItems,
 	insightsPending,
+	insightsError = false,
+	insightsSource = "server",
 }: OverviewTabProps) {
 	return (
 		<>
@@ -161,6 +166,8 @@ export default function OverviewTab({
 					<InsightsFeed
 						insights={insightsFeedItems.slice(0, 3)}
 						loading={insightsPending}
+						isError={insightsError}
+						source={insightsSource}
 					/>
 				</Card>
 			</div>

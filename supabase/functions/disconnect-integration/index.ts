@@ -1,12 +1,11 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
-
-// Service-role client for DB operations (bypasses RLS)
-const supabaseAdmin = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-);
+import {
+  defaultProviderRevokeDependencies,
+  type ProviderRevokeDependencies,
+  revokeAndDisconnect,
+} from '../_shared/providerRevoke.ts';
 
 const ALLOWED_PROVIDERS = new Set([
   'strava',
@@ -18,8 +17,52 @@ const ALLOWED_PROVIDERS = new Set([
   'google_health',
 ]);
 
-Deno.serve(async (req) => {
+interface DisconnectAuthClient {
+  auth: {
+    getUser(): Promise<{ data: { user: { id: string } | null } }>;
+  };
+}
+
+export interface DisconnectIntegrationDependencies {
+  /** Client acting as the caller (their JWT), used only to identify them. */
+  createAuthClient(authorization: string): DisconnectAuthClient;
+  /** Service-role client for DB operations (bypasses RLS). */
+  createAdminClient(): SupabaseClient;
+  /** Provider revoke HTTP + credentials; injected so tests never hit a provider. */
+  revoke: ProviderRevokeDependencies;
+}
+
+function defaultDisconnectIntegrationDependencies(): DisconnectIntegrationDependencies {
+  let admin: SupabaseClient | null = null;
+  return {
+    createAuthClient(authorization: string) {
+      return createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authorization } } },
+      );
+    },
+    createAdminClient() {
+      admin ??= createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      );
+      return admin;
+    },
+    revoke: defaultProviderRevokeDependencies(),
+  };
+}
+
+async function disconnectIntegrationHandler(
+  req: Request,
+  deps: DisconnectIntegrationDependencies,
+): Promise<Response> {
   const cors = getCorsHeaders(req);
+  const json = (body: unknown, status: number) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
 
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: cors });
@@ -28,27 +71,18 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization' }),
-        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
-      );
+      return json({ error: 'Missing authorization' }, 401);
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await deps.createAuthClient(authHeader).auth.getUser();
 
     if (!user) {
-      return new Response(
-        JSON.stringify({ error: 'Not authenticated' }),
-        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
-      );
+      return json({ error: 'Not authenticated' }, 401);
     }
+
+    const supabaseAdmin = deps.createAdminClient();
 
     // Rate limit: 5 requests per minute per user
     const rateCheck = await checkRateLimit(supabaseAdmin, {
@@ -63,63 +97,35 @@ Deno.serve(async (req) => {
     try {
       body = await req.json();
     } catch {
-      return new Response(
-        JSON.stringify({ error: 'Invalid JSON body' }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
-      );
+      return json({ error: 'Invalid JSON body' }, 400);
     }
     const provider = typeof body.provider === 'string' ? body.provider : '';
     if (!provider || !ALLOWED_PROVIDERS.has(provider)) {
-      return new Response(
-        JSON.stringify({ error: 'Unsupported integration provider' }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
-      );
+      return json({ error: 'Unsupported integration provider' }, 400);
     }
 
-    const timestamp = new Date().toISOString();
+    // Revoke the provider grant (best effort), then delete the token, reset
+    // the integration and cancel queued syncs in one transaction via
+    // disconnect_integration (F303, FP-5). The same path serves the mobile
+    // disconnect action and the account purge.
+    const result = await revokeAndDisconnect(supabaseAdmin, user.id, provider, deps.revoke);
+    if (!result.ok) {
+      return json({ error: 'Failed to disconnect integration. Please try again.' }, 500);
+    }
 
-    const [{ error: tokenError }, { error: integrationError }, { error: queueError }] =
-      await Promise.all([
-        supabaseAdmin
-          .from('oauth_tokens')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('provider', provider),
-        supabaseAdmin
-          .from('user_integrations')
-          .update({
-            status: 'disconnected',
-            connected_at: null,
-            provider_user_id: null,
-            error_message: null,
-          })
-          .eq('user_id', user.id)
-          .eq('provider', provider),
-        supabaseAdmin
-          .from('sync_queue')
-          .update({
-            status: 'failed',
-            error_message: 'Integration disconnected by user',
-            completed_at: timestamp,
-          })
-          .eq('user_id', user.id)
-          .eq('provider', provider)
-          .in('status', ['pending', 'processing']),
-      ]);
-
-    if (tokenError) throw tokenError;
-    if (integrationError) throw integrationError;
-    if (queueError) throw queueError;
-
-    return new Response(
-      JSON.stringify({ success: true }),
-      { headers: { ...cors, 'Content-Type': 'application/json' } },
-    );
+    return json({ success: true }, 200);
   } catch (err) {
     console.error('disconnect-integration error:', err);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
-    );
+    return json({ error: 'Internal server error' }, 500);
   }
-});
+}
+
+export function createDisconnectIntegrationHandler(
+  deps: DisconnectIntegrationDependencies = defaultDisconnectIntegrationDependencies(),
+): (req: Request) => Promise<Response> {
+  return (req) => disconnectIntegrationHandler(req, deps);
+}
+
+if (import.meta.main) {
+  Deno.serve(createDisconnectIntegrationHandler());
+}

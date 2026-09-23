@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
 	Archive,
 	Award,
@@ -48,18 +48,53 @@ import {
 } from "@/app/components/ui/tabs";
 import { cn } from "@/app/components/ui/utils";
 import { useAuth } from "@/app/hooks/useAuth";
+import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { useSubscription } from "@/hooks/useSubscription";
+import {
+	formatVolume,
+	type WeightUnit,
+	weightInputToKg,
+	weightInputValue,
+} from "@/lib/units";
+import { formatLoad, perCableUnitLabel } from "@/lib/units/loadDisplay";
 import {
 	useArchiveGoal,
 	useCreateGoal,
 	useUpdateGoal,
 } from "@/mutations/goals";
-import { goalsOptions } from "@/queries/goals";
+import { goalPrBestsOptions, goalsOptions } from "@/queries/goals";
 import { personalRecordsOptions } from "@/queries/records";
 import { workoutListOptions } from "@/queries/workouts";
 import type { Goal } from "@/schemas/goals";
+import type { PersonalRecord } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { GoalProgressRing } from "./GoalProgressRing";
+
+const PR_GOAL_RECORD_TYPES = new Set(["MAX_WEIGHT", "1RM"]);
+
+export type PrGoalRecord = Pick<
+	PersonalRecord,
+	"exercise_name" | "exercise_id" | "record_type" | "value"
+>;
+
+/** Strength PR progress: MAX_WEIGHT and 1RM only — never MAX_VOLUME. */
+export function computePrGoalProgress(
+	goal: Pick<Goal, "exercise_name" | "exercise_id" | "target_value">,
+	records: readonly PrGoalRecord[],
+): number {
+	if (!goal.exercise_name) return 0;
+	const exercisePRs = records.filter((r) => {
+		const recordType = (r.record_type ?? "MAX_WEIGHT").toUpperCase();
+		if (!PR_GOAL_RECORD_TYPES.has(recordType)) return false;
+		if (goal.exercise_id && r.exercise_id) {
+			return r.exercise_id === goal.exercise_id;
+		}
+		return r.exercise_name.toLowerCase() === goal.exercise_name?.toLowerCase();
+	});
+	if (exercisePRs.length === 0) return 0;
+	const bestPR = Math.max(...exercisePRs.map((r) => r.value));
+	return Math.min((bestPR / goal.target_value) * 100, 100);
+}
 
 // ---------- Progress computation hook (exported for Dashboard widget) ----------
 
@@ -72,7 +107,7 @@ export function useGoalProgress(
 		workoutListOptions(user?.id ?? "", profileId),
 	);
 	const { data: records } = useQuery(
-		personalRecordsOptions(user?.id ?? "", profileId),
+		goalPrBestsOptions(user?.id ?? "", profileId),
 	);
 
 	return useMemo(() => {
@@ -100,30 +135,14 @@ export function useGoalProgress(
 				const workoutsInPeriod = workouts.filter(
 					(w) => w.started_at >= periodStart,
 				);
-				// total_volume is already Zod-transformed (doubled)
+				// total_volume is per cable as stored (KD-8); no portal-side multiplication
 				const totalVolume = workoutsInPeriod.reduce(
 					(sum, w) => sum + w.total_volume,
 					0,
 				);
 				progress = (totalVolume / goal.target_value) * 100;
 			} else if (goal.goal_type === "pr" && records && goal.exercise_name) {
-				// Goals do not persist a target phase yet, so any combined,
-				// concentric, or eccentric PR for the exercise can satisfy the target.
-				// PR values are already Zod-transformed (doubled).
-				const exercisePRs = records.filter((r) => {
-					// Prefer exercise_id match if both sides have it
-					if (goal.exercise_id && r.exercise_id) {
-						return r.exercise_id === goal.exercise_id;
-					}
-					// Fall back to case-insensitive name match
-					return (
-						r.exercise_name.toLowerCase() === goal.exercise_name?.toLowerCase()
-					);
-				});
-				if (exercisePRs.length > 0) {
-					const bestPR = Math.max(...exercisePRs.map((r) => r.value));
-					progress = (bestPR / goal.target_value) * 100;
-				}
+				progress = computePrGoalProgress(goal, records);
 			}
 
 			map.set(goal.id, Math.min(progress, 100));
@@ -156,26 +175,38 @@ const goalTypeIcons = {
 	pr: Award,
 };
 
-function getGoalDescription(goal: Goal): string {
+/**
+ * Goal text. PR targets and session volume are per cable (KD-8): PR records
+ * and workout_sessions.total_volume are stored per cable, and pre-PR-30 PR
+ * targets were halved once by migration 20260920003000.
+ */
+export function getGoalDescription(
+	goal: Pick<Goal, "goal_type" | "target_value" | "period" | "exercise_name">,
+	unit: WeightUnit,
+): string {
 	switch (goal.goal_type) {
 		case "frequency":
 			return `${goal.target_value} workouts per ${goal.period === "monthly" ? "month" : "week"}`;
 		case "volume":
-			return `${goal.target_value.toLocaleString()} kg per ${goal.period === "monthly" ? "month" : "week"}`;
+			return `${formatVolume(goal.target_value, unit)} per cable per ${goal.period === "monthly" ? "month" : "week"}`;
 		case "pr":
-			return `${goal.exercise_name}: ${goal.target_value} kg`;
+			return `${goal.exercise_name}: ${formatLoad(goal.target_value, null, unit)}`;
 		default:
 			return "Goal";
 	}
 }
 
-function getProgressText(goal: Goal, progress: number): string {
+function getProgressText(
+	goal: Goal,
+	progress: number,
+	unit: WeightUnit,
+): string {
 	const achieved = Math.round((progress / 100) * goal.target_value);
 	switch (goal.goal_type) {
 		case "frequency":
 			return `${achieved}/${goal.target_value} workouts this ${goal.period === "monthly" ? "month" : "week"}`;
 		case "volume":
-			return `${achieved.toLocaleString()}/${goal.target_value.toLocaleString()} kg this ${goal.period === "monthly" ? "month" : "week"}`;
+			return `${formatVolume(achieved, unit)}/${formatVolume(goal.target_value, unit)} per cable this ${goal.period === "monthly" ? "month" : "week"}`;
 		case "pr":
 			return progress >= 100
 				? "Target reached!"
@@ -276,13 +307,18 @@ function ExerciseNameCombobox({
 
 export function Goals() {
 	const { user } = useAuth();
+	const unit = usePreferredWeightUnit();
 	const { isPremium, isInferno } = useSubscription();
 	const { activeProfileId } = useProfileFilterStore();
-	const { data: goals, isPending } = useQuery(goalsOptions(user?.id ?? ""));
-	const { data: records } = useQuery({
-		...personalRecordsOptions(user?.id ?? "", activeProfileId),
-		enabled: !!user?.id,
-	});
+	const {
+		data: goals,
+		isPending,
+		isError,
+		refetch,
+	} = useQuery(goalsOptions(user?.id ?? ""));
+	const { data: records } = useInfiniteQuery(
+		personalRecordsOptions(user?.id ?? "", activeProfileId),
+	);
 	const progressMap = useGoalProgress(activeProfileId);
 	const createGoal = useCreateGoal();
 	const updateGoal = useUpdateGoal();
@@ -297,8 +333,9 @@ export function Goals() {
 	const completedGoals = goals?.filter((g) => g.status === "completed") ?? [];
 	const archivedGoals = goals?.filter((g) => g.status === "archived") ?? [];
 
-	// M24: INFERNO = unlimited goals, EMBER = 3, FREE = 1
-	const maxGoals = isInferno ? Infinity : isPremium ? 3 : 1;
+	// M24: INFERNO = unlimited goals, paid (EMBER/FLAME) = 3. There is no free
+	// tier, so users without a subscription get 0 (and are gated out below).
+	const maxGoals = isInferno ? Infinity : isPremium ? 3 : 0;
 	const atLimit = activeGoals.length >= maxGoals;
 
 	// M26: Derive distinct exercise names from personal records for autocomplete
@@ -397,6 +434,24 @@ export function Goals() {
 		}
 	}, [activeGoals, progressMap, handleGoalComplete]);
 
+	if (isError && goals == null) {
+		return (
+			<div className="min-h-screen pb-20 md:pb-8">
+				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+					<h1 className="text-xl font-semibold text-white mb-2">
+						Couldn't load your goals
+					</h1>
+					<p className="text-sm text-muted-foreground mb-6">
+						Something went wrong. Your goals are safe — please try again.
+					</p>
+					<Button onClick={() => void refetch()} variant="outline">
+						Retry
+					</Button>
+				</div>
+			</div>
+		);
+	}
+
 	// Tier gate for FREE users
 	if (!isPremium && !isPending) {
 		return (
@@ -422,7 +477,7 @@ export function Goals() {
 						<EmptyState
 							icon={Target}
 							title="Upgrade to set goals"
-							description="Goal tracking is available for Phoenix and Elite subscribers. Set workout frequency, volume, and PR targets to stay motivated."
+							description="Goal tracking is available to subscribers. Set workout frequency, volume, and PR targets to stay motivated."
 							actionLabel="View Plans"
 							actionHref="/pricing"
 						/>
@@ -511,12 +566,12 @@ export function Goals() {
 											<div className="flex-1 min-w-0">
 												<div className="flex items-center gap-2 mb-1">
 													<Icon className="w-4 h-4 text-primary" />
-													<h3 className="text-lg font-semibold text-foreground">
-														{getGoalDescription(goal)}
+													<h3 className="text-lg font-semibold text-white">
+														{getGoalDescription(goal, unit)}
 													</h3>
 												</div>
 												<p className="text-sm text-muted-foreground font-data">
-													{getProgressText(goal, progress)}
+													{getProgressText(goal, progress, unit)}
 												</p>
 												{goal.deadline && (
 													<p className="text-xs text-muted-foreground mt-1">
@@ -586,8 +641,8 @@ export function Goals() {
 												<Award className="w-4 h-4 text-success" />
 											</div>
 											<div>
-												<p className="text-sm text-foreground">
-													{getGoalDescription(goal)}
+												<p className="text-sm text-white">
+													{getGoalDescription(goal, unit)}
 												</p>
 												<p className="text-xs text-muted-foreground">
 													Completed{" "}
@@ -640,7 +695,7 @@ export function Goals() {
 												</div>
 												<div>
 													<p className="text-sm text-muted-foreground">
-														{getGoalDescription(goal)}
+														{getGoalDescription(goal, unit)}
 													</p>
 													<p className="text-xs text-muted-foreground mt-0.5">
 														Archived {goal.updated_at.toLocaleDateString()}
@@ -691,6 +746,7 @@ export function Goals() {
 				open={createOpen}
 				onOpenChange={setCreateOpen}
 				title="Create Goal"
+				unit={unit}
 				exerciseNames={knownExerciseNames}
 				onSubmit={(data) => {
 					createGoal.mutate({
@@ -710,6 +766,7 @@ export function Goals() {
 					}}
 					title="Edit Goal"
 					isEdit
+					unit={unit}
 					exerciseNames={knownExerciseNames}
 					defaultValues={{
 						goal_type: editGoal.goal_type,
@@ -746,6 +803,7 @@ interface GoalFormDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	title: string;
+	unit: WeightUnit;
 	/** When true, goal type tabs are hidden (type cannot change after creation). */
 	isEdit?: boolean;
 	/** Known exercise names for PR goal autocomplete. */
@@ -772,6 +830,7 @@ function GoalFormDialog({
 	open,
 	onOpenChange,
 	title,
+	unit,
 	isEdit = false,
 	exerciseNames = [],
 	defaultValues,
@@ -780,9 +839,11 @@ function GoalFormDialog({
 	const [goalType, setGoalType] = useState<"frequency" | "volume" | "pr">(
 		defaultValues?.goal_type ?? "frequency",
 	);
-	const [targetValue, setTargetValue] = useState(
-		defaultValues?.target_value?.toString() ?? "",
-	);
+	const initialTargetValue =
+		defaultValues?.goal_type === "volume" || defaultValues?.goal_type === "pr"
+			? weightInputValue(defaultValues.target_value, unit)
+			: (defaultValues?.target_value?.toString() ?? "");
+	const [targetValue, setTargetValue] = useState(initialTargetValue);
 	const [exerciseName, setExerciseName] = useState(
 		defaultValues?.exercise_name ?? "",
 	);
@@ -795,7 +856,12 @@ function GoalFormDialog({
 	useEffect(() => {
 		if (open) {
 			setGoalType(defaultValues?.goal_type ?? "frequency");
-			setTargetValue(defaultValues?.target_value?.toString() ?? "");
+			setTargetValue(
+				defaultValues?.goal_type === "volume" ||
+					defaultValues?.goal_type === "pr"
+					? weightInputValue(defaultValues.target_value, unit)
+					: (defaultValues?.target_value?.toString() ?? ""),
+			);
 			setExerciseName(defaultValues?.exercise_name ?? "");
 			setDeadline(defaultValues?.deadline ?? "");
 			setPeriod(defaultValues?.period ?? "weekly");
@@ -804,6 +870,7 @@ function GoalFormDialog({
 		open,
 		defaultValues?.goal_type,
 		defaultValues?.target_value,
+		unit,
 		defaultValues?.exercise_name,
 		defaultValues?.deadline,
 		defaultValues?.period,
@@ -821,7 +888,11 @@ function GoalFormDialog({
 	};
 
 	const handleSubmit = () => {
-		const value = parseFloat(targetValue);
+		const parsedValue = parseFloat(targetValue);
+		const value =
+			goalType === "volume" || goalType === "pr"
+				? weightInputToKg(targetValue, unit)
+				: parsedValue;
 		if (Number.isNaN(value) || value <= 0) return;
 		if (goalType === "pr" && !exerciseName.trim()) return;
 
@@ -937,14 +1008,14 @@ function GoalFormDialog({
 						<TabsContent value="volume" className="space-y-4 mt-4">
 							<div>
 								<Label htmlFor="vol-target">
-									Target volume (kg) per{" "}
+									Target volume ({perCableUnitLabel(unit)}) per{" "}
 									{period === "monthly" ? "month" : "week"}
 								</Label>
 								<Input
 									id="vol-target"
 									type="number"
 									min={1}
-									placeholder="e.g. 10000"
+									placeholder={unit === "lbs" ? "e.g. 22000" : "e.g. 10000"}
 									value={targetValue}
 									onChange={(e) => setTargetValue(e.target.value)}
 									className="mt-1 bg-input/30"
@@ -994,7 +1065,9 @@ function GoalFormDialog({
 								/>
 							</div>
 							<div>
-								<Label htmlFor="pr-target">Target Weight (kg)</Label>
+								<Label htmlFor="pr-target">
+									Target weight (per cable, {unit})
+								</Label>
 								<Input
 									id="pr-target"
 									type="number"

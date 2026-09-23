@@ -1,5 +1,3 @@
-/// <reference types="vitest/config" />
-
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
@@ -8,6 +6,11 @@ import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { stripBodyMusclesSourcemapsPlugin } from "./src/lib/build/body-muscles-sourcemaps";
+import {
+	createPwaShellPrecache,
+	createPwaWorkboxOptions,
+} from "./src/lib/build/pwa";
 import {
 	productionSourcemapSetting,
 	shouldUploadSourcemaps,
@@ -15,13 +18,16 @@ import {
 
 const uploadSourcemaps = shouldUploadSourcemaps(process.env);
 const configDir = path.dirname(fileURLToPath(import.meta.url));
+const pwaShell = createPwaShellPrecache();
 
 export default defineConfig({
 	plugins: [
+		stripBodyMusclesSourcemapsPlugin(),
 		// The React and Tailwind plugins are both required for Make, even if
 		// Tailwind is not being actively used – do not remove them
 		react(),
 		tailwindcss(),
+		pwaShell.plugin,
 		VitePWA({
 			registerType: "autoUpdate",
 			updateViaCache: "none",
@@ -29,7 +35,8 @@ export default defineConfig({
 			manifest: {
 				name: "Phoenix Portal",
 				short_name: "Phoenix",
-				description: "Training companion dashboard for Vitruvian Trainer",
+				description:
+					"Training companion dashboard for your Phoenix fitness machine",
 				theme_color: "#0D0D0D",
 				background_color: "#0D0D0D",
 				display: "standalone",
@@ -54,14 +61,7 @@ export default defineConfig({
 					},
 				],
 			},
-			workbox: {
-				cleanupOutdatedCaches: true,
-				skipWaiting: true,
-				clientsClaim: true,
-				globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2}"],
-				navigateFallback: "/index.html",
-				navigateFallbackDenylist: [/^\/api\//],
-			},
+			workbox: createPwaWorkboxOptions(pwaShell.manifestTransform),
 			devOptions: {
 				enabled: false,
 			},
@@ -87,6 +87,9 @@ export default defineConfig({
 			// Alias @ to the src directory
 			"@": path.resolve(configDir, "./src"),
 		},
+	},
+	optimizeDeps: {
+		exclude: ["body-muscles"],
 	},
 	build: {
 		sourcemap: productionSourcemapSetting(process.env),
@@ -164,15 +167,5 @@ export default defineConfig({
 				},
 			},
 		},
-	},
-	test: {
-		globals: true,
-		environment: "jsdom",
-		setupFiles: ["./src/test/setup.ts"],
-		css: true,
-		include: [
-			"src/**/*.{test,spec}.{ts,tsx}",
-			"tests/security/**/*.{test,spec}.{ts,tsx}",
-		],
 	},
 });

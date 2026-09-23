@@ -1,12 +1,18 @@
 # Weight Field Audit Matrix
 
+> **Superseded (KD-8).** The portal no longer applies a x2 multiplier and
+> `WEIGHT_MULTIPLIER` has been removed. Loads are shown per cable first, as on
+> the phone; a total (per cable x `exercises.cable_count`) is shown alongside
+> only when the cable count is known. See `src/lib/units/loadDisplay.ts`. The
+> matrix below is kept as a historical record.
+
 **Audit Date**: 2026-04-12  
 **Plan**: 04-01 Weight Transform Validation  
 **Status**: COMPLETE  
 
 ## Overview
 
-The Vitruvian Trainer has dual cables. All weight values are stored in the database as **per-cable values** (0-220kg range). The portal applies a **x2 multiplier** for display to show total weight lifted.
+The Phoenix fitness machine has dual cables. All weight values are stored in the database as **per-cable values** (0-220kg range). The portal applies a **x2 multiplier** for display to show total weight lifted.
 
 - **WEIGHT_MULTIPLIER**: 2 (defined in `src/schemas/transforms.ts` line 6)
 - **MAX_PER_CABLE_KG**: 110 (220kg machine max / 2 cables = 110kg per cable in actual usage)

@@ -1,10 +1,52 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { errorMessage } from '../_shared/errorMessage.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
+import { checkManualSyncRateLimit } from '../_shared/manualSyncRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import {
+  completeSyncQueueEntry,
+  createSyncQueueEntry,
+  heartbeatSyncQueueEntry,
+  noOwnedQueueRow,
+  type OwnedQueueRow,
+  releaseOwnedQueueRow,
+  syncAlreadyQueuedResponse,
+  syncQueueUnavailableResponse,
+} from '../_shared/syncQueue.ts';
+import { nextWatermark } from '../_shared/syncWatermark.ts';
+import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
+
+/**
+ * Loose Supabase client type for helper signatures. Annotating helpers with the
+ * bare `ReturnType<typeof createClient>` makes table payload types resolve to
+ * `never` (TS2345), so explicit `any` schema generics are required here.
+ */
+type DbClient = SupabaseClient<any, any, any>;
 
 const FITBIT_CLIENT_ID = Deno.env.get('FITBIT_CLIENT_ID')!;
 const FITBIT_CLIENT_SECRET = Deno.env.get('FITBIT_CLIENT_SECRET')!;
+
+/**
+ * Fitbit's documented ceiling: 150 requests per hour, per authorized user,
+ * resetting at the top of each hour.
+ * https://dev.fitbit.com/build/reference/web-api/troubleshooting-guide/rate-limits/
+ */
+const FITBIT_HOURLY_LIMIT = 150;
+
+/**
+ * Start of the current clock hour, in UTC.
+ *
+ * Fitbit's quota resets on the hour, so a 429 should mark the window as having
+ * begun at the last hour boundary. Stamping `now` instead would hold the user
+ * out for a full hour from the moment they were throttled — up to 59 minutes
+ * longer than Fitbit actually requires.
+ */
+function topOfCurrentHour(): string {
+  const now = new Date();
+  now.setUTCMinutes(0, 0, 0);
+  return now.toISOString();
+}
 
 interface FitbitTokens {
   access_token: string;
@@ -18,7 +60,7 @@ interface FitbitTokens {
  * Returns updated tokens or throws on failure.
  */
 async function refreshTokenIfNeeded(
-  supabase: ReturnType<typeof createClient>,
+  supabase: DbClient,
   userId: string,
   tokens: FitbitTokens,
 ): Promise<FitbitTokens> {
@@ -62,8 +104,10 @@ async function refreshTokenIfNeeded(
   const refreshed = await response.json();
   const newTokenExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
 
-  // Update stored tokens in oauth_tokens (server-only table)
-  await supabase
+  // Update stored tokens in oauth_tokens (server-only table). Fitbit rotates the
+  // refresh token on every refresh, so if this write fails the stored refresh
+  // token is stale and future syncs cannot refresh. Fail instead of continuing.
+  const { error: tokenPersistError } = await supabase
     .from('oauth_tokens')
     .update({
       access_token: await encryptOAuthSecret(refreshed.access_token),
@@ -73,6 +117,16 @@ async function refreshTokenIfNeeded(
     })
     .eq('user_id', userId)
     .eq('provider', 'fitbit');
+
+  if (tokenPersistError) {
+    console.error('Failed to persist refreshed Fitbit tokens:', tokenPersistError);
+    await supabase
+      .from('user_integrations')
+      .update({ status: 'error', error_message: 'Failed to persist refreshed tokens' })
+      .eq('user_id', userId)
+      .eq('provider', 'fitbit');
+    throw new Error('Failed to persist refreshed Fitbit tokens');
+  }
 
   return {
     access_token: refreshed.access_token,
@@ -135,22 +189,32 @@ function mapFitbitActivityType(typeId: number): string {
   return mapping[typeId] ?? 'other';
 }
 
-/** Global provider row uses key + user_id IS NULL (see rate_limit_tracking migration). */
+/**
+ * Fitbit meters 150 requests/hour for EACH authorized user, resetting at the
+ * top of the hour — the quota is not shared across the application. The row is
+ * therefore keyed (key='fitbit', user_id=<user>), matching the
+ * `uq_rate_limit_key_user` unique index.
+ *
+ * This previously wrote a single user_id IS NULL row, which made every Fitbit
+ * user contend for one 120/hour bucket and capped total throughput at a single
+ * user's allowance no matter how many users connected.
+ */
 async function upsertFitbitRateLimitRow(
-  supabase: ReturnType<typeof createClient>,
+  supabase: DbClient,
+  userId: string,
   fields: Record<string, unknown>,
 ) {
   const { data: existing } = await supabase
     .from('rate_limit_tracking')
     .select('id')
     .eq('key', 'fitbit')
-    .is('user_id', null)
+    .eq('user_id', userId)
     .maybeSingle();
   if (!existing) {
     await supabase.from('rate_limit_tracking').insert({
       key: 'fitbit',
       provider: 'fitbit',
-      user_id: null,
+      user_id: userId,
       requests_this_window: 0,
       window_started_at: new Date().toISOString(),
       ...fields,
@@ -168,7 +232,7 @@ async function upsertFitbitRateLimitRow(
  *
  * Called by the sync queue processor or manually via integration management UI.
  */
-Deno.serve(async (req) => {
+async function runFitbitSync(req: Request, owned: OwnedQueueRow): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
@@ -203,10 +267,13 @@ Deno.serve(async (req) => {
       // Browser-initiated: use JWT-verified user ID, ignore body.user_id
       userId = jwtUser.id;
     } else {
-      // Not a valid user JWT -- must be service-role call from process-sync-queue
-      // Verify the caller is actually using the service role key
-      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-      const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
+      // Not a valid user JWT -- must be service-role call from process-sync-queue.
+      // Verify the caller is actually using the service role key, in constant
+      // time so the comparison leaks neither the key's bytes nor its length.
+      const isServiceRole = isServiceRoleBearer(
+        authHeader,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+      );
 
       if (!isServiceRole || !body.user_id) {
         return new Response(
@@ -217,16 +284,45 @@ Deno.serve(async (req) => {
       userId = body.user_id;
     }
 
-    const { sync_type } = body;
+    const sync_type = body.sync_type ?? 'incremental';
+    const calledByQueueProcessor = !jwtUser;
+    let ownedQueueId =
+      calledByQueueProcessor && typeof body.queue_id === 'string' ? body.queue_id : null;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
+    // Cap browser-initiated invocations per user. Keyed on the JWT-verified
+    // id, so nobody can spend another user's budget; the queue path (service
+    // role) is exempt and has its own budget under the `fitbit` key.
+    if (jwtUser) {
+      const rateCheck = await checkManualSyncRateLimit(
+        supabase,
+        { provider: 'fitbit', userId },
+        cors,
+      );
+      if (!rateCheck.allowed) return rateCheck.response!;
+    }
+
     // Subscription gate — FLAME or higher required for integrations
     const gate = await requireSubscription(supabase, userId, 'FLAME', cors);
     if (!gate.allowed) return gate.response;
+
+    if (!calledByQueueProcessor) {
+      const created = await createSyncQueueEntry(supabase, {
+        userId,
+        provider: 'fitbit',
+        syncType: sync_type,
+      });
+      if (created.conflict) return syncAlreadyQueuedResponse(cors);
+      if (!created.queueId) return syncQueueUnavailableResponse(cors);
+      ownedQueueId = created.queueId;
+      owned.supabase = supabase;
+      owned.queueId = ownedQueueId;
+      owned.userId = userId;
+    }
 
     // Get user's Fitbit tokens from oauth_tokens (server-only table)
     const { data: tokenData, error: tokenFetchError } = await supabase
@@ -243,9 +339,9 @@ Deno.serve(async (req) => {
       .eq('provider', 'fitbit')
       .single();
 
-    if (tokenFetchError || !tokenData) {
+    if (tokenFetchError || !tokenData || integration?.status !== 'connected') {
       return new Response(
-        JSON.stringify({ error: 'Fitbit integration not found' }),
+        JSON.stringify({ error: 'Fitbit integration not found or not connected' }),
         { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
@@ -259,6 +355,9 @@ Deno.serve(async (req) => {
 
     // Refresh token if needed
     const tokens = await refreshTokenIfNeeded(supabase, userId, decrypted);
+
+    // Captured before fetching: the next incremental window starts here.
+    const syncStartedAt = new Date().toISOString();
 
     // Determine the starting date for activity fetch
     // For initial sync: go back 90 days. For incremental: since last sync.
@@ -285,15 +384,20 @@ Deno.serve(async (req) => {
         },
       });
 
+      await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId);
+
       if (!activitiesResponse.ok) {
         const errorBody = await activitiesResponse.text();
         console.error('Fitbit activities fetch failed:', activitiesResponse.status, errorBody);
 
         // Handle rate limiting
         if (activitiesResponse.status === 429) {
-          await upsertFitbitRateLimitRow(supabase, {
-            requests_this_window: 150,
-            window_started_at: new Date().toISOString(),
+          await upsertFitbitRateLimitRow(supabase, userId, {
+            requests_this_window: FITBIT_HOURLY_LIMIT,
+            // Fitbit resets on the hour, not on a rolling window from the 429.
+            // Anchoring to the top of the current hour releases this user at
+            // the real reset instead of blocking them for a further hour.
+            window_started_at: topOfCurrentHour(),
             last_request_at: new Date().toISOString(),
           });
 
@@ -340,41 +444,60 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Update last_sync_at
+    // Update last_sync_at. An `initial` against an existing watermark fetched
+    // the last 90 days, not necessarily everything since last_sync_at, so it
+    // leaves the watermark alone (no window may be skipped; see
+    // _shared/syncWatermark.ts).
+    const watermark = nextWatermark({
+      syncType: sync_type,
+      previous: (integration?.last_sync_at as string | null) ?? null,
+      contiguousUpTo: syncStartedAt,
+    });
     await supabase
       .from('user_integrations')
       .update({
-        last_sync_at: new Date().toISOString(),
+        ...(watermark ? { last_sync_at: watermark } : {}),
         status: 'connected',
         error_message: null,
       })
       .eq('user_id', userId)
       .eq('provider', 'fitbit');
 
-    await upsertFitbitRateLimitRow(supabase, {
+    await upsertFitbitRateLimitRow(supabase, userId, {
       last_request_at: new Date().toISOString(),
     });
 
-    await supabase
-      .from('sync_queue')
-      .update({
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        error_message: null,
-      })
-      .eq('user_id', userId)
-      .eq('provider', 'fitbit')
-      .in('status', ['pending', 'processing']);
+    await completeSyncQueueEntry(supabase, {
+      userId,
+      provider: 'fitbit',
+      queueId: ownedQueueId,
+    });
 
     return new Response(
       JSON.stringify({ success: true, synced: totalSynced }),
       { headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
+    // `errorMessage` is a deliberate passthrough of `.message`, which for a
+    // driver error carries constraint/column/relation names and for a parse
+    // failure carries a slice of the provider's body. Log it, return a code.
     console.error('Fitbit sync error:', err);
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: 'Fitbit sync failed', code: 'internal_error' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
-});
+}
+
+export function createFitbitSyncHandler(): (req: Request) => Promise<Response> {
+  return async (req) => {
+    const owned = noOwnedQueueRow();
+    const response = await runFitbitSync(req, owned);
+    if (!response.ok) await releaseOwnedQueueRow(owned);
+    return response;
+  };
+}
+
+if (import.meta.main) {
+  Deno.serve(createFitbitSyncHandler());
+}

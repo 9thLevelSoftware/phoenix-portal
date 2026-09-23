@@ -1,6 +1,7 @@
 import { AlertTriangle, Info, TrendingUp, Trophy } from "lucide-react";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
+import { isWeightUnit } from "@/lib/units";
 
 export interface InsightItem {
 	id: string;
@@ -14,7 +15,17 @@ export interface InsightItem {
 export interface InsightsFeedProps {
 	insights: InsightItem[];
 	loading?: boolean;
+	/** Failed fetch is an error, not “complete more workouts.” */
+	isError?: boolean;
+	/**
+	 * Where these insights came from (KD-14). The feed shows either a fresh
+	 * server batch or the browser-computed fallback, never a mix; when it is
+	 * the fallback, say so instead of letting it pass for a server result.
+	 */
+	source?: "server" | "local";
 }
+
+export const LOCAL_INSIGHTS_LABEL = "Calculated on this device";
 
 const TYPE_CONFIG = {
 	success: {
@@ -35,6 +46,13 @@ const TYPE_CONFIG = {
 	},
 } as const;
 
+function formatMetric(value: number, unit: string): string {
+	const formattedValue = value.toLocaleString();
+	return isWeightUnit(unit)
+		? `${formattedValue} ${unit}`
+		: `${formattedValue}${unit}`;
+}
+
 function InsightSkeleton() {
 	return (
 		<Card className="border-border overflow-hidden">
@@ -50,7 +68,12 @@ function InsightSkeleton() {
 	);
 }
 
-export function InsightsFeed({ insights, loading = false }: InsightsFeedProps) {
+export function InsightsFeed({
+	insights,
+	loading = false,
+	isError = false,
+	source = "server",
+}: InsightsFeedProps) {
 	if (loading) {
 		return (
 			<div className="flex flex-col gap-3">
@@ -58,6 +81,14 @@ export function InsightsFeed({ insights, loading = false }: InsightsFeedProps) {
 				<InsightSkeleton />
 				<InsightSkeleton />
 			</div>
+		);
+	}
+
+	if (isError && insights.length === 0) {
+		return (
+			<Card className="border-border p-6 text-center text-sm text-muted-foreground">
+				Couldn't load insights. Please try again.
+			</Card>
 		);
 	}
 
@@ -109,8 +140,7 @@ export function InsightsFeed({ insights, loading = false }: InsightsFeedProps) {
 											{insight.metric.name}:
 										</span>
 										<span className="text-xs font-medium text-foreground">
-											{insight.metric.value}
-											{insight.metric.unit}
+											{formatMetric(insight.metric.value, insight.metric.unit)}
 										</span>
 										{insight.metric.delta !== undefined && (
 											<span
@@ -123,8 +153,10 @@ export function InsightsFeed({ insights, loading = false }: InsightsFeedProps) {
 												}}
 											>
 												{insight.metric.delta >= 0 ? "+" : ""}
-												{insight.metric.delta}
-												{insight.metric.unit}
+												{formatMetric(
+													insight.metric.delta,
+													insight.metric.unit,
+												)}
 											</span>
 										)}
 									</div>
@@ -134,6 +166,10 @@ export function InsightsFeed({ insights, loading = false }: InsightsFeedProps) {
 					</Card>
 				);
 			})}
+
+			{source === "local" && (
+				<p className="text-xs text-muted-foreground">{LOCAL_INSIGHTS_LABEL}</p>
+			)}
 		</div>
 	);
 }

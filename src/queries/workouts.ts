@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import type { SessionSummary } from "@/lib/comparison";
 import { supabase } from "@/lib/supabase";
@@ -10,10 +10,14 @@ import {
 	workoutSessionSchema,
 } from "@/schemas/transforms";
 import { queryKeys } from "./keys";
+import {
+	PERSONAL_RECORD_WITH_CATALOG_SELECT,
+	resolvePersonalRecordDisplayNames,
+} from "./personal-record-normalization";
 
 /**
  * Paginated workout session list for a user.
- * Returns Zod-transformed WorkoutSession[] (weights doubled, dates as Date, duration as minutes).
+ * Returns Zod-transformed WorkoutSession[] (per-cable weights, dates as Date, duration as minutes).
  */
 export const WORKOUTS_PAGE_SIZE = 50;
 
@@ -73,6 +77,58 @@ export function workoutListPageOptions(
 }
 
 /**
+ * Infinite workout history. Query key sits under `queryKeys.workouts.all` so
+ * realtime invalidation drops extra pages instead of leaving a shadow list.
+ */
+export function workoutListInfiniteOptions(
+	userId: string,
+	profileId?: string | null,
+) {
+	return infiniteQueryOptions({
+		queryKey: queryKeys.workouts.infinite(userId, profileId),
+		queryFn: async ({ pageParam = 0 }) => {
+			let query = supabase
+				.from("workout_sessions")
+				.select("*")
+				.eq("user_id", userId);
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query
+				.order("started_at", { ascending: false })
+				.range(pageParam, pageParam + WORKOUTS_PAGE_SIZE - 1);
+			if (error) throw error;
+			return workoutListSchema.parse(data);
+		},
+		initialPageParam: 0,
+		getNextPageParam: (lastPage, allPages) => {
+			if (lastPage.length < WORKOUTS_PAGE_SIZE) return undefined;
+			return allPages.reduce((total, page) => total + page.length, 0);
+		},
+	});
+}
+
+/**
+ * SQL streak matching `useStreak` UTC unique-date + today-skip semantics.
+ * Invalidated with the rest of the workouts family on mobile sync.
+ */
+export function workoutStreakOptions(userId: string) {
+	return queryOptions({
+		queryKey: queryKeys.workouts.streak(userId),
+		queryFn: async () => {
+			const { data, error } = await supabase.rpc("workout_current_streak", {
+				p_user_id: userId,
+			});
+			if (error) throw error;
+			return typeof data === "number" && Number.isFinite(data) ? data : 0;
+		},
+		enabled: !!userId,
+	});
+}
+
+/**
  * Dashboard summary stats -- recent workouts for the past 7 days.
  * Returns raw rows so the Dashboard component can aggregate (weekly volume chart, totals).
  */
@@ -113,7 +169,7 @@ export function dashboardStatsOptions(
 
 /**
  * Most recent personal records for the dashboard PR widget.
- * Returns Zod-transformed PersonalRecord[] (weights doubled, dates as Date).
+ * Returns Zod-transformed PersonalRecord[] (per-cable weights, dates as Date).
  */
 export function recentPRsOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
@@ -126,8 +182,9 @@ export function recentPRsOptions(userId: string, profileId?: string | null) {
 		queryFn: async () => {
 			let query = supabase
 				.from("personal_records")
-				.select("*")
-				.eq("user_id", userId);
+				.select(PERSONAL_RECORD_WITH_CATALOG_SELECT)
+				.eq("user_id", userId)
+				.is("deleted_at", null);
 
 			if (profileId) {
 				query = query.eq("local_profile_id", profileId);
@@ -137,44 +194,55 @@ export function recentPRsOptions(userId: string, profileId?: string | null) {
 				.order("achieved_at", { ascending: false })
 				.limit(5);
 			if (error) throw error;
-			return personalRecordListSchema.parse(data);
+			return personalRecordListSchema.parse(
+				await resolvePersonalRecordDisplayNames(data, userId),
+			);
 		},
 	});
 }
 
+type RawSessionTree = {
+	exercises?: (Record<string, unknown> & {
+		sets?: (Record<string, unknown> & {
+			rep_summaries?: { set_id: string; mean_velocity_mps: number | null }[];
+		})[];
+	})[];
+};
+
+/**
+ * Split an embedded `workout_sessions -> exercises -> sets` row into flat
+ * raw arrays so each level can be parsed with its existing Zod schema.
+ */
+function flattenSessionTree(row: unknown) {
+	const tree = (row ?? {}) as RawSessionTree;
+	const exercises = tree.exercises ?? [];
+	const sets = exercises.flatMap((exercise) => exercise.sets ?? []);
+	const reps = sets.flatMap((set) => set.rep_summaries ?? []);
+	return { exercises, sets, reps };
+}
+
 /**
  * Full session detail with exercises and sets.
- * Fetches session metadata, exercises, and sets in three queries,
- * then assembles them into a nested structure.
+ * Fetches the session, its exercises and their sets in one embedded select,
+ * then parses each level with Zod and assembles the nested structure.
  */
 export function sessionDetailOptions(sessionId: string) {
 	return queryOptions({
 		queryKey: queryKeys.workouts.detail(sessionId),
 		queryFn: async () => {
-			// Fetch session metadata
-			const { data: session, error: sessionError } = await supabase
+			const { data: session, error } = await supabase
 				.from("workout_sessions")
-				.select("*")
+				.select("*, exercises(*, sets(*))")
 				.eq("id", sessionId)
+				.order("order_index", { ascending: true, referencedTable: "exercises" })
+				.order("set_number", {
+					ascending: true,
+					referencedTable: "exercises.sets",
+				})
 				.single();
-			if (sessionError) throw sessionError;
+			if (error) throw error;
 
-			// Fetch exercises for this session
-			const { data: exercises, error: exercisesError } = await supabase
-				.from("exercises")
-				.select("*")
-				.eq("session_id", sessionId)
-				.order("order_index", { ascending: true });
-			if (exercisesError) throw exercisesError;
-
-			// Fetch sets for all exercises in this session
-			const exerciseIds = exercises.map((e: { id: string }) => e.id);
-			const { data: sets, error: setsError } = await supabase
-				.from("sets")
-				.select("*")
-				.in("exercise_id", exerciseIds)
-				.order("set_number", { ascending: true });
-			if (setsError) throw setsError;
+			const { exercises, sets } = flattenSessionTree(session);
 
 			// Parse with Zod and assemble
 			const parsedSession = workoutSessionSchema.parse(session);
@@ -198,48 +266,28 @@ export function sessionDetailOptions(sessionId: string) {
 }
 
 /**
- * Extended session detail that also fetches rep summaries for velocity data.
+ * Extended session detail that also includes rep summaries for velocity data.
  * Returns a SessionSummary ready for the comparison engine.
  */
 export function comparisonDetailOptions(sessionId: string) {
 	return queryOptions({
 		queryKey: queryKeys.workouts.comparison(sessionId, "detail"),
 		queryFn: async (): Promise<SessionSummary> => {
-			// Re-use sessionDetailOptions data structure
-			const { data: session, error: sessionError } = await supabase
+			const { data: session, error } = await supabase
 				.from("workout_sessions")
-				.select("*")
+				.select(
+					"*, exercises(*, sets(*, rep_summaries(set_id, mean_velocity_mps)))",
+				)
 				.eq("id", sessionId)
+				.order("order_index", { ascending: true, referencedTable: "exercises" })
+				.order("set_number", {
+					ascending: true,
+					referencedTable: "exercises.sets",
+				})
 				.single();
-			if (sessionError) throw sessionError;
+			if (error) throw error;
 
-			const { data: exercises, error: exercisesError } = await supabase
-				.from("exercises")
-				.select("*")
-				.eq("session_id", sessionId)
-				.order("order_index", { ascending: true });
-			if (exercisesError) throw exercisesError;
-
-			const exerciseIds = exercises.map((e: { id: string }) => e.id);
-
-			const { data: sets, error: setsError } = await supabase
-				.from("sets")
-				.select("*")
-				.in("exercise_id", exerciseIds.length > 0 ? exerciseIds : ["_none_"])
-				.order("set_number", { ascending: true });
-			if (setsError) throw setsError;
-
-			// Fetch rep summaries for velocity data
-			const setIds = (sets ?? []).map((s: { id: string }) => s.id);
-			let reps: { set_id: string; mean_velocity_mps: number | null }[] = [];
-			if (setIds.length > 0) {
-				const { data: repData, error: repError } = await supabase
-					.from("rep_summaries")
-					.select("set_id, mean_velocity_mps")
-					.in("set_id", setIds);
-				if (repError) throw repError;
-				reps = repData ?? [];
-			}
+			const { exercises, sets, reps } = flattenSessionTree(session);
 
 			// Parse with Zod
 			const parsedSession = workoutSessionSchema.parse(session);
@@ -292,7 +340,7 @@ export function comparisonDetailOptions(sessionId: string) {
 				name: parsedSession.name,
 				startedAt: parsedSession.started_at,
 				totalVolume: parsedSession.total_volume,
-				duration: parsedSession.duration_seconds,
+				duration: Math.round(parsedSession.duration_seconds / 60),
 				exerciseCount: parsedSession.exercise_count,
 				setCount: parsedSession.set_count,
 				prCount: parsedSession.pr_count,

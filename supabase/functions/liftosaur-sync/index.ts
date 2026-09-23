@@ -1,7 +1,22 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
+import { errorMessage } from "../_shared/errorMessage.ts";
 import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
+import { computeIncrementalWindow } from "../_shared/incrementalWindow.ts";
+import { checkManualSyncRateLimit } from "../_shared/manualSyncRateLimit.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
+import {
+	completeSyncQueueEntry,
+	createSyncQueueEntry,
+	type DbClient,
+	heartbeatSyncQueueEntry,
+	noOwnedQueueRow,
+	type OwnedQueueRow,
+	releaseOwnedQueueRow,
+	syncAlreadyQueuedResponse,
+	syncQueueUnavailableResponse,
+} from "../_shared/syncQueue.ts";
+import { isServiceRoleBearer } from "../_shared/timingSafe.ts";
 
 /**
  * Liftosaur Sync Edge Function
@@ -14,9 +29,100 @@ import { requireSubscription } from "../_shared/requireSubscription.ts";
  * - Normalizes and upserts to external_activities
  *
  * API docs: https://www.liftosaur.com/doc/api
+ *
+ * When dispatched by process-sync-queue the body also carries `queue_id`: the
+ * run completes that row only, and renews its lease (heartbeat) while it runs.
+ * process-sync-queue reclaims a liftosaur task after HEARTBEAT_LEASE_MS
+ * (5 minutes) without a heartbeat. The longest silent window here is one
+ * request (capped by PROVIDER_REQUEST_TIMEOUT_MS) or 100 record upserts.
+ *
+ * A browser-initiated run (user JWT, no `queue_id`) creates its OWN queue row
+ * instead, directly in `processing`, and owns it exactly the same way. A
+ * second concurrent sync loses the `sync_queue_one_active` race and is
+ * answered with 409 `sync_already_queued`.
  */
 
 const LIFTOSAUR_API_BASE = "https://www.liftosaur.com/api/v1";
+
+/**
+ * Renew the sync_queue lease after this many upserted records. Records are
+ * upserted one by one, so a 2,000-record history can outlast
+ * process-sync-queue's heartbeat lease without it.
+ */
+const HEARTBEAT_EVERY_RECORDS = 100;
+
+/** Per-request ceiling for Liftosaur calls, so a hung request cannot outlast the lease. */
+const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
+
+export interface LiftosaurSyncAuthClient {
+	auth: {
+		getUser(): Promise<{ data: { user: { id: string } | null } }>;
+	};
+}
+
+/**
+ * Fixtures reach this handler in two shapes: the client factories (PR 50's
+ * tests) and `env` + `createClient` + `fetch` + `now` (PR 51's). Every field is
+ * optional; `resolveDeps` fills in the rest so the body never branches.
+ */
+export interface LiftosaurSyncHandlerDependencies {
+	createAuthClient?(authorization: string): LiftosaurSyncAuthClient;
+	createAdminClient?(): DbClient;
+	env?: (key: string) => string | undefined;
+	// deno-lint-ignore no-explicit-any
+	createClient?: (url: string, key: string, options?: any) => DbClient;
+	/** Used for Liftosaur API calls; defaults to global fetch. */
+	fetch?: typeof fetch;
+	/** Wall clock; defaults to `new Date()`. */
+	now?: () => Date;
+}
+
+/** The fully-resolved injection points the handler body runs against. */
+export interface LiftosaurSyncDependencies {
+	env: (key: string) => string | undefined;
+	// deno-lint-ignore no-explicit-any
+	createClient: (url: string, key: string, options?: any) => DbClient;
+	/** Used for Liftosaur API calls. */
+	fetch: typeof fetch;
+	now: () => Date;
+	createAuthClient(authorization: string): LiftosaurSyncAuthClient;
+	createAdminClient(): DbClient;
+}
+
+function resolveDeps(
+	d: LiftosaurSyncHandlerDependencies,
+): LiftosaurSyncDependencies {
+	const env = d.env ?? ((key: string) => Deno.env.get(key));
+	const make = d.createClient ??
+		// deno-lint-ignore no-explicit-any
+		((url: string, key: string, options?: any) => createClient(url, key, options));
+	return {
+		env,
+		createClient: make,
+		fetch: d.fetch ?? ((input, init) => fetch(input, init)),
+		now: d.now ?? (() => new Date()),
+		createAuthClient: d.createAuthClient ??
+			((authorization: string) =>
+				make(
+					env("SUPABASE_URL")!,
+					env("SUPABASE_ANON_KEY")!,
+					{ global: { headers: { Authorization: authorization } } },
+				) as unknown as LiftosaurSyncAuthClient),
+		createAdminClient: d.createAdminClient ??
+			(() => make(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!)),
+	};
+}
+
+export function createLiftosaurSyncHandler(
+	dependencies: LiftosaurSyncHandlerDependencies = {},
+): (req: Request) => Promise<Response> {
+	const resolved = resolveDeps(dependencies);
+	return (req) => liftosaurSync(req, resolved);
+}
+
+if (import.meta.main) {
+	Deno.serve(createLiftosaurSyncHandler());
+}
 
 interface LiftosaurRecord {
 	id: number;
@@ -64,7 +170,25 @@ function parseLiftoscriptMetadata(text: string): {
 	return { timestamp, program, dayName, durationSeconds };
 }
 
-Deno.serve(async (req) => {
+async function liftosaurSync(
+	req: Request,
+	deps: LiftosaurSyncDependencies,
+): Promise<Response> {
+	// A browser-initiated run owns the row it created: hand it back when the run
+	// ends badly, so the user's next manual sync is not refused with a 409 until
+	// the lease expires. Queue-dispatched rows deliberately stay `processing`
+	// for process-sync-queue to re-run (PR 51).
+	const owned: OwnedQueueRow = noOwnedQueueRow();
+	const response = await runLiftosaurSync(req, deps, owned);
+	if (!response.ok) await releaseOwnedQueueRow(owned);
+	return response;
+}
+
+async function runLiftosaurSync(
+	req: Request,
+	deps: LiftosaurSyncDependencies,
+	owned: OwnedQueueRow,
+): Promise<Response> {
 	const cors = getCorsHeaders(req);
 
 	// CORS preflight
@@ -92,11 +216,7 @@ Deno.serve(async (req) => {
 		let userId: string;
 
 		// Try JWT auth first (browser-initiated calls)
-		const supabaseAuth = createClient(
-			Deno.env.get("SUPABASE_URL")!,
-			Deno.env.get("SUPABASE_ANON_KEY")!,
-			{ global: { headers: { Authorization: authHeader } } }
-		);
+		const supabaseAuth = deps.createAuthClient(authHeader);
 		const {
 			data: { user: jwtUser },
 		} = await supabaseAuth.auth.getUser();
@@ -105,10 +225,13 @@ Deno.serve(async (req) => {
 			// Browser-initiated: use JWT-verified user ID, ignore body.user_id
 			userId = jwtUser.id;
 		} else {
-			// Not a valid user JWT -- must be service-role call from process-sync-queue
-			// Verify the caller is actually using the service role key
-			const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-			const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
+			// Not a valid user JWT -- must be service-role call from process-sync-queue.
+			// Verify the caller is actually using the service role key, in constant
+			// time so the comparison leaks neither the key's bytes nor its length.
+			const isServiceRole = isServiceRoleBearer(
+				authHeader,
+				deps.env("SUPABASE_SERVICE_ROLE_KEY"),
+			);
 
 			if (!isServiceRole || !body.user_id) {
 				return new Response(
@@ -123,15 +246,66 @@ Deno.serve(async (req) => {
 		}
 
 		const { api_key, sync_type } = body;
+		const calledByQueueProcessor = !jwtUser;
+		// The dispatched row (queue path only): a browser caller's `queue_id` is
+		// ignored — it may name any row at all — and replaced by its own below.
+		const dispatchedQueueId =
+			calledByQueueProcessor && typeof body.queue_id === "string"
+				? body.queue_id
+				: null;
+		// The row this run owns and leases.
+		let ownedQueueId = dispatchedQueueId;
 
-		const supabase = createClient(
-			Deno.env.get("SUPABASE_URL")!,
-			Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-		);
+		const supabase = deps.createAdminClient();
+
+		// Cap browser-initiated invocations per user. Keyed on the JWT-verified
+		// id, so nobody can spend another user's budget; the queue path (service
+		// role) is exempt and has its own budget under the `liftosaur` key.
+		//
+		// A call carrying `api_key` is both a credential write and a full sync. It
+		// spends the roomier connect bucket first, then the ordinary sync bucket;
+		// otherwise resending a valid key would bypass the provider-read limit.
+		if (jwtUser) {
+			if (api_key) {
+				const credentialRateCheck = await checkManualSyncRateLimit(
+					supabase,
+					{ provider: "liftosaur", userId, credentialWrite: true },
+					cors,
+				);
+				if (!credentialRateCheck.allowed) return credentialRateCheck.response!;
+			}
+			const syncRateCheck = await checkManualSyncRateLimit(
+				supabase,
+				{ provider: "liftosaur", userId },
+				cors,
+			);
+			if (!syncRateCheck.allowed) return syncRateCheck.response!;
+		}
+
+		// Renew the lease immediately: the processor claimed this row before it
+		// called us, so the work below must not run on that claim's clock.
+		await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 
 		// Subscription gate — FLAME or higher required for integrations
 		const gate = await requireSubscription(supabase, userId, "FLAME", cors);
 		if (!gate.allowed) return gate.response;
+
+		// Browser-initiated: take a queue row of our own so this run is visible
+		// to the portal, holds a lease, and blocks a concurrent duplicate sync.
+		if (!calledByQueueProcessor) {
+			const created = await createSyncQueueEntry(supabase, {
+				userId,
+				provider: "liftosaur",
+				syncType: typeof sync_type === "string" ? sync_type : "manual",
+				now: deps.now(),
+			});
+			if (created.conflict) return syncAlreadyQueuedResponse(cors);
+			if (!created.queueId) return syncQueueUnavailableResponse(cors);
+			ownedQueueId = created.queueId;
+			owned.supabase = supabase;
+			owned.queueId = ownedQueueId;
+			owned.userId = userId;
+		}
 
 		// If api_key provided, store it in oauth_tokens (server-only table)
 		if (api_key) {
@@ -196,6 +370,33 @@ Deno.serve(async (req) => {
 			);
 		}
 
+		// Read the prior watermark so incremental syncs can ask Liftosaur for a
+		// date range instead of re-scanning the user's entire history every run.
+		const { data: integration } = await supabase
+			.from("user_integrations")
+			.select("last_sync_at")
+			.eq("user_id", userId)
+			.eq("provider", "liftosaur")
+			.maybeSingle();
+
+		const lastSyncAt = (integration?.last_sync_at as string | null) ?? null;
+		// `startDate` filters on workout date, but the watermark is wall-clock
+		// sync time. Reach back a lookback (shared with Strava) so a workout that
+		// was in progress during the last sync, or logged retroactively, is still
+		// requested. Upserts are idempotent, so the overlap is free.
+		const incrementalWindow =
+			sync_type !== "initial"
+				? computeIncrementalWindow({ lastWatermark: lastSyncAt })
+				: null;
+		const incrementalSince = incrementalWindow
+			? incrementalWindow.after.toISOString()
+			: null;
+
+		// Capture the watermark before fetching so records Liftosaur writes while
+		// this run is in flight fall inside the next window rather than being
+		// skipped. Upserts are idempotent, so the overlap costs nothing.
+		const syncStartedAt = deps.now().toISOString();
+
 		// Fetch workout history from Liftosaur API with pagination
 		let allRecords: LiftosaurRecord[] = [];
 		let cursor: number | null = null;
@@ -206,17 +407,23 @@ Deno.serve(async (req) => {
 		try {
 			while (hasMore && page < MAX_PAGES) {
 				const params = new URLSearchParams({ limit: "200" });
+				// GET /history supports startDate/endDate (ISO 8601) alongside the
+				// cursor. Passing it turns a full-history rescan into a delta fetch.
+				if (incrementalSince) {
+					params.set("startDate", incrementalSince);
+				}
 				if (cursor !== null) {
 					params.set("cursor", cursor.toString());
 				}
 
-				const response = await fetch(
+				const response = await deps.fetch(
 					`${LIFTOSAUR_API_BASE}/history?${params.toString()}`,
 					{
 						headers: {
 							Authorization: `Bearer ${storedApiKey}`,
 							"Content-Type": "application/json",
 						},
+						signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
 					}
 				);
 
@@ -255,22 +462,31 @@ Deno.serve(async (req) => {
 				hasMore = result.data.hasMore;
 				cursor = result.data.nextCursor;
 				page++;
+				await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 			}
 		} catch (fetchError) {
+			// The thrown error is logged above and goes no further. The fetch+parse
+			// is wrapped as a whole, so besides our own fixed "Liftosaur API
+			// returned N" it can be a V8 JSON parse message quoting the provider's
+			// body, or a transport/TLS internal.
+			// `user_integrations.error_message` is rendered by ProviderCard and the
+			// response body is copied into `sync_queue.error_message` by the
+			// processor, so both get fixed text.
 			console.error("Liftosaur API fetch error:", fetchError);
 
 			await supabase
 				.from("user_integrations")
 				.update({
 					status: "error",
-					error_message: `Sync failed: ${fetchError.message}`,
+					error_message: "Liftosaur sync failed; will retry",
 				})
 				.eq("user_id", userId)
 				.eq("provider", "liftosaur");
 
 			return new Response(
 				JSON.stringify({
-					error: `Liftosaur API error: ${fetchError.message}`,
+					error: "Liftosaur API error",
+					code: "provider_fetch_failed",
 				}),
 				{
 					status: 502,
@@ -279,9 +495,84 @@ Deno.serve(async (req) => {
 			);
 		}
 
+		// The page cap is a safety bound, not a successful end-of-history signal.
+		// Persisting these first pages and advancing last_sync_at would make every
+		// unread older record unreachable to later incremental syncs. Fail before
+		// any activity write or watermark update. This bound is deterministic, so
+		// return a terminal client error rather than retrying the same ten pages.
+		if (hasMore) {
+			const pageLimitMessage =
+				`Liftosaur history still has more records after ${MAX_PAGES} pages`;
+			console.error(pageLimitMessage);
+			await supabase
+				.from("user_integrations")
+				.update({
+					status: "error",
+					error_message: "Liftosaur history exceeds the safe sync page limit",
+				})
+				.eq("user_id", userId)
+				.eq("provider", "liftosaur");
+
+			return new Response(
+				JSON.stringify({
+					error: "Liftosaur history sync is incomplete",
+					code: "history_page_limit_exceeded",
+				}),
+				{
+					status: 422,
+					headers: { ...cors, "Content-Type": "application/json" },
+				},
+			);
+		}
+
 		// Normalize and upsert records to external_activities
+
+		// Capture the sync invocation time once. Records whose Liftoscript text
+		// contains no parseable ISO timestamp use this as a sentinel value instead
+		// of per-record wall-clock time. Using a single shared value makes it
+		// clear that these rows were imported at a known sync boundary, not that
+		// the wall clock happened to match the workout time.
+		const syncInvokedAt = deps.now().toISOString();
+
+		// The incremental lookback re-fetches recent records on every run. For a
+		// record without a parseable date, re-sending the sentinel would move its
+		// stored started_at to "now" each time, so leave started_at out of the
+		// upsert for undated records that are already stored (the upsert only
+		// updates the columns it sends).
+		const undatedExternalIds = allRecords
+			.filter((record) => !parseLiftoscriptMetadata(record.text).timestamp)
+			.map((record) => `liftosaur-${record.id}`);
+		const storedUndatedIds = new Set<string>();
+		const LOOKUP_CHUNK = 100;
+		for (let i = 0; i < undatedExternalIds.length; i += LOOKUP_CHUNK) {
+			const { data: existingRows, error: lookupError } = await supabase
+				.from("external_activities")
+				.select("external_id")
+				.eq("user_id", userId)
+				.eq("provider", "liftosaur")
+				.in("external_id", undatedExternalIds.slice(i, i + LOOKUP_CHUNK));
+
+			if (lookupError) {
+				// Retryable, and the watermark is not advanced.
+				console.error("Failed to look up stored Liftosaur records:", lookupError);
+				return new Response(
+					JSON.stringify({ error: "Failed to look up stored Liftosaur records" }),
+					{ status: 502, headers: { ...cors, "Content-Type": "application/json" } }
+				);
+			}
+			for (const row of (existingRows ?? []) as Array<{ external_id: string }>) {
+				storedUndatedIds.add(row.external_id);
+			}
+		}
+
 		let importedCount = 0;
+		let failedCount = 0;
+		let processedRecords = 0;
 		for (const record of allRecords) {
+			processedRecords++;
+			if (processedRecords % HEARTBEAT_EVERY_RECORDS === 0) {
+				await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
+			}
 			const meta = parseLiftoscriptMetadata(record.text);
 
 			// Build a readable workout name
@@ -291,20 +582,27 @@ Deno.serve(async (req) => {
 					: meta.dayName
 				: meta.program ?? `Workout #${record.id}`;
 
+			// Use the parsed timestamp when available; fall back to the sync
+			// invocation sentinel when the Liftoscript text has no parseable date.
+			// The sentinel makes clear that started_at reflects import time, not
+			// actual workout time.
+			const externalId = `liftosaur-${record.id}`;
 			const startedAt = meta.timestamp
 				? new Date(meta.timestamp).toISOString()
-				: new Date().toISOString();
+				: storedUndatedIds.has(externalId)
+					? null // keep the stored value (see above)
+					: syncInvokedAt;
 
 			const { error: activityError } = await supabase
 				.from("external_activities")
 				.upsert(
 					{
 						user_id: userId,
-						external_id: `liftosaur-${record.id}`,
+						external_id: externalId,
 						provider: "liftosaur",
 						name,
 						activity_type: "strength",
-						started_at: startedAt,
+						...(startedAt !== null ? { started_at: startedAt } : {}),
 						duration_seconds: meta.durationSeconds ?? null,
 						calories: null,
 						raw_data: { id: record.id, text: record.text },
@@ -312,34 +610,50 @@ Deno.serve(async (req) => {
 					{ onConflict: "user_id,provider,external_id" }
 				);
 
-			if (!activityError) {
+			if (activityError) {
+				failedCount++;
+				console.error(`Failed to persist Liftosaur record ${record.id}:`, activityError);
+			} else {
 				importedCount++;
 			}
 		}
 
-		// Update last sync timestamp and status
+		// If any record failed to persist, do NOT advance last_sync_at (it is the
+		// incremental cutoff and would skip the dropped rows). Returning non-2xx
+		// lets the queue processor retry; upserts are idempotent.
+		if (failedCount > 0) {
+			const failMessage = `Failed to persist ${failedCount} of ${allRecords.length} records`;
+			await supabase
+				.from("user_integrations")
+				.update({ status: "error", error_message: failMessage })
+				.eq("user_id", userId)
+				.eq("provider", "liftosaur");
+
+			return new Response(
+				JSON.stringify({ error: failMessage, imported: importedCount, failed: failedCount }),
+				{ status: 502, headers: { ...cors, "Content-Type": "application/json" } }
+			);
+		}
+
+		// Update last sync timestamp and status (all records persisted). Uses the
+		// pre-fetch timestamp so concurrent Liftosaur writes land in the next window.
 		await supabase
 			.from("user_integrations")
 			.update({
-				last_sync_at: new Date().toISOString(),
+				last_sync_at: syncStartedAt,
 				status: "connected",
 				error_message: null,
 			})
 			.eq("user_id", userId)
 			.eq("provider", "liftosaur");
 
-		// Mark sync queue entry as completed
-		if (sync_type) {
-			await supabase
-				.from("sync_queue")
-				.update({
-					status: "completed",
-					completed_at: new Date().toISOString(),
-				})
-				.eq("user_id", userId)
-				.eq("provider", "liftosaur")
-				.eq("status", "pending");
-		}
+		// Complete only the row this run owns. Never sweep every pending row:
+		// a second queued task (a kept `initial`) must still run.
+		await completeSyncQueueEntry(supabase, {
+			userId,
+			provider: "liftosaur",
+			queueId: ownedQueueId,
+		});
 
 		return new Response(
 			JSON.stringify({
@@ -352,10 +666,16 @@ Deno.serve(async (req) => {
 			}
 		);
 	} catch (err) {
+		// `errorMessage` is a deliberate passthrough of `.message`, which for a
+		// driver error carries constraint/column/relation names and for a parse
+		// failure carries a slice of the provider's body. Log it, return a code.
 		console.error("Liftosaur sync error:", err);
-		return new Response(JSON.stringify({ error: err.message }), {
-			status: 500,
-			headers: { ...cors, "Content-Type": "application/json" },
-		});
+		return new Response(
+			JSON.stringify({ error: "Liftosaur sync failed", code: "internal_error" }),
+			{
+				status: 500,
+				headers: { ...cors, "Content-Type": "application/json" },
+			}
+		);
 	}
-});
+}

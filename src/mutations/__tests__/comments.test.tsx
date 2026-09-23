@@ -12,6 +12,7 @@ const mockChain = {
 	insert: vi.fn(),
 	update: vi.fn(),
 	delete: vi.fn(),
+	select: vi.fn(),
 };
 
 const from = vi.fn(() => mockChain);
@@ -159,7 +160,11 @@ describe("useUpdateComment", () => {
 	it("updates comment within edit window and invalidates cache", async () => {
 		const { useUpdateComment } = await import("../comments");
 
-		const eqGte = vi.fn(() => Promise.resolve({ error: null, count: 1 }));
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: { id: "comment-1" }, error: null }),
+		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqGte = vi.fn(() => ({ select }));
 		const eqUserId = vi.fn(() => ({ gte: eqGte }));
 		const eqId = vi.fn(() => ({ eq: eqUserId }));
 		mockChain.update.mockImplementation(() => ({ eq: eqId }));
@@ -207,9 +212,11 @@ describe("useUpdateComment", () => {
 	it("shows generic error when Supabase update fails", async () => {
 		const { useUpdateComment } = await import("../comments");
 
-		const eqGte = vi.fn(() =>
-			Promise.resolve({ error: { message: "permission denied" }, count: null }),
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: null, error: { message: "permission denied" } }),
 		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqGte = vi.fn(() => ({ select }));
 		const eqUserId = vi.fn(() => ({ gte: eqGte }));
 		const eqId = vi.fn(() => ({ eq: eqUserId }));
 		mockChain.update.mockImplementation(() => ({ eq: eqId }));
@@ -241,12 +248,26 @@ describe("useDeleteComment", () => {
 		vi.clearAllMocks();
 	});
 
-	it("soft-deletes comment via update and invalidates caches", async () => {
+	/**
+	 * `.delete().eq("id").eq("user_id").select("id").maybeSingle()`.
+	 * `maybeSingle` resolves to whatever the caller passes.
+	 */
+	function mockDeleteChain(outcome: {
+		data: { id: string } | null;
+		error: { message: string } | null;
+	}) {
+		const maybeSingle = vi.fn(() => Promise.resolve(outcome));
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqUserId = vi.fn(() => ({ select }));
+		const eqId = vi.fn(() => ({ eq: eqUserId }));
+		mockChain.delete.mockImplementation(() => ({ eq: eqId }));
+		return { maybeSingle, select, eqUserId, eqId };
+	}
+
+	it("hard-deletes the comment and invalidates caches", async () => {
 		const { useDeleteComment } = await import("../comments");
 
-		const eqUserId = vi.fn(() => Promise.resolve({ error: null }));
-		const eqId = vi.fn(() => ({ eq: eqUserId }));
-		mockChain.update.mockImplementation(() => ({ eq: eqId }));
+		const chain = mockDeleteChain({ data: { id: "comment-1" }, error: null });
 
 		const { queryClient, wrapper } = createWrapper();
 		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
@@ -257,9 +278,15 @@ describe("useDeleteComment", () => {
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		// Soft delete uses update, not delete
+		// A real DELETE, scoped to the owner, asking for the deleted row back.
+		// The soft-delete UPDATE can never work (the SELECT policy hides
+		// `deleted_at IS NOT NULL` rows) and is FLAME-gated on top.
 		expect(from).toHaveBeenCalledWith("community_comments");
-		expect(mockChain.update).toHaveBeenCalled();
+		expect(mockChain.delete).toHaveBeenCalled();
+		expect(mockChain.update).not.toHaveBeenCalled();
+		expect(chain.eqId).toHaveBeenCalledWith("id", "comment-1");
+		expect(chain.eqUserId).toHaveBeenCalledWith("user_id", "test-user-id");
+		expect(chain.select).toHaveBeenCalledWith("id");
 		expect(mockToast.success).toHaveBeenCalledWith("Comment deleted");
 		expect(invalidateSpy).toHaveBeenCalledWith({
 			queryKey: queryKeys.comments.byItem("item-1"),
@@ -269,14 +296,14 @@ describe("useDeleteComment", () => {
 		});
 	});
 
-	it("shows user-friendly error on delete failure", async () => {
+	it("fails loudly when the delete matches no row", async () => {
+		// The regression this pins: PostgREST answers a 0-row DELETE with
+		// success and an empty body (wrong owner, already gone, or a tier
+		// check the client did not expect). Reporting "Comment deleted" while
+		// the comment is still there is the bug.
 		const { useDeleteComment } = await import("../comments");
 
-		const eqUserId = vi.fn(() =>
-			Promise.resolve({ error: { message: "row-level security violation" } }),
-		);
-		const eqId = vi.fn(() => ({ eq: eqUserId }));
-		mockChain.update.mockImplementation(() => ({ eq: eqId }));
+		mockDeleteChain({ data: null, error: null });
 
 		const { wrapper } = createWrapper();
 		const { result } = renderHook(() => useDeleteComment(), { wrapper });
@@ -285,6 +312,28 @@ describe("useDeleteComment", () => {
 
 		await waitFor(() => expect(result.current.isError).toBe(true));
 
+		expect(mockToast.success).not.toHaveBeenCalled();
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Comment not found, or you don't have permission to delete it.",
+		);
+	});
+
+	it("shows user-friendly error on delete failure", async () => {
+		const { useDeleteComment } = await import("../comments");
+
+		mockDeleteChain({
+			data: null,
+			error: { message: "row-level security violation" },
+		});
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useDeleteComment(), { wrapper });
+
+		result.current.mutate({ commentId: "comment-1", itemId: "item-1" });
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockToast.success).not.toHaveBeenCalled();
 		expect(mockToast.error).toHaveBeenCalledWith(
 			"Failed to delete comment. Please try again.",
 		);

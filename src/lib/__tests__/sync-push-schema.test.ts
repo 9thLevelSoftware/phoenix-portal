@@ -106,13 +106,61 @@ describe("pushPayloadSchema", () => {
 		expect(parsed.personalRecords).toEqual([]);
 	});
 
-	it("coerces non-array values in array positions to []", () => {
+	it("accepts an optional personal-record tombstone timestamp", () => {
 		const parsed = pushPayloadSchema.parse({
 			deviceId: "d1",
 			platform: "android",
-			sessions: "not-an-array",
+			personalRecords: [
+				{
+					id: UUID,
+					exerciseName: "Bench Press",
+					achievedAt: "2026-04-20T12:00:00.000Z",
+					deletedAt: "2026-04-21T12:30:00.000Z",
+				},
+			],
+		});
+		expect(parsed.personalRecords[0]?.deletedAt).toBe(
+			"2026-04-21T12:30:00.000Z",
+		);
+	});
+
+	it("rejects malformed personal-record tombstone timestamps", () => {
+		expect(() =>
+			pushPayloadSchema.parse({
+				deviceId: "d1",
+				platform: "android",
+				personalRecords: [
+					{
+						exerciseName: "Bench Press",
+						achievedAt: "2026-04-20T12:00:00.000Z",
+						deletedAt: "not-a-date",
+					},
+				],
+			}),
+		).toThrow();
+	});
+
+	it("rejects non-array values in array positions", () => {
+		// arrayOf() intentionally rejects non-array, non-null values to prevent
+		// the client from silently losing sync data (see pushPayloadSchema.ts comment)
+		expect(() =>
+			pushPayloadSchema.parse({
+				deviceId: "d1",
+				platform: "android",
+				sessions: "not-an-array",
+				telemetry: null,
+				routines: 42,
+			}),
+		).toThrow();
+	});
+
+	it("coerces null array fields to empty arrays", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			sessions: null,
 			telemetry: null,
-			routines: 42,
+			routines: null,
 		});
 		expect(parsed.sessions).toEqual([]);
 		expect(parsed.telemetry).toEqual([]);
@@ -189,8 +237,61 @@ describe("pushPayloadSchema", () => {
 		).toEqual([true, true, true, false]);
 	});
 
+	it("keeps omitted drop-set flags distinct from explicit false", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			routines: [
+				{
+					id: UUID,
+					userId: "u1",
+					name: "Drop Set Routine",
+					exercises: [
+						{
+							id: UUID2,
+							routineId: UUID,
+							name: "Missing",
+						},
+						{
+							id: "22222222-2222-4222-8222-222222222222",
+							routineId: UUID,
+							name: "Null",
+							dropSetEnabled: null,
+							dropSetMinWeightKg: null,
+						},
+						{
+							id: "33333333-3333-4333-8333-333333333333",
+							routineId: UUID,
+							name: "Enabled",
+							dropSetEnabled: true,
+							dropSetMinWeightKg: 12.5,
+						},
+						{
+							id: "44444444-4444-4444-8444-444444444444",
+							routineId: UUID,
+							name: "Disabled",
+							dropSetEnabled: false,
+						},
+					],
+				},
+			],
+		});
+
+		expect(
+			parsed.routines[0]?.exercises.map((ex) => ({
+				enabled: ex.dropSetEnabled,
+				min: ex.dropSetMinWeightKg,
+			})),
+		).toEqual([
+			{ enabled: undefined, min: undefined },
+			{ enabled: null, min: null },
+			{ enabled: true, min: 12.5 },
+			{ enabled: false, min: undefined },
+		]);
+	});
+
 	it("preserves catalog exercise IDs on session and routine exercises", () => {
-		const catalogExerciseId = "4kmhj9yyZcBI54Vi";
+		const catalogExerciseId = "Barbell_Squat";
 		const parsed = pushPayloadSchema.parse({
 			deviceId: "d1",
 			platform: "android",
@@ -259,6 +360,35 @@ describe("pushPayloadSchema", () => {
 				defaultCableConfig: "DOUBLE",
 			},
 		]);
+	});
+
+	it("defaults missing personalRecords.recordType to MAX_WEIGHT", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			personalRecords: [
+				{
+					exerciseName: "Bench Press",
+					achievedAt: "2026-04-20T12:00:00.000Z",
+				},
+			],
+		});
+		expect(parsed.personalRecords[0]?.recordType).toBe("MAX_WEIGHT");
+	});
+
+	it("rejects unknown personalRecords.recordType", () => {
+		const result = pushPayloadSchema.safeParse({
+			deviceId: "d1",
+			platform: "android",
+			personalRecords: [
+				{
+					exerciseName: "Bench Press",
+					recordType: "NOT_A_TYPE",
+					achievedAt: "2026-04-20T12:00:00.000Z",
+				},
+			],
+		});
+		expect(result.success).toBe(false);
 	});
 
 	it("preserves top-level mobile personalRecords through validation", () => {
@@ -595,6 +725,59 @@ describe("pushPayloadSchema", () => {
 		);
 	});
 
+	it("parses velocityEstimatedOneRepMaxKg distinctly from the rep-based estimate", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "dev-1",
+			platform: "android",
+			sessions: [
+				{
+					id: "11111111-1111-1111-1111-111111111111",
+					userId: "u1",
+					startedAt: "2026-04-20T12:00:00.000Z",
+					exercises: [
+						{
+							id: "22222222-2222-2222-2222-222222222222",
+							sessionId: "11111111-1111-1111-1111-111111111111",
+							name: "Squat",
+							estimatedOneRepMaxKg: 133.33,
+							velocityEstimatedOneRepMaxKg: 142.5,
+							sets: [],
+						},
+					],
+				},
+			],
+		});
+		const exercise = parsed.sessions[0].exercises[0];
+		expect(exercise.velocityEstimatedOneRepMaxKg).toBeCloseTo(142.5);
+		// Rep-based estimate is preserved independently.
+		expect(exercise.estimatedOneRepMaxKg).toBeCloseTo(133.33);
+	});
+
+	it("leaves velocityEstimatedOneRepMaxKg undefined when the field is absent (builder coalesces to null)", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "dev-1",
+			platform: "android",
+			sessions: [
+				{
+					id: "11111111-1111-1111-1111-111111111111",
+					userId: "u1",
+					startedAt: "2026-04-20T12:00:00.000Z",
+					exercises: [
+						{
+							id: "22222222-2222-2222-2222-222222222222",
+							sessionId: "11111111-1111-1111-1111-111111111111",
+							name: "Squat",
+							sets: [],
+						},
+					],
+				},
+			],
+		});
+		expect(
+			parsed.sessions[0].exercises[0].velocityEstimatedOneRepMaxKg,
+		).toBeUndefined();
+	});
+
 	it("reports routines that claim exercises but omit the routine exercise projection", () => {
 		const routineId = "77777777-7777-4777-8777-777777777777";
 		const parsed = pushPayloadSchema.parse({
@@ -612,6 +795,148 @@ describe("pushPayloadSchema", () => {
 		});
 
 		expect(findPushPayloadIncompleteRoutines(parsed)).toEqual([routineId]);
+	});
+
+	it("preserves cycle templateId strings through validation", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			cycles: [
+				{
+					id: "12345678-1234-4234-8234-1234567890ab",
+					userId: "u1",
+					name: "Template Cycle",
+					templateId: "template_531",
+					days: [],
+				},
+				{
+					id: "22345678-1234-4234-8234-1234567890ab",
+					userId: "u1",
+					name: "Local Cycle",
+					templateId: null,
+					days: [],
+				},
+			],
+		});
+
+		expect(parsed.cycles[0]?.templateId).toBe("template_531");
+		expect(parsed.cycles[1]?.templateId).toBeNull();
+	});
+
+	it("preserves the cycle progression settings presence bit", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			cycles: [
+				{
+					id: "32345678-1234-4234-8234-1234567890ab",
+					userId: "u1",
+					name: "Cleared progression",
+					progressionSettingsPresent: true,
+					days: [],
+				},
+			],
+		});
+
+		expect(parsed.cycles[0]?.progressionSettingsPresent).toBe(true);
+		expect(parsed.cycles[0]?.progressionSettings).toBeUndefined();
+	});
+
+	it("parses durable workout deletions and ownership transfers additively", () => {
+		const parsed = pushPayloadSchema.parse({
+			deviceId: "d1",
+			platform: "android",
+			workoutDeletions: [
+				{
+					mutationId: "10000000-0000-4000-8000-000000000001",
+					scope: "COMPONENT",
+					portalSessionId: "10000000-0000-4000-8000-000000000002",
+					componentSessionId: "10000000-0000-4000-8000-000000000003",
+					deletedAt: "2026-09-20T12:00:00.000Z",
+				},
+			],
+			ownershipTransfers: [
+				{
+					mutationId: "20000000-0000-4000-8000-000000000001",
+					sourceProfileId: null,
+					targetProfileId: "default",
+					workoutSessionIds: ["20000000-0000-4000-8000-000000000002"],
+					routineIds: [],
+					cycleIds: [],
+					personalRecordIds: [],
+				},
+			],
+			deletedCycles: [
+				{
+					id: "30000000-0000-4000-8000-000000000001",
+					updatedAt: "2026-09-20T12:00:00.000Z",
+				},
+			],
+		});
+
+		expect(parsed.workoutDeletions).toHaveLength(1);
+		expect(parsed.ownershipTransfers[0]?.sourceProfileId).toBeNull();
+		expect(parsed.deletedCycles).toHaveLength(1);
+	});
+
+	it("defaults absent reliability operations to empty arrays for old clients", () => {
+		const parsed = pushPayloadSchema.parse({ deviceId: "d1", platform: "ios" });
+
+		expect(parsed.workoutDeletions).toEqual([]);
+		expect(parsed.ownershipTransfers).toEqual([]);
+		expect(parsed.deletedCycles).toEqual([]);
+	});
+
+	it("rejects a component deletion without its exact component id", () => {
+		const result = pushPayloadSchema.safeParse({
+			deviceId: "d1",
+			platform: "android",
+			workoutDeletions: [
+				{
+					mutationId: "10000000-0000-4000-8000-000000000001",
+					scope: "COMPONENT",
+					portalSessionId: "10000000-0000-4000-8000-000000000002",
+					deletedAt: "2026-09-20T12:00:00.000Z",
+				},
+			],
+		});
+
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects an ownership transfer without exact entity ids", () => {
+		const result = pushPayloadSchema.safeParse({
+			deviceId: "d1",
+			platform: "android",
+			ownershipTransfers: [
+				{
+					mutationId: "20000000-0000-4000-8000-000000000001",
+					sourceProfileId: "default",
+					targetProfileId: "30000000-0000-4000-8000-000000000001",
+					workoutSessionIds: [],
+					routineIds: [],
+					cycleIds: [],
+					personalRecordIds: [],
+				},
+			],
+		});
+
+		expect(result.success).toBe(false);
+	});
+
+	it("rejects a cycle deletion without a usable edit timestamp", () => {
+		const result = pushPayloadSchema.safeParse({
+			deviceId: "d1",
+			platform: "android",
+			deletedCycles: [
+				{
+					id: "30000000-0000-4000-8000-000000000001",
+					updatedAt: "not-a-timestamp",
+				},
+			],
+		});
+
+		expect(result.success).toBe(false);
 	});
 });
 

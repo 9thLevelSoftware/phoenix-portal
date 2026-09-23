@@ -1,5 +1,3 @@
-"use client";
-
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { PanelLeftIcon } from "lucide-react";
@@ -284,6 +282,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
 
 	return (
 		<button
+			type="button"
 			data-sidebar="rail"
 			data-slot="sidebar-rail"
 			aria-label="Toggle Sidebar"
@@ -417,6 +416,7 @@ function SidebarGroupLabel({
 function SidebarGroupAction({
 	className,
 	asChild = false,
+	type,
 	...props
 }: React.ComponentProps<"button"> & { asChild?: boolean }) {
 	const Comp = asChild ? Slot : "button";
@@ -425,6 +425,7 @@ function SidebarGroupAction({
 		<Comp
 			data-slot="sidebar-group-action"
 			data-sidebar="group-action"
+			type={asChild ? type : (type ?? "button")}
 			className={cn(
 				"text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground absolute top-3.5 right-3 flex aspect-square w-5 items-center justify-center rounded-md p-0 outline-hidden transition-transform focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
 				// Increases the hit area of the button on mobile.
@@ -502,6 +503,7 @@ function SidebarMenuButton({
 	size = "default",
 	tooltip,
 	className,
+	type,
 	...props
 }: React.ComponentProps<"button"> & {
 	asChild?: boolean;
@@ -517,6 +519,7 @@ function SidebarMenuButton({
 			data-sidebar="menu-button"
 			data-size={size}
 			data-active={isActive}
+			type={asChild ? type : (type ?? "button")}
 			className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
 			{...props}
 		/>
@@ -549,6 +552,7 @@ function SidebarMenuAction({
 	className,
 	asChild = false,
 	showOnHover = false,
+	type,
 	...props
 }: React.ComponentProps<"button"> & {
 	asChild?: boolean;
@@ -560,6 +564,7 @@ function SidebarMenuAction({
 		<Comp
 			data-slot="sidebar-menu-action"
 			data-sidebar="menu-action"
+			type={asChild ? type : (type ?? "button")}
 			className={cn(
 				"text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground peer-hover/menu-button:text-sidebar-accent-foreground absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-md p-0 outline-hidden transition-transform focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
 				// Increases the hit area of the button on mobile.

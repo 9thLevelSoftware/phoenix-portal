@@ -1,6 +1,6 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ReactNode, useState } from "react";
+import { type ReactElement, type ReactNode, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { useLocation } from "react-router";
 import { toast } from "sonner";
@@ -141,7 +141,9 @@ describe("ErrorBoundary + PageErrorFallback", () => {
 	});
 
 	it("shows 'New version available' for chunk load errors", () => {
-		function ChunkErrorComponent() {
+		// Declared to return `ReactElement` — a bare `never` (from the throw) is
+		// not a valid JSX component return type.
+		function ChunkErrorComponent(): ReactElement {
 			throw new Error(
 				"Failed to fetch dynamically imported module: https://phoenix-portal.com/assets/WorkoutHistory-Dwz9vD3g.js",
 			);
@@ -169,6 +171,46 @@ describe("ErrorBoundary + PageErrorFallback", () => {
 		sessionStorage.removeItem("phoenix-chunk-reload");
 	});
 
+	it("shows an offline message (and does not auto-reload) for chunk errors while offline", () => {
+		function ChunkErrorComponent(): ReactElement {
+			throw new Error(
+				"Failed to fetch dynamically imported module: https://phoenix-portal.com/assets/FAQ-abc123.js",
+			);
+		}
+
+		const reloadMock = vi.fn();
+		Object.defineProperty(window, "location", {
+			value: { ...window.location, reload: reloadMock },
+			writable: true,
+		});
+		sessionStorage.removeItem("phoenix-chunk-reload");
+		const onLine = vi.spyOn(window.navigator, "onLine", "get");
+		onLine.mockReturnValue(false);
+
+		try {
+			renderWithProviders(
+				<BoundaryWrapper>
+					<ChunkErrorComponent />
+				</BoundaryWrapper>,
+			);
+
+			expect(screen.getByText("You're offline")).toBeInTheDocument();
+			expect(
+				screen.getByText(/hasn't been downloaded for offline use yet/i),
+			).toBeInTheDocument();
+			expect(
+				screen.queryByText("New version available"),
+			).not.toBeInTheDocument();
+			expect(
+				screen.getByRole("button", { name: /try again/i }),
+			).toBeInTheDocument();
+			expect(reloadMock).not.toHaveBeenCalled();
+			expect(sessionStorage.getItem("phoenix-chunk-reload")).toBeNull();
+		} finally {
+			onLine.mockRestore();
+		}
+	});
+
 	it("does not show blank screen on error (always shows actionable UI)", () => {
 		renderWithProviders(
 			<BoundaryWrapper>
@@ -180,7 +222,7 @@ describe("ErrorBoundary + PageErrorFallback", () => {
 		const heading = screen.getByText("Something went wrong");
 		expect(heading).toBeVisible();
 
-		const button = screen.getByRole("button", { name: /try again/i });
+		const button = screen.getByRole("button", { name: /try again/i }));
 		expect(button).toBeVisible();
 	});
 });

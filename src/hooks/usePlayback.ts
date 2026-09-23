@@ -7,8 +7,8 @@ export function usePlayback(maxTimeMs: number) {
 	useAnimationFrame((_time, delta) => {
 		if (!isPlaying) return;
 
-		// delta is in seconds, convert to ms and apply speed
-		const deltaMs = delta * 1000 * speed;
+		// delta is in milliseconds, apply speed multiplier
+		const deltaMs = delta * speed;
 		const newTime = currentTimeMs + deltaMs;
 
 		if (newTime >= maxTimeMs) {

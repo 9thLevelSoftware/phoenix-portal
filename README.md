@@ -5,7 +5,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-7-purple)](https://vite.dev)
 
-Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil/Project-Phoenix-MP) — the community rescue project keeping Vitruvian Trainer workout machines alive after company bankruptcy.
+Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil/Project-Phoenix-MP), an open-source companion for Phoenix-compatible fitness machines. View workouts, build routines and training cycles, analyze biomechanics, and replay 50Hz session telemetry synced from the Kotlin Multiplatform mobile app.
 
 ![Phoenix Portal Dashboard](https://img.shields.io/badge/theme-dark-0D0D0D?style=flat&labelColor=FF6B35)
 
@@ -47,20 +47,33 @@ Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil
 - **Challenges** — Time-limited competitions
 
 ### Integrations
-- **Strava** — Bidirectional activity sync
-- **Fitbit** — Wearable data import
-- **Garmin** — Webhook-based activity import
+- **Strava** — Import activities (pull-only)
+- **Fitbit** — Wearable import *(coming soon; pending developer-program approval)*
+- **Garmin Connect** — Webhook activity import *(coming soon; pending Garmin developer program / GCPP approval)*
 - **Hevy** — Workout history migration
 - **Liftosaur** — Program and log migration
+- **Strong** — CSV workout import
+- **Apple Health / Google Health Connect** — mobile-only cards (sync from the app, not portal OAuth)
 
 ## Subscription Tiers
 
-| Tier        | Monthly | Annual  | Access                                                |
-| ----------- | ------- | ------- | ----------------------------------------------------- |
-| **FREE**    | $0      | $0      | Landing, pricing                                      |
-| **EMBER**   | $5      | $49/yr  | Cloud sync, history, dashboard, goals                 |
-| **FLAME**   | $15     | $149/yr | Analytics, community, routines, cycles, integrations  |
-| **INFERNO** | $25     | $249/yr | Session replay, advanced biomechanics *(coming soon)* |
+Single matrix matching `src/lib/pricing.ts` and `src/lib/tierMatrix.ts` (read by `src/app/routes/index.tsx`). Ember is not sold leaderboards.
+
+| Tier        | Monthly | Annual  | Access                                                                                          |
+| ----------- | ------- | ------- | ----------------------------------------------------------------------------------------------- |
+| **FREE**    | $0      | $0      | Landing, pricing; signed-in users are a conversion funnel (dashboard upgrade wall), not a local-history SKU |
+| **EMBER**   | $5      | $49/yr  | Cloud sync, dashboard, history, session detail, goals, recovery                                 |
+| **FLAME**   | $15     | $149/yr | Analytics, community, routines, cycles, integrations (Strava/Hevy/Liftosaur), leaderboards, challenges, compare, session replay (rep-by-rep; force curves are INFERNO) |
+| **INFERNO** | $25     | $249/yr | Advanced biomechanics (force, VBT, ROM, SRA, form). Purchasable; inner INFERNO gates stay.      |
+
+Route gates read their tiers from `FEATURE_MIN_TIER` in `src/lib/tierMatrix.ts`. Route gates are UX only; what the server enforces is:
+
+- **EMBER (server-enforced):** cloud sync (`mobile-sync-push`, `mobile-sync-pull`) and browser writes to workout sessions, records and local profiles (RLS).
+- **FLAME (server-enforced):** browser INSERT/UPDATE on shared routines/cycles, votes, comments, saved items, follows, challenge participation, integrations, the sync queue, and portal routine/cycle authoring (`routines`, `routine_exercises`, `training_cycles`, `cycle_days`) via RLS; the `import_shared_routine` / `import_shared_cycle` RPCs; `initiate-oauth`, the integration sync Edge Functions and leaderboards (`compute-rankings`). Deleting what you published or joined (comments, shares, votes, follows, saved items, challenge participation) carries no tier check in RLS, and every portal mutation that removes one of those rows is a real `DELETE` — including comment removal, which is a hard delete with a row check, not a soft-delete `UPDATE`. So a downgrade never blocks removal, at the API or in the mutations. The community and challenge *screens* are still FLAME-gated, so a downgraded user has no portal page to remove from (follow-up: a withdraw-only view for lapsed plans). Routines and cycles pushed from the mobile app stay EMBER (service-role push).
+- **INFERNO (server-enforced):** the force-curve and biomechanics *data* — `rep_telemetry` (and the `telemetry_points` view over it), `vbt_assessments`, `session_phase_statistics`, `exercise_signatures` — is readable only by an INFERNO subscriber (RLS, `20260920003800_inferno_read_policies.sql`). A FLAME user reads zero rows from them, so session replay degrades to rep-by-rep playback built from `rep_summaries` and says "Force curves require Inferno". The GDPR export is unaffected: `export-user-data` reads with the service role, so any tier can still export every telemetry row they own.
+- **Browser-only gates:** analytics, compare and session replay itself are computed from data the user can already read, so their gates are UX only.
+
+Fitbit and Garmin Connect stay `comingSoon` in the UI until developer-program approval. Do not treat README as a Connect un-block.
 
 ## Tech Stack
 
@@ -72,10 +85,10 @@ Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil
 | **Components**     | shadcn/ui (50+ Radix primitives)               |
 | **State**          | Zustand 5 (client), TanStack Query 5 (server)  |
 | **Visualization**  | Recharts 3, @visx, ECharts 6                   |
-| **Animation**      | Framer Motion (reduced-motion support)         |
+| **Animation**      | Motion (formerly Framer Motion, reduced-motion) |
 | **Validation**     | Zod 4                                          |
 | **Backend**        | Supabase (PostgreSQL, Auth, Realtime, Storage) |
-| **Edge Functions** | 20 Deno functions                              |
+| **Edge Functions** | Deno (`ls supabase/functions`; each has a `[functions.*]` block in `supabase/config.toml`) |
 | **Payments**       | Paddle (Merchant of Record)                    |
 | **Monitoring**     | Sentry (cookie-consent-gated)                  |
 | **Testing**        | Vitest 4, Playwright 1.58                      |
@@ -96,36 +109,63 @@ npm run build
 # Run tests
 npm test
 
-# Type checking
+# Sync tests (mocked Edge Functions)
+npm run test:sync
+
+# Edge Function type-check and Deno handler tests
+npm run check:edge-functions
+npm run test:edge
+
+# Type checking. NOTE: the root tsconfig.json is a solution file with
+# "files": [], so `tsc --noEmit` over it checks nothing and always passes.
+# Use `npx tsc -b --force` for real coverage (it reports a known backlog).
+# Type checking (all tsconfig projects; fails on errors not in typecheck-baseline.json)
 npm run typecheck
+
+# Re-record the pre-existing type errors after fixing some (review the diff)
+npm run typecheck:baseline
 
 # E2E tests
 npm run test:e2e
 
-# Regenerate Supabase types
-npm run gen:types
+# Regenerate Supabase types from the migrated local DB (what CI checks)
+npm run supabase -- start
+npm run supabase -- db reset --no-seed
+npm run gen:types:local
+
+# Database tests (pgTAP) against the local stack
+npm run test:db
 ```
 
 ### Symphony Orchestration
 
 This repo includes `WORKFLOW.md` for [OpenAI Symphony](https://github.com/openai/symphony),
 which can poll Linear and launch isolated Codex implementation runs for active
-issues. Before running it, set `LINEAR_API_KEY` and fill in
-`tracker.project_slug` in `WORKFLOW.md`. See
+issues. Before running it, set `LINEAR_API_KEY` and confirm that
+`tracker.project_slug` in `WORKFLOW.md` (already set) points at your Linear
+project. See
 [`docs/runbooks/symphony.md`](docs/runbooks/symphony.md) for the full setup and
 operating checklist.
 
 ### Environment Variables
 
-Copy `.env.example` to `.env.local`:
+Copy `.env.example` to `.env.local` and confirm every value in it — that file
+is the list, and it carries a comment per variable.
 
 ```bash
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_PADDLE_CLIENT_TOKEN=your-paddle-token
 VITE_PADDLE_ENVIRONMENT=sandbox
+VITE_SENTRY_DSN=
 # ... Paddle price IDs for each tier
 ```
+
+Only `VITE_`-prefixed values reach the browser bundle. Edge Function secrets
+(`PADDLE_API_KEY`, `CRON_SECRET`, `SYNC_LWW_ENABLED`, `SUPABASE_PUBLIC_URL`,
+`APP_URL`, the provider client secrets, …) are set in Supabase Dashboard →
+Edge Functions → Secrets. `CLAUDE.md` → "Environment Variables" explains what
+each one is for.
 
 ## Mobile Sync Architecture
 
@@ -139,10 +179,9 @@ Mobile (SQLite) → POST mobile-sync-push → Supabase DB
 Portal ← useRealtimeSync hook ← Channel sync:{userId}
 ```
 
-- **Push**: Workouts → Supabase (realtime broadcast triggers portal cache invalidation)
-- **Pull**: Routines, cycles → Mobile SQLite
-- **Conflict Resolution**: Domain-aware (mobile authoritative for BLE-captured data)
-- **Pagination**: Cursor-based, 100 entities/page
+- **Push**: Workouts → `mobile-sync-push` Edge upsert (realtime broadcast on private `sync:{userId}` invalidates portal cache)
+- **Pull**: Parity-based — the device sends the ids it already holds and the server returns the rest, plus rows changed since `lastSync - 2 min`. Cursor-based, **75** entities/page (max **300**). There is no timestamp-only pull mode. `rep_telemetry` is **not** pulled — session replay restores telemetry in the portal only.
+- **Conflict Resolution**: `client_updated_at` is the last-write-wins key and `updated_at` is the server-owned pull cursor; they are not interchangeable. Sessions and routines are last-push-wins unless `SYNC_LWW_ENABLED` is set (a hosted, cold-start flag); training cycles always go through `merge_training_cycles_from_push`, which preserves portal-only configuration and refuses a stale structure. Routine and cycle deletes are tombstoned, so a stale device cannot resurrect them. See `CLAUDE.md` → "The mobile sync contract".
 
 ## Phoenix Theme
 
@@ -160,11 +199,7 @@ Custom animations: `flame-flicker`, `ember-rise`, `phoenix-glow`
 
 ## Deployment
 
-Build outputs to `dist/`. Deploy to any static host:
-- Vercel
-- Netlify
-- Cloudflare Pages
-- GitHub Pages
+Hosted as a **Cloudflare Worker with static assets** (`wrangler.toml`: the `phoenix-portal` Worker serves `dist/` with single-page-application fallback). Workers Builds runs `npx wrangler deploy` on every push to `main`; `npm run deploy` does the same by hand. Other static hosts are possible but not the supported path.
 
 ## Related Projects
 
@@ -176,4 +211,4 @@ MIT
 
 ---
 
-*This project exists because of the Vitruvian Trainer community's refusal to let great hardware die.*
+*This project exists because a community of lifters wanted their training data and tools to keep working, no matter what.*

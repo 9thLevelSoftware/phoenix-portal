@@ -10,12 +10,18 @@ import { cycleDetailOptions } from "@/queries/cycles";
 import { routineDetailOptions } from "@/queries/routines";
 
 function RoutineName({ routineId }: { routineId: string }) {
-	const { data: routine, isPending } = useQuery(
-		routineDetailOptions(routineId),
-	);
+	const {
+		data: routine,
+		isPending,
+		isError,
+	} = useQuery(routineDetailOptions(routineId));
 
 	if (isPending) return <Skeleton className="h-6 w-40" />;
-	return <>{routine?.name ?? "Custom Workout"}</>;
+	// A failed/unauthorized routine fetch is not the same as a custom (no-routine)
+	// day — surface it instead of silently mislabeling the scheduled workout.
+	if (isError) return <>Routine unavailable</>;
+	if (routine) return <>{routine.name}</>;
+	return <>Custom Workout</>;
 }
 
 export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {

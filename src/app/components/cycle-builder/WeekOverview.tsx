@@ -32,10 +32,15 @@ export function WeekOverview({ days }: WeekOverviewProps) {
 
 			{/* Week Grid */}
 			<div className="grid grid-cols-7 gap-2 mb-6">
-				{dayNames.slice(0, days.length).map((dayName, i) => {
-					const day = days[i];
+				{days.map((day, i) => {
+					// Cycle weekday labels and fall back to "Day N" for schedules
+					// longer than a single week so no day is silently dropped.
+					const dayName =
+						days.length > dayNames.length
+							? `Day ${i + 1}`
+							: dayNames[i % dayNames.length];
 					return (
-						<div key={dayName} className="text-center">
+						<div key={day.dayNumber} className="text-center">
 							<div className="text-xs text-muted-foreground mb-2">
 								{dayName}
 							</div>

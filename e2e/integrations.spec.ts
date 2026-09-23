@@ -12,11 +12,13 @@ test.describe("Integrations", () => {
 		await expect(page).toHaveURL(/\/integrations$/);
 
 		await page.goto("/integrations?error=auth_failed");
-		await expect(page.getByText("Connection failed: auth_failed")).toBeVisible();
+		await expect(
+			page.getByText("Connection failed: auth_failed"),
+		).toBeVisible();
 		await expect(page).toHaveURL(/\/integrations$/);
 	});
 
-	test("manual sync updates status and disconnect returns the provider to a connect state", async ({
+	test("manual sync refreshes the integration and disconnect returns the provider to a connect state", async ({
 		page,
 	}) => {
 		await mockAuthenticatedApp(page, {
@@ -28,7 +30,7 @@ test.describe("Integrations", () => {
 					provider: "strava",
 					provider_user_id: "athlete-1",
 					connected_at: new Date().toISOString(),
-					last_sync_at: null,
+					last_sync_at: "2025-09-20T12:00:00.000Z",
 					status: "connected",
 					error_message: null,
 				},
@@ -41,8 +43,8 @@ test.describe("Integrations", () => {
 		).toBeVisible();
 
 		await page.getByRole("button", { name: "Sync Now" }).click();
-		await expect(page.getByText("Recent Activity")).toBeVisible();
-		await expect(page.getByText("completed")).toBeVisible();
+		await expect(page.getByText("Last synced: Just now")).toBeVisible();
+		await expect(page.getByText("Recent Activity")).toHaveCount(0);
 
 		await page.getByRole("button", { name: "Disconnect" }).click();
 		await expect(

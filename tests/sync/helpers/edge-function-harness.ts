@@ -6,12 +6,15 @@
  */
 
 import {
-  getAnonClient,
-  getServiceClient,
-  getEdgeFunctionUrl,
-  getSupabaseConfig,
-} from './supabase-test-client';
-import { useMocks, mockPushEndpoint, mockPullEndpoint } from './mock-edge-functions';
+	isMockMode,
+	mockPullEndpoint,
+	mockPushEndpoint,
+} from "./mock-edge-functions";
+import {
+	getAnonClient,
+	getEdgeFunctionUrl,
+	getServiceClient,
+} from "./supabase-test-client";
 
 // ============================================================================
 // Types
@@ -21,84 +24,122 @@ import { useMocks, mockPushEndpoint, mockPullEndpoint } from './mock-edge-functi
  * Test user with auth credentials
  */
 export interface TestUser {
-  id: string;
-  email: string;
-  accessToken: string;
+	id: string;
+	email: string;
+	accessToken: string;
+}
+
+export interface CreateTestUserOptions {
+	seedSubscription?: boolean;
 }
 
 /**
  * Push endpoint request payload (matches mobile-sync-push interface)
  */
 export interface PushPayload {
-  deviceId: string;
-  platform: string;
-  lastSync: number;
-  sessions?: SessionDto[];
-  telemetry?: RepTelemetryDto[];
-  routines?: RoutineDto[];
-  cycles?: CycleDto[];
-  rpgAttributes?: RpgAttributesDto | null;
-  badges?: BadgeDto[];
-  gamificationStats?: GamificationStatsDto | null;
-  phaseStatistics?: PhaseStatisticsDto[];
-  exerciseSignatures?: ExerciseSignatureDto[];
-  assessments?: AssessmentResultDto[];
-  externalActivities?: ExternalActivityDto[] | null;
-  personalRecords?: PersonalRecordDto[];
-  customExercises?: CustomExerciseDto[];
-  profileId?: string | null;
-  profileName?: string | null;
-  allProfiles?: LocalProfileDto[] | null;
+	deviceId: string;
+	platform: string;
+	lastSync: number;
+	sessions?: SessionDto[];
+	telemetry?: RepTelemetryDto[];
+	routines?: RoutineDto[];
+	cycles?: CycleDto[];
+	rpgAttributes?: RpgAttributesDto | null;
+	badges?: BadgeDto[];
+	gamificationStats?: GamificationStatsDto | null;
+	phaseStatistics?: PhaseStatisticsDto[];
+	exerciseSignatures?: ExerciseSignatureDto[];
+	assessments?: AssessmentResultDto[];
+	externalActivities?: ExternalActivityDto[] | null;
+	personalRecords?: PersonalRecordDto[];
+	customExercises?: CustomExerciseDto[];
+	profileId?: string | null;
+	profileName?: string | null;
+	allProfiles?: LocalProfileDto[] | null;
+	workoutDeletions?: WorkoutDeletionDto[];
+	ownershipTransfers?: OwnershipTransferDto[];
+	deletedCycles?: Array<{ id: string; updatedAt: string }>;
+}
+
+export interface WorkoutDeletionDto {
+	mutationId: string;
+	scope: "COMPONENT" | "WORKOUT";
+	portalSessionId: string;
+	componentSessionId?: string | null;
+	deletedAt: string;
+}
+
+export interface PulledWorkoutDeletionDto extends WorkoutDeletionDto {
+	profileId: string | null;
+}
+
+export interface OwnershipTransferDto {
+	mutationId: string;
+	sourceProfileId: string | null;
+	targetProfileId: string;
+	workoutSessionIds: string[];
+	routineIds: string[];
+	cycleIds: string[];
+	personalRecordIds: string[];
+}
+
+export interface OwnershipEventDto extends OwnershipTransferDto {
+	targetProfileName: string;
+	targetProfileColorIndex: number;
+	transferredAt: string;
 }
 
 /**
  * Pull endpoint request payload (matches mobile-sync-pull interface)
  */
 export interface PullRequest {
-  deviceId: string;
-  lastSync: number;
-  profileId?: string;
-  cursor?: string;
-  pageSize?: number;
-  knownEntityIds?: {
-    sessionIds?: string[];
-    routineIds?: string[];
-    cycleIds?: string[];
-    badgeIds?: string[];
-    personalRecordIds?: string[];
-  };
+	deviceId: string;
+	lastSync: number;
+	profileId?: string;
+	cursor?: string;
+	pageSize?: number;
+	knownEntityIds?: {
+		sessionIds?: string[];
+		routineIds?: string[];
+		cycleIds?: string[];
+		badgeIds?: string[];
+		personalRecordIds?: string[];
+	};
 }
 
 /**
  * Pull endpoint response structure
  */
 export interface PullResponse {
-  syncTime: number;
-  nextCursor?: string;
-  hasMore: boolean;
-  sessions: SessionResponseDto[];
-  routines: RoutineResponseDto[];
-  cycles: CycleResponseDto[];
-  personalRecords: PersonalRecordDto[];
-  rpgAttributes: RpgAttributesResponseDto | null;
-  badges: BadgeResponseDto[];
-  gamificationStats: GamificationStatsResponseDto | null;
-  localProfiles: LocalProfileResponseDto[];
-  externalActivities: ExternalActivityResponseDto[];
-  customExercises?: CustomExerciseResponseDto[];
+	syncTime: number;
+	nextCursor?: string;
+	hasMore: boolean;
+	sessions: SessionResponseDto[];
+	routines: RoutineResponseDto[];
+	cycles: CycleResponseDto[];
+	personalRecords: PersonalRecordDto[];
+	rpgAttributes: RpgAttributesResponseDto | null;
+	badges: BadgeResponseDto[];
+	gamificationStats: GamificationStatsResponseDto | null;
+	localProfiles: LocalProfileResponseDto[];
+	externalActivities: ExternalActivityResponseDto[];
+	externalActivitiesHasMore?: boolean;
+	customExercises?: CustomExerciseResponseDto[];
+	workoutDeletions: PulledWorkoutDeletionDto[];
+	ownershipEvents: OwnershipEventDto[];
 }
 
 /**
  * Typed result for Edge Function calls
  */
 export interface EdgeFunctionResult<T> {
-  success: boolean;
-  status: number;
-  data?: T;
-  error?: {
-    message: string;
-    code?: string;
-  };
+	success: boolean;
+	status: number;
+	data?: T;
+	error?: {
+		message: string;
+		code?: string;
+	};
 }
 
 // ============================================================================
@@ -106,331 +147,352 @@ export interface EdgeFunctionResult<T> {
 // ============================================================================
 
 export interface SessionDto {
-  id: string;
-  userId: string;
-  name: string | null;
-  startedAt: string;
-  durationSeconds: number;
-  totalVolume: number;
-  setCount: number;
-  exerciseCount: number;
-  prCount: number;
-  routineName: string | null;
-  workoutMode: string | null;
-  routineSessionId: string | null;
-  notes?: string | null;
-  exercises: ExerciseDto[];
-  avgVelocityMps?: number | null;
-  avgAsymmetryPct?: number | null;
-  velocityLossPct?: number | null;
-  dominantSide?: string | null;
-  strengthProfile?: string | null;
-  formScore?: number | null;
-  deloadWarnings?: number | null;
-  romViolations?: number | null;
-  spotterActivations?: number | null;
-  peakForceN?: number | null;
-  estimatedCalories?: number | null;
-  heaviestLiftKg?: number | null;
-  eccentricLoad?: number | null;
-  echoLevel?: number | null;
-  warmupReps?: number | null;
-  workingReps?: number | null;
+	id: string;
+	userId: string;
+	name: string | null;
+	startedAt: string;
+	durationSeconds: number;
+	totalVolume: number;
+	setCount: number;
+	exerciseCount: number;
+	prCount: number;
+	routineName: string | null;
+	workoutMode: string | null;
+	routineSessionId: string | null;
+	notes?: string | null;
+	exercises: ExerciseDto[];
+	avgVelocityMps?: number | null;
+	avgAsymmetryPct?: number | null;
+	velocityLossPct?: number | null;
+	dominantSide?: string | null;
+	strengthProfile?: string | null;
+	formScore?: number | null;
+	deloadWarnings?: number | null;
+	romViolations?: number | null;
+	spotterActivations?: number | null;
+	peakForceN?: number | null;
+	estimatedCalories?: number | null;
+	heaviestLiftKg?: number | null;
+	eccentricLoad?: number | null;
+	echoLevel?: number | null;
+	warmupReps?: number | null;
+	workingReps?: number | null;
 }
 
 export interface ExerciseDto {
-  id: string;
-  sessionId: string;
-  exerciseId?: string | null;
-  name: string;
-  muscleGroup: string;
-  orderIndex: number;
-  sets: SetDto[];
+	id: string;
+	sessionId: string;
+	exerciseId?: string | null;
+	name: string;
+	muscleGroup: string;
+	orderIndex: number;
+	sets: SetDto[];
 }
 
 export interface SetDto {
-  id: string;
-  exerciseId: string;
-  setNumber: number;
-  targetReps: number | null;
-  actualReps: number;
-  weightKg: number;
-  rpe: number | null;
-  isPr: boolean;
-  notes: string | null;
-  workoutMode: string | null;
-  repSummaries?: RepSummaryDto[];
+	id: string;
+	exerciseId: string;
+	setNumber: number;
+	targetReps: number | null;
+	actualReps: number;
+	weightKg: number;
+	rpe: number | null;
+	isPr: boolean;
+	notes: string | null;
+	workoutMode: string | null;
+	repSummaries?: RepSummaryDto[];
 }
 
 export interface RepSummaryDto {
-  id: string;
-  setId: string;
-  repNumber: number;
-  meanVelocityMps: number | null;
-  peakVelocityMps: number | null;
-  meanForceN: number | null;
-  peakForceN: number | null;
-  powerWatts: number | null;
-  romMm: number | null;
-  tutMs: number | null;
-  leftForceAvg: number | null;
-  rightForceAvg: number | null;
-  asymmetryPct: number | null;
-  vbtZone: string | null;
+	id: string;
+	setId: string;
+	repNumber: number;
+	meanVelocityMps: number | null;
+	peakVelocityMps: number | null;
+	meanForceN: number | null;
+	peakForceN: number | null;
+	powerWatts: number | null;
+	romMm: number | null;
+	tutMs: number | null;
+	leftForceAvg: number | null;
+	rightForceAvg: number | null;
+	asymmetryPct: number | null;
+	vbtZone: string | null;
 }
 
 export interface RepTelemetryDto {
-  id: string;
-  setId: string;
-  timestampMs: number;
-  forceN: number | null;
-  velocityMps: number | null;
-  positionMm: number | null;
-  cable: string | null;
+	id: string;
+	setId: string;
+	timestampMs: number;
+	forceN: number | null;
+	velocityMps: number | null;
+	positionMm: number | null;
+	cable: string | null;
 }
 
 export interface RoutineDto {
-  id: string;
-  userId: string;
-  name: string;
-  description: string | null;
-  exerciseCount: number;
-  estimatedDuration: number | null;
-  timesCompleted: number;
-  isFavorite: boolean;
-  exercises: RoutineExerciseDto[];
+	id: string;
+	userId: string;
+	name: string;
+	description: string | null;
+	exerciseCount: number;
+	estimatedDuration: number | null;
+	timesCompleted: number;
+	isFavorite: boolean;
+	exercises: RoutineExerciseDto[];
 }
 
 export interface RoutineExerciseDto {
-  id: string;
-  routineId: string;
-  exerciseId?: string | null;
-  displayName?: string | null;
-  exerciseEquipment?: string | null;
-  name: string;
-  muscleGroup: string;
-  sets: number;
-  reps: number;
-  weight: number;
-  restSeconds: number;
-  mode: string | null;
-  orderIndex: number;
-  supersetId?: string | null;
-  supersetColor?: string | null;
-  supersetOrder?: number | null;
-  perSetWeights?: string | null;
-  perSetRest?: string | null;
-  perSetReps?: string | null;
-  isAmrap?: boolean;
-  prPercentage?: number | null;
-  repCountTiming?: string | null;
-  stopAtPosition?: string | null;
-  stallDetection?: boolean | null;
-  eccentricLoad?: number | null;
-  echoLevel?: number | null;
-  perSetEchoLevels?: number[] | null;
-  warmupSets?: number | null;
+	id: string;
+	routineId: string;
+	exerciseId?: string | null;
+	displayName?: string | null;
+	exerciseEquipment?: string | null;
+	name: string;
+	muscleGroup: string;
+	sets: number;
+	reps: number;
+	weight: number;
+	restSeconds: number;
+	mode: string | null;
+	orderIndex: number;
+	supersetId?: string | null;
+	supersetColor?: string | null;
+	supersetOrder?: number | null;
+	perSetWeights?: string | null;
+	perSetRest?: string | null;
+	perSetReps?: string | null;
+	isAmrap?: boolean;
+	prPercentage?: number | null;
+	repCountTiming?: string | null;
+	stopAtPosition?: string | null;
+	stallDetection?: boolean | null;
+	eccentricLoad?: number | null;
+	echoLevel?: number | null;
+	perSetEchoLevels?: number[] | null;
+	warmupSets?: number | null;
+	dropSetEnabled?: boolean | null;
+	dropSetMinWeightKg?: number | null;
 }
 
 export interface CustomExerciseDto {
-  clientId: string;
-  name: string;
-  displayName?: string | null;
-  muscleGroup: string;
-  equipment?: string | null;
-  defaultCableConfig: string;
+	clientId: string;
+	name: string;
+	displayName?: string | null;
+	muscleGroup: string;
+	equipment?: string | null;
+	defaultCableConfig: string;
 }
 
 export interface CycleDto {
-  id: string;
-  userId: string;
-  name: string;
-  description: string | null;
-  durationWeeks: number;
-  workoutDays: number;
-  restDays: number;
-  currentWeek: number;
-  status: string;
-  startedAt: string | null;
-  lastUsedAt: string | null;
-  progressionSettings?: string | null;
-  deloadSettings?: string | null;
-  days: CycleDayDto[];
+	id: string;
+	userId: string;
+	name: string;
+	description: string | null;
+	durationWeeks: number;
+	workoutDays: number;
+	restDays: number;
+	currentWeek: number;
+	status: string;
+	startedAt: string | null;
+	lastUsedAt: string | null;
+	progressionSettingsPresent?: boolean;
+	progressionSettings?: string | null;
+	deloadSettings?: string | null;
+	templateId?: string | null;
+	progressStatePresent?: boolean;
+	progressState?: CycleProgressStateDto | null;
+	updatedAt?: string | null;
+	days: CycleDayDto[];
+}
+
+export interface CycleProgressStateDto {
+	currentDayNumber: number;
+	lastCompletedDate?: number | null;
+	cycleStartDate: number;
+	lastAdvancedAt?: number | null;
+	completedDays: number[];
+	missedDays: number[];
+	rotationCount: number;
 }
 
 export interface CycleDayDto {
-  id: string;
-  cycleId: string;
-  dayNumber: number;
-  dayType: string;
-  routineId: string | null;
-  weightAdjustment: number | null;
-  repModifier: number | null;
-  restOverride: number | null;
-  restType: string | null;
-  notes: string | null;
+	id: string;
+	cycleId: string;
+	dayNumber: number;
+	dayType: string;
+	routineId: string | null;
+	weightAdjustment: number | null;
+	repModifier: number | null;
+	restOverride: number | null;
+	restType: string | null;
+	notes: string | null;
+	echoLevelPresent?: boolean;
+	echoLevel?: string | null;
+	eccentricLoadPercentPresent?: boolean;
+	eccentricLoadPercent?: number | null;
 }
 
 export interface RpgAttributesDto {
-  id: string;
-  userId: string;
-  strength: number;
-  power: number;
-  stamina: number;
-  consistency: number;
-  mastery: number;
-  characterClass: string;
-  level: number;
-  experiencePoints: number;
+	id: string;
+	userId: string;
+	strength: number;
+	power: number;
+	stamina: number;
+	consistency: number;
+	mastery: number;
+	characterClass: string;
+	level: number;
+	experiencePoints: number;
 }
 
 export interface BadgeDto {
-  id: string;
-  badgeId: string;
-  badgeName: string;
-  badgeDescription: string | null;
-  badgeTier: string;
-  earnedAt: string;
+	id: string;
+	badgeId: string;
+	badgeName: string;
+	badgeDescription: string | null;
+	badgeTier: string;
+	earnedAt: string;
 }
 
 export interface GamificationStatsDto {
-  id: string;
-  userId: string;
-  totalWorkouts: number;
-  totalReps: number;
-  totalVolumeKg: number;
-  longestStreak: number;
-  currentStreak: number;
-  totalTimeSeconds: number;
+	id: string;
+	userId: string;
+	totalWorkouts: number;
+	totalReps: number;
+	totalVolumeKg: number;
+	longestStreak: number;
+	currentStreak: number;
+	totalTimeSeconds: number;
 }
 
 export interface PhaseStatisticsDto {
-  id: string;
-  sessionId: string;
-  concentricKgAvg: number;
-  concentricKgMax: number;
-  concentricVelAvg: number;
-  concentricVelMax: number;
-  concentricWattAvg: number;
-  concentricWattMax: number;
-  eccentricKgAvg: number;
-  eccentricKgMax: number;
-  eccentricVelAvg: number;
-  eccentricVelMax: number;
-  eccentricWattAvg: number;
-  eccentricWattMax: number;
+	id: string;
+	sessionId: string;
+	concentricKgAvg: number;
+	concentricKgMax: number;
+	concentricVelAvg: number;
+	concentricVelMax: number;
+	concentricWattAvg: number;
+	concentricWattMax: number;
+	eccentricKgAvg: number;
+	eccentricKgMax: number;
+	eccentricVelAvg: number;
+	eccentricVelMax: number;
+	eccentricWattAvg: number;
+	eccentricWattMax: number;
 }
 
 export interface ExerciseSignatureDto {
-  id: string;
-  exerciseId: string;
-  romMm: number;
-  durationMs: number;
-  symmetryRatio: number;
-  velocityProfile: string;
-  cableConfig: string;
-  sampleCount: number;
-  confidence: number;
-  updatedAt: string | null;
+	id: string;
+	exerciseId: string;
+	romMm: number;
+	durationMs: number;
+	symmetryRatio: number;
+	velocityProfile: string;
+	cableConfig: string;
+	sampleCount: number;
+	confidence: number;
+	updatedAt: string | null;
 }
 
 export interface AssessmentResultDto {
-  id: string;
-  exerciseId: string;
-  estimatedOneRepMaxKg: number;
-  loadVelocityData: string;
-  assessmentSessionId: string | null;
-  userOverrideKg: number | null;
-  createdAt: string;
+	id: string;
+	exerciseId: string;
+	estimatedOneRepMaxKg: number;
+	loadVelocityData: string;
+	assessmentSessionId: string | null;
+	userOverrideKg: number | null;
+	createdAt: string;
 }
 
 export interface ExternalActivityDto {
-  id?: string;
-  externalId: string;
-  provider: string;
-  name: string;
-  activityType: string;
-  startedAt: string;
-  durationSeconds: number;
-  distanceMeters?: number | null;
-  calories?: number | null;
-  avgHeartRate?: number | null;
-  maxHeartRate?: number | null;
-  elevationGainMeters?: number | null;
-  rawData?: string | null;
-  syncedAt?: string;
+	id?: string;
+	externalId: string;
+	provider: string;
+	name: string;
+	activityType: string;
+	startedAt: string;
+	durationSeconds: number;
+	distanceMeters?: number | null;
+	calories?: number | null;
+	avgHeartRate?: number | null;
+	maxHeartRate?: number | null;
+	elevationGainMeters?: number | null;
+	rawData?: string | null;
+	syncedAt?: string;
 }
 
 export interface LocalProfileDto {
-  id: string;
-  name: string;
-  colorIndex: number;
+	id: string;
+	name: string;
+	colorIndex: number;
 }
 
 // Response DTOs (from pull endpoint)
-export interface SessionResponseDto extends Omit<SessionDto, 'exercises'> {
-  exercises: ExerciseResponseDto[];
+export interface SessionResponseDto extends Omit<SessionDto, "exercises"> {
+	exercises: ExerciseResponseDto[];
 }
 
-export interface ExerciseResponseDto extends Omit<ExerciseDto, 'sets'> {
-  sets: SetResponseDto[];
+export interface ExerciseResponseDto extends Omit<ExerciseDto, "sets"> {
+	sets: SetResponseDto[];
 }
 
-export interface SetResponseDto extends Omit<SetDto, 'repSummaries'> {
-  repSummaries: RepSummaryDto[];
+export interface SetResponseDto extends Omit<SetDto, "repSummaries"> {
+	repSummaries: RepSummaryDto[];
 }
 
 export interface RoutineResponseDto extends RoutineDto {}
 export interface CycleResponseDto extends CycleDto {}
 export interface PersonalRecordDto {
-  id: string;
-  userId: string;
-  exerciseName: string;
-  exerciseId?: string | null;
-  muscleGroup: string;
-  recordType: string;
-  value: number;
-  volume?: number | null;
-  weightKg: number | null;
-  reps: number | null;
-  workoutPhase: string | null;
-  sessionId: string | null;
-  achievedAt: string;
-  updatedAt: string;
-  localProfileId?: string | null;
-  workoutMode?: string | null;
+	id: string;
+	userId: string;
+	exerciseName: string;
+	exerciseId?: string | null;
+	muscleGroup: string;
+	recordType: string;
+	value: number;
+	volume?: number | null;
+	weightKg: number | null;
+	reps: number | null;
+	workoutPhase: string | null;
+	sessionId: string | null;
+	achievedAt: string;
+	updatedAt: string;
+	localProfileId?: string | null;
+	workoutMode?: string | null;
 }
 export interface RpgAttributesResponseDto extends RpgAttributesDto {
-  updatedAt: string;
+	updatedAt: string;
 }
 export interface BadgeResponseDto extends BadgeDto {
-  userId: string;
+	userId: string;
 }
 export interface GamificationStatsResponseDto extends GamificationStatsDto {
-  updatedAt: string;
+	updatedAt: string;
 }
 export interface LocalProfileResponseDto {
-  id: string;
-  name: string;
-  color_index: number;
-  device_id: string;
-  created_at: string;
-  updated_at: string;
+	id: string;
+	name: string;
+	color_index: number;
+	device_id: string;
+	created_at: string;
+	updated_at: string;
 }
 export interface ExternalActivityResponseDto {
-  id: string;
-  externalId: string;
-  provider: string;
-  name: string;
-  activityType: string;
-  startedAt: string;
-  durationSeconds: number;
-  distanceMeters: number | null;
-  calories: number | null;
-  avgHeartRate: number | null;
-  maxHeartRate: number | null;
-  elevationGainMeters: number | null;
-  rawData: string | null;
+	id: string;
+	externalId: string;
+	provider: string;
+	name: string;
+	activityType: string;
+	startedAt: string;
+	durationSeconds: number;
+	distanceMeters: number | null;
+	calories: number | null;
+	avgHeartRate: number | null;
+	maxHeartRate: number | null;
+	elevationGainMeters: number | null;
+	rawData: string | null;
 }
 
 export interface CustomExerciseResponseDto extends CustomExerciseDto {}
@@ -444,40 +506,86 @@ export interface CustomExerciseResponseDto extends CustomExerciseDto {}
  * Returns user ID and access token for authenticated requests
  */
 export async function createTestUser(
-  email?: string,
-  password?: string
+	email?: string,
+	password?: string,
+	options: CreateTestUserOptions = {},
 ): Promise<TestUser> {
-  if (useMocks()) {
-    // Return mock user when mocks are enabled
-    return {
-      id: `mock-user-${Date.now()}`,
-      email: email || `test-${Date.now()}@test.local`,
-      accessToken: 'mock-access-token',
-    };
-  }
+	if (isMockMode()) {
+		// Return mock user when mocks are enabled
+		return {
+			id: `mock-user-${Date.now()}`,
+			email: email || `test-${Date.now()}@test.local`,
+			accessToken: "mock-access-token",
+		};
+	}
 
-  const client = getAnonClient();
-  const testEmail = email || `sync-test-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
-  const testPassword = password || `TestPass123!${Math.random().toString(36).slice(2)}`;
+	const testEmail =
+		email ||
+		`sync-test-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+	const testPassword =
+		password || `TestPass123!${Math.random().toString(36).slice(2)}`;
 
-  const { data, error } = await client.auth.signUp({
-    email: testEmail,
-    password: testPassword,
-  });
+	let serviceClient: ReturnType<typeof getServiceClient> | undefined;
+	let createdUserId: string | undefined;
+	try {
+		const anonClient = getAnonClient();
+		serviceClient = getServiceClient();
+		const { data: created, error: createError } =
+			await serviceClient.auth.admin.createUser({
+				email: testEmail,
+				password: testPassword,
+				email_confirm: true,
+			});
+		createdUserId = created.user?.id;
+		if (createError || !createdUserId) {
+			throw new Error("Admin user creation failed");
+		}
 
-  if (error) {
-    throw new Error(`Failed to create test user: ${error.message}`);
-  }
+		if (options.seedSubscription !== false) {
+			const { error: subscriptionError } = await serviceClient
+				.from("subscriptions")
+				.insert({
+					user_id: createdUserId,
+					tier: "EMBER",
+					status: "active",
+					current_period_end: new Date(
+						Date.now() + 30 * 24 * 60 * 60 * 1000,
+					).toISOString(),
+				});
+			if (subscriptionError) {
+				throw new Error("Subscription seeding failed");
+			}
+		}
 
-  if (!data.user || !data.session) {
-    throw new Error('User created but no session returned - email confirmation may be required');
-  }
+		const { data: signedIn, error: signInError } =
+			await anonClient.auth.signInWithPassword({
+				email: testEmail,
+				password: testPassword,
+			});
+		if (
+			signInError ||
+			!signedIn.user ||
+			!signedIn.session ||
+			signedIn.user.id !== createdUserId
+		) {
+			throw new Error("Test user sign-in failed");
+		}
 
-  return {
-    id: data.user.id,
-    email: testEmail,
-    accessToken: data.session.access_token,
-  };
+		return {
+			id: createdUserId,
+			email: testEmail,
+			accessToken: signedIn.session.access_token,
+		};
+	} catch {
+		if (createdUserId && serviceClient) {
+			try {
+				await serviceClient.auth.admin.deleteUser(createdUserId);
+			} catch {
+				// Best-effort rollback; the workflow's namespace cleanup is the backstop.
+			}
+		}
+		throw new Error("Failed to provision disposable sync test user.");
+	}
 }
 
 /**
@@ -485,115 +593,165 @@ export async function createTestUser(
  * Uses service role client to bypass RLS
  */
 export async function cleanupTestUser(userId: string): Promise<void> {
-  if (useMocks()) {
-    // No cleanup needed for mock users
-    return;
-  }
+	if (isMockMode()) {
+		// No cleanup needed for mock users
+		return;
+	}
 
-  const serviceClient = getServiceClient();
+	const serviceClient = getServiceClient();
 
-  try {
-    // Delete in order respecting foreign key constraints
-    // 1. Delete rep_summaries (via sets -> exercises -> sessions)
-    // 2. Delete sets (via exercises -> sessions)
-    // 3. Delete exercises (via sessions)
-    // 4. Delete workout sessions
-    // 5. Delete routines and their exercises
-    // 6. Delete cycles and their days
-    // 7. Delete other user data
-    // 8. Delete auth user
+	try {
+		// Delete in order respecting foreign key constraints
+		// 1. Delete rep_summaries (via sets -> exercises -> sessions)
+		// 2. Delete sets (via exercises -> sessions)
+		// 3. Delete exercises (via sessions)
+		// 4. Delete workout sessions
+		// 5. Delete routines and their exercises
+		// 6. Delete cycles and their days
+		// 7. Delete other user data
+		// 8. Delete auth user
 
-    // Get session IDs first
-    const { data: sessions } = await serviceClient
-      .from('workout_sessions')
-      .select('id')
-      .eq('user_id', userId);
+		// Get session IDs first
+		const { data: sessions } = await serviceClient
+			.from("workout_sessions")
+			.select("id")
+			.eq("user_id", userId);
 
-    if (sessions && sessions.length > 0) {
-      const sessionIds = sessions.map((s) => s.id);
+		if (sessions && sessions.length > 0) {
+			const sessionIds = sessions.map((s) => s.id);
 
-      // Get exercise IDs
-      const { data: exercises } = await serviceClient
-        .from('exercises')
-        .select('id')
-        .in('session_id', sessionIds);
+			// Get exercise IDs
+			const { data: exercises } = await serviceClient
+				.from("exercises")
+				.select("id")
+				.in("session_id", sessionIds);
 
-      if (exercises && exercises.length > 0) {
-        const exerciseIds = exercises.map((e) => e.id);
+			if (exercises && exercises.length > 0) {
+				const exerciseIds = exercises.map((e) => e.id);
 
-        // Get set IDs
-        const { data: sets } = await serviceClient
-          .from('sets')
-          .select('id')
-          .in('exercise_id', exerciseIds);
+				// Get set IDs
+				const { data: sets } = await serviceClient
+					.from("sets")
+					.select("id")
+					.in("exercise_id", exerciseIds);
 
-        if (sets && sets.length > 0) {
-          const setIds = sets.map((s) => s.id);
+				if (sets && sets.length > 0) {
+					const setIds = sets.map((s) => s.id);
 
-          // Delete rep summaries
-          await serviceClient.from('rep_summaries').delete().in('set_id', setIds);
+					// Delete rep summaries
+					await serviceClient
+						.from("rep_summaries")
+						.delete()
+						.in("set_id", setIds);
 
-          // Delete telemetry
-          await serviceClient.from('rep_telemetry').delete().in('set_id', setIds);
-        }
+					// Delete telemetry
+					await serviceClient
+						.from("rep_telemetry")
+						.delete()
+						.in("set_id", setIds);
+				}
 
-        // Delete sets
-        await serviceClient.from('sets').delete().in('exercise_id', exerciseIds);
-      }
+				// Delete sets
+				await serviceClient
+					.from("sets")
+					.delete()
+					.in("exercise_id", exerciseIds);
+			}
 
-      // Delete exercises
-      await serviceClient.from('exercises').delete().in('session_id', sessionIds);
-    }
+			// Delete exercises
+			await serviceClient
+				.from("exercises")
+				.delete()
+				.in("session_id", sessionIds);
+		}
 
-    // Delete workout sessions
-    await serviceClient.from('workout_sessions').delete().eq('user_id', userId);
+		// Delete workout sessions
+		await serviceClient.from("workout_sessions").delete().eq("user_id", userId);
 
-    // Delete routine exercises then routines
-    const { data: routines } = await serviceClient
-      .from('routines')
-      .select('id')
-      .eq('user_id', userId);
+		// Delete routine exercises then routines
+		const { data: routines } = await serviceClient
+			.from("routines")
+			.select("id")
+			.eq("user_id", userId);
 
-    if (routines && routines.length > 0) {
-      const routineIds = routines.map((r) => r.id);
-      await serviceClient.from('routine_exercises').delete().in('routine_id', routineIds);
-    }
-    await serviceClient.from('routines').delete().eq('user_id', userId);
+		if (routines && routines.length > 0) {
+			const routineIds = routines.map((r) => r.id);
+			await serviceClient
+				.from("routine_exercises")
+				.delete()
+				.in("routine_id", routineIds);
+		}
+		await serviceClient.from("routines").delete().eq("user_id", userId);
 
-    // Delete cycle days then cycles
-    const { data: cycles } = await serviceClient
-      .from('training_cycles')
-      .select('id')
-      .eq('user_id', userId);
+		// Delete cycle days then cycles
+		const { data: cycles } = await serviceClient
+			.from("training_cycles")
+			.select("id")
+			.eq("user_id", userId);
 
-    if (cycles && cycles.length > 0) {
-      const cycleIds = cycles.map((c) => c.id);
-      await serviceClient.from('cycle_days').delete().in('cycle_id', cycleIds);
-    }
-    await serviceClient.from('training_cycles').delete().eq('user_id', userId);
+		if (cycles && cycles.length > 0) {
+			const cycleIds = cycles.map((c) => c.id);
+			await serviceClient.from("cycle_days").delete().in("cycle_id", cycleIds);
+		}
+		await serviceClient.from("training_cycles").delete().eq("user_id", userId);
 
-    // Delete other user data
-    await serviceClient.from('personal_records').delete().eq('user_id', userId);
-    await serviceClient.from('rpg_attributes').delete().eq('user_id', userId);
-    await serviceClient.from('earned_badges').delete().eq('user_id', userId);
-    await serviceClient.from('gamification_stats').delete().eq('user_id', userId);
-    await serviceClient.from('phase_statistics').delete().eq('user_id', userId);
-    await serviceClient.from('exercise_signatures').delete().eq('user_id', userId);
-    await serviceClient.from('assessment_results').delete().eq('user_id', userId);
-    await serviceClient.from('external_activities').delete().eq('user_id', userId);
-    await serviceClient.from('local_profiles').delete().eq('user_id', userId);
+		// Delete other user data
+		await serviceClient.from("personal_records").delete().eq("user_id", userId);
+		await serviceClient.from("rpg_attributes").delete().eq("user_id", userId);
+		await serviceClient.from("earned_badges").delete().eq("user_id", userId);
+		await serviceClient
+			.from("gamification_stats")
+			.delete()
+			.eq("user_id", userId);
+		await serviceClient.from("phase_statistics").delete().eq("user_id", userId);
+		await serviceClient
+			.from("exercise_signatures")
+			.delete()
+			.eq("user_id", userId);
+		await serviceClient
+			.from("assessment_results")
+			.delete()
+			.eq("user_id", userId);
+		await serviceClient
+			.from("external_activities")
+			.delete()
+			.eq("user_id", userId);
+		await serviceClient.from("local_profiles").delete().eq("user_id", userId);
 
-    // Delete the auth user
-    await serviceClient.auth.admin.deleteUser(userId);
-  } catch (err) {
-    console.warn(`Error during test user cleanup (${userId}):`, err);
-    // Don't throw - cleanup is best effort
-  }
+		// Delete the auth user
+		await serviceClient.auth.admin.deleteUser(userId);
+	} catch {
+		console.warn("[Sync Tests] Test user cleanup failed.");
+		// Don't throw - cleanup is best effort
+	}
 }
 
 // ============================================================================
 // Edge Function Callers
 // ============================================================================
+
+function safeFailureLabel(value: unknown): string {
+	return typeof value === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(value)
+		? value
+		: "UNAVAILABLE";
+}
+
+function logLiveFailure(
+	endpoint: "push" | "pull",
+	status: number,
+	code: unknown,
+	error: unknown,
+): void {
+	if (process.env.SYNC_LIVE_DEBUG_FAILURES !== "true") {
+		return;
+	}
+	const safeStatus =
+		Number.isInteger(status) && status >= 0 && status <= 599 ? status : 0;
+	console.warn(
+		`[Sync Live Failure] endpoint=${endpoint} status=${safeStatus} ` +
+			`code=${safeFailureLabel(code)} error=${safeFailureLabel(error)}`,
+	);
+}
 
 /**
  * Call the mobile-sync-push Edge Function
@@ -603,53 +761,64 @@ export async function cleanupTestUser(userId: string): Promise<void> {
  * @returns Typed result with success status and response data
  */
 export async function callPushEndpoint(
-  payload: PushPayload,
-  authToken: string
-): Promise<EdgeFunctionResult<{ success: boolean; syncTime?: number }>> {
-  if (useMocks()) {
-    return mockPushEndpoint(payload, authToken);
-  }
+	payload: PushPayload,
+	authToken: string,
+): Promise<
+	EdgeFunctionResult<{
+		success: boolean;
+		syncTime?: number;
+		acknowledgedWorkoutDeletionIds?: string[];
+		acknowledgedOwnershipTransferIds?: string[];
+		acknowledgedDeletedCycleIds?: string[];
+		acknowledgedWorkoutSessionIds?: string[];
+		acknowledgedCycleIds?: string[];
+	}>
+> {
+	if (isMockMode()) {
+		return mockPushEndpoint(payload, authToken);
+	}
 
-  const url = getEdgeFunctionUrl('mobile-sync-push');
+	const url = getEdgeFunctionUrl("mobile-sync-push");
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify(payload),
-    });
+	try {
+		const response = await fetch(url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${authToken}`,
+			},
+			body: JSON.stringify(payload),
+		});
 
-    const data = await response.json();
+		const data = await response.json();
 
-    if (!response.ok) {
-      return {
-        success: false,
-        status: response.status,
-        error: {
-          message: data.error || `HTTP ${response.status}`,
-          code: data.code,
-        },
-      };
-    }
+		if (!response.ok) {
+			logLiveFailure("push", response.status, data.code, data.error);
+			return {
+				success: false,
+				status: response.status,
+				error: {
+					message: data.error || `HTTP ${response.status}`,
+					code: data.code,
+				},
+			};
+		}
 
-    return {
-      success: true,
-      status: response.status,
-      data,
-    };
-  } catch (err) {
-    return {
-      success: false,
-      status: 0,
-      error: {
-        message: err instanceof Error ? err.message : 'Network error',
-        code: 'NETWORK_ERROR',
-      },
-    };
-  }
+		return {
+			success: true,
+			status: response.status,
+			data,
+		};
+	} catch (err) {
+		return {
+			success: false,
+			status: 0,
+			error: {
+				message: err instanceof Error ? err.message : "Network error",
+				code: "NETWORK_ERROR",
+			},
+		};
+	}
 }
 
 /**
@@ -661,69 +830,70 @@ export async function callPushEndpoint(
  * @returns Typed result with synced data
  */
 export async function callPullEndpoint(
-  lastSync: number,
-  authToken: string,
-  options?: {
-    deviceId?: string;
-    profileId?: string;
-    cursor?: string;
-    pageSize?: number;
-    knownEntityIds?: PullRequest['knownEntityIds'];
-  }
+	lastSync: number,
+	authToken: string,
+	options?: {
+		deviceId?: string;
+		profileId?: string;
+		cursor?: string;
+		pageSize?: number;
+		knownEntityIds?: PullRequest["knownEntityIds"];
+	},
 ): Promise<EdgeFunctionResult<PullResponse>> {
-  if (useMocks()) {
-    return mockPullEndpoint(lastSync, authToken, options);
-  }
+	if (isMockMode()) {
+		return mockPullEndpoint(lastSync, authToken, options);
+	}
 
-  const url = getEdgeFunctionUrl('mobile-sync-pull');
+	const url = getEdgeFunctionUrl("mobile-sync-pull");
 
-  const payload: PullRequest = {
-    deviceId: options?.deviceId || `test-device-${Date.now()}`,
-    lastSync,
-    profileId: options?.profileId,
-    cursor: options?.cursor,
-    pageSize: options?.pageSize,
-    knownEntityIds: options?.knownEntityIds,
-  };
+	const payload: PullRequest = {
+		deviceId: options?.deviceId || `test-device-${Date.now()}`,
+		lastSync,
+		profileId: options?.profileId,
+		cursor: options?.cursor,
+		pageSize: options?.pageSize,
+		knownEntityIds: options?.knownEntityIds,
+	};
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify(payload),
-    });
+	try {
+		const response = await fetch(url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${authToken}`,
+			},
+			body: JSON.stringify(payload),
+		});
 
-    const data = await response.json();
+		const data = await response.json();
 
-    if (!response.ok) {
-      return {
-        success: false,
-        status: response.status,
-        error: {
-          message: data.error || `HTTP ${response.status}`,
-          code: data.code,
-        },
-      };
-    }
+		if (!response.ok) {
+			logLiveFailure("pull", response.status, data.code, data.error);
+			return {
+				success: false,
+				status: response.status,
+				error: {
+					message: data.error || `HTTP ${response.status}`,
+					code: data.code,
+				},
+			};
+		}
 
-    return {
-      success: true,
-      status: response.status,
-      data,
-    };
-  } catch (err) {
-    return {
-      success: false,
-      status: 0,
-      error: {
-        message: err instanceof Error ? err.message : 'Network error',
-        code: 'NETWORK_ERROR',
-      },
-    };
-  }
+		return {
+			success: true,
+			status: response.status,
+			data,
+		};
+	} catch (err) {
+		return {
+			success: false,
+			status: 0,
+			error: {
+				message: err instanceof Error ? err.message : "Network error",
+				code: "NETWORK_ERROR",
+			},
+		};
+	}
 }
 
 // ============================================================================
@@ -734,120 +904,120 @@ export async function callPullEndpoint(
  * Generate a unique ID for test data
  */
 export function generateTestId(): string {
-  return `test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+	return crypto.randomUUID();
 }
 
 /**
  * Create a minimal valid push payload for testing
  */
 export function createMinimalPushPayload(
-  userId: string,
-  overrides?: Partial<PushPayload>
+	_userId: string,
+	overrides?: Partial<PushPayload>,
 ): PushPayload {
-  return {
-    deviceId: `test-device-${Date.now()}`,
-    platform: 'android',
-    lastSync: 0,
-    sessions: [],
-    telemetry: [],
-    routines: [],
-    cycles: [],
-    rpgAttributes: null,
-    badges: [],
-    gamificationStats: null,
-    phaseStatistics: [],
-    exerciseSignatures: [],
-    assessments: [],
-    ...overrides,
-  };
+	return {
+		deviceId: `test-device-${Date.now()}`,
+		platform: "android",
+		lastSync: 0,
+		sessions: [],
+		telemetry: [],
+		routines: [],
+		cycles: [],
+		rpgAttributes: null,
+		badges: [],
+		gamificationStats: null,
+		phaseStatistics: [],
+		exerciseSignatures: [],
+		assessments: [],
+		...overrides,
+	};
 }
 
 /**
  * Create a test workout session
  */
 export function createTestSession(
-  userId: string,
-  overrides?: Partial<SessionDto>
+	userId: string,
+	overrides?: Partial<SessionDto>,
 ): SessionDto {
-  const sessionId = generateTestId();
-  return {
-    id: sessionId,
-    userId,
-    name: 'Test Workout',
-    startedAt: new Date().toISOString(),
-    durationSeconds: 3600,
-    totalVolume: 5000,
-    setCount: 10,
-    exerciseCount: 3,
-    prCount: 0,
-    routineName: null,
-    workoutMode: 'OLD_SCHOOL',
-    routineSessionId: null,
-    exercises: [],
-    ...overrides,
-  };
+	const sessionId = generateTestId();
+	return {
+		id: sessionId,
+		userId,
+		name: "Test Workout",
+		startedAt: new Date().toISOString(),
+		durationSeconds: 3600,
+		totalVolume: 5000,
+		setCount: 10,
+		exerciseCount: 3,
+		prCount: 0,
+		routineName: null,
+		workoutMode: "OLD_SCHOOL",
+		routineSessionId: null,
+		exercises: [],
+		...overrides,
+	};
 }
 
 /**
  * Create a test exercise
  */
 export function createTestExercise(
-  sessionId: string,
-  orderIndex: number = 0,
-  overrides?: Partial<ExerciseDto>
+	sessionId: string,
+	orderIndex: number = 0,
+	overrides?: Partial<ExerciseDto>,
 ): ExerciseDto {
-  return {
-    id: generateTestId(),
-    sessionId,
-    name: 'Bench Press',
-    muscleGroup: 'chest',
-    orderIndex,
-    sets: [],
-    ...overrides,
-  };
+	return {
+		id: generateTestId(),
+		sessionId,
+		name: "Bench Press",
+		muscleGroup: "chest",
+		orderIndex,
+		sets: [],
+		...overrides,
+	};
 }
 
 /**
  * Create a test set
  */
 export function createTestSet(
-  exerciseId: string,
-  setNumber: number = 1,
-  overrides?: Partial<SetDto>
+	exerciseId: string,
+	setNumber: number = 1,
+	overrides?: Partial<SetDto>,
 ): SetDto {
-  return {
-    id: generateTestId(),
-    exerciseId,
-    setNumber,
-    targetReps: 10,
-    actualReps: 10,
-    weightKg: 50,
-    rpe: 7,
-    isPr: false,
-    notes: null,
-    workoutMode: 'OLD_SCHOOL',
-    repSummaries: [],
-    ...overrides,
-  };
+	return {
+		id: generateTestId(),
+		exerciseId,
+		setNumber,
+		targetReps: 10,
+		actualReps: 10,
+		weightKg: 50,
+		rpe: 7,
+		isPr: false,
+		notes: null,
+		workoutMode: "OLD_SCHOOL",
+		repSummaries: [],
+		...overrides,
+	};
 }
 
 /**
  * Create a test routine
  */
 export function createTestRoutine(
-  userId: string,
-  overrides?: Partial<RoutineDto>
+	userId: string,
+	overrides?: Partial<RoutineDto>,
 ): RoutineDto {
-  return {
-    id: generateTestId(),
-    userId,
-    name: 'Test Routine',
-    description: 'A test routine',
-    exerciseCount: 0,
-    estimatedDuration: 60,
-    timesCompleted: 0,
-    isFavorite: false,
-    exercises: [],
-    ...overrides,
-  };
+	return {
+		id: generateTestId(),
+		userId,
+		name: "Test Routine",
+		description: "A test routine",
+		exerciseCount: 0,
+		estimatedDuration: 60,
+		timesCompleted: 0,
+		isFavorite: false,
+		exercises: [],
+		...overrides,
+	};
 }

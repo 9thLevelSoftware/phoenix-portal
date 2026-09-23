@@ -1,0 +1,337 @@
+import Papa from "papaparse";
+import { describe, expect, it } from "vitest";
+import { buildBodyMuscleFocusModel } from "@/lib/body-muscle-analytics";
+import {
+	type AnalyticsRepSummaryRow,
+	type AnalyticsWorkoutExerciseSummaryRow,
+	buildWorkoutExerciseSummaryRows,
+	fetchAllSupabasePages,
+	fetchAllSupabasePagesForChunks,
+	fetchUserAnalyticsRows,
+	generateDailyExerciseSummaryCsv,
+	generateMuscleContributionCsv,
+	generateRepSummaryCsv,
+	generateWorkoutExerciseSummaryCsv,
+} from "@/lib/export/analytics-tables";
+
+function parse(csv: string) {
+	return Papa.parse<Record<string, string>>(csv, {
+		header: true,
+		skipEmptyLines: false,
+	}).data;
+}
+
+const workoutRows: AnalyticsWorkoutExerciseSummaryRow[] = [
+	{
+		date: "2026-06-01T12:00:00Z",
+		workoutName: "=Import",
+		exerciseId: "exercise-1",
+		exerciseName: "Bench Press",
+		muscleGroup: "Chest",
+		sets: 2,
+		reps: 10,
+		volumeKg: 1000,
+		maxWeightKg: 100,
+		cableCount: 2,
+	},
+	{
+		date: "2026-06-01T12:00:00Z",
+		workoutName: "Push",
+		exerciseId: "exercise-2",
+		exerciseName: "Bench Press",
+		muscleGroup: "Chest",
+		sets: 1,
+		reps: 5,
+		volumeKg: 500,
+		maxWeightKg: 100,
+		cableCount: null,
+	},
+];
+
+const repRows: AnalyticsRepSummaryRow[] = [
+	{
+		date: "2026-06-01T12:00:00Z",
+		workoutName: "Push",
+		exerciseName: "+Bench Press",
+		setNumber: 1,
+		repNumber: 1,
+		meanVelocityMps: 0.5,
+		peakVelocityMps: 0.8,
+		meanForceN: 900,
+		peakForceN: 1100,
+		powerWatts: 450,
+		romMm: 120,
+		tutMs: 1100,
+		asymmetryPct: 3,
+		vbtZone: "strength",
+	},
+];
+
+describe("analytics table CSV generators", () => {
+	it("generates workout-exercise summaries with converted units and formula escaping", () => {
+		const csv = generateWorkoutExerciseSummaryCsv(workoutRows, "lbs");
+		const rows = parse(csv);
+
+		expect(csv.split("\n")[0]).toContain("Volume per Cable (lbs)");
+		expect(rows[0].Workout).toBe("'=Import");
+		expect(Number(rows[0]["Volume per Cable (lbs)"])).toBeCloseTo(2204.6, 1);
+		expect(Number(rows[0]["Max Weight per Cable (lbs)"])).toBeCloseTo(220.5, 1);
+		// Two cables known: total = per cable x 2.
+		expect(Number(rows[0]["Max Weight Total (lbs)"])).toBeCloseTo(440.9, 1);
+		// Unknown cable count: no total, never assume 2 (KD-8).
+		expect(rows[1]["Max Weight Total (lbs)"]).toBe("");
+	});
+
+	it("generates daily exercise summaries by date and exercise", () => {
+		const rows = parse(generateDailyExerciseSummaryCsv(workoutRows, "kg"));
+
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({
+			Date: "2026-06-01",
+			Exercise: "Bench Press",
+			Sets: "3",
+			Reps: "15",
+			"Volume per Cable (kg)": "1500",
+			"Max Weight per Cable (kg)": "100",
+			// Mixed known/unknown cable counts in one day: no single total.
+			"Max Weight Total (kg)": "",
+		});
+	});
+
+	it("builds workout summaries from raw per-cable set weights", () => {
+		const rows = buildWorkoutExerciseSummaryRows(
+			[
+				{
+					id: "session-1",
+					name: "Push",
+					started_at: "2026-06-01T12:00:00Z",
+				},
+			],
+			[
+				{
+					id: "exercise-1",
+					name: "Bench Press",
+					muscle_group: "Chest",
+					session_id: "session-1",
+					cable_count: 1,
+				},
+				{
+					id: "exercise-legacy",
+					name: "Squat",
+					muscle_group: "Legs",
+					session_id: "session-1",
+					cable_count: null,
+				},
+				{
+					id: "exercise-absent",
+					name: "Row",
+					muscle_group: "Back",
+					session_id: "session-1",
+				},
+			],
+			[
+				{
+					id: "set-1",
+					exercise_id: "exercise-1",
+					set_number: 1,
+					actual_reps: 5,
+					weight_kg: 50,
+				},
+				{
+					id: "set-2",
+					exercise_id: "exercise-legacy",
+					set_number: 1,
+					actual_reps: 5,
+					weight_kg: 40,
+				},
+				{
+					id: "set-3",
+					exercise_id: "exercise-absent",
+					set_number: 1,
+					actual_reps: 5,
+					weight_kg: 30,
+				},
+			],
+		);
+
+		// Per cable as stored; a single-cable exercise is never doubled.
+		expect(rows[0]).toMatchObject({
+			reps: 5,
+			volumeKg: 250,
+			maxWeightKg: 50,
+			cableCount: 1,
+		});
+		// Legacy NULL / absent cable_count stays unknown: never assumed to be 2.
+		expect(rows[1]).toMatchObject({
+			volumeKg: 200,
+			maxWeightKg: 40,
+			cableCount: null,
+		});
+		expect(rows[2]).toMatchObject({ maxWeightKg: 30, cableCount: null });
+		const csvRows = parse(generateWorkoutExerciseSummaryCsv(rows, "kg"));
+		expect(csvRows[1]["Max Weight Total (kg)"]).toBe("");
+		expect(csvRows[2]["Max Weight Total (kg)"]).toBe("");
+		expect(csvRows[0]["Max Weight Total (kg)"]).toBe("50");
+	});
+
+	it("generates muscle contribution summaries without sensitive fields", () => {
+		const model = buildBodyMuscleFocusModel([
+			{
+				id: "exercise-1",
+				name: "Bench Press",
+				muscle_group: "Chest",
+				session_id: "session-1",
+				sets: [
+					{ id: "set-1", actual_reps: 5, weight_kg: 100 },
+					{ id: "set-2", actual_reps: 5, weight_kg: 100 },
+				],
+				workout_sessions: { started_at: "2026-06-01T12:00:00Z" },
+			},
+		]);
+		const csv = generateMuscleContributionCsv(model);
+
+		expect(csv).toContain("Muscle ID,Muscle,Body Group");
+		expect(csv).toContain("chest-upper-left");
+		expect(csv).not.toMatch(/oauth|token|provider_customer|billing/i);
+	});
+
+	it("generates rep summaries with formula escaping and no raw telemetry fields", () => {
+		const csv = generateRepSummaryCsv(repRows);
+		const rows = parse(csv);
+
+		expect(rows[0].Exercise).toBe("'+Bench Press");
+		expect(rows[0]["Mean Force (N)"]).toBe("900");
+		expect(csv).not.toContain("access_token");
+		expect(csv).not.toContain("position_mm");
+	});
+
+	it("keeps headers for empty analytics tables", () => {
+		expect(generateWorkoutExerciseSummaryCsv([])).toContain(
+			"Date,Workout,Exercise",
+		);
+		expect(generateDailyExerciseSummaryCsv([])).toContain(
+			"Date,Workout,Exercise",
+		);
+		expect(
+			generateMuscleContributionCsv(buildBodyMuscleFocusModel([])),
+		).toContain("Muscle ID,Muscle,Body Group");
+		expect(generateRepSummaryCsv([])).toContain("Date,Workout,Exercise");
+	});
+
+	it("paginates Supabase analytics reads until a short page is returned", async () => {
+		const pages = [
+			Array.from({ length: 1000 }, (_, index) => ({ id: index })),
+			Array.from({ length: 1000 }, (_, index) => ({ id: index + 1000 })),
+			[{ id: 2000 }],
+		];
+		const ranges: Array<[number, number]> = [];
+
+		const rows = await fetchAllSupabasePages(async (from, to) => {
+			ranges.push([from, to]);
+			return { data: pages.shift() ?? [], error: null };
+		});
+
+		expect(rows).toHaveLength(2001);
+		expect(rows.at(-1)).toEqual({ id: 2000 });
+		expect(ranges).toEqual([
+			[0, 999],
+			[1000, 1999],
+			[2000, 2999],
+		]);
+	});
+
+	it("surfaces Supabase pagination errors", async () => {
+		await expect(
+			fetchAllSupabasePages(async () => ({
+				data: null,
+				error: new Error("range failed"),
+			})),
+		).rejects.toThrow("range failed");
+	});
+
+	it("paginates Supabase reads separately for each chunked filter value set", async () => {
+		const calls: Array<{ ids: string[]; range: [number, number] }> = [];
+		const rows = await fetchAllSupabasePagesForChunks(
+			["session-1", "session-2", "session-3"],
+			async (ids, from, to) => {
+				calls.push({ ids, range: [from, to] });
+				return {
+					data:
+						from === 0
+							? [
+									{ id: `${ids.join("+")}-${from}` },
+									{ id: `${ids.join("+")}-${to}` },
+								]
+							: [],
+					error: null,
+				};
+			},
+			{ chunkSize: 2, pageSize: 2 },
+		);
+
+		expect(calls).toEqual([
+			{ ids: ["session-1", "session-2"], range: [0, 1] },
+			{ ids: ["session-1", "session-2"], range: [2, 3] },
+			{ ids: ["session-3"], range: [0, 1] },
+			{ ids: ["session-3"], range: [2, 3] },
+		]);
+		expect(rows).toHaveLength(4);
+	});
+
+	it("orders every paged analytics read by id so ranges are deterministic", async () => {
+		const rowCounts: Record<string, number> = {
+			workout_sessions: 1001,
+			exercises: 3,
+			sets: 1001,
+			rep_summaries: 1001,
+		};
+		const calls: Array<{ table: string; chain: string[] }> = [];
+		const client = {
+			from(table: string) {
+				const chain: string[] = [];
+				calls.push({ table, chain });
+				const builder = {
+					select: () => builder,
+					eq: () => builder,
+					in: () => builder,
+					order: (column: string, options?: { ascending?: boolean }) => {
+						chain.push(
+							`order:${column}${options?.ascending === false ? ":desc" : ""}`,
+						);
+						return builder;
+					},
+					range: async (from: number, to: number) => {
+						chain.push(`range:${from}-${to}`);
+						const end = Math.min(to + 1, rowCounts[table]);
+						return {
+							data: Array.from({ length: Math.max(end - from, 0) }, (_, i) => ({
+								id: `${table}-${from + i}`,
+							})),
+							error: null,
+						};
+					},
+				};
+				return builder;
+			},
+		};
+
+		const rows = await fetchUserAnalyticsRows(
+			"user-1",
+			client as unknown as Parameters<typeof fetchUserAnalyticsRows>[1],
+		);
+
+		expect(rows.workouts).toHaveLength(1001);
+		expect(rows.sets).toHaveLength(1001);
+		expect(rows.repSummaries).toHaveLength(1001);
+		for (const { table, chain } of calls) {
+			const orders = chain.filter((entry) => entry.startsWith("order:"));
+			expect(orders[orders.length - 1], table).toBe("order:id");
+			expect(chain[chain.length - 1], table).toMatch(/^range:/);
+		}
+		expect(calls.find((c) => c.table === "workout_sessions")?.chain).toEqual([
+			"order:started_at:desc",
+			"order:id",
+			"range:0-999",
+		]);
+	});
+});

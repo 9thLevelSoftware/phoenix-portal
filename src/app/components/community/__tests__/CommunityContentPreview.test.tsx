@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { routineExercisesSnapshotSchema } from "@/schemas/community";
 import {
 	CycleSnapshotPreview,
 	RoutineSnapshotPreview,
@@ -9,7 +10,7 @@ describe("CommunityContentPreview", () => {
 	it("renders full routine exercise details from a snapshot", () => {
 		render(
 			<RoutineSnapshotPreview
-				exercises={[
+				exercises={routineExercisesSnapshotSchema.parse([
 					{
 						name: "Bench Press",
 						muscle_group: "Chest",
@@ -26,21 +27,69 @@ describe("CommunityContentPreview", () => {
 						is_amrap: false,
 						is_bodyweight: false,
 						stall_detection: true,
+						drop_set_enabled: true,
+						drop_set_min_weight_kg: 12.5,
 					},
-				]}
+				])}
 			/>,
 		);
 
 		expect(screen.getByText("Bench Press")).toBeInTheDocument();
-		expect(screen.getByText(/3 sets \/ 8 reps/i)).toBeInTheDocument();
-		expect(screen.getByText(/Weights:/i)).toBeInTheDocument();
+		expect(screen.getByText("Drop set")).toBeInTheDocument();
+		// Stored per cable and shown per cable, as on the phone (KD-8).
+		expect(
+			screen.getByText(/3 sets \/ 8 reps \/ 40 kg per cable/i),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(/Weights per cable: 40 kg, 43 kg, 45 kg/i),
+		).toBeInTheDocument();
+		// Stored wire mode renders as its display label, not "OLD_SCHOOL".
+		expect(screen.getByText("Old School")).toBeInTheDocument();
+		expect(screen.queryByText("OLD_SCHOOL")).not.toBeInTheDocument();
+		// Was two more assertions against the pre-KD-8 doubling — the same
+		// prescription and weights list the two per-cable assertions above
+		// already pin, with the single-cable load doubled ("80 kg") and the
+		// per-cable label dropped ("Weights:"). Collapsed onto the landed form.
 		expect(screen.getByText(/Rest: 90s between sets/i)).toBeInTheDocument();
+	});
+
+	it("renders routine loads in lbs when requested", () => {
+		render(
+			<RoutineSnapshotPreview
+				unit="lbs"
+				exercises={routineExercisesSnapshotSchema.parse([
+					{
+						name: "Bench Press",
+						muscle_group: "Chest",
+						sets: 3,
+						reps: 8,
+						weight: 40,
+						rest_seconds: 90,
+						duration_seconds: null,
+						mode: "OLD_SCHOOL",
+						order_index: 0,
+						per_set_weights: [40, 45],
+						per_set_reps: [8, 6],
+						per_set_rest: [90, 120],
+						is_amrap: false,
+						is_bodyweight: false,
+					},
+				])}
+			/>,
+		);
+
+		expect(
+			screen.getByText(/3 sets \/ 8 reps \/ 88.2 lbs per cable/),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(/Weights per cable: 88.2 lbs, 99.2 lbs/),
+		).toBeInTheDocument();
 	});
 
 	it("keeps exercise numbering sequential when supersets are rendered", () => {
 		render(
 			<RoutineSnapshotPreview
-				exercises={[
+				exercises={routineExercisesSnapshotSchema.parse([
 					{
 						name: "Back Squat",
 						muscle_group: "Legs",
@@ -86,13 +135,68 @@ describe("CommunityContentPreview", () => {
 						mode: "OLD_SCHOOL",
 						order_index: 3,
 					},
-				]}
+				])}
 			/>,
 		);
 
 		expect(
 			screen.getAllByText(/^\d\d$/).map((node) => node.textContent),
 		).toEqual(["01", "02", "03", "04"]);
+	});
+
+	it("renders a legacy snapshot's hex superset colour and labels settings", () => {
+		const exercises = routineExercisesSnapshotSchema.parse(
+			[0, 1].map((index) => ({
+				name: `Ex ${index}`,
+				mode: "ECHO",
+				order_index: index,
+				superset_id: "superset-a",
+				superset_order: index,
+				superset_color: "#F59E0B",
+				eccentric_load: index === 0 ? "LOAD_120" : "heavy",
+				echo_level: index === 0 ? "epic" : "high",
+				rep_count_timing: "BOTTOM",
+				stop_at_position: "Lockout",
+			})),
+		);
+		render(<RoutineSnapshotPreview exercises={exercises} />);
+
+		const group = document.querySelector<HTMLElement>(
+			"[style*='border-left-width']",
+		);
+		expect(group?.style.borderLeftColor).toBe("rgb(245, 158, 11)");
+		expect(screen.getByText("Eccentric 120%")).toBeInTheDocument();
+		expect(screen.getByText("Echo Epic")).toBeInTheDocument();
+		// Legacy words were the phone's defaults, so they don't show as settings.
+		expect(screen.queryByText(/heavy|high|Lockout/)).not.toBeInTheDocument();
+		expect(screen.getAllByText("Timing Bottom")).toHaveLength(2);
+		expect(screen.queryByText("Stop at top")).not.toBeInTheDocument();
+	});
+
+	it("renders a colour name (not valid CSS) as its hex", () => {
+		render(
+			<RoutineSnapshotPreview
+				exercises={routineExercisesSnapshotSchema.parse(
+					[0, 1].map((index) => ({
+						name: `Ex ${index}`,
+						muscle_group: "Arms",
+						sets: 3,
+						reps: 10,
+						weight: 0,
+						rest_seconds: 60,
+						mode: "OLD_SCHOOL",
+						order_index: index,
+						superset_id: "superset-a",
+						superset_order: index,
+						superset_color: "amber",
+					})),
+				)}
+			/>,
+		);
+		const group = document.querySelector<HTMLElement>(
+			"[style*='border-left-width']",
+		);
+		expect(group?.style.borderLeftColor).toBe("rgb(245, 158, 11)");
 	});
 
 	it("renders cycle days, overrides, and embedded routine details", () => {
@@ -121,7 +225,7 @@ describe("CommunityContentPreview", () => {
 								exercise_count: 1,
 								estimated_duration: 150,
 								tags: ["Chest"],
-								exercises: [
+								exercises: routineExercisesSnapshotSchema.parse([
 									{
 										name: "Bench Press",
 										muscle_group: "Chest",
@@ -132,7 +236,7 @@ describe("CommunityContentPreview", () => {
 										mode: "OLD_SCHOOL",
 										order_index: 0,
 									},
-								],
+								]),
 							},
 						},
 						{

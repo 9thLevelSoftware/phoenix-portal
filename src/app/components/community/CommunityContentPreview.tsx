@@ -1,12 +1,23 @@
 import { Calendar, Clock, Dumbbell, Repeat } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
-import { formatWeight } from "@/lib/units";
+import { formatWeight, type WeightUnit } from "@/lib/units";
+import { formatLoad as formatPerCableLoad } from "@/lib/units/loadDisplay";
 import type {
 	CycleSnapshot,
 	EmbeddedRoutineSnapshot,
 	RoutineExerciseSnapshot,
 } from "@/schemas/community";
-import { WEIGHT_MULTIPLIER } from "@/schemas/transforms";
+// Was two import statements from workoutModes.ts — the merge unioned the
+// blocks and left `workoutModeLabel` declared twice (and pulled in a
+// load-doubling constant KD-8 deleted). One block; loads stay per cable.
+import {
+	eccentricLoadLabel,
+	echoLevelLabel,
+	repCountTimingLabel,
+	supersetColorHex,
+	toWireMode,
+	workoutModeLabel,
+} from "../../../../supabase/functions/_shared/workoutModes.ts";
 
 function orderedExercises(exercises: RoutineExerciseSnapshot[]) {
 	return [...exercises].sort((a, b) => a.order_index - b.order_index);
@@ -25,13 +36,17 @@ function formatStoredDurationMinutes(duration: number | null | undefined) {
 	return `${Math.round(duration / 60)} min`;
 }
 
-function formatLoad(exercise: RoutineExerciseSnapshot) {
+function formatLoad(exercise: RoutineExerciseSnapshot, unit: WeightUnit) {
 	if (exercise.is_bodyweight) return "Bodyweight";
-	return formatWeight((exercise.weight ?? 0) * WEIGHT_MULTIPLIER, "kg");
+	// Routine weights are per cable; routines carry no cable count (KD-8).
+	return formatPerCableLoad(exercise.weight, null, unit);
 }
 
-function formatPrescription(exercise: RoutineExerciseSnapshot) {
-	const load = formatLoad(exercise);
+function formatPrescription(
+	exercise: RoutineExerciseSnapshot,
+	unit: WeightUnit,
+) {
+	const load = formatLoad(exercise, unit);
 	if (exercise.duration_seconds) {
 		return `${exercise.sets} sets / ${exercise.duration_seconds}s / ${load}`;
 	}
@@ -42,23 +57,30 @@ function formatPrescription(exercise: RoutineExerciseSnapshot) {
 }
 
 function exerciseBadges(exercise: RoutineExerciseSnapshot) {
+	const isEcho = toWireMode(exercise.mode) === "ECHO";
 	return [
-		exercise.mode,
+		workoutModeLabel(exercise.mode),
 		exercise.is_amrap ? "AMRAP" : null,
 		exercise.is_bodyweight ? "Bodyweight" : null,
-		exercise.eccentric_load ? `Eccentric ${exercise.eccentric_load}` : null,
-		exercise.echo_level ? `Echo ${exercise.echo_level}` : null,
-		exercise.rep_count_timing ? `Timing ${exercise.rep_count_timing}` : null,
-		exercise.stop_at_position ? `Stop ${exercise.stop_at_position}` : null,
+		// Eccentric load and echo level only apply in Echo mode on the phone.
+		isEcho && exercise.eccentric_load
+			? `Eccentric ${eccentricLoadLabel(exercise.eccentric_load)}`
+			: null,
+		isEcho && exercise.echo_level
+			? `Echo ${echoLevelLabel(exercise.echo_level)}`
+			: null,
+		exercise.rep_count_timing
+			? `Timing ${repCountTimingLabel(exercise.rep_count_timing)}`
+			: null,
+		exercise.stop_at_position === "TOP" ? "Stop at top" : null,
 		exercise.stall_detection === false ? "Stall off" : null,
+		exercise.drop_set_enabled ? "Drop set" : null,
 	].filter(Boolean) as string[];
 }
 
-function perSetRows(exercise: RoutineExerciseSnapshot) {
+function perSetRows(exercise: RoutineExerciseSnapshot, unit: WeightUnit) {
 	const weights = asPrimitiveArray(exercise.per_set_weights).map((value) =>
-		typeof value === "number"
-			? formatWeight(value * WEIGHT_MULTIPLIER, "kg")
-			: String(value),
+		typeof value === "number" ? formatWeight(value, unit) : String(value),
 	);
 	const reps = asPrimitiveArray(exercise.per_set_reps).map(String);
 	const rest = asPrimitiveArray(exercise.per_set_rest).map((value) =>
@@ -67,7 +89,7 @@ function perSetRows(exercise: RoutineExerciseSnapshot) {
 	const echoLevels = asPrimitiveArray(exercise.per_set_echo_levels).map(String);
 
 	return [
-		weights.length ? `Weights: ${weights.join(", ")}` : null,
+		weights.length ? `Weights per cable: ${weights.join(", ")}` : null,
 		reps.length ? `Reps: ${reps.join(", ")}` : null,
 		rest.length ? `Rest: ${rest.join(", ")}` : null,
 		echoLevels.length ? `Echo: ${echoLevels.join(", ")}` : null,
@@ -77,11 +99,13 @@ function perSetRows(exercise: RoutineExerciseSnapshot) {
 function RoutineExerciseCard({
 	exercise,
 	index,
+	unit,
 }: {
 	exercise: RoutineExerciseSnapshot;
 	index: number;
+	unit: WeightUnit;
 }) {
-	const perSet = perSetRows(exercise);
+	const perSet = perSetRows(exercise, unit);
 
 	return (
 		<div className="rounded-lg border border-secondary bg-surface-2 p-3">
@@ -99,7 +123,7 @@ function RoutineExerciseCard({
 						</Badge>
 					</div>
 					<p className="text-sm text-secondary-foreground">
-						{formatPrescription(exercise)}
+						{formatPrescription(exercise, unit)}
 					</p>
 					<p className="mt-1 text-xs text-muted-foreground">
 						Rest: {exercise.rest_seconds}s between sets
@@ -131,9 +155,11 @@ function RoutineExerciseCard({
 export function RoutineSnapshotPreview({
 	exercises,
 	title = "Routine Details",
+	unit = "kg",
 }: {
 	exercises: RoutineExerciseSnapshot[] | null | undefined;
 	title?: string;
+	unit?: WeightUnit;
 }) {
 	if (!exercises || exercises.length === 0) {
 		return (
@@ -205,13 +231,14 @@ export function RoutineSnapshotPreview({
 							key={`${item.exercise.name}-${item.exercise.order_index}`}
 							exercise={item.exercise}
 							index={item.index}
+							unit={unit}
 						/>
 					) : (
 						<div
 							key={item.id}
 							className="rounded-lg border border-secondary bg-background/30 p-3"
 							style={{
-								borderLeftColor: item.color ?? undefined,
+								borderLeftColor: supersetColorHex(item.color),
 								borderLeftWidth: 4,
 							}}
 						>
@@ -232,6 +259,7 @@ export function RoutineSnapshotPreview({
 										key={`${exercise.name}-${exercise.order_index}`}
 										exercise={exercise}
 										index={index}
+										unit={unit}
 									/>
 								))}
 							</div>
@@ -271,8 +299,10 @@ function SettingList({ title, value }: { title: string; value: unknown }) {
 
 function CycleRoutineDetails({
 	routine,
+	unit,
 }: {
 	routine: EmbeddedRoutineSnapshot | null | undefined;
+	unit: WeightUnit;
 }) {
 	if (!routine) {
 		return (
@@ -291,6 +321,7 @@ function CycleRoutineDetails({
 				<RoutineSnapshotPreview
 					exercises={routine.exercises}
 					title={`${routine.name} Exercises`}
+					unit={unit}
 				/>
 			</div>
 		</details>
@@ -299,8 +330,10 @@ function CycleRoutineDetails({
 
 export function CycleSnapshotPreview({
 	snapshot,
+	unit = "kg",
 }: {
 	snapshot: CycleSnapshot | null | undefined;
+	unit?: WeightUnit;
 }) {
 	if (!snapshot) {
 		return (
@@ -419,7 +452,9 @@ export function CycleSnapshotPreview({
 									{day.notes}
 								</p>
 							)}
-							{isWorkout && <CycleRoutineDetails routine={routine} />}
+							{isWorkout && (
+								<CycleRoutineDetails routine={routine} unit={unit} />
+							)}
 						</div>
 					);
 				})}

@@ -1,5 +1,8 @@
-# Cloudflare Pages configuration
-# Auto-deployed on push to main via Cloudflare GitHub integration
+# Cloudflare Pages / Workers Builds configuration
+# Auto-deployed on push to main via Cloudflare GitHub integration.
+# Workers Builds runs `npx wrangler deploy`; wrangler is pinned in
+# package.json so that command uses the local binary.
+
 
 name = "phoenix-portal"
 compatibility_date = "2025-12-01"
@@ -9,7 +12,7 @@ directory = "./dist"
 not_found_handling = "single-page-application"
 
 [build]
-command = "npm run build && npm run assert:no-sourcemaps"
+command = "npm run build && npm run assert:no-sourcemaps && npm run assert:supabase-config"
 
 # Client-side env vars (VITE_*) are set in Cloudflare Dashboard,
 # not here — they are embedded in the bundle at build time.

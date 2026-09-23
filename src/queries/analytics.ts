@@ -1,9 +1,74 @@
 import { queryOptions } from "@tanstack/react-query";
 import { classifyMuscleGroup } from "@/lib/exercise-muscles";
 import { supabase } from "@/lib/supabase";
+import { fetchAllKeysetPages } from "@/lib/supabasePaging";
+import { exerciseFrequencySchema } from "./exercise-frequency";
 import { queryKeys } from "./keys";
+import {
+	resolvePersonalRecordDisplayNames,
+	STRENGTH_PROGRESS_WITH_CATALOG_SELECT,
+} from "./personal-record-normalization";
 
-/** Volume trend over time (for area/bar chart) */
+/**
+ * The browser's IANA zone, used by the SQL aggregates that bucket by calendar
+ * day/week so they keep the local-calendar semantics the charts used to get
+ * from `new Date(...).getDay()`.
+ */
+export function browserTimeZone(): string {
+	try {
+		return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+	} catch {
+		return "UTC";
+	}
+}
+
+/**
+ * True when a zone-bucketing RPC refused the browser's zone. The SQL
+ * aggregates validate `p_tz` against pg_timezone_names and raise 22023; an
+ * older or unusual browser can report a zone the server does not know (NF-20).
+ * "unknown period" also raises 22023, so match the zone message too.
+ */
+export function isUnknownTimeZoneError(error: unknown): boolean {
+	if (!error || typeof error !== "object") return false;
+	const { code, message } = error as { code?: unknown; message?: unknown };
+	return (
+		code === "22023" &&
+		typeof message === "string" &&
+		message.includes("unknown time zone")
+	);
+}
+
+/** Position of the last session row a keyset page returned. */
+interface SessionCursor {
+	started_at: string;
+	id: string;
+}
+
+function sessionCursorOf(row: {
+	started_at: string;
+	id: string;
+}): SessionCursor {
+	return { started_at: row.started_at, id: row.id };
+}
+
+/**
+ * PostgREST `or` filter for "strictly after this (started_at, id)". The
+ * timestamp is quoted because an ISO value carries `.` and `:`, which the
+ * filter grammar reserves.
+ */
+function afterSessionFilter(after: SessionCursor): string {
+	return `started_at.gt."${after.started_at}",and(started_at.eq."${after.started_at}",id.gt.${after.id})`;
+}
+
+/**
+ * Weekly volume buckets (for area/bar chart).
+ *
+ * Aggregated in SQL by `session_volume_buckets`: one row per week instead of
+ * one row per session, so the "all" period can no longer lose its newest
+ * months to PostgREST's silent 1,000-row cap (F-034/F-012). `week_start` is
+ * the Monday of the week in the caller's zone, which is the rule the chart
+ * used to apply client-side.
+ */
 export function volumeTrendOptions(
 	userId: string,
 	period: string = "4w",
@@ -16,35 +81,21 @@ export function volumeTrendOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			let query = supabase
-				.from("workout_sessions")
-				.select("started_at, total_volume")
-				.eq("user_id", userId);
-
-			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
+			const read = (tz: string) =>
+				supabase.rpc("session_volume_buckets", {
+					p_period: period,
+					p_tz: tz,
+					...(profileId ? { p_profile_id: profileId } : {}),
+				});
+			const zone = browserTimeZone();
+			let { data, error } = await read(zone);
+			// Buckets in UTC rather than failing the chart when the server does
+			// not recognise the browser's zone.
+			if (error && zone !== "UTC" && isUnknownTimeZoneError(error)) {
+				({ data, error } = await read("UTC"));
 			}
-
-			query = query.order("started_at", { ascending: true });
-
-			// Apply date filter unless "all" (fetch everything)
-			if (period !== "all") {
-				const daysBack =
-					period === "52w"
-						? 365
-						: period === "12w"
-							? 84
-							: period === "4w"
-								? 28
-								: 7;
-				const since = new Date();
-				since.setDate(since.getDate() - daysBack);
-				query = query.gte("started_at", since.toISOString());
-			}
-
-			const { data, error } = await query;
 			if (error) throw error;
-			return data;
+			return data ?? [];
 		},
 	});
 }
@@ -54,27 +105,17 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
 		queryKey: queryKeys.analytics.summary(userId, "muscle-groups", profileId),
 		queryFn: async () => {
-			// Two-step approach: get user's session IDs, then get exercises grouped by muscle_group
-			let sessionQuery = supabase
-				.from("workout_sessions")
-				.select("id")
-				.eq("user_id", userId);
-
-			if (profileId) {
-				sessionQuery = sessionQuery.eq("local_profile_id", profileId);
-			}
-
-			const { data: sessions, error: sessionError } = await sessionQuery;
-			if (sessionError) throw sessionError;
-
-			if (!sessions || sessions.length === 0) return [];
-
-			const sessionIds = sessions.map((s) => s.id);
-			const { data: exercises, error: exerciseError } = await supabase
-				.from("exercises")
-				.select("name, muscle_group")
-				.in("session_id", sessionIds);
-			if (exerciseError) throw exerciseError;
+			// One RPC, grouped in SQL. The previous "select every session id, then
+			// .in(session_id, ids)" round trip put every UUID in the GET URL and
+			// started failing at ~200 sessions (F-035), and the exercise rows it
+			// fetched were themselves capped at 1,000 rows.
+			// `sessions` counts an exercise once per session it appears in.
+			const { data: exercises, error } = await supabase.rpc(
+				"exercise_frequency",
+				profileId ? { p_profile_id: profileId } : {},
+			);
+			if (error) throw error;
+			const exerciseFrequency = exerciseFrequencySchema.parse(exercises ?? []);
 
 			// Classify by exercise NAME (canonical 6 groups), falling back to a
 			// real muscle_group hint only when the name is unclassifiable. The DB
@@ -83,10 +124,13 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 			// collapsed the entire distribution into a single "General" bucket.
 			// Genuinely unclassifiable rows are dropped from the distribution.
 			const counts: Record<string, number> = {};
-			for (const ex of exercises ?? []) {
-				const group = classifyMuscleGroup(ex.name ?? "", ex.muscle_group);
+			for (const ex of exerciseFrequency) {
+				const group = classifyMuscleGroup(
+					ex.exercise_name ?? "",
+					ex.muscle_group,
+				);
 				if (group === "General") continue;
-				counts[group] = (counts[group] ?? 0) + 1;
+				counts[group] = (counts[group] ?? 0) + (ex.sessions ?? 0);
 			}
 
 			const total = Object.values(counts).reduce((sum, c) => sum + c, 0);
@@ -98,7 +142,24 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 	});
 }
 
-/** Strength progress (exercise-specific 1RM trends for line chart) */
+/**
+ * How many personal-record events the phase-aware strength chart reads.
+ *
+ * `personal_record_history` clamps its own limit to 1,000, so this is "the
+ * newest 1,000 PR events" — an explicit, documented bound. The previous
+ * implementation selected every record ASCENDING with no limit, so PostgREST's
+ * `max_rows` silently dropped the NEWEST ones — the chart stopped moving once
+ * a user passed about 1,000 PR events (F-034).
+ */
+const STRENGTH_PROGRESS_RECORD_LIMIT = 1000;
+
+/**
+ * Strength progress (phase-aware personal-record trends for the line chart).
+ *
+ * Read through `personal_record_history`, which is newest-first and excludes
+ * tombstones in SQL. `exercise_progress` cannot serve this chart: it has no
+ * `workout_phase`, which is the dimension the chart is built on.
+ */
 export function strengthProgressOptions(
 	userId: string,
 	profileId?: string | null,
@@ -110,86 +171,117 @@ export function strengthProgressOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			let query = supabase
-				.from("personal_records")
-				.select(
-					"exercise_name, exercise_id, record_type, workout_phase, value, achieved_at",
-				)
-				.eq("user_id", userId);
-
-			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
-			}
-
-			const { data, error } = await query.order("achieved_at", {
-				ascending: true,
-			});
+			const { data, error } = await supabase
+				.rpc("personal_record_history", {
+					p_limit: STRENGTH_PROGRESS_RECORD_LIMIT,
+					// Generated types mark defaulted arguments optional: omit them
+					// rather than passing null.
+					...(profileId ? { p_profile_id: profileId } : {}),
+				})
+				.select(STRENGTH_PROGRESS_WITH_CATALOG_SELECT);
 			if (error) throw error;
-			return data;
+
+			// The RPC orders achieved_at DESC; the chart plots time ascending.
+			const ascending = [...(data ?? [])].reverse();
+			return resolvePersonalRecordDisplayNames(ascending, userId);
 		},
 	});
 }
 
 /** Volume trend with previous period comparison */
+const DAY_MS = 86_400_000;
+
+/**
+ * `calendar` (the chart's window) subtracts local calendar days, matching
+ * session_volume_buckets. `fixed` subtracts exact 24 h days from one
+ * timestamp, matching generate-insights, and is what the local insight
+ * fallback uses: the two differ by an hour across a DST change.
+ */
+export type ComparisonBoundaries = "calendar" | "fixed";
+
 export function volumeComparisonOptions(
 	userId: string,
 	period: string = "4w",
 	profileId?: string | null,
+	boundaries: ComparisonBoundaries = "calendar",
 ) {
 	return queryOptions({
 		queryKey: queryKeys.analytics.summary(
 			userId,
-			`volume-comparison-${period}`,
+			`volume-comparison-${period}${boundaries === "fixed" ? "-fixed" : ""}`,
 			profileId,
 		),
 		queryFn: async () => {
 			const daysBack = periodToDays(period);
-			const currentStart = new Date();
-			currentStart.setDate(currentStart.getDate() - daysBack);
-			const previousStart = new Date();
-			previousStart.setDate(previousStart.getDate() - daysBack * 2);
-
-			let currentQuery = supabase
-				.from("workout_sessions")
-				.select(
-					"started_at, total_volume, duration_seconds, set_count, exercise_count",
-				)
-				.eq("user_id", userId);
-			let previousQuery = supabase
-				.from("workout_sessions")
-				.select(
-					"started_at, total_volume, duration_seconds, set_count, exercise_count",
-				)
-				.eq("user_id", userId);
-
-			if (profileId) {
-				currentQuery = currentQuery.eq("local_profile_id", profileId);
-				previousQuery = previousQuery.eq("local_profile_id", profileId);
+			const now = Date.now();
+			let currentStart: Date;
+			let previousStart: Date;
+			if (boundaries === "fixed") {
+				currentStart = new Date(now - daysBack * DAY_MS);
+				previousStart = new Date(now - daysBack * 2 * DAY_MS);
+			} else {
+				currentStart = new Date(now);
+				currentStart.setDate(currentStart.getDate() - daysBack);
+				previousStart = new Date(now);
+				previousStart.setDate(previousStart.getDate() - daysBack * 2);
 			}
 
-			const [currentData, previousData] = await Promise.all([
-				currentQuery
-					.gte("started_at", currentStart.toISOString())
-					.order("started_at", { ascending: true }),
-				previousQuery
-					.gte("started_at", previousStart.toISOString())
-					.lt("started_at", currentStart.toISOString())
-					.order("started_at", { ascending: true }),
-			]);
+			// Keyset-paged: one select per window was silently capped at 1,000
+			// rows, so a long "all" window lost its newest sessions (NF-19).
+			const readWindow = (start: Date, end: Date | null) =>
+				fetchAllKeysetPages((after: SessionCursor | null, limit) => {
+					let query = supabase
+						.from("workout_sessions")
+						.select(
+							"id, started_at, total_volume, duration_seconds, set_count, exercise_count",
+						)
+						.eq("user_id", userId)
+						.gte("started_at", after?.started_at ?? start.toISOString());
+					if (end) query = query.lt("started_at", end.toISOString());
+					if (profileId) query = query.eq("local_profile_id", profileId);
+					if (after) query = query.or(afterSessionFilter(after));
+					return query
+						.order("started_at", { ascending: true })
+						.order("id", { ascending: true })
+						.limit(limit);
+				}, sessionCursorOf);
 
-			if (currentData.error) throw currentData.error;
-			if (previousData.error) throw previousData.error;
-			return { current: currentData.data, previous: previousData.data };
+			const [current, previous] = await Promise.all([
+				readWindow(currentStart, null),
+				readWindow(previousStart, currentStart),
+			]);
+			return { current, previous };
 		},
 	});
 }
 
-function periodToDays(period: string): number {
+/**
+ * Days in a period. Accepts the chart's week-based periods ("4w" = 28 days)
+ * and the insight periods generate-insights uses ("30d" = 30 days, PERIOD_DAYS
+ * in supabase/functions/generate-insights/index.ts), which must not be
+ * confused: the local insight fallback has to use the server's windows.
+ */
+export function periodToDays(period: string): number {
 	if (period === "all") return 3650;
+	if (period === "1y") return 365;
+	if (period === "90d") return 90;
+	if (period === "30d") return 30;
+	if (period === "7d") return 7;
 	if (period === "52w") return 365;
 	if (period === "12w") return 84;
 	if (period === "4w") return 28;
 	return 7;
+}
+
+/**
+ * Returns the ISO cutoff for a period, or null for "all" (no date filter).
+ * Use to keep "all" truly unbounded instead of silently capping at 10 years.
+ */
+function periodCutoffISO(period: string): string | null {
+	if (period === "all") return null;
+	const since = new Date();
+	since.setDate(since.getDate() - periodToDays(period));
+	return since.toISOString();
 }
 
 /** Form score trend over time (GAP 4) */
@@ -205,25 +297,23 @@ export function formScoreTrendOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			const daysBack = periodToDays(period);
-			const since = new Date();
-			since.setDate(since.getDate() - daysBack);
+			const cutoff = periodCutoffISO(period);
 
-			let query = supabase
-				.from("workout_sessions")
-				.select("started_at, form_score")
-				.eq("user_id", userId);
-
-			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
-			}
-
-			const { data, error } = await query
-				.not("form_score", "is", null)
-				.gte("started_at", since.toISOString())
-				.order("started_at", { ascending: true });
-			if (error) throw error;
-			return data;
+			return fetchAllKeysetPages((after: SessionCursor | null, limit) => {
+				let query = supabase
+					.from("workout_sessions")
+					.select("id, started_at, form_score")
+					.eq("user_id", userId)
+					.not("form_score", "is", null);
+				if (profileId) query = query.eq("local_profile_id", profileId);
+				const since = after?.started_at ?? cutoff;
+				if (since) query = query.gte("started_at", since);
+				if (after) query = query.or(afterSessionFilter(after));
+				return query
+					.order("started_at", { ascending: true })
+					.order("id", { ascending: true })
+					.limit(limit);
+			}, sessionCursorOf);
 		},
 	});
 }
@@ -241,26 +331,28 @@ export function safetyTrendOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			const daysBack = periodToDays(period);
-			const since = new Date();
-			since.setDate(since.getDate() - daysBack);
+			const cutoff = periodCutoffISO(period);
 
-			let query = supabase
-				.from("workout_sessions")
-				.select(
-					"started_at, deload_warnings, rom_violations, spotter_activations",
-				)
-				.eq("user_id", userId);
-
-			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
-			}
-
-			const { data, error } = await query
-				.gte("started_at", since.toISOString())
-				.order("started_at", { ascending: true });
-			if (error) throw error;
-			return (data ?? []).filter(
+			const rows = await fetchAllKeysetPages(
+				(after: SessionCursor | null, limit) => {
+					let query = supabase
+						.from("workout_sessions")
+						.select(
+							"id, started_at, deload_warnings, rom_violations, spotter_activations",
+						)
+						.eq("user_id", userId);
+					if (profileId) query = query.eq("local_profile_id", profileId);
+					const since = after?.started_at ?? cutoff;
+					if (since) query = query.gte("started_at", since);
+					if (after) query = query.or(afterSessionFilter(after));
+					return query
+						.order("started_at", { ascending: true })
+						.order("id", { ascending: true })
+						.limit(limit);
+				},
+				sessionCursorOf,
+			);
+			return rows.filter(
 				(r) =>
 					(r.deload_warnings ?? 0) > 0 ||
 					(r.rom_violations ?? 0) > 0 ||
@@ -283,25 +375,23 @@ export function calorieHistoryOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			const daysBack = periodToDays(period);
-			const since = new Date();
-			since.setDate(since.getDate() - daysBack);
+			const cutoff = periodCutoffISO(period);
 
-			let query = supabase
-				.from("workout_sessions")
-				.select("started_at, estimated_calories")
-				.eq("user_id", userId);
-
-			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
-			}
-
-			const { data, error } = await query
-				.not("estimated_calories", "is", null)
-				.gte("started_at", since.toISOString())
-				.order("started_at", { ascending: true });
-			if (error) throw error;
-			return data;
+			return fetchAllKeysetPages((after: SessionCursor | null, limit) => {
+				let query = supabase
+					.from("workout_sessions")
+					.select("id, started_at, estimated_calories")
+					.eq("user_id", userId)
+					.not("estimated_calories", "is", null);
+				if (profileId) query = query.eq("local_profile_id", profileId);
+				const since = after?.started_at ?? cutoff;
+				if (since) query = query.gte("started_at", since);
+				if (after) query = query.or(afterSessionFilter(after));
+				return query
+					.order("started_at", { ascending: true })
+					.order("id", { ascending: true })
+					.limit(limit);
+			}, sessionCursorOf);
 		},
 	});
 }
@@ -315,9 +405,7 @@ export function phaseStatisticsTrendOptions(
 	return queryOptions({
 		queryKey: queryKeys.analytics.phaseStats(userId, period, profileId),
 		queryFn: async () => {
-			const daysBack = periodToDays(period);
-			const since = new Date();
-			since.setDate(since.getDate() - daysBack);
+			const cutoff = periodCutoffISO(period);
 
 			let query = supabase
 				.from("session_phase_statistics")
@@ -340,8 +428,11 @@ export function phaseStatisticsTrendOptions(
 					].join(", "),
 				)
 				.eq("user_id", userId)
-				.gte("workout_sessions.started_at", since.toISOString())
 				.order("created_at", { ascending: true });
+
+			if (cutoff) {
+				query = query.gte("workout_sessions.started_at", cutoff);
+			}
 
 			if (profileId) {
 				query = query.eq("workout_sessions.local_profile_id", profileId);
@@ -351,44 +442,5 @@ export function phaseStatisticsTrendOptions(
 			if (error) throw error;
 			return data ?? [];
 		},
-	});
-}
-
-/** Phase statistics for a session (GAP 7) */
-export function phaseStatisticsOptions(sessionId: string) {
-	return queryOptions({
-		queryKey: [...queryKeys.analytics.all, "phase-stats", sessionId] as const,
-		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("session_phase_statistics")
-				.select("*")
-				.eq("session_id", sessionId)
-				.maybeSingle();
-			if (error) throw error;
-			return data;
-		},
-		enabled: !!sessionId,
-	});
-}
-
-/** VBT assessments for an exercise (GAP 9) */
-export function vbtAssessmentsOptions(userId: string, exerciseId: string) {
-	return queryOptions({
-		queryKey: [
-			...queryKeys.analytics.all,
-			"vbt-assessments",
-			exerciseId,
-		] as const,
-		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("vbt_assessments")
-				.select("*")
-				.eq("user_id", userId)
-				.eq("exercise_id", exerciseId)
-				.order("created_at", { ascending: false });
-			if (error) throw error;
-			return data;
-		},
-		enabled: !!exerciseId,
 	});
 }

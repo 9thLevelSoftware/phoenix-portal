@@ -36,10 +36,11 @@ const faqCategories: FAQCategory[] = [
 				answer: (
 					<p>
 						Phoenix Portal is a web companion dashboard for Project Phoenix, a
-						community rescue project for Vitruvian Trainer workout machines. It
-						provides a view-only interface for tracking your training data,
-						analytics, and progress. All workout control happens in the mobile
-						app — the portal gives you deeper insights on a larger screen.
+						community-developed companion project for Phoenix-compatible fitness
+						machines. It provides a view-only interface for tracking your
+						training data, analytics, and progress. All workout control happens
+						in the mobile app — the portal gives you deeper insights on a larger
+						screen.
 					</p>
 				),
 			},
@@ -49,7 +50,7 @@ const faqCategories: FAQCategory[] = [
 					<p>
 						Sign up for an account, connect your mobile app, and your workouts
 						will sync automatically. Once linked, every session recorded on your
-						Vitruvian Trainer appears in the portal within seconds.
+						Phoenix fitness machine appears in the portal within seconds.
 					</p>
 				),
 			},
@@ -73,11 +74,16 @@ const faqCategories: FAQCategory[] = [
 				question: "What subscription tiers are available?",
 				answer: (
 					<p>
-						We offer two tiers: <strong>Ember</strong> ($15/mo — cloud sync,
-						unlimited history, community sharing, and third-party connections),
-						and <strong>Inferno</strong> ($25/mo — everything in Ember plus
-						advanced analytics, biomechanics, force curves, VBT zones, and
-						session replay). Inferno is coming soon. See the{" "}
+						We offer three tiers: <strong>Ember</strong> ($5/mo — cloud sync,
+						dashboard, workout history, session detail, goals, and recovery),{" "}
+						<strong>Flame</strong> ($15/mo — everything in Ember plus analytics,
+						community, routines, cycles, leaderboards, challenges, compare,
+						session replay, and third-party connections like Strava, Hevy, and
+						Liftosaur), and <strong>Inferno</strong> ($25/mo — everything in
+						Flame plus advanced biomechanics: force, VBT, ROM, SRA, and form).
+						Inferno is purchasable; inner Inferno feature gates stay. Fitbit and
+						Garmin Connect are implemented but gated coming-soon pending
+						developer-program approval. See the{" "}
 						<Link to="/pricing" className="text-primary hover:underline">
 							Pricing page
 						</Link>{" "}
@@ -106,10 +112,11 @@ const faqCategories: FAQCategory[] = [
 				question: "Is there a free trial?",
 				answer: (
 					<p>
-						There is no time-limited trial, but the Free tier is available
-						permanently with core tracking features. You can upgrade to a paid
-						tier whenever you&apos;re ready for advanced analytics and premium
-						features.
+						There is no time-limited trial. Unauthenticated visitors see landing
+						and pricing. After sign-in, Ember is required for cloud sync, the
+						dashboard, and history — authenticated Free is a conversion funnel,
+						not a local-only history SKU. You can upgrade whenever you&apos;re
+						ready.
 					</p>
 				),
 			},
@@ -162,10 +169,13 @@ const faqCategories: FAQCategory[] = [
 				question: "How does workout syncing work?",
 				answer: (
 					<p>
-						When you complete a workout on your Vitruvian Trainer, the mobile
-						app sends the data to Supabase. The portal picks up changes in
-						real-time via broadcast, so your latest sessions appear almost
-						instantly on the dashboard.
+						When you complete a workout on your Phoenix fitness machine, the
+						mobile app POSTs it to <code>mobile-sync-push</code>. The Edge
+						function broadcasts <code>sync_complete</code> on private channel{" "}
+						<code>sync:{"{userId}"}</code>. The portal invalidates its cache
+						when that event arrives (and on reconnect). Session replay reads{" "}
+						<code>rep_telemetry</code> in the portal; pull does not return
+						telemetry.
 					</p>
 				),
 			},
@@ -173,10 +183,10 @@ const faqCategories: FAQCategory[] = [
 				question: "What analytics are available?",
 				answer: (
 					<p>
-						Depending on your subscription tier, you can access force curves,
-						velocity trends, muscle balance analysis, and progressive overload
-						tracking. Premium tiers unlock biomechanics analysis and session
-						replay for deeper training insights.
+						Flame unlocks analytics (volume, muscle balance, training load) and
+						session replay. Inferno unlocks advanced biomechanics (force curves,
+						VBT zones, ROM, SRA, form). Ember covers dashboard, history, goals,
+						and recovery — not leaderboards or replay.
 					</p>
 				),
 			},

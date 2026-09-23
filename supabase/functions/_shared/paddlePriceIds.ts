@@ -125,3 +125,25 @@ export function paddlePriceIdsConfigured(env: {
   const { ember, flame, inferno } = getPaddlePriceIdSets(env);
   return ember.size + flame.size + inferno.size > 0;
 }
+
+/**
+ * Detect price IDs configured under more than one tier. `mapPriceIdToTier`
+ * resolves such collisions by fixed precedence (INFERNO > FLAME > EMBER), which
+ * can silently map a customer to the wrong paid tier when a price ID is copied
+ * into the wrong secret. Returns the list of duplicated price IDs so callers can
+ * log a fatal configuration error instead of relying on precedence.
+ */
+export function findCrossTierDuplicatePriceIds(env: {
+  get(key: string): string | undefined;
+}): string[] {
+  const { ember, flame, inferno } = getPaddlePriceIdSets(env);
+  const counts = new Map<string, number>();
+  for (const set of [ember, flame, inferno]) {
+    for (const id of set) {
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([id]) => id);
+}

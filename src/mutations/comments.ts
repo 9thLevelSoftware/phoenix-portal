@@ -70,17 +70,14 @@ export function useUpdateComment() {
 		mutationFn: async ({ commentId, body, createdAt }: UpdateCommentArgs) => {
 			if (!user) throw new Error("Must be logged in to edit");
 
-			// Client-side check: 5-minute edit window.
-			// LIMITATION: Client clock manipulation can bypass
-			// this check. The server-side .gte("created_at")
-			// filter below provides a secondary guard, but a
-			// proper RLS policy is the real fix:
-			//   CREATE POLICY "enforce_edit_window"
-			//     ON community_comments FOR UPDATE
-			//     USING (
-			//       auth.uid() = user_id
-			//       AND created_at > now() - interval '5 min'
-			//     );
+			// Client-side check: 5-minute edit window. Client clock manipulation
+			// can bypass it, but it is only the first of three guards. The
+			// .gte("created_at") filter below is the second, and the RLS policy
+			// "Users can edit own comments within 5 minutes" is authoritative:
+			// since 20260920000901 it checks the window in USING (the stored
+			// row) as well as WITH CHECK, and authenticated clients only hold
+			// column grants on (body, updated_at), so created_at cannot be
+			// refreshed to reopen the window.
 			const elapsed = Date.now() - createdAt.getTime();
 			if (elapsed > 5 * 60 * 1000) {
 				throw new Error("Edit window has expired");
@@ -92,7 +89,10 @@ export function useUpdateComment() {
 			// check was bypassed.
 			const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
-			const { error, count } = await supabase
+			// `.select()` is required for the row check: a bare `.update()` does
+			// not populate `count`, so the previous `count === 0` guard never
+			// fired and the server-side edit-window check was a no-op.
+			const { data: updated, error } = await supabase
 				.from("community_comments")
 				.update({
 					body,
@@ -100,10 +100,12 @@ export function useUpdateComment() {
 				})
 				.eq("id", commentId)
 				.eq("user_id", user.id)
-				.gte("created_at", fiveMinutesAgo);
+				.gte("created_at", fiveMinutesAgo)
+				.select("id")
+				.maybeSingle();
 
 			if (error) throw error;
-			if (count === 0) {
+			if (!updated) {
 				throw new Error("Edit window has expired");
 			}
 		},
@@ -134,6 +136,9 @@ interface DeleteCommentArgs {
 	itemId: string;
 }
 
+/** Sentinel for "the DELETE matched no row" — mapped to its own toast below. */
+const COMMENT_NOT_DELETED = "Comment was not deleted";
+
 export function useDeleteComment() {
 	const { user } = useAuth();
 	const queryClient = useQueryClient();
@@ -142,14 +147,31 @@ export function useDeleteComment() {
 		mutationFn: async ({ commentId }: DeleteCommentArgs) => {
 			if (!user) throw new Error("Must be logged in to delete");
 
-			// Soft delete: set deleted_at timestamp
-			const { error } = await supabase
+			// Hard DELETE, not a soft-delete UPDATE.
+			//
+			// The soft-delete UPDATE could never work: the SELECT policy is
+			// `deleted_at IS NULL` and Postgres applies SELECT policies to the
+			// new row of an UPDATE, so setting deleted_at always raised 42501.
+			// It also carried the 5-minute edit window and, since
+			// 20260920000900, a FLAME check. The owner DELETE policy has none
+			// of those, so this is the path a downgraded author can still use
+			// to withdraw a comment.
+			//
+			// `.select("id")` makes a 0-row outcome observable: without it a
+			// delete that matched nothing (wrong owner, already gone, a future
+			// tier check) would look identical to a success.
+			const { data: deleted, error } = await supabase
 				.from("community_comments")
-				.update({ deleted_at: new Date().toISOString() })
+				.delete()
 				.eq("id", commentId)
-				.eq("user_id", user.id);
+				.eq("user_id", user.id)
+				.select("id")
+				.maybeSingle();
 
 			if (error) throw error;
+			if (!deleted) {
+				throw new Error(COMMENT_NOT_DELETED);
+			}
 		},
 
 		onSuccess: (_data, variables) => {
@@ -164,7 +186,13 @@ export function useDeleteComment() {
 
 		onError: (error: Error) => {
 			console.error("[useDeleteComment] failed:", error);
-			toast.error("Failed to delete comment. Please try again.");
+			if (error.message === COMMENT_NOT_DELETED) {
+				toast.error(
+					"Comment not found, or you don't have permission to delete it.",
+				);
+			} else {
+				toast.error("Failed to delete comment. Please try again.");
+			}
 		},
 	});
 }

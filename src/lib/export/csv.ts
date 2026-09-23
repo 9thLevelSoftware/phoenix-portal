@@ -7,8 +7,8 @@ import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
  * Generate CSV content for workout history.
  * Accepts Zod-transformed WorkoutSession[] where:
  *   - started_at is a Date object
- *   - duration_seconds is already converted to minutes by the transform
- *   - total_volume is already multiplied by WEIGHT_MULTIPLIER
+ *   - duration_seconds is in raw seconds (no transform applied by schema)
+ *   - total_volume is per cable, as stored (KD-8)
  */
 export function generateWorkoutCSV(
 	workouts: WorkoutSession[],
@@ -18,8 +18,9 @@ export function generateWorkoutCSV(
 		Date: format(w.started_at, "yyyy-MM-dd"),
 		Time: format(w.started_at, "HH:mm"),
 		"Workout Name": w.name,
-		"Duration (min)": w.duration_seconds ?? "",
-		[`Total Volume (${getUnitLabel(unit)})`]: convertWeight(
+		"Duration (min)":
+			w.duration_seconds != null ? Math.round(w.duration_seconds / 60) : "",
+		[`Volume per Cable (${getUnitLabel(unit)})`]: convertWeight(
 			w.total_volume ?? 0,
 			unit,
 		),
@@ -37,7 +38,8 @@ export function generateWorkoutCSV(
  * Generate CSV content for personal records.
  * Accepts Zod-transformed PersonalRecord[] where:
  *   - achieved_at is a Date object
- *   - value is already multiplied by WEIGHT_MULTIPLIER
+ *   - value is per cable, as stored (KD-8); records carry no cable count,
+ *     so no total is derived
  */
 export function generateRecordsCSV(
 	records: PersonalRecord[],
@@ -49,7 +51,7 @@ export function generateRecordsCSV(
 		"Record Type": formatRecordType(r.record_type),
 		"Workout Phase": r.workout_phase ?? "Combined",
 		Value: r.unit === "kg" ? convertWeight(r.value, unit) : r.value,
-		Unit: r.unit === "kg" ? getUnitLabel(unit) : r.unit,
+		Unit: r.unit === "kg" ? `${getUnitLabel(unit)} per cable` : r.unit,
 		"Date Achieved": format(r.achieved_at, "yyyy-MM-dd"),
 		"Previous Value":
 			r.previous_value != null && r.unit === "kg"
@@ -82,9 +84,13 @@ export function downloadCSV(content: string, filename: string): void {
 	const blob = new Blob([BOM + content], { type: "text/csv;charset=utf-8;" });
 
 	const link = document.createElement("a");
-	link.href = URL.createObjectURL(blob);
+	const url = URL.createObjectURL(blob);
+	link.href = url;
 	link.download = `${filename}.csv`;
+	// Append to the document before clicking; some browsers/WebViews ignore
+	// synthetic clicks on detached anchors. Defer revoke so the click is handled.
+	document.body.appendChild(link);
 	link.click();
-
-	URL.revokeObjectURL(link.href);
+	document.body.removeChild(link);
+	setTimeout(() => URL.revokeObjectURL(url), 0);
 }

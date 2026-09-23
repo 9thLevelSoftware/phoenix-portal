@@ -5,7 +5,7 @@
  * assert `sync_complete` is fired with the expected payload shape.
  *
  * The real Edge Function does:
- *   const channel = supabase.channel(`sync:${userId}`);
+ *   const channel = supabase.channel(`sync:${userId}`, { config: { private: true } });
  *   await channel.send({ type: 'broadcast', event: 'sync_complete', payload });
  *
  * Our mock-edge-functions.ts intercepts the push call before it ever reaches
@@ -17,6 +17,7 @@ export interface CapturedBroadcast {
 	channel: string;
 	event: string;
 	payload: Record<string, unknown>;
+	private: boolean;
 	/** Wall-clock timestamp in ms when the broadcast was captured. */
 	timestamp: number;
 }
@@ -31,7 +32,12 @@ let broadcastShouldThrow = false;
  * If `setBroadcastShouldThrow(true)` was called, this swallows the error
  * silently — matching fire-and-forget behaviour of the real Edge Function.
  */
-export function recordBroadcast(channel: string, event: string, payload: Record<string, unknown>): void {
+export function recordBroadcast(
+	channel: string,
+	event: string,
+	payload: Record<string, unknown>,
+	options: { private?: boolean } = {},
+): void {
 	if (broadcastShouldThrow) {
 		// Real Edge Function wraps broadcast in try/catch — error is logged,
 		// but the push still returns 200. Capture nothing.
@@ -41,6 +47,7 @@ export function recordBroadcast(channel: string, event: string, payload: Record<
 		channel,
 		event,
 		payload,
+		private: options.private === true,
 		timestamp: Date.now(),
 	});
 }
@@ -51,7 +58,9 @@ export function getCapturedBroadcasts(): ReadonlyArray<CapturedBroadcast> {
 }
 
 /** Get broadcasts matching a given event name (default: sync_complete). */
-export function getBroadcastsByEvent(event = "sync_complete"): CapturedBroadcast[] {
+export function getBroadcastsByEvent(
+	event = "sync_complete",
+): CapturedBroadcast[] {
 	return capturedBroadcasts.filter((b) => b.event === event);
 }
 

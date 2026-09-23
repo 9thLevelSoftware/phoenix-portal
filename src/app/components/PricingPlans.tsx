@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
+	AlertTriangle,
 	ArrowDown,
 	ArrowUp,
 	Check,
@@ -37,8 +38,14 @@ import {
 	type SubscriptionTier,
 	useSubscription,
 } from "@/hooks/useSubscription";
-import { openCheckout } from "@/lib/paddle-client";
+import { cancelSuccessMessage } from "@/lib/paddle";
+import {
+	CheckoutSigningError,
+	openCheckout,
+	openUpdatePaymentMethodCheckout,
+} from "@/lib/paddle-client";
 import { TIER_PRICING, type TierPricing } from "@/lib/pricing";
+import { getEffectiveSubscriptionTier } from "@/lib/subscription-entitlement";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "@/queries/keys";
 
@@ -74,8 +81,14 @@ interface PlanChangeIntent {
 
 interface UpdateSubscriptionResponse {
 	success?: boolean;
-	action?: "switch" | "uncancel";
-	code?: "checkout_required";
+	// Full vocabulary the handler can return: `update_payment` / `refresh`
+	// come from the past-due and stale paths, `switch` / `uncancel` from a
+	// plan write. `code` covers both the 409 payment body and the 200
+	// refresh-required body.
+	action?: "switch" | "uncancel" | "update_payment" | "refresh";
+	code?: "checkout_required" | "payment_past_due" | "refresh_required";
+	/** Paddle transaction that updates the card (action: "update_payment"). */
+	transactionId?: string;
 	error?: string;
 	message?: string;
 	subscription?: {
@@ -175,6 +188,8 @@ function tierName(tier: SubscriptionTier): string {
 	return TIER_PRICING.find((t) => t.tier === tier)?.name ?? tier;
 }
 
+const PENDING_ACTIVATION_POLL_MS = 20_000;
+
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -224,6 +239,10 @@ function normalizeSubscriptionPayload(
 	};
 }
 
+/**
+ * Checkout-landed check: the refreshed row is on the purchased plan and the
+ * shared entitlement predicate grants that tier.
+ */
 function isFreshPaidSubscription(
 	subscription: ReturnType<typeof normalizeSubscriptionPayload>,
 	target: { tier: SubscriptionTier; priceId: string },
@@ -235,13 +254,14 @@ function isFreshPaidSubscription(
 	) {
 		return false;
 	}
-	if (subscription.status !== "active" && subscription.status !== "trialing") {
-		return false;
-	}
-	if (!subscription.currentPeriodEnd) return false;
-
-	const periodEndMs = Date.parse(subscription.currentPeriodEnd);
-	return Number.isFinite(periodEndMs) && periodEndMs > Date.now();
+	return (
+		getEffectiveSubscriptionTier(
+			subscription.tier,
+			subscription.status,
+			subscription.currentPeriodEnd,
+			{ cancelAtPeriodEnd: subscription.cancelAtPeriodEnd },
+		) === target.tier
+	);
 }
 
 export function PricingPlans() {
@@ -249,10 +269,15 @@ export function PricingPlans() {
 		tier: currentTier,
 		priceId: currentPriceId,
 		isLoading: subscriptionLoading,
+		isError: subscriptionError,
+		refetch: refetchSubscription,
+		status: subscriptionStatus,
 		cancelAtPeriodEnd,
 		currentPeriodEnd,
 		isEntitled,
 		isStale,
+		billingAction: currentBillingAction,
+		needsPaymentUpdate,
 	} = useSubscription();
 	const { user } = useAuth();
 	const [isAnnual, setIsAnnual] = useState(false);
@@ -264,21 +289,69 @@ export function PricingPlans() {
 		useState<PlanChangeIntent | null>(null);
 	const [confirmCancel, setConfirmCancel] = useState(false);
 	const [isCanceling, setIsCanceling] = useState(false);
+	const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
 	const [refreshAttemptedForUser, setRefreshAttemptedForUser] = useState<
 		string | null
 	>(null);
+	// "running" only while a refresh is actually in flight. Once it settles
+	// without repairing the row the CTA must offer a retry rather than a
+	// spinner that never stops (review R-6/R-9).
+	const [refreshState, setRefreshState] = useState<
+		"idle" | "running" | "settled"
+	>("idle");
+	// Set when post-checkout reconciliation exhausts its attempts before the
+	// webhook lands. Hidden (and then reset) once useSubscription — updated by
+	// the realtime `subscriptions` listener or the fallback poll below — shows
+	// the purchased plan as entitled. Scoped to the user who checked out.
+	const [pendingActivation, setPendingActivation] = useState<{
+		userId: string;
+		tier: SubscriptionTier;
+		priceId: string;
+	} | null>(null);
+	const pendingActivationActivated =
+		pendingActivation !== null &&
+		isEntitled &&
+		currentTier === pendingActivation.tier &&
+		currentPriceId === pendingActivation.priceId;
+	const activePendingActivation =
+		pendingActivation &&
+		pendingActivation.userId === user?.id &&
+		!pendingActivationActivated
+			? pendingActivation
+			: null;
+
+	useEffect(() => {
+		if (pendingActivation && !activePendingActivation) {
+			setPendingActivation(null);
+		}
+	}, [pendingActivation, activePendingActivation]);
+
+	// Fallback for a missed realtime event (backgrounded tab, socket
+	// reconnect): re-read the subscription row while activation is pending.
+	const pendingActivationUserId = activePendingActivation?.userId ?? null;
+	useEffect(() => {
+		if (!pendingActivationUserId) return;
+		const interval = setInterval(() => {
+			void queryClient.invalidateQueries({
+				queryKey: queryKeys.subscription.byUser(pendingActivationUserId),
+			});
+		}, PENDING_ACTIVATION_POLL_MS);
+		return () => clearInterval(interval);
+	}, [pendingActivationUserId, queryClient]);
 
 	useEffect(() => {
 		if (
 			!user ||
 			subscriptionLoading ||
-			!isStale ||
+			subscriptionError ||
+			!(isStale || currentBillingAction === "refresh") ||
 			refreshAttemptedForUser === user.id
 		) {
 			return;
 		}
 
 		setRefreshAttemptedForUser(user.id);
+		setRefreshState("running");
 		void supabase.functions
 			.invoke("paddle-refresh-subscription")
 			.then(({ error }) => {
@@ -287,6 +360,7 @@ export function PricingPlans() {
 				}
 			})
 			.finally(() => {
+				setRefreshState("settled");
 				void queryClient.invalidateQueries({
 					queryKey: queryKeys.subscription.byUser(user.id),
 				});
@@ -294,7 +368,9 @@ export function PricingPlans() {
 	}, [
 		user,
 		subscriptionLoading,
+		subscriptionError,
 		isStale,
+		currentBillingAction,
 		refreshAttemptedForUser,
 		queryClient,
 	]);
@@ -303,6 +379,20 @@ export function PricingPlans() {
 		tier: SubscriptionTier,
 		explicitPriceId?: string,
 	) => {
+		// One shared predicate (R-11): a new checkout is only ever opened for
+		// the `checkout` action. Every other state already has a live Paddle
+		// subscription, and paddle-checkout-custom-data refuses to sign one —
+		// so opening it here would only produce a failed checkout, or a
+		// second subscription (F-022).
+		if (currentBillingAction !== "checkout") {
+			toast.error(
+				needsPaymentUpdate
+					? "Your last payment failed — update your card to keep your plan."
+					: "You already have a subscription. Manage it instead of subscribing again.",
+			);
+			return;
+		}
+
 		const tierPricing = TIER_PRICING.find((t: TierPricing) => t.tier === tier);
 		if (!tierPricing) return;
 
@@ -362,8 +452,17 @@ export function PricingPlans() {
 					return;
 				}
 			}
+
+			// Payment went through but the webhook hasn't activated the plan yet.
+			// Say so instead of leaving the user on the upgrade wall in silence.
+			setPendingActivation({ userId: user.id, tier, priceId });
 		};
 
+		// A new checkout supersedes any earlier pending-activation notice.
+		setPendingActivation(null);
+		// Mark this checkout in-flight so the Subscribe button can disable and
+		// prevent repeated clicks opening multiple checkout attempts.
+		setBillingActionPriceId(priceId);
 		try {
 			await openCheckout({
 				priceId,
@@ -379,29 +478,42 @@ export function PricingPlans() {
 				},
 			});
 		} catch (error) {
+			// A 409 `existing_subscription` means the stored row moved on since
+			// this CTA rendered (the server predicate is the authority). Re-read
+			// it so the button corrects itself instead of offering Subscribe
+			// again (review R-14).
+			if (
+				error instanceof CheckoutSigningError &&
+				error.code === "existing_subscription" &&
+				user
+			) {
+				void queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+			}
 			const message =
 				error instanceof Error
 					? error.message
 					: "Billing checkout is unavailable. Please try again.";
 			toast.error(message);
+		} finally {
+			setBillingActionPriceId(null);
 		}
 	};
 
 	const handleCancel = async () => {
 		setIsCanceling(true);
 		try {
-			const { error } = await supabase.functions.invoke(
-				"paddle-cancel-subscription",
-			);
+			const { data, error } = await supabase.functions.invoke<{
+				canceledImmediately?: boolean;
+			}>("paddle-cancel-subscription");
 
 			if (error) {
 				toast.error(error.message || "Failed to cancel subscription");
 				return;
 			}
 
-			toast.success(
-				"Subscription canceled. You'll retain access until the end of your billing period.",
-			);
+			toast.success(cancelSuccessMessage(data));
 
 			if (user) {
 				void queryClient.invalidateQueries({
@@ -413,6 +525,88 @@ export function PricingPlans() {
 		} finally {
 			setIsCanceling(false);
 			setConfirmCancel(false);
+		}
+	};
+
+	/**
+	 * Ask Paddle for the current state and re-read the row. Reports the
+	 * OUTCOME — a pre-emptive "success" toast in front of a call that can fail
+	 * tells the user their plan was refreshed when it was not (review R-9).
+	 */
+	const refreshFromPaddle = async () => {
+		setRefreshState("running");
+		try {
+			const { error } = await supabase.functions.invoke(
+				"paddle-refresh-subscription",
+			);
+			if (error) {
+				console.warn("Failed to refresh subscription", error);
+				toast.error(
+					"Couldn't reach billing to refresh your plan. Please try again.",
+				);
+				return false;
+			}
+			toast.success("Plan refreshed.");
+			return true;
+		} finally {
+			setRefreshState("settled");
+			if (user) {
+				await queryClient.invalidateQueries({
+					queryKey: queryKeys.subscription.byUser(user.id),
+				});
+			}
+		}
+	};
+
+	/**
+	 * Open the Paddle transaction that updates the card on the EXISTING
+	 * subscription. Never a checkout: the user keeps the subscription they
+	 * are already being charged for (R-33).
+	 */
+	const openUpdateCard = async (transactionId: string | undefined) => {
+		if (!transactionId) {
+			toast.error("Couldn't start a payment update. Please try again.");
+			return;
+		}
+		try {
+			await openUpdatePaymentMethodCheckout({
+				transactionId,
+				onSuccess: () => {
+					toast.success("Payment updated. Finalizing your subscription...");
+					void refreshFromPaddle();
+				},
+			});
+		} catch (error) {
+			toast.error(
+				error instanceof Error
+					? error.message
+					: "Billing checkout is unavailable. Please try again.",
+			);
+		}
+	};
+
+	/** "Update payment" CTA for a past_due subscriber. */
+	const handleUpdatePayment = async () => {
+		setIsUpdatingPayment(true);
+		try {
+			const { data, error, response } =
+				await supabase.functions.invoke<UpdateSubscriptionResponse>(
+					"paddle-update-subscription",
+				);
+
+			if (error) {
+				toast.error(await getFunctionErrorMessage(error, response));
+				return;
+			}
+			if (data?.action === "refresh") {
+				await refreshFromPaddle();
+				return;
+			}
+			await openUpdateCard(data?.transactionId);
+		} catch {
+			toast.error("An unexpected error occurred");
+		} finally {
+			setIsUpdatingPayment(false);
 		}
 	};
 
@@ -438,6 +632,21 @@ export function PricingPlans() {
 
 			if (data?.code === "checkout_required") {
 				await handleSubscribe(intent.tier, intent.priceId);
+				return;
+			}
+
+			if (data?.action === "update_payment") {
+				// Say why the plan change turned into something else, rather
+				// than silently opening a different overlay (review R-8).
+				toast.error(
+					"Your last payment failed — update your card before changing plan.",
+				);
+				await openUpdateCard(data.transactionId);
+				return;
+			}
+
+			if (data?.action === "refresh") {
+				await refreshFromPaddle();
 				return;
 			}
 
@@ -604,12 +813,62 @@ export function PricingPlans() {
 			);
 		}
 
+		// A live Paddle subscription whose stored state has lapsed: the portal
+		// is asking Paddle for the truth, not selling a second subscription.
+		if (currentBillingAction === "refresh") {
+			// Once the refresh has settled without repairing the row, offer a
+			// retry: a spinner that never stops leaves every CTA dead with no
+			// way forward (review R-6).
+			if (refreshState === "settled") {
+				return (
+					<div className="flex flex-col gap-2 w-full">
+						<Button
+							variant="outline"
+							className="w-full"
+							onClick={() => void refreshFromPaddle()}
+						>
+							<RefreshCw className="w-4 h-4 mr-2" />
+							Retry
+						</Button>
+						<p className="text-xs text-muted-foreground text-center">
+							We couldn't confirm your plan with billing.
+						</p>
+					</div>
+				);
+			}
+			return (
+				<Button variant="outline" className="w-full" disabled>
+					<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+					Refreshing your plan…
+				</Button>
+			);
+		}
+
+		// Payment for this exact price was received but isn't active yet; a
+		// second checkout here would charge the user twice.
+		if (activePendingActivation?.priceId === priceId) {
+			return (
+				<Button className={`w-full ${tierConfig.buttonClass}`} disabled>
+					<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+					Activating...
+				</Button>
+			);
+		}
+
 		return (
 			<Button
 				className={`w-full ${tierConfig.buttonClass}`}
 				onClick={() => void handleSubscribe(tierConfig.tier, priceId)}
+				disabled={isBillingActionInFlight}
 			>
-				Subscribe
+				{isBillingActionInFlight ? (
+					<>
+						<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+						Starting checkout...
+					</>
+				) : (
+					"Subscribe"
+				)}
 			</Button>
 		);
 	};
@@ -654,113 +913,178 @@ export function PricingPlans() {
 					)}
 				</div>
 
-				<div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-					{TIERS.map((tierConfig) => {
-						const Icon = tierConfig.icon;
-						const isCurrent = isEntitled && currentTier === tierConfig.tier;
-						const currentPriceMismatch =
-							isCurrent &&
-							Boolean(currentPriceId) &&
-							currentPriceId !== selectedPriceId(tierConfig, isAnnual);
+				{needsPaymentUpdate && (
+					<div
+						className="max-w-3xl mx-auto mb-8 rounded-lg border border-warning/40 bg-warning/10 p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+						data-testid="past-due-banner"
+						role="status"
+					>
+						<AlertTriangle className="w-5 h-5 text-warning shrink-0" />
+						<p className="text-sm text-white flex-1">
+							Your last payment failed — update your card to keep your plan.
+						</p>
+						<Button
+							variant="outline"
+							onClick={() => void handleUpdatePayment()}
+							disabled={isUpdatingPayment}
+						>
+							{isUpdatingPayment ? (
+								<>
+									<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+									Update payment
+								</>
+							) : (
+								"Update payment"
+							)}
+						</Button>
+					</div>
+				)}
 
-						return (
-							<Card
-								key={tierConfig.tier}
-								className={`relative bg-gradient-to-b ${tierConfig.accentBg} border-2 ${
-									isCurrent ? tierConfig.accentBorder : "border-secondary"
-								} ${tierConfig.popular ? tierConfig.accentBorder : ""} transition-all hover:border-opacity-80`}
-							>
-								{tierConfig.popular && (
-									<div className="absolute -top-3 left-1/2 -translate-x-1/2">
-										<Badge className="bg-primary text-on-primary border-0 px-3">
-											Most Popular
-										</Badge>
-									</div>
-								)}
+				{activePendingActivation && (
+					<div
+						role="status"
+						data-testid="checkout-activation-pending"
+						className="max-w-2xl mx-auto mb-8 flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-white"
+					>
+						<Loader2 className="w-4 h-4 shrink-0 animate-spin text-primary" />
+						<span>
+							Payment received — activation can take a minute. This page updates
+							automatically.
+						</span>
+					</div>
+				)}
 
-								{tierConfig.comingSoon && (
-									<div className="absolute -top-3 left-1/2 -translate-x-1/2">
-										<Badge className="bg-accent/20 text-accent border-accent/30 px-3">
-											<Sparkles className="w-3 h-3 mr-1" />
-											Coming Soon
-										</Badge>
-									</div>
-								)}
+				{subscriptionError ? (
+					<div
+						className="max-w-lg mx-auto text-center py-16"
+						data-testid="billing-status-error"
+					>
+						<p className="text-lg text-white mb-2">
+							Couldn't load billing status
+						</p>
+						<p className="text-sm text-muted-foreground mb-6">
+							Subscription details are unavailable. Retry instead of assuming a
+							free plan.
+						</p>
+						<Button
+							variant="outline"
+							onClick={() => void refetchSubscription()}
+						>
+							<RefreshCw className="w-4 h-4 mr-2" />
+							Retry
+						</Button>
+					</div>
+				) : (
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+						{TIERS.map((tierConfig) => {
+							const Icon = tierConfig.icon;
+							const isCurrent = isEntitled && currentTier === tierConfig.tier;
+							const currentPriceMismatch =
+								isCurrent &&
+								Boolean(currentPriceId) &&
+								currentPriceId !== selectedPriceId(tierConfig, isAnnual);
 
-								{isCurrent && (
-									<div className="absolute -top-3 right-4">
-										<Badge
-											variant="outline"
-											className={`${tierConfig.accentBorder} ${tierConfig.accentText} bg-background`}
-										>
-											{currentPriceMismatch ? "Current Tier" : "Current"}
-										</Badge>
-									</div>
-								)}
-
-								<CardHeader className="text-center pt-8">
-									<div className="flex justify-center mb-3">
-										<div
-											className={`p-3 rounded-full bg-gradient-to-b ${tierConfig.accentBg}`}
-										>
-											<Icon className={`w-6 h-6 ${tierConfig.accentText}`} />
+							return (
+								<Card
+									key={tierConfig.tier}
+									className={`relative bg-gradient-to-b ${tierConfig.accentBg} border-2 ${
+										isCurrent ? tierConfig.accentBorder : "border-secondary"
+									} ${tierConfig.popular ? tierConfig.accentBorder : ""} transition-all hover:border-opacity-80`}
+								>
+									{tierConfig.popular && (
+										<div className="absolute -top-3 left-1/2 -translate-x-1/2">
+											<Badge className="bg-primary text-white border-0 px-3">
+												Most Popular
+											</Badge>
 										</div>
-									</div>
-									<CardTitle
-										className={`text-xl font-bold ${tierConfig.accentText}`}
-									>
-										{tierConfig.name}
-									</CardTitle>
-								</CardHeader>
-
-								<CardContent className="text-center">
-									<div className="mb-6">
-										<div className="flex items-baseline justify-center gap-1">
-											<span className="text-4xl font-bold text-foreground font-data">
-												{isAnnual
-													? tierConfig.annualMonthly
-													: tierConfig.monthlyPrice}
-											</span>
-											<span className="text-muted-foreground text-sm">/mo</span>
-										</div>
-										{isAnnual && (
-											<p className="text-muted-foreground text-xs mt-1">
-												{tierConfig.annualPrice}/year billed annually
-											</p>
-										)}
-									</div>
-
-									<ul className="space-y-3 text-left">
-										{tierConfig.features.map((feature) => (
-											<li
-												key={feature.label}
-												className="flex items-start gap-2"
-											>
-												<Check
-													className={`w-4 h-4 mt-0.5 shrink-0 ${tierConfig.accentText}`}
-												/>
-												<span className="text-sm text-secondary-foreground">
-													{feature.label}
-												</span>
-											</li>
-										))}
-									</ul>
-								</CardContent>
-
-								<CardFooter className="mt-auto">
-									{subscriptionLoading ? (
-										<Button variant="outline" className="w-full" disabled>
-											<Loader2 className="w-4 h-4 mr-2 animate-spin" />
-											Loading...
-										</Button>
-									) : (
-										renderCTA(tierConfig)
 									)}
-								</CardFooter>
-							</Card>
-						);
-					})}
-				</div>
+
+									{tierConfig.comingSoon && (
+										<div className="absolute -top-3 left-1/2 -translate-x-1/2">
+											<Badge className="bg-accent/20 text-accent border-accent/30 px-3">
+												<Sparkles className="w-3 h-3 mr-1" />
+												Coming Soon
+											</Badge>
+										</div>
+									)}
+
+									{isCurrent && (
+										<div className="absolute -top-3 right-4">
+											<Badge
+												variant="outline"
+												className={`${tierConfig.accentBorder} ${tierConfig.accentText} bg-background`}
+											>
+												{currentPriceMismatch ? "Current Tier" : "Current"}
+											</Badge>
+										</div>
+									)}
+
+									<CardHeader className="text-center pt-8">
+										<div className="flex justify-center mb-3">
+											<div
+												className={`p-3 rounded-full bg-gradient-to-b ${tierConfig.accentBg}`}
+											>
+												<Icon className={`w-6 h-6 ${tierConfig.accentText}`} />
+											</div>
+										</div>
+										<CardTitle
+											className={`text-xl font-bold ${tierConfig.accentText}`}
+										>
+											{tierConfig.name}
+										</CardTitle>
+									</CardHeader>
+
+									<CardContent className="text-center">
+										<div className="mb-6">
+											<div className="flex items-baseline justify-center gap-1">
+												<span className="text-4xl font-bold text-white font-data">
+													{isAnnual
+														? tierConfig.annualMonthly
+														: tierConfig.monthlyPrice}
+												</span>
+												<span className="text-muted-foreground text-sm">
+													/mo
+												</span>
+											</div>
+											{isAnnual && (
+												<p className="text-muted-foreground text-xs mt-1">
+													{tierConfig.annualPrice}/year billed annually
+												</p>
+											)}
+										</div>
+
+										<ul className="space-y-3 text-left">
+											{tierConfig.features.map((feature) => (
+												<li
+													key={feature.label}
+													className="flex items-start gap-2"
+												>
+													<Check
+														className={`w-4 h-4 mt-0.5 shrink-0 ${tierConfig.accentText}`}
+													/>
+													<span className="text-sm text-secondary-foreground">
+														{feature.label}
+													</span>
+												</li>
+											))}
+										</ul>
+									</CardContent>
+
+									<CardFooter className="mt-auto">
+										{subscriptionLoading ? (
+											<Button variant="outline" className="w-full" disabled>
+												<Loader2 className="w-4 h-4 mr-2 animate-spin" />
+												Loading...
+											</Button>
+										) : (
+											renderCTA(tierConfig)
+										)}
+									</CardFooter>
+								</Card>
+							);
+						})}
+					</div>
+				)}
 			</div>
 
 			<AlertDialog
@@ -799,12 +1123,18 @@ export function PricingPlans() {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Cancel subscription?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Your subscription will remain active until the end of your current
-							billing period (
-							{currentPeriodEnd
-								? new Date(currentPeriodEnd).toLocaleDateString()
-								: "end of period"}
-							). After that, you'll be downgraded to the Free plan.
+							{subscriptionStatus === "past_due" ? (
+								"Your last payment failed, so canceling ends your paid access immediately and moves you to the Free plan."
+							) : (
+								<>
+									Your subscription will remain active until the end of your
+									current billing period (
+									{currentPeriodEnd
+										? new Date(currentPeriodEnd).toLocaleDateString()
+										: "end of period"}
+									). After that, you'll be downgraded to the Free plan.
+								</>
+							)}
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

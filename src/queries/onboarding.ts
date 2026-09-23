@@ -23,6 +23,7 @@ export function onboardingOptions(userId: string) {
 			return onboardingSchema.parse(data);
 		},
 		staleTime: 5 * 60 * 1000, // 5 minutes
+		enabled: !!userId,
 	});
 }
 
@@ -42,5 +43,6 @@ export function hasWorkoutsOptions(userId: string) {
 			return count ?? 0;
 		},
 		staleTime: 10 * 60 * 1000, // 10 minutes
+		enabled: !!userId,
 	});
 }

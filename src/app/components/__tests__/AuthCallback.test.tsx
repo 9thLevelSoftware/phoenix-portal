@@ -15,11 +15,17 @@ vi.mock("react-router", async () => {
 });
 
 const mockGetSession = vi.hoisted(() => vi.fn());
+const mockOnAuthStateChange = vi.hoisted(() =>
+	vi.fn(() => ({
+		data: { subscription: { unsubscribe: vi.fn() } },
+	})),
+);
 
 vi.mock("@/lib/supabase", () => ({
 	supabase: {
 		auth: {
 			getSession: mockGetSession,
+			onAuthStateChange: mockOnAuthStateChange,
 		},
 	},
 }));

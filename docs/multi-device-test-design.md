@@ -1,5 +1,12 @@
 # Multi-Device Sync Test Design
 
+> **HISTORICAL (marked 2026-09-23).** This describes the push as it was before
+> tombstones, the two-clock LWW model and `merge_training_cycles_from_push`. It is
+> not the current contract: read `supabase/functions/mobile-sync-push/index.ts`,
+> `mobile-sync-pull/index.ts` and the "mobile sync contract" section of
+> `CLAUDE.md` instead. The personal-record rows below were corrected on that
+> date; the other rows were left as written.
+
 ## Overview
 
 This document specifies the test scenarios for validating sync behavior across multiple devices. The goal is to ensure data integrity when Device A and Device B both push and pull data, especially in conflict scenarios.
@@ -10,11 +17,13 @@ This document specifies the test scenarios for validating sync behavior across m
 
 | Entity           | Plan Claims                    | Actual Implementation                                         | Gap      |
 | ---------------- | ------------------------------ | ------------------------------------------------------------- | -------- |
-| Sessions         | LOCAL WINS (INSERT OR IGNORE)  | `upsert({ onConflict: 'id' })` - SERVER WINS                  | CRITICAL |
-| Personal Records | LOCAL WINS (INSERT OR IGNORE)  | `insert()` after dedup check - LOCAL WINS                     | OK       |
-| Routines         | Timestamp-based LWW            | `upsert({ onConflict: 'id' })` - SERVER WINS                  | Minor    |
-| Cycles           | Server wins                    | `upsert({ onConflict: 'id' })` - SERVER WINS                  | OK       |
+| Sessions         | LOCAL WINS (INSERT OR IGNORE)  | `upsert({ onConflict: 'id' })` - last push wins (LWW when flag on) | CRITICAL |
+| Personal Records | LOCAL WINS (INSERT OR IGNORE)  | Dedicated rows: `upsert({ onConflict: 'id' })`; set-derived rows: `upsert_set_derived_personal_records` on the derived-identity unique index; deletes are soft (`deleted_at`) | OK       |
+| Routines         | Timestamp-based LWW            | `upsert({ onConflict: 'id' })` - last push wins (LWW when flag on) | Minor    |
+| Cycles           | Server wins                    | `upsert({ onConflict: 'id' })` - last push wins (LWW when flag on) | Minor (OK only when flag on) |
 | Badges           | Union merge (INSERT OR IGNORE) | `upsert({ onConflict: 'user_id,badge_id' })` - Last push wins | Minor    |
+
+"Flag" is `SYNC_LWW_ENABLED` (`supabase/functions/_shared/flags.ts`, default off). With it off, the incoming push overwrites the server row on `id`. With it on, six entities go through `upsert_<entity>_lww` RPCs, which reject stale pushes by `updated_at`: sessions, routines, cycles, rpg_attributes, gamification_stats, and external_activities.
 
 The tests in this suite will verify the ACTUAL behavior, not the claimed behavior.
 
@@ -22,15 +31,17 @@ The tests in this suite will verify the ACTUAL behavior, not the claimed behavio
 
 Based on analysis of `supabase/functions/mobile-sync-push/index.ts`:
 
+> These sections describe the default flag-off path. With `SYNC_LWW_ENABLED=true`, the LWW RPCs listed above replace the plain upserts.
+
 ### Sessions (`workout_sessions`)
 - **Strategy**: UPSERT (Last Push Wins)
 - **Code**: `upsert(sessionRows, { onConflict: 'id' })`
 - **Behavior**: If Device A and B both push a session with the same ID, the second push overwrites the first.
 
 ### Personal Records (`personal_records`)
-- **Strategy**: INSERT OR IGNORE (Local Wins)
-- **Code**: Lookup existing, filter duplicates, then `insert(dedupedPrRows)`
-- **Behavior**: Only inserts PRs that don't already exist for the same (exercise_name, achieved_at, value, record_type, workout_phase).
+- **Strategy**: id-keyed upsert for dedicated `personalRecords`; identity-keyed upsert for set-derived rows from older clients
+- **Code**: `upsert(rows, { onConflict: 'id' })` for dedicated rows; otherwise `rpc('upsert_set_derived_personal_records')`, whose `ON CONFLICT` targets the partial unique index on the derived identity (`20260920005700_personal_records_source_identity.sql`)
+- **Behavior**: A re-push or a concurrent push of the same PR updates one row instead of inserting another. A deletion sets `deleted_at` (a soft tombstone) and the pull re-sends it inside `personalRecords` via `get_personal_record_tombstones`.
 
 ### Routines (`routines`)
 - **Strategy**: UPSERT (Last Push Wins)
@@ -243,7 +254,7 @@ cd phoenix-portal && npm test -- multi-device
 
 ## Open Questions for Clarification
 
-1. **Session conflict behavior**: The plan claims LOCAL WINS, implementation is SERVER WINS. Which is correct?
+1. **Session conflict behavior**: The plan claims LOCAL WINS, implementation is last push wins (LWW when `SYNC_LWW_ENABLED=true`). Which is correct?
 2. **Single active cycle enforcement**: Should the server enforce only one active cycle, or is this client-side?
 3. **Timestamp-based LWW for routines**: Should routines use `updated_at` comparison instead of simple upsert?
 

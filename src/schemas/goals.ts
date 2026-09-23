@@ -34,9 +34,16 @@ export const createGoalSchema = z
 	.object({
 		goal_type: z.enum(["frequency", "volume", "pr"]),
 		target_value: z.number().positive("Target must be a positive number"),
-		exercise_name: z.string().optional(),
+		target_unit: z.string().trim().min(1, "Target unit is required"),
+		exercise_name: z.string().trim().optional(),
 		exercise_id: z.string().nullable().optional(),
-		deadline: z.string().optional(),
+		deadline: z
+			.string()
+			.optional()
+			.refine(
+				(s) => s == null || s === "" || Number.isFinite(new Date(s).getTime()),
+				{ message: "Invalid deadline" },
+			),
 		period: z.enum(["weekly", "monthly"]).default("weekly"),
 	})
 	.refine(

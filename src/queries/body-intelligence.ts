@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { queryKeys } from "./keys";
 
 /**
- * Fetches exercises with set counts for sessions in the last N days.
+ * Fetches exercises with set details for sessions in the last N days.
  * Used by: Volume Landmarks, SRA Recovery, Exercise Deep-Dive.
  */
 export function bodyIntelligenceOptions(
@@ -11,17 +11,21 @@ export function bodyIntelligenceOptions(
 	days: number = 7,
 	profileId?: string | null,
 ) {
+	// Clamp days to a sane positive range so invalid input cannot produce a
+	// nonsensical (or future-dated) cutoff.
+	const safeDays =
+		Number.isFinite(days) && days > 0 ? Math.min(Math.floor(days), 365) : 7;
 	return queryOptions({
-		queryKey: queryKeys.analytics.bodyIntelligence(userId, days, profileId),
+		queryKey: queryKeys.analytics.bodyIntelligence(userId, safeDays, profileId),
 		staleTime: 5 * 60 * 1000, // 5 minutes
 		queryFn: async () => {
 			const since = new Date();
-			since.setDate(since.getDate() - days);
+			since.setDate(since.getDate() - safeDays);
 
 			let query = supabase
 				.from("exercises")
 				.select(
-					"id, name, muscle_group, session_id, sets(count), workout_sessions!inner(id, started_at, user_id)",
+					"id, exercise_id, name, muscle_group, session_id, sets(id, actual_reps, weight_kg), workout_sessions!inner(id, started_at, user_id)",
 				)
 				.eq("workout_sessions.user_id", userId)
 				.gte("workout_sessions.started_at", since.toISOString());
@@ -32,13 +36,12 @@ export function bodyIntelligenceOptions(
 
 			const { data, error } = await query;
 			if (error) throw error;
-			// Supabase PostgREST returns sets(count) as [{ count: N }]
-			// Transform to flat shape for consumers
 			return (data ?? []).map((row) => ({
 				...row,
-				setCount: Array.isArray(row.sets) ? (row.sets[0]?.count ?? 0) : 0,
+				setCount: Array.isArray(row.sets) ? row.sets.length : 0,
 			}));
 		},
+		enabled: !!userId,
 	});
 }
 
@@ -61,5 +64,6 @@ export function sessionSetWeightsOptions(sessionId: string) {
 			if (error) throw error;
 			return data ?? [];
 		},
+		enabled: !!sessionId,
 	});
 }

@@ -41,7 +41,6 @@ import {
 import { TIER_PRICING } from "@/lib/pricing";
 import {
 	buildSocialAuthRedirectUrl,
-	DEFAULT_SOCIAL_AUTH_AVAILABILITY,
 	GOOGLE_OAUTH_SCOPES,
 	getSocialAuthAvailability,
 	type SocialAuthAvailability,
@@ -74,6 +73,7 @@ const signUpSchema = z
 
 type SignInFormData = z.infer<typeof signInSchema>;
 type SignUpFormData = z.infer<typeof signUpSchema>;
+type SocialAuthAvailabilityStatus = "pending" | "loaded" | "failed";
 
 const TIER_BADGE_STYLES: Record<string, string> = {
 	EMBER: "bg-primary/20 text-primary border-primary/30",
@@ -91,15 +91,21 @@ export function LandingPage() {
 	const [authAlertMessage, setAuthAlertMessage] = useState<string | null>(null);
 	const [scrolled, setScrolled] = useState(false);
 	const [socialAuthAvailability, setSocialAuthAvailability] =
-		useState<SocialAuthAvailability>(DEFAULT_SOCIAL_AUTH_AVAILABILITY);
+		useState<SocialAuthAvailability | null>(null);
+	const [socialAuthAvailabilityStatus, setSocialAuthAvailabilityStatus] =
+		useState<SocialAuthAvailabilityStatus>("pending");
 	const [inAppBrowser, setInAppBrowser] = useState<InAppBrowserDetection>({
 		isInAppBrowser: false,
 		browser: null,
 		platform: "other",
 	});
 
+	const isSocialAuthProviderVisible = (provider: SocialAuthProvider) =>
+		socialAuthAvailabilityStatus === "failed" ||
+		socialAuthAvailability?.[provider] === true;
 	const hasSocialAuthOptions =
-		socialAuthAvailability.google || socialAuthAvailability.apple;
+		isSocialAuthProviderVisible("google") ||
+		isSocialAuthProviderVisible("apple");
 
 	// Redirect authenticated users to dashboard
 	useEffect(() => {
@@ -138,11 +144,13 @@ export function LandingPage() {
 			.then((availability) => {
 				if (isActive) {
 					setSocialAuthAvailability(availability);
+					setSocialAuthAvailabilityStatus("loaded");
 				}
 			})
 			.catch(() => {
 				if (isActive) {
-					setSocialAuthAvailability(DEFAULT_SOCIAL_AUTH_AVAILABILITY);
+					setSocialAuthAvailability(null);
+					setSocialAuthAvailabilityStatus("failed");
 				}
 			});
 
@@ -234,7 +242,10 @@ export function LandingPage() {
 	};
 
 	const handleOAuthSignIn = async (provider: SocialAuthProvider) => {
-		if (!socialAuthAvailability[provider]) {
+		if (
+			socialAuthAvailabilityStatus !== "failed" &&
+			socialAuthAvailability?.[provider] !== true
+		) {
 			const providerLabel = provider === "apple" ? "Apple" : "Google";
 			const msg = `${providerLabel} sign-in is not configured right now.`;
 			setAuthAlertMessage(msg);
@@ -292,10 +303,10 @@ export function LandingPage() {
 		},
 		{
 			icon: Trophy,
-			title: "Records & Leaderboards",
+			title: "Records, Goals & Recovery",
 			badge: "EMBER",
 			description:
-				"Personal records tracked per exercise, phase, and weight. See where you rank against other Vitruvian athletes on community leaderboards.",
+				"Personal records tracked per exercise, phase, and weight. Set training goals and watch recovery readiness on the Ember dashboard.",
 		},
 		{
 			icon: Share2,
@@ -321,7 +332,7 @@ export function LandingPage() {
 		{
 			icon: Play,
 			title: "Session Replay",
-			badge: "INFERNO",
+			badge: "FLAME",
 			description:
 				"50Hz telemetry playback of every rep. Scrub through sets on a Canvas timeline, overlay force curves, and spot fatigue patterns.",
 		},
@@ -619,7 +630,7 @@ export function LandingPage() {
 
 								{/* OAuth buttons — brand-compliant per Google/Apple guidelines */}
 								<div className="flex flex-col gap-3">
-									{socialAuthAvailability.google ? (
+									{isSocialAuthProviderVisible("google") ? (
 										<button
 											type="button"
 											disabled={authLoading}
@@ -654,7 +665,7 @@ export function LandingPage() {
 											</span>
 										</button>
 									) : null}
-									{socialAuthAvailability.apple ? (
+									{isSocialAuthProviderVisible("apple") ? (
 										<button
 											type="button"
 											disabled={authLoading}
@@ -719,10 +730,10 @@ export function LandingPage() {
 							Pricing
 						</button>
 						<a
-							href="https://ko-fi.com/vitruvianredux"
+							href="https://ko-fi.com/phoenixredux"
 							target="_blank"
 							rel="noopener noreferrer"
-							className="text-base font-medium text-muted-foreground hover:text-foreground transition-colors nav-link-landing"
+							className="text-base font-medium text-muted-foreground hover:text-white transition-colors nav-link-landing"
 						>
 							Support
 						</a>
@@ -780,7 +791,7 @@ export function LandingPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.6 }}
 					>
-						Phoenix Portal turns your Vitruvian Force data into force curves,
+						Phoenix Portal turns your Phoenix Force data into force curves,
 						biomechanics insights, recovery readiness scores, and a community of
 						athletes — all synced from the Project Phoenix app.
 					</motion.p>
@@ -1091,7 +1102,7 @@ export function LandingPage() {
 						</div>
 						<div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm text-muted-foreground">
 							<a
-								href="https://ko-fi.com/vitruvianredux"
+								href="https://ko-fi.com/phoenixredux"
 								target="_blank"
 								rel="noopener noreferrer"
 								className="hover:text-primary transition-colors"
@@ -1113,7 +1124,7 @@ export function LandingPage() {
 								<span className="text-xl text-primary">Phoenix Portal</span>
 							</div>
 							<p className="text-muted-foreground text-sm">
-								Performance data for Vitruvian athletes.
+								Performance data for Phoenix athletes.
 							</p>
 						</div>
 						<div>
@@ -1144,7 +1155,7 @@ export function LandingPage() {
 							<ul className="space-y-2 text-muted-foreground text-sm">
 								<li>
 									<a
-										href="https://ko-fi.com/vitruvianredux"
+										href="https://ko-fi.com/phoenixredux"
 										target="_blank"
 										rel="noopener noreferrer"
 										className="hover:text-primary"
@@ -1177,6 +1188,16 @@ export function LandingPage() {
 									>
 										Terms of Service
 									</Link>
+								</li>
+								<li>
+									<a
+										href="https://github.com/9thLevelSoftware/phoenix-portal/blob/main/ATTRIBUTIONS.md"
+										target="_blank"
+										rel="noopener noreferrer"
+										className="hover:text-primary transition-colors"
+									>
+										Licenses
+									</a>
 								</li>
 							</ul>
 						</div>

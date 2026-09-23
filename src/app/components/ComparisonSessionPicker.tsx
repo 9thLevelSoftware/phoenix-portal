@@ -11,6 +11,8 @@ import {
 } from "@/app/components/ui/dialog";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
+import { formatVolume } from "@/lib/units";
 import { workoutListOptions } from "@/queries/workouts";
 
 interface ComparisonSessionPickerProps {
@@ -27,6 +29,7 @@ export function ComparisonSessionPicker({
 	onSelect,
 }: ComparisonSessionPickerProps) {
 	const { user } = useAuth();
+	const unit = usePreferredWeightUnit();
 	const { data: workouts, isPending } = useQuery(
 		workoutListOptions(user?.id ?? ""),
 	);
@@ -110,9 +113,9 @@ export function ComparisonSessionPicker({
 											</span>
 											<span className="flex items-center gap-1">
 												<Clock className="w-3 h-3" />
-												{workout.duration_seconds}m
+												{Math.round(workout.duration_seconds / 60)}m
 											</span>
-											<span>{workout.total_volume.toLocaleString()} kg</span>
+											<span>{formatVolume(workout.total_volume, unit)}</span>
 										</div>
 									</div>
 								</div>

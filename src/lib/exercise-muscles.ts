@@ -48,6 +48,25 @@ export function normalizeExerciseName(name: string): string {
 }
 
 // All group values must be one of: Chest, Back, Shoulders, Arms, Legs, Core
+const CANONICAL_MUSCLE_GROUPS: Record<string, string> = {
+	chest: "Chest",
+	back: "Back",
+	shoulders: "Shoulders",
+	arms: "Arms",
+	legs: "Legs",
+	core: "Core",
+	general: "General",
+};
+
+export function canonicalizeMuscleGroup(
+	group: string | null | undefined,
+): string | undefined {
+	if (!group) return undefined;
+	const trimmed = group.trim();
+	if (!trimmed) return undefined;
+	return CANONICAL_MUSCLE_GROUPS[trimmed.toLowerCase()] ?? trimmed;
+}
+
 export const EXERCISE_MAP: Record<string, ExerciseProfile> = {
 	// ── Chest ──────────────────────────────────────────────────────────────────
 	"bench press": {
@@ -799,9 +818,10 @@ export function getExerciseProfile(
 	}
 
 	// 4. DB muscle group fallback
-	if (dbMuscleGroup) {
+	const canonicalHint = canonicalizeMuscleGroup(dbMuscleGroup);
+	if (canonicalHint) {
 		return {
-			primary: { group: dbMuscleGroup, activation: 1.0 },
+			primary: { group: canonicalHint, activation: 1.0 },
 			secondary: [],
 		};
 	}
