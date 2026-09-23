@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCommentRealtime } from "../useCommentRealtime";
 
 const ITEM_ID = "00000000-0000-4000-8000-000000000059";
@@ -12,6 +12,9 @@ type MockChannel = {
 
 const mocks = vi.hoisted(() => {
 	const invalidateQueries = vi.fn();
+	const getQueryData = vi.fn();
+	const isFetching = vi.fn(() => 0);
+	const cancelQueries = vi.fn(() => Promise.resolve());
 	const removeChannel = vi.fn();
 	const channels = new Map<string, MockChannel & { subscribed: boolean }>();
 	const channelTopics: string[] = [];
@@ -40,6 +43,9 @@ const mocks = vi.hoisted(() => {
 		channels,
 		channelTopics,
 		invalidateQueries,
+		getQueryData,
+		isFetching,
+		cancelQueries,
 		removeChannel,
 		mockSupabase: {
 			channel: vi.fn((topic: string) => {
@@ -59,6 +65,10 @@ const mocks = vi.hoisted(() => {
 			channels.clear();
 			channelTopics.length = 0;
 			invalidateQueries.mockClear();
+			getQueryData.mockReset();
+			isFetching.mockReset();
+			isFetching.mockReturnValue(0);
+			cancelQueries.mockClear();
 			removeChannel.mockClear();
 			this.mockSupabase.channel.mockClear();
 		},
@@ -66,7 +76,12 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@tanstack/react-query", () => ({
-	useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
+	useQueryClient: () => ({
+		invalidateQueries: mocks.invalidateQueries,
+		getQueryData: mocks.getQueryData,
+		isFetching: mocks.isFetching,
+		cancelQueries: mocks.cancelQueries,
+	}),
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -91,5 +106,84 @@ describe("useCommentRealtime", () => {
 		expect(mocks.channelTopics[0]).toContain(`comments:${ITEM_ID}`);
 		expect(mocks.channelTopics[1]).toContain(`comments:${ITEM_ID}`);
 		expect(mocks.removeChannel).toHaveBeenCalledTimes(1);
+	});
+
+	// NF-22: Realtime cannot filter DELETE events, so deletes arrive on an
+	// unfiltered listener carrying only the primary key.
+	describe("comment deletes", () => {
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		function deleteHandler() {
+			const [channel] = [...mocks.channels.values()];
+			if (!channel) throw new Error("no realtime channel was opened");
+			const call = channel.on.mock.calls.find(
+				([, config]) =>
+					(config as { event?: string }).event === "DELETE" &&
+					!(config as { filter?: string }).filter,
+			);
+			if (!call) throw new Error("no unfiltered DELETE listener");
+			return call[2] as (payload: { old?: { id?: unknown } }) => void;
+		}
+
+		it("invalidates the item's comments when a cached comment is deleted", () => {
+			mocks.reset();
+			vi.useFakeTimers();
+			mocks.getQueryData.mockReturnValue([{ id: "comment-1" }]);
+			render(<TestComponent />);
+
+			deleteHandler()({ old: { id: "comment-1" } });
+			vi.advanceTimersByTime(1000);
+
+			expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["comments", ITEM_ID],
+			});
+		});
+
+		it("invalidates on any delete while the comments are still loading", () => {
+			mocks.reset();
+			vi.useFakeTimers();
+			mocks.getQueryData.mockReturnValue(undefined);
+			render(<TestComponent />);
+
+			deleteHandler()({ old: { id: "comment-1" } });
+			vi.advanceTimersByTime(1000);
+
+			expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["comments", ITEM_ID],
+			});
+		});
+
+		it("cancels an in-flight fetch, then refetches, on any delete during it", async () => {
+			mocks.reset();
+			vi.useFakeTimers();
+			mocks.getQueryData.mockReturnValue(undefined);
+			mocks.isFetching.mockReturnValue(1);
+			render(<TestComponent />);
+
+			deleteHandler()({ old: { id: "comment-new" } });
+			await vi.advanceTimersByTimeAsync(1000);
+
+			expect(mocks.cancelQueries).toHaveBeenCalledWith({
+				queryKey: ["comments", ITEM_ID],
+			});
+			expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["comments", ITEM_ID],
+			});
+		});
+
+		it("ignores deletes of comments that belong to other items", () => {
+			mocks.reset();
+			vi.useFakeTimers();
+			mocks.getQueryData.mockReturnValue([{ id: "comment-1" }]);
+			render(<TestComponent />);
+
+			deleteHandler()({ old: { id: "someone-elses-comment" } });
+			deleteHandler()({ old: {} });
+			vi.advanceTimersByTime(1000);
+
+			expect(mocks.invalidateQueries).not.toHaveBeenCalled();
+		});
 	});
 });
