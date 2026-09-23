@@ -386,10 +386,10 @@ describe("strengthProgressOptions", () => {
 		expect(result[0].exercise_name).toBe("Bayesian Curl (Handles)");
 	});
 
-	it("resolves legacy exercise-id names by user_id, never by a session id list", async () => {
+	it("resolves legacy exercise-id names through bounded session-id chunks", async () => {
 		// 1,200 PR rows whose exercise_name is the exercises row id. The old
-		// lookup sent all 1,200 session ids in a GET URL (~45 KB, dead well past
-		// the ~8 KB limit — F-035).
+		// lookup sent all 1,200 session ids in one GET URL (~45 KB, dead well past
+		// the ~8 KB limit — F-035); the lookup now reads 100 ids per request.
 		const records = Array.from({ length: 1200 }, (_, i) => {
 			const suffix = String(i).padStart(12, "0");
 			return {
@@ -426,7 +426,11 @@ describe("strengthProgressOptions", () => {
 			{} as never,
 		);
 
-		expect(exercisesChain.in).not.toHaveBeenCalled();
+		const chunks = exercisesChain.in.mock.calls.map(
+			(call) => call[1] as string[],
+		);
+		expect(chunks).toHaveLength(12);
+		expect(Math.max(...chunks.map((chunk) => chunk.length))).toBe(100);
 		expect(exercisesChain.eq).toHaveBeenCalledWith("user_id", "user-1");
 		// Reversed to ascending, so row 7 of the RPC page is 1200 - 1 - 7 here.
 		expect(result[1192].exercise_name).toBe("Bench Press");
@@ -554,6 +558,59 @@ describe("volumeComparisonOptions", () => {
 		expect(result.previous).toHaveLength(1);
 		expect(result.current[0].total_volume).toBe(700);
 		expect(result.previous[0].total_volume).toBe(600);
+	});
+
+	it("uses the insight period's day windows (30d = 30 days, not 4w = 28)", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-09-30T12:00:00Z"));
+		const gte: string[] = [];
+		const lt: string[] = [];
+		fromFn.mockImplementation(() => {
+			const self: Record<string, ReturnType<typeof vi.fn>> = {};
+			for (const m of ["select", "eq", "or", "order"]) {
+				self[m] = vi.fn(() => self);
+			}
+			self.gte = vi.fn((_col: string, value: string) => {
+				gte.push(value);
+				return self;
+			});
+			self.lt = vi.fn((_col: string, value: string) => {
+				lt.push(value);
+				return self;
+			});
+			self.limit = vi.fn(() => Promise.resolve({ data: [], error: null }));
+			return self as never;
+		});
+		try {
+			const { volumeComparisonOptions } = await import("../analytics");
+			await volumeComparisonOptions("user-1", "30d").queryFn!({} as never);
+		} finally {
+			vi.useRealTimers();
+		}
+		const days = (iso: string) =>
+			Math.round(
+				(Date.parse("2026-09-30T12:00:00Z") - Date.parse(iso)) / 86_400_000,
+			);
+		// Current window starts 30 days back; the previous one 60 days back and
+		// ends where the current one starts, as generate-insights computes them.
+		expect(gte.map(days).sort((a, b) => a - b)).toEqual([30, 60]);
+		expect(lt.map(days)).toEqual([30]);
+	});
+});
+
+describe("periodToDays", () => {
+	it("maps insight periods to generate-insights' PERIOD_DAYS", async () => {
+		const { periodToDays } = await import("../analytics");
+		expect(["7d", "30d", "90d", "1y", "all"].map(periodToDays)).toEqual([
+			7, 30, 90, 365, 3650,
+		]);
+	});
+
+	it("keeps the chart's week-based periods", async () => {
+		const { periodToDays } = await import("../analytics");
+		expect(["1w", "4w", "12w", "52w"].map(periodToDays)).toEqual([
+			7, 28, 84, 365,
+		]);
 	});
 });
 
