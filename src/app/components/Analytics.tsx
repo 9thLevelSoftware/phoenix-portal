@@ -337,6 +337,23 @@ function mapServerInsight(
  * instead of presenting a stale batch as current, and it keeps the whole rule
  * in one testable place. Server items keep the server row's `id`.
  */
+/**
+ * Loading/error state for the feed. The local fallback reads the insight-period
+ * comparison, so while it is the source that query's state is the feed's too;
+ * a fresh server batch does not depend on it.
+ */
+export function insightsFeedState(
+	source: "server" | "local",
+	server: { pending: boolean; error: boolean },
+	fallback: { pending: boolean; error: boolean },
+): { pending: boolean; error: boolean } {
+	if (source === "server") return server;
+	return {
+		pending: server.pending || fallback.pending,
+		error: server.error || fallback.error,
+	};
+}
+
 export function selectInsightsFeed(
 	serverRows: unknown,
 	localInsights: Array<{
@@ -618,7 +635,11 @@ export function Analytics() {
 	});
 	// The insight window (30D = 30 days, as generate-insights computes it),
 	// used only by the local insight fallback so it agrees with the server.
-	const { data: insightComparison } = useQuery({
+	const {
+		data: insightComparison,
+		isPending: insightComparisonPending,
+		isError: insightComparisonError,
+	} = useQuery({
 		...volumeComparisonOptions(userId, insightPeriod, activeProfileId),
 		enabled: !!userId,
 	});
@@ -1135,6 +1156,11 @@ export function Analytics() {
 		() => selectInsightsFeed(insightsData, insights, unit),
 		[insightsData, insights, unit],
 	);
+	const feedState = insightsFeedState(
+		insightsSource,
+		{ pending: insightsPending, error: insightsError },
+		{ pending: insightComparisonPending, error: insightComparisonError },
+	);
 
 	// --- Muscle radar data ---
 	const muscleRadarData = useMemo(() => {
@@ -1480,8 +1506,8 @@ export function Analytics() {
 										trainingLoad={trainingLoad}
 										consistencyData={consistencyData}
 										insightsFeedItems={insightsFeedItems}
-										insightsPending={insightsPending}
-										insightsError={insightsError}
+										insightsPending={feedState.pending}
+										insightsError={feedState.error}
 										insightsSource={insightsSource}
 									/>
 								</Suspense>
@@ -1712,8 +1738,8 @@ export function Analytics() {
 											trainingLoad={trainingLoad}
 											consistencyData={consistencyData}
 											insightsFeedItems={insightsFeedItems}
-											insightsPending={insightsPending}
-											insightsError={insightsError}
+											insightsPending={feedState.pending}
+											insightsError={feedState.error}
 											insightsSource={insightsSource}
 										/>
 									</Suspense>

@@ -6,6 +6,7 @@ import { renderWithProviders } from "@/test/test-utils";
 import {
 	Analytics,
 	buildLocalInsights,
+	insightsFeedState,
 	selectInsightsFeed,
 	toWeeklyVolumeSeries,
 } from "../Analytics";
@@ -174,6 +175,25 @@ describe("toWeeklyVolumeSeries", () => {
 // KD-14: the feed is a fresh server batch OR the browser fallback, never a
 // mix. `selectInsightsFeed` is the whole rule; these tests render its output
 // so "shows only X" is asserted against the DOM, not just the array.
+describe("insightsFeedState", () => {
+	const idle = { pending: false, error: false };
+	it("uses only the server state while a fresh server batch is shown", () => {
+		expect(
+			insightsFeedState("server", idle, { pending: true, error: true }),
+		).toEqual(idle);
+	});
+	it("stays pending while the fallback comparison loads", () => {
+		expect(
+			insightsFeedState("local", idle, { pending: true, error: false }),
+		).toEqual({ pending: true, error: false });
+	});
+	it("surfaces a failed fallback comparison instead of an empty profile", () => {
+		expect(
+			insightsFeedState("local", idle, { pending: false, error: true }),
+		).toEqual({ pending: false, error: true });
+	});
+});
+
 describe("Analytics insights precedence", () => {
 	const NOW = Date.parse("2026-09-20T12:00:00.000Z");
 	const FRESH = "2026-09-21T12:00:00.000Z";
