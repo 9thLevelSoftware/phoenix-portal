@@ -557,7 +557,16 @@ export async function beginPushTransaction(
     settled = true;
     try {
       // Let any in-flight call finish before ending the transaction.
-      await client.serialized(() => executor.query(statement, []));
+      await client.serialized(async () => {
+        // Postgres already ended the transaction under a call (even one the
+        // handler tolerates): every write is gone. A COMMIT sent now could
+        // "succeed" on a reconnected session with no transaction open, so it
+        // is refused and the push answers as a retryable partial write.
+        if (statement === "COMMIT" && client.aborted) {
+          throw new Error("push transaction was aborted; refusing to commit");
+        }
+        await executor.query(statement, []);
+      });
     } finally {
       await executor.end().catch(() => undefined);
     }
