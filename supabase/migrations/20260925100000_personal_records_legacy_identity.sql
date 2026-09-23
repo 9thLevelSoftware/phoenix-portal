@@ -102,6 +102,10 @@ COMMENT ON FUNCTION private.dedupe_legacy_personal_records() IS
 
 SELECT private.dedupe_legacy_personal_records();
 
+-- The unbounded NUMERIC parts (value, previous_value, weight_kg) are keyed as
+-- md5(trim_scale(x)::text): trim_scale makes numerically equal values (100,
+-- 100.0) the same text, so the index still enforces numeric equality, the
+-- dedupe's rule, while no digit string can exceed the tuple limit.
 -- The free-text parts (exercise id/name, record type, muscle group, unit, workout phase) are indexed as
 -- md5() digests: they are unbounded TEXT, and one long historical value would
 -- otherwise exceed the B-tree tuple limit and abort this migration. The
@@ -118,10 +122,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_personal_records_legacy_identity
     (md5(COALESCE(workout_phase, 'COMBINED'))),
     (md5(exercise_name)),
     (md5(muscle_group)),
-    value,
+    (md5(trim_scale(value)::text)),
     (md5(unit)),
-    previous_value,
-    weight_kg,
+    (md5(trim_scale(previous_value)::text)),
+    (md5(trim_scale(weight_kg)::text)),
     reps,
     session_id
   )

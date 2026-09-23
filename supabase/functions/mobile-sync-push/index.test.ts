@@ -12301,3 +12301,12 @@ Deno.test({
     }
   },
 });
+
+Deno.test("sortedUniqueIds: delete chunks run in one order regardless of payload order", async () => {
+  const { sortedUniqueIds } = await import("./index.ts");
+  const a = "0000000A-0000-4000-8000-000000000000";
+  const b = "0000000b-0000-4000-8000-000000000000";
+  const c = "0000000c-0000-4000-8000-000000000000";
+  assertEquals(sortedUniqueIds([c, a, b, a.toLowerCase()]).map((id) => id.toLowerCase()), [a.toLowerCase(), b, c]);
+  assertEquals(sortedUniqueIds([b, c, a]), sortedUniqueIds([a, c, b]));
+});
