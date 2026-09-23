@@ -316,6 +316,16 @@ class PartialWriteRetryError extends Error {
 }
 
 /**
+ * guard_profile_ownership_update (P204D): a transfer to another local
+ * profile landed between the push's unlocked profile probe and its write. A
+ * retry re-probes and returns the row as a structured rejection (204-D), so
+ * this is a retryable 503, never a 500.
+ */
+function isProfileTransferRace(error: { code?: string } | null | undefined): boolean {
+  return error?.code === 'P204D';
+}
+
+/**
  * reject_user_id_change (20260920002102) refused a write that would move a
  * workout_sessions / routines / training_cycles row to another owner. It
  * raises SQLSTATE 42501; retrying can never succeed, so this is the same 400
@@ -2505,6 +2515,7 @@ async function mobileSyncPushHandler(
         );
         if (lwwErr) {
           if (isOwnerRefusal(lwwErr)) throw new OwnerRefusalError('workout_sessions');
+          if (isProfileTransferRace(lwwErr)) throw new PartialWriteRetryError('workout_sessions profile guard', lwwErr);
           throw new Error(`workout_sessions LWW RPC failed: ${lwwErr.message}`);
         }
         acceptedSessionIds = new UuidSet();
@@ -2523,6 +2534,7 @@ async function mobileSyncPushHandler(
           .upsert(sessionRows, { onConflict: 'id' });
         if (sessErr) {
           if (isOwnerRefusal(sessErr)) throw new OwnerRefusalError('workout_sessions');
+          if (isProfileTransferRace(sessErr)) throw new PartialWriteRetryError('workout_sessions profile guard', sessErr);
           throw new Error(`workout_sessions upsert failed: ${sessErr.message}`);
         }
         sessionsInserted = sessionRows.length;
@@ -3118,6 +3130,7 @@ async function mobileSyncPushHandler(
         );
         if (lwwErr) {
           if (isOwnerRefusal(lwwErr)) throw new OwnerRefusalError('routines');
+          if (isProfileTransferRace(lwwErr)) throw new PartialWriteRetryError('routines profile guard', lwwErr);
           throw new Error(`routines LWW RPC failed: ${lwwErr.message}`);
         }
         acceptedRoutineIds = new UuidSet();
@@ -3132,6 +3145,7 @@ async function mobileSyncPushHandler(
           .upsert(routineRows, { onConflict: 'id' });
         if (routErr) {
           if (isOwnerRefusal(routErr)) throw new OwnerRefusalError('routines');
+          if (isProfileTransferRace(routErr)) throw new PartialWriteRetryError('routines profile guard', routErr);
           throw new Error(`routines upsert failed: ${routErr.message}`);
         }
         routinesUpserted = routineRows.length;

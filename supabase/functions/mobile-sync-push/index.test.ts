@@ -11715,6 +11715,18 @@ Deno.test(`profile guard (LWW=${SYNC_LWW_ENABLED}): a rejected session's sets mi
   );
 });
 
+Deno.test(`profile guard (LWW=${SYNC_LWW_ENABLED}): a transfer racing the probe is a retryable 503`, async () => {
+  const raced = { code: "P204D", message: "profile_ownership_transfer_required" };
+  const harness = makeHarness(undefined, {
+    tableResults: storedUnderProfile(PROFILE_B_ID),
+    rpcBehavior: async (name) =>
+      name === "upsert_workout_session_lww" ? { data: null, error: raced } : undefined,
+    writeErrors: { "workout_sessions:upsert": raced },
+  });
+  const response = await harness.handler(requestFromBody(namedProfileBody()));
+  await assertPartialWriteRetry(harness, response);
+});
+
 Deno.test(`profile guard (LWW=${SYNC_LWW_ENABLED}): rows already held by the pushing profile are written`, async () => {
   const harness = makeHarness(undefined, { tableResults: storedUnderProfile(PROFILE_B_ID) });
   const response = await harness.handler(requestFromBody(namedProfileBody()));

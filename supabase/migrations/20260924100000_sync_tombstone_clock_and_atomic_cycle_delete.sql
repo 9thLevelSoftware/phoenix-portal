@@ -265,6 +265,15 @@ BEGIN
       PERFORM pg_catalog.pg_advisory_xact_lock(
         pg_catalog.hashtextextended('training-cycle:' || v_id::TEXT, 0)
       );
+      IF NOT v_live THEN
+        -- A concurrent insert of this id held the advisory lock until it
+        -- committed; look again now that it has (as delete_cycles_clocked).
+        SELECT c.client_updated_at INTO v_stored
+          FROM public.training_cycles c
+         WHERE c.id = v_id AND c.user_id = p_user_id
+           FOR UPDATE;
+        v_live := FOUND;
+      END IF;
     END IF;
 
     SELECT t.client_deleted_at INTO v_tombstone_clock
