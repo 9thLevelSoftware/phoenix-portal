@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import {
 	Analytics,
+	buildLocalInsights,
+	insightsFeedState,
 	selectInsightsFeed,
 	toWeeklyVolumeSeries,
 } from "../Analytics";
@@ -173,6 +175,25 @@ describe("toWeeklyVolumeSeries", () => {
 // KD-14: the feed is a fresh server batch OR the browser fallback, never a
 // mix. `selectInsightsFeed` is the whole rule; these tests render its output
 // so "shows only X" is asserted against the DOM, not just the array.
+describe("insightsFeedState", () => {
+	const idle = { pending: false, error: false };
+	it("uses only the server state while a fresh server batch is shown", () => {
+		expect(
+			insightsFeedState("server", idle, { pending: true, error: true }),
+		).toEqual(idle);
+	});
+	it("stays pending while the fallback comparison loads", () => {
+		expect(
+			insightsFeedState("local", idle, { pending: true, error: false }),
+		).toEqual({ pending: true, error: false });
+	});
+	it("surfaces a failed fallback comparison instead of an empty profile", () => {
+		expect(
+			insightsFeedState("local", idle, { pending: false, error: true }),
+		).toEqual({ pending: false, error: true });
+	});
+});
+
 describe("Analytics insights precedence", () => {
 	const NOW = Date.parse("2026-09-20T12:00:00.000Z");
 	const FRESH = "2026-09-21T12:00:00.000Z";
@@ -297,5 +318,52 @@ describe("Analytics insights precedence", () => {
 		expect(screen.getByText("Server Fresh")).toBeInTheDocument();
 		expect(screen.queryByText("Server Stale")).not.toBeInTheDocument();
 		expect(screen.queryByText("Local Volume Drop")).not.toBeInTheDocument();
+	});
+});
+
+// NF-38: the browser fallback runs the shared rule engine, so it fires at the
+// engine's thresholds (volume drop below -15%), not the old inline -20%.
+describe("buildLocalInsights uses the shared rule engine", () => {
+	const rows = (volumes: number[]) =>
+		volumes.map((total_volume) => ({ total_volume }));
+
+	it("flags a 17% volume drop that the old inline -20% rule missed", () => {
+		const insights = buildLocalInsights(
+			{ current: rows([83]), previous: rows([100]) },
+			28,
+			[],
+			"kg",
+		);
+		expect(insights.map((i) => i.title)).toContain("Volume Trending Down");
+		expect(insights.find((i) => i.title === "Volume Trending Down")?.type).toBe(
+			"warning",
+		);
+	});
+
+	it("reports the engine's per-group imbalance warning", () => {
+		const insights = buildLocalInsights(
+			{ current: rows([100, 100, 100]), previous: rows([100, 100, 100]) },
+			7,
+			[
+				{ name: "Chest", value: 70 },
+				{ name: "Legs", value: 10 },
+			],
+			"kg",
+		);
+		expect(insights.map((i) => i.title)).toContain("Legs Training Imbalance");
+	});
+
+	it("never renders an empty card", () => {
+		expect(buildLocalInsights(undefined, 28, [], "kg")).toEqual([
+			expect.objectContaining({ title: "Building Your Profile" }),
+		]);
+		expect(
+			buildLocalInsights(
+				{ current: rows([100, 100, 100]), previous: rows([100, 100, 100]) },
+				7,
+				[],
+				"kg",
+			).map((i) => i.title),
+		).toEqual(["Nothing Needs Attention"]);
 	});
 });
