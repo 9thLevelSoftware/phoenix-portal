@@ -21,7 +21,8 @@ CREATE OR REPLACE FUNCTION public.save_sync_state_if_queue_owned(
   p_user_id UUID,
   p_provider TEXT,
   p_queue_id UUID,
-  p_state JSONB
+  p_state JSONB,
+  p_attempt INTEGER DEFAULT NULL
 )
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -48,6 +49,9 @@ BEGIN
        AND q.user_id = p_user_id
        AND q.provider = p_provider
        AND q.status = 'processing'
+       -- The claim generation: a stale-lease reclaim bumps retry_count
+       -- before another worker takes the same id.
+       AND (p_attempt IS NULL OR COALESCE(q.retry_count, 0) = p_attempt)
        FOR UPDATE;
     IF NOT FOUND THEN
       RETURN FALSE;
@@ -67,12 +71,12 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.save_sync_state_if_queue_owned(UUID, TEXT, UUID, JSONB)
+REVOKE ALL ON FUNCTION public.save_sync_state_if_queue_owned(UUID, TEXT, UUID, JSONB, INTEGER)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.save_sync_state_if_queue_owned(UUID, TEXT, UUID, JSONB)
+GRANT EXECUTE ON FUNCTION public.save_sync_state_if_queue_owned(UUID, TEXT, UUID, JSONB, INTEGER)
   TO service_role;
 
-COMMENT ON FUNCTION public.save_sync_state_if_queue_owned(UUID, TEXT, UUID, JSONB) IS
+COMMENT ON FUNCTION public.save_sync_state_if_queue_owned(UUID, TEXT, UUID, JSONB, INTEGER) IS
   'Provider sync: write user_integrations sync state only while the run still owns its processing sync_queue row (row-locked). false = not owned, nothing written. Service role only.';
 
 COMMIT;

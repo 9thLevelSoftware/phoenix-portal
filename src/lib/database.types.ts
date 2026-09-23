@@ -3689,6 +3689,7 @@ export type Database = {
 			};
 			save_sync_state_if_queue_owned: {
 				Args: {
+					p_attempt?: number;
 					p_provider: string;
 					p_queue_id: string;
 					p_state: Json;

@@ -5,7 +5,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(6);
+SELECT plan(7);
 
 INSERT INTO auth.users (id, email)
 VALUES ('26262626-0000-4000-8000-000000000001'::uuid, 'sync-state-owned@example.test')
@@ -16,9 +16,9 @@ INSERT INTO public.sync_queue (id, user_id, provider, sync_type, status) VALUES
   ('26262626-0000-4000-8000-0000000000a1', '26262626-0000-4000-8000-000000000001', 'liftosaur', 'incremental', 'cancelled');
 
 SELECT ok(
-    NOT has_function_privilege('authenticated', 'public.save_sync_state_if_queue_owned(uuid, text, uuid, jsonb)', 'EXECUTE')
-    AND NOT has_function_privilege('anon', 'public.save_sync_state_if_queue_owned(uuid, text, uuid, jsonb)', 'EXECUTE')
-    AND has_function_privilege('service_role', 'public.save_sync_state_if_queue_owned(uuid, text, uuid, jsonb)', 'EXECUTE'),
+    NOT has_function_privilege('authenticated', 'public.save_sync_state_if_queue_owned(uuid, text, uuid, jsonb, integer)', 'EXECUTE')
+    AND NOT has_function_privilege('anon', 'public.save_sync_state_if_queue_owned(uuid, text, uuid, jsonb, integer)', 'EXECUTE')
+    AND has_function_privilege('service_role', 'public.save_sync_state_if_queue_owned(uuid, text, uuid, jsonb, integer)', 'EXECUTE'),
     'service-role only'
 );
 
@@ -50,6 +50,14 @@ SELECT ok(
        FROM public.user_integrations WHERE provider = 'liftosaur'
         AND user_id = '26262626-0000-4000-8000-000000000001'),
     'only the listed state keys are written, nulls included'
+);
+UPDATE public.sync_queue SET retry_count = 1
+ WHERE id = '26262626-0000-4000-8000-0000000000a1';
+SELECT is(
+    public.save_sync_state_if_queue_owned('26262626-0000-4000-8000-000000000001', 'liftosaur',
+      '26262626-0000-4000-8000-0000000000a1', '{"status":"error"}', 0),
+    false,
+    'a worker whose lease was reclaimed (older claim generation) is not the owner'
 );
 SELECT is(
     public.save_sync_state_if_queue_owned('26262626-0000-4000-8000-000000000001', 'liftosaur',
