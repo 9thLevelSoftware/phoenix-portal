@@ -79,7 +79,11 @@ async function seed(page: Parameters<typeof mockAuthenticatedApp>[0]) {
 		sets: [
 			set("00000000-0000-4000-8000-000000000a21", TWO_CABLE_EXERCISE_ID, 20),
 			set("00000000-0000-4000-8000-000000000a22", ONE_CABLE_EXERCISE_ID, 20),
-			set("00000000-0000-4000-8000-000000000a23", UNKNOWN_CABLE_EXERCISE_ID, 20),
+			set(
+				"00000000-0000-4000-8000-000000000a23",
+				UNKNOWN_CABLE_EXERCISE_ID,
+				20,
+			),
 		],
 		personalRecords: [
 			{
@@ -152,9 +156,9 @@ test.describe("Per-cable load display", () => {
 		await expect(
 			page.getByText("20 kg per cable", { exact: true }),
 		).toHaveCount(1);
-		await expect(page.getByText("30 kg per cable", { exact: true })).toHaveCount(
-			1,
-		);
+		await expect(
+			page.getByText("30 kg per cable", { exact: true }),
+		).toHaveCount(1);
 	});
 
 	test("records show per-cable values without doubling", async ({ page }) => {
@@ -169,10 +173,14 @@ test.describe("Per-cable load display", () => {
 		page,
 	}) => {
 		await page.goto("/analytics?tab=progress");
-		await expect(page.getByText("current 1RM", { exact: true }).filter({ visible: true })).toBeVisible({
+		await expect(
+			page.getByText("current 1RM", { exact: true }).filter({ visible: true }),
+		).toBeVisible({
 			timeout: 15000,
 		});
-		await expect(page.getByText("25 kg per cable").filter({ visible: true }).first()).toBeVisible();
+		await expect(
+			page.getByText("25 kg per cable").filter({ visible: true }).first(),
+		).toBeVisible();
 		await expect(page.getByText(/50 kg/)).toHaveCount(0);
 	});
 });

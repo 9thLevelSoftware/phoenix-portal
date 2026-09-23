@@ -46,7 +46,9 @@ test("app shell boots offline; visited routes work, unvisited ones say offline",
 		return (await cache.keys()).map((request) => new URL(request.url).pathname);
 	});
 	expect(
-		cachedRoutes.filter((path) => /\/(FAQ|PrivacyPolicy)-[^/]+\.js$/.test(path)),
+		cachedRoutes.filter((path) =>
+			/\/(FAQ|PrivacyPolicy)-[^/]+\.js$/.test(path),
+		),
 	).toEqual([]);
 
 	// Playwright's offline emulation can allow service-worker localhost fetches.

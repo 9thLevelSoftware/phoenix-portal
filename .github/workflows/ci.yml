@@ -61,7 +61,16 @@ jobs:
           deno-version: 2.2.15
       - name: Type-check Edge Functions
         run: npm run check:edge-functions
-      - name: Run mobile-sync-push/pull handler tests (in-process doubles)
+      - name: Run Edge handler tests (in-process doubles, SYNC_LWW_ENABLED=false)
+        env:
+          SYNC_LWW_ENABLED: "false"
+        run: npm run test:edge
+      # The push handler has a separate write path per flag value and the
+      # production value is unknown, so both run (NF-50).
+      - name: Run Edge handler tests (in-process doubles, SYNC_LWW_ENABLED=true)
+        if: ${{ !cancelled() }}
+        env:
+          SYNC_LWW_ENABLED: "true"
         run: npm run test:edge
 
   unit-test:

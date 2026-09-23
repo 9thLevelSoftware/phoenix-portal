@@ -9,8 +9,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const EXERCISE_NAMES = ["Bench Press", "Bent Over Row", "Back Squat"];
 
 function seedHistory() {
-	const workoutSessions = [];
-	const exercises = [];
+	const workoutSessions: Record<string, unknown>[] = [];
+	const exercises: Array<{
+		id: string;
+		session_id: string;
+		name: string;
+		muscle_group: string;
+		order_index: number;
+	}> = [];
 
 	for (let index = 0; index < SESSION_COUNT; index++) {
 		const sessionId = `00000000-0000-4000-8000-${String(1000 + index).padStart(12, "0")}`;
