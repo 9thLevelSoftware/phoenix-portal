@@ -69,6 +69,30 @@ function cronRequest(headers: Record<string, string> = {}): Request {
   });
 }
 
+Deno.test("process-sync-queue: a row the worker handed back as its follow-up is not completed", async () => {
+  const h = harness(BASE_ENV, {
+    sync_queue: [{
+      id: TASK_ID, user_id: USER_ID, provider: "liftosaur", sync_type: "initial",
+      status: "pending", retry_count: 0, created_at: "2026-01-01T00:00:00.000Z",
+      started_at: null, completed_at: null,
+    }],
+    subscriptions: [{
+      user_id: USER_ID, tier: "FLAME", status: "active", current_period_end: "2099-01-01T00:00:00.000Z",
+    }],
+    rate_limit_tracking: [],
+  }, () => {
+    // The worker handed its row back as pending; another pass claimed it.
+    const row = h.db.tables.sync_queue[0];
+    row.status = "processing";
+    return new Response(JSON.stringify({ success: true, continuing: true, queue_row_handed_off: true }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  });
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(res.status, 200);
+  assertEquals(h.db.tables.sync_queue[0].status, "processing", "the successor's run is left alone");
+});
+
 Deno.test("process-sync-queue: missing x-cron-secret gives 401 and touches nothing", async () => {
   const h = harness(BASE_ENV);
   const res = await h.handler(cronRequest());
