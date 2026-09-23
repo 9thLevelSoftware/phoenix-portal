@@ -1,3 +1,5 @@
+import { timingSafeEqualString } from "./timingSafe.ts";
+
 export interface GarminWebhookIdentity {
   userId?: string;
   userAccessToken?: string;
@@ -19,23 +21,6 @@ export type GarminIdentityResolution =
         | "ambiguous"
         | "provider_user_id_mismatch";
     };
-
-function timingSafeEqual(aValue: string, bValue: string): boolean {
-  const encoder = new TextEncoder();
-  const a = encoder.encode(aValue);
-  const b = encoder.encode(bValue);
-  let mismatch = a.length !== b.length ? 1 : 0;
-  // Iterate to the longer length, substituting 0 for out-of-range bytes, so that
-  // comparison work does not depend on the shorter input's length (avoids leaking
-  // candidate token length via timing).
-  const cmpLen = Math.max(a.length, b.length);
-  for (let i = 0; i < cmpLen; i++) {
-    const av = i < a.length ? a[i]! : 0;
-    const bv = i < b.length ? b[i]! : 0;
-    mismatch |= av ^ bv;
-  }
-  return mismatch === 0;
-}
 
 export function extractGarminProviderUserId(
   responseParams: URLSearchParams,
@@ -73,7 +58,12 @@ export async function resolveGarminWebhookIdentity(
       );
       continue;
     }
-    if (accessToken && timingSafeEqual(accessToken, activity.userAccessToken)) {
+    // The stored token is the secret the server holds; the webhook's token is
+    // caller-supplied (see timingSafe.ts for why the operands are named).
+    if (
+      accessToken &&
+      timingSafeEqualString({ expected: accessToken, provided: activity.userAccessToken })
+    ) {
       matches.push(candidate);
     }
   }

@@ -139,6 +139,32 @@ class PartialWriteRetryError extends Error {
 }
 
 /**
+ * reject_user_id_change (20260920002102) refused a write that would move a
+ * workout_sessions / routines / training_cycles row to another owner. It
+ * raises SQLSTATE 42501; retrying can never succeed, so this is the same 400
+ * as the ownership pre-check, not an opaque 500 or a retryable 503 (NF-41).
+ */
+class OwnerRefusalError extends Error {
+  constructor(readonly table: string) {
+    super(`Refused: existing ${table} row belongs to another user`);
+    this.name = 'OwnerRefusal';
+  }
+}
+
+/**
+ * The owner-immutable trigger's refusal: SQLSTATE 42501 AND its own message.
+ * A bare 42501 (a missing grant, say) is not an ownership conflict and must
+ * keep its normal failure path.
+ */
+function isOwnerRefusal(
+  error: { code?: string; message?: string } | null | undefined,
+): boolean {
+  return error?.code === '42501' &&
+    typeof error.message === 'string' &&
+    error.message.startsWith('row owner is immutable');
+}
+
+/**
  * Hard-delete the caller's rows by id in chunks of 100, like the ownership
  * probe. One `.in()` with every tombstone id (up to 10,000 by schema) can
  * exceed the PostgREST URL limit, which would fail identically on every
@@ -2056,7 +2082,10 @@ async function mobileSyncPushHandler(
           'upsert_workout_session_lww',
           { p_rows: sessionRows },
         );
-        if (lwwErr) throw new Error(`workout_sessions LWW RPC failed: ${lwwErr.message}`);
+        if (lwwErr) {
+          if (isOwnerRefusal(lwwErr)) throw new OwnerRefusalError('workout_sessions');
+          throw new Error(`workout_sessions LWW RPC failed: ${lwwErr.message}`);
+        }
         acceptedSessionIds = new Set<string>();
         for (const r of (lwwData ?? []) as LwwUpsertRow[]) {
           if (r.accepted) acceptedSessionIds.add(r.id);
@@ -2071,7 +2100,10 @@ async function mobileSyncPushHandler(
         const { error: sessErr } = await supabase
           .from('workout_sessions')
           .upsert(sessionRows, { onConflict: 'id' });
-        if (sessErr) throw new Error(`workout_sessions upsert failed: ${sessErr.message}`);
+        if (sessErr) {
+          if (isOwnerRefusal(sessErr)) throw new OwnerRefusalError('workout_sessions');
+          throw new Error(`workout_sessions upsert failed: ${sessErr.message}`);
+        }
         sessionsInserted = sessionRows.length;
         // Flag-off has no LWW gate, so every row that reached this upsert is
         // committed. Name them for the receipt list: `null` still means
@@ -2656,7 +2688,10 @@ async function mobileSyncPushHandler(
           'upsert_routine_lww',
           { p_rows: routineRows },
         );
-        if (lwwErr) throw new Error(`routines LWW RPC failed: ${lwwErr.message}`);
+        if (lwwErr) {
+          if (isOwnerRefusal(lwwErr)) throw new OwnerRefusalError('routines');
+          throw new Error(`routines LWW RPC failed: ${lwwErr.message}`);
+        }
         acceptedRoutineIds = new Set<string>();
         for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
           if (rr.accepted) acceptedRoutineIds.add(rr.id);
@@ -2667,7 +2702,10 @@ async function mobileSyncPushHandler(
         const { error: routErr } = await supabase
           .from('routines')
           .upsert(routineRows, { onConflict: 'id' });
-        if (routErr) throw new Error(`routines upsert failed: ${routErr.message}`);
+        if (routErr) {
+          if (isOwnerRefusal(routErr)) throw new OwnerRefusalError('routines');
+          throw new Error(`routines upsert failed: ${routErr.message}`);
+        }
         routinesUpserted = routineRows.length;
       }
 
@@ -3098,7 +3136,12 @@ async function mobileSyncPushHandler(
         'merge_training_cycles_from_push',
         { p_user_id: userId, p_cycles: cycleRows, p_use_lww: syncLwwEnabled },
       );
-      if (mergeErr) throw new PartialWriteRetryError('training_cycles merge RPC', mergeErr);
+      if (mergeErr) {
+        // Cross-owner cycles come back as accepted=false rows, never as an
+        // error, and sessions/routines may already be committed above, so any
+        // merge error (a 42501 included) stays the retryable partial write.
+        throw new PartialWriteRetryError('training_cycles merge RPC', mergeErr);
+      }
       acceptedCycleIds = new Set<string>();
       for (const row of (Array.isArray(mergeData) ? mergeData : []) as CycleMergeRow[]) {
         if (row.accepted) {
@@ -3651,6 +3694,18 @@ async function mobileSyncPushHandler(
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
+    if (err instanceof OwnerRefusalError) {
+      // The SQLSTATE, not the DB message, goes to the log.
+      console.warn('mobile-sync-push owner refusal, answering 400:', {
+        table: err.table,
+        sqlstate: '42501',
+      });
+      dependencies.logOperationalFailure({ name: err.name });
+      return new Response(
+        JSON.stringify({ error: err.message }),
+        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
     if (err instanceof PartialWriteRetryError) {
       console.warn('mobile-sync-push partial write, answering 503:', err.message);
       dependencies.logOperationalFailure({ name: err.name });

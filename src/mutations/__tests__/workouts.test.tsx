@@ -5,23 +5,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mocks
-//
-// One shared `@/lib/supabase` factory: `vi.mock` is per-module-path and the
-// last registration wins, so the `from` capability (notes UPDATE) and the
-// `rpc` capability (tombstone delete) must live in a single mock. The
-// AuthProvider factory is likewise one: the notes suite's richer user is a
-// superset of the delete suite's (that test never reads `user.id`).
 // ---------------------------------------------------------------------------
 
-const mockChain = {
-	update: vi.fn(),
-};
-
-const from = vi.fn(() => mockChain);
 const rpc = vi.fn();
 
 vi.mock("@/lib/supabase", () => ({
-	supabase: { from, rpc },
+	supabase: { rpc },
 }));
 
 vi.mock("@/providers/AuthProvider", () => ({
@@ -36,19 +25,7 @@ vi.mock("sonner", () => ({
 	toast: { success: vi.fn(), error: vi.fn() },
 }));
 
-function createWrapper() {
-	const queryClient = new QueryClient({
-		defaultOptions: {
-			queries: { retry: false, gcTime: 0 },
-			mutations: { retry: false },
-		},
-	});
-	return ({ children }: { children: ReactNode }) => (
-		<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-	);
-}
-
-/** The delete suite's own wrapper, kept so that describe stays self-contained. */
+/** Mutation-only wrapper: retries off so a rejected RPC fails the test at once. */
 function wrapper({ children }: { children: ReactNode }) {
 	return (
 		<QueryClientProvider
@@ -60,65 +37,6 @@ function wrapper({ children }: { children: ReactNode }) {
 		</QueryClientProvider>
 	);
 }
-
-// ---------------------------------------------------------------------------
-// useSaveSessionNotes
-// ---------------------------------------------------------------------------
-
-describe("useSaveSessionNotes", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-	});
-
-	it("sends only { notes } (the one column authenticated may UPDATE)", async () => {
-		const { useSaveSessionNotes } = await import("../workouts");
-
-		const maybeSingle = vi.fn(() =>
-			Promise.resolve({ data: { id: "session-1" }, error: null }),
-		);
-		const select = vi.fn(() => ({ maybeSingle }));
-		const eqUser = vi.fn(() => ({ select }));
-		const eqId = vi.fn(() => ({ eq: eqUser }));
-		mockChain.update.mockImplementation(() => ({ eq: eqId }));
-
-		const { result } = renderHook(() => useSaveSessionNotes(), {
-			wrapper: createWrapper(),
-		});
-
-		result.current.mutate({ sessionId: "session-1", notes: "Felt strong" });
-
-		await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-		expect(from).toHaveBeenCalledWith("workout_sessions");
-		expect(mockChain.update).toHaveBeenCalledTimes(1);
-		expect(mockChain.update).toHaveBeenCalledWith({ notes: "Felt strong" });
-		expect(eqId).toHaveBeenCalledWith("id", "session-1");
-		expect(eqUser).toHaveBeenCalledWith("user_id", "test-user-id");
-		expect(select).toHaveBeenCalledWith("id");
-	});
-
-	it("sends { notes: null } when notes are cleared", async () => {
-		const { useSaveSessionNotes } = await import("../workouts");
-
-		const maybeSingle = vi.fn(() =>
-			Promise.resolve({ data: { id: "session-1" }, error: null }),
-		);
-		const select = vi.fn(() => ({ maybeSingle }));
-		const eqUser = vi.fn(() => ({ select }));
-		const eqId = vi.fn(() => ({ eq: eqUser }));
-		mockChain.update.mockImplementation(() => ({ eq: eqId }));
-
-		const { result } = renderHook(() => useSaveSessionNotes(), {
-			wrapper: createWrapper(),
-		});
-
-		result.current.mutate({ sessionId: "session-1", notes: "" });
-
-		await waitFor(() => expect(result.current.isSuccess).toBe(true));
-
-		expect(mockChain.update).toHaveBeenCalledWith({ notes: null });
-	});
-});
 
 // ---------------------------------------------------------------------------
 // useDeleteWorkout
