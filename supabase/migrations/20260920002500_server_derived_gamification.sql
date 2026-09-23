@@ -170,7 +170,23 @@ ALTER TABLE public.gamification_stats
 ALTER TABLE public.gamification_stats
   ADD COLUMN IF NOT EXISTS device_total_volume_kg numeric;
 ALTER TABLE public.gamification_stats
-  ADD COLUMN IF NOT EXISTS device_total_time_seconds integer;
+  ADD COLUMN IF NOT EXISTS device_total_time_seconds bigint;
+-- A database that ran the earlier version of this file has the column as
+-- integer; ADD COLUMN IF NOT EXISTS would leave it there, so widen it.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_attribute
+     WHERE attrelid = 'public.gamification_stats'::regclass
+       AND attname = 'device_total_time_seconds'
+       AND atttypid = 'integer'::regtype
+       AND NOT attisdropped
+  ) THEN
+    ALTER TABLE public.gamification_stats
+      ALTER COLUMN device_total_time_seconds TYPE bigint;
+  END IF;
+END
+$$;
 ALTER TABLE public.gamification_stats
   ADD COLUMN IF NOT EXISTS device_current_streak integer;
 ALTER TABLE public.gamification_stats
@@ -270,12 +286,17 @@ $$;
 --    and any drift check run EXACTLY the derivation the backfill applies,
 --    rather than a hand-copied lookalike (R-30).
 -- ---------------------------------------------------------------------------
+-- total_time_seconds is bigint, like gamification_stats.total_time_seconds: a
+-- per-user sum of session durations can exceed int4 (prod had one user past
+-- 2^31, from device timestamps stored as durations). DROP first so a database
+-- holding the earlier integer-returning version can re-run this file.
+DROP FUNCTION IF EXISTS public.derive_gamification_stats(uuid);
 CREATE OR REPLACE FUNCTION public.derive_gamification_stats(p_user_id uuid)
 RETURNS TABLE(
   total_workouts     integer,
   total_reps         integer,
   total_volume_kg    numeric,
-  total_time_seconds integer,
+  total_time_seconds bigint,
   pr_count           integer,
   current_streak     integer,
   longest_streak     integer
@@ -288,7 +309,7 @@ AS $$
   WITH totals AS (
     SELECT count(*)::integer                                   AS total_workouts,
            COALESCE(sum(ws.total_volume), 0)::numeric          AS total_volume_kg,
-           COALESCE(sum(ws.duration_seconds), 0)::integer      AS total_time_seconds
+           COALESCE(sum(ws.duration_seconds), 0)::bigint       AS total_time_seconds
       FROM public.workout_sessions ws
      WHERE ws.user_id = p_user_id
   ),
