@@ -11624,3 +11624,171 @@ Deno.test("NF-37: a push with nothing to clamp reports an empty list", async () 
   assertEquals(response.status, 200, JSON.stringify(result));
   assertEquals(result.clamped, []);
 });
+
+// ---------------------------------------------------------------------------
+// C5 real-SQL coverage: atomic clocked cycle delete (204-C), local-profile
+// rejection (204-D) and the tombstone client clock (204-E). Run by
+// `npm run test:edge:integration` under both SYNC_LWW_ENABLED values.
+// ---------------------------------------------------------------------------
+
+function clockedCyclePush(
+  ids: { routineId: string; exerciseId: string; cycleId: string; dayId: string },
+  clock: string,
+): Record<string, unknown> {
+  const body = tombstoneMobilePushBody(ids, { includeRoutine: true });
+  const [routine] = body.routines as Array<Record<string, unknown>>;
+  const [cycle] = body.cycles as Array<Record<string, unknown>>;
+  return {
+    ...body,
+    routines: [{ ...routine, updatedAt: clock }],
+    cycles: [{ ...cycle, updatedAt: clock }],
+  };
+}
+
+async function storedCycleKey(
+  fixture: TombstonePushFixture,
+  cycleId: string,
+): Promise<{ client_updated_at: string | null } | null> {
+  const row = await fixture.admin.from("training_cycles")
+    .select("client_updated_at")
+    .eq("id", cycleId)
+    .maybeSingle();
+  if (row.error) throw new Error("cycle lookup failed");
+  return row.data as { client_updated_at: string | null } | null;
+}
+
+Deno.test({
+  name:
+    `integration: tombstone clock (LWW=${SYNC_LWW_ENABLED}) a delete older than the stored key is rejected and a newer one deletes`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = freshTombstoneIds();
+      const created = new Date(Date.now() - 10 * 60_000).toISOString();
+      await pushOk(handler, clockedCyclePush(ids, created));
+      const stored = await storedCycleKey(fixture, ids.cycleId);
+      assert(stored?.client_updated_at, "the merge stores the LWW key");
+      const storedMs = epochMs(stored.client_updated_at);
+
+      const stale = await pushOk(handler, {
+        ...validPushBody(),
+        deletedCycles: [{ id: ids.cycleId, updatedAt: new Date(storedMs - 60_000).toISOString() }],
+      });
+      assertEquals(stale.acknowledgedDeletedCycleIds, []);
+      const staleRejections = (stale.rejections as RejectionLists).cycles;
+      assertEquals(staleRejections.map((r) => r.id), [ids.cycleId]);
+      assertEquals(epochMs(staleRejections[0].serverUpdatedAt), storedMs);
+      assert(await storedCycleKey(fixture, ids.cycleId), "a losing delete keeps the row");
+
+      const deleteClock = new Date(storedMs + 60_000).toISOString();
+      const winning = await pushOk(handler, {
+        ...validPushBody(),
+        deletedCycles: [{ id: ids.cycleId, updatedAt: deleteClock }],
+      });
+      assertEquals(winning.acknowledgedDeletedCycleIds, [ids.cycleId]);
+      assertEquals(await storedCycleKey(fixture, ids.cycleId), null);
+      const tombstone = await fixture.admin.from("sync_tombstones")
+        .select("client_deleted_at, deleted_at")
+        .eq("user_id", fixture.ownerId)
+        .eq("entity_id", ids.cycleId)
+        .single();
+      if (tombstone.error) throw new Error("tombstone lookup failed");
+      // The device clock is the comparison key; deleted_at stays the server
+      // clock (pull cursor).
+      assertEquals(epochMs(tombstone.data.client_deleted_at), epochMs(deleteClock));
+      assert(epochMs(tombstone.data.deleted_at) > storedMs);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: tombstone clock (LWW=${SYNC_LWW_ENABLED}) an edit dated at the delete stays skipped; a strictly newer edit wins and clears the tombstone`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = freshTombstoneIds();
+      const deleteMs = Date.now() - 5 * 60_000;
+      await pushOk(handler, clockedCyclePush(ids, new Date(deleteMs - 10 * 60_000).toISOString()));
+      await pushOk(handler, {
+        ...validPushBody(),
+        deletedCycles: [{ id: ids.cycleId, updatedAt: new Date(deleteMs).toISOString() }],
+      });
+
+      // Same instant as the delete: the delete stands.
+      const tied = await pushOk(handler, {
+        ...clockedCyclePush(ids, new Date(deleteMs).toISOString()),
+        routines: [],
+      });
+      assertEquals(tied.skippedDeleted, { routines: [], cycles: [ids.cycleId] });
+      assertEquals(await storedCycleKey(fixture, ids.cycleId), null);
+
+      // An undated push never outranks a delete (KD-4).
+      const undated = await pushOk(handler, tombstoneMobilePushBody(ids, { includeRoutine: false }));
+      assertEquals(undated.skippedDeleted, { routines: [], cycles: [ids.cycleId] });
+
+      const newer = await pushOk(handler, {
+        ...clockedCyclePush(ids, new Date(deleteMs + 1).toISOString()),
+        routines: [],
+      });
+      assertEquals(newer.skippedDeleted, { routines: [], cycles: [] });
+      assert(await storedCycleKey(fixture, ids.cycleId), "the newer edit recreates the cycle");
+      const tombstones = await fixture.admin.from("sync_tombstones")
+        .select("entity_id")
+        .eq("user_id", fixture.ownerId)
+        .eq("entity_id", ids.cycleId);
+      if (tombstones.error) throw new Error("tombstone lookup failed");
+      assertEquals(tombstones.data, []);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: profile guard (LWW=${SYNC_LWW_ENABLED}) a named-profile push of portal-created rows is 200 with structured rejections`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = freshTombstoneIds();
+      // Portal-created: no local profile (NULL, i.e. "default").
+      await seedRoutineAndCycle(fixture, ids);
+      const partner = crypto.randomUUID();
+      const response = await handler(requestFromBody({
+        ...clockedCyclePush(ids, new Date().toISOString()),
+        profileId: partner,
+        profileName: "Partner",
+        allProfiles: [
+          { id: "default", name: "Default", colorIndex: 0 },
+          { id: partner, name: "Partner", colorIndex: 1 },
+        ],
+      }));
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+      const rejections = body.rejections as RejectionLists;
+      assertEquals(rejections.routines.map((r) => r.id), [ids.routineId]);
+      assertEquals(rejections.cycles.map((r) => r.id), [ids.cycleId]);
+      assertEquals(body.acknowledgedCycleIds, []);
+      for (const table of ["routines", "training_cycles"] as const) {
+        const id = table === "routines" ? ids.routineId : ids.cycleId;
+        const row = await fixture.admin.from(table)
+          .select("local_profile_id")
+          .eq("id", id)
+          .single();
+        if (row.error) throw new Error(`${table} lookup failed`);
+        assertEquals(row.data.local_profile_id, null, `${table} keeps its profile`);
+      }
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
