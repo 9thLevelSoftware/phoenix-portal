@@ -1,61 +1,59 @@
-**Add your own guidelines here**
-<!--
+# Phoenix Portal Design System Guidelines
 
-System Guidelines
+## Core principle
 
-Use this file to provide the AI with rules and guidelines you want it to follow.
-This template outlines a few examples of things you can add. You can add your own sections and format it to suit your needs
+Use design tokens from `src/styles/theme.css` only. Never inline hex colors, raw spacing values, or radii in components. Extend the token source before introducing a new visual value.
 
-TIP: More context isn't always better. It can confuse the LLM. Try and add the most important rules you need
+## Tokens (quick reference)
 
-# General guidelines
+- **Color:** `--background`, `--foreground`, `--card`, `--primary`, `--success`, `--warning`, `--destructive`, `--border`, and `--sidebar-*`. Dark and light variants are defined in `:root` and `:root[data-theme='light']`.
+- **Typography:** `text-display`, `text-h1`, `text-h2`, `text-h3`, `text-body`, `text-small`, and `text-micro`, applied through Tailwind utilities.
+- **Spacing:** `--space-1` through `--space-12` for page-level rhythm. Prefer Tailwind built-ins inside components.
+- **Radii:** `--radius`, `--radius-sm`, `--radius-md`, and `--radius-lg`.
+- **Shadows:** `--shadow-sm`, `--shadow-md`, and `--shadow-lg`.
 
-Any general rules you want the AI to follow.
-For example:
+## Anti-slop rules (hard constraints)
 
-* Only use absolute positioning when necessary. Opt for responsive and well structured layouts that use flexbox and grid by default
-* Refactor code as you go to keep code clean
-* Keep file sizes small and put helper functions and components in their own files.
+1. No hex colors outside `src/styles/theme.css`, `src/lib/theme-tokens.ts`, tests, and `src/lib/database.types.ts`.
+2. No `!important` outside `@media print`.
+3. No `rounded-*` doubling on a parent and child for the same edge.
+4. No `bg-gradient-*` combined with `shadow-*` on the same element.
+5. Do not animate `width`, `height`, `top`, `left`, `margin`, or `padding`. Animate opacity and transform only.
+6. Do not place a card inside another card without a border or a meaningful surface-level shift.
+7. Do not add z-index values. Use `z-0`, `z-10`, `z-20`, `z-50`, or sidebar `z-[10]`.
+8. Do not add third-party dependencies without explicit plan approval.
 
---------------
+## Component usage
 
-# Design system guidelines
-Rules for how the AI should make generations look like your company's design system
+- **Cards:** use `<Card variant="default|elevated|inset|stat">` with `padding="none|sm|md|lg"`. The default variant has no padding; preserve headered-card layouts.
+- **Buttons:** use `<Button variant="default|secondary|outline|ghost|link|destructive|success">`. There is no `cta` variant; use `default`.
+- **Empty states:** use `<EmptyState>` from `ui/empty-state` with a verb-led title, concrete next step, and a Button CTA.
+- **Skeletons:** use `<Skeleton>` from `ui/skeleton` and match the final layout's grid and shape.
+- **Forms:** wrap fields in `<Form>` and show validation through `<FormErrorSummary>` at the top.
+- **Touch targets:** keep interactive elements at least 44px tall on mobile.
 
-Additionally, if you select a design system to use in the prompt box, you can reference
-your design system's components, tokens, variables and components.
-For example:
+## Motion
 
-* Use a base font-size of 14px
-* Date formats should always be in the format “Jun 10”
-* The bottom toolbar should only ever have a maximum of 4 items
-* Never use the floating action button with the bottom toolbar
-* Chips should always come in sets of 3 or more
-* Don't use a dropdown if there are 2 or fewer options
+- Reduced motion is respected by `MotionConfig reducedMotion="user"` at the `AppLayout` root.
+- Use centralized recipes from `src/lib/animations.ts`: `fadeUp`, `fadeUpVariants`, `staggerContainer`, `hover`, and `tap`.
+- Avoid inline `transition={{ duration: N }}`. First check whether a centralized recipe covers the interaction.
+- Keep transitions purposeful: communicate hierarchy, state change, or continuity; never add motion decoratively.
 
-You can also create sub sections and add more specific details
-For example:
+## Theming
 
+- Support both light and dark themes through `:root[data-theme='light']` and the default token block.
+- `ThemeProvider` persists the choice in localStorage under `phoenix-theme` and synchronizes `dataset.theme` on `<html>`.
+- `ThemeToggle` in the sidebar is the user-facing theme switcher. The system preference is respected when `theme="system"`.
+- Do not hardcode theme-dependent colors. Use semantic tokens rather than direct `var(--phoenix-*)` values for surfaces.
 
-## Button
-The Button component is a fundamental interactive element in our design system, designed to trigger actions or navigate
-users through the application. It provides visual feedback and clear affordances to enhance user experience.
+## Form labels
 
-### Usage
-Buttons should be used for important actions that users need to take, such as form submissions, confirming choices,
-or initiating processes. They communicate interactivity and should have clear, action-oriented labels.
+Every `<input>`, `<textarea>`, and `<select>` must have a visible `<Label htmlFor={id}>` whose `htmlFor` matches the input `id`. An `aria-label` alone is not sufficient for visible labeling.
 
-### Variants
-* Primary Button
-  * Purpose : Used for the main action in a section or page
-  * Visual Style : Bold, filled with the primary brand color
-  * Usage : One primary button per section to guide users toward the most important action
-* Secondary Button
-  * Purpose : Used for alternative or supporting actions
-  * Visual Style : Outlined with the primary color, transparent background
-  * Usage : Can appear alongside a primary button for less important actions
-* Tertiary Button
-  * Purpose : Used for the least important actions
-  * Visual Style : Text-only with no border, using primary color
-  * Usage : For actions that should be available but not emphasized
--->
+## When adding a new pattern
+
+1. Check whether an existing primitive covers it: `Card`, `Button`, `EmptyState`, `Skeleton`, or `Form`.
+2. If one does, use it through its existing props and variants.
+3. If none does, extend the primitive with a cva variant; never create a parallel component for the same concern.
+4. Add a focused test for the new behavior or variant.
+5. Update this file so the next contributor can reuse the pattern.
