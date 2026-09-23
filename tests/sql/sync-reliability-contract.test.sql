@@ -217,17 +217,10 @@ END $$;
 INSERT INTO public.exercises(id,session_id,user_id,name,exercise_id,muscle_group,order_index) VALUES
   ('60000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000001','Old A','a','Chest',0),
   ('60000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000001','Keep B','b','Back',1);
-SELECT public.replace_session_components(
-  '00000000-0000-4000-8000-000000000001',
-  ARRAY['60000000-0000-4000-8000-000000000001']::UUID[],
-  '[{"id":"60000000-0000-4000-8000-000000000001","session_id":"10000000-0000-4000-8000-000000000001","user_id":"00000000-0000-4000-8000-000000000001","name":"New A","exercise_id":"a","muscle_group":"Chest","order_index":0}]',
-  '[{"id":"70000000-0000-4000-8000-000000000001","exercise_id":"60000000-0000-4000-8000-000000000001","user_id":"00000000-0000-4000-8000-000000000001","set_number":1,"actual_reps":5,"weight_kg":10,"is_pr":true}]',
-  '[]','[]'
-);
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.exercises WHERE id='60000000-0000-4000-8000-000000000002') THEN RAISE EXCEPTION 'sibling child lost'; END IF;
-  IF (SELECT total_volume FROM public.workout_sessions WHERE id='10000000-0000-4000-8000-000000000001') <> 50 THEN RAISE EXCEPTION 'aggregate not recomputed'; END IF;
-END $$;
+-- (A check of a retired component-replacement RPC stood here. That RPC was
+-- dropped by 20260925200000_set_telemetry_storage.sql; component replacement
+-- is covered by replace_session_children's pgTAP suite. The two rows above
+-- stay: the tombstone checks below depend on them.)
 
 -- Two devices can each see two components and independently send COMPONENT
 -- deletions. The second commit removes the last server-side child, so it also
@@ -402,23 +395,8 @@ DO $$ BEGIN
   ) THEN RAISE EXCEPTION 'tombstone recorded_at did not capture server commit time'; END IF;
 END $$;
 
--- Parent acceptance and dependent replacement roll back as one unit.
-DO $$ BEGIN
-  BEGIN
-    PERFORM * FROM public.upsert_workout_sessions_with_components(
-      '00000000-0000-4000-8000-000000000001', TRUE,
-      '[{"id":"10000000-0000-4000-8000-000000000030","user_id":"00000000-0000-4000-8000-000000000001","local_profile_id":"default","name":"Atomic","started_at":"2026-09-20T12:00:00Z","duration_seconds":0,"total_volume":0,"set_count":0,"exercise_count":0,"pr_count":0,"updated_at":"2026-09-20T12:00:00Z"}]',
-      ARRAY['60000000-0000-4000-8000-000000000030']::UUID[],
-      '[{"id":"60000000-0000-4000-8000-000000000030","session_id":"10000000-0000-4000-8000-000000000030","user_id":"00000000-0000-4000-8000-000000000001","name":"Atomic component","exercise_id":"a","muscle_group":"Chest","order_index":0}]',
-      '[{"id":"70000000-0000-4000-8000-000000000030","exercise_id":"60000000-0000-4000-8000-000000000099","user_id":"00000000-0000-4000-8000-000000000001","set_number":1}]',
-      '[]','[]'
-    );
-    RAISE EXCEPTION 'invalid child replacement accepted';
-  EXCEPTION WHEN foreign_key_violation THEN NULL; END;
-  IF EXISTS (SELECT 1 FROM public.workout_sessions WHERE id='10000000-0000-4000-8000-000000000030') THEN
-    RAISE EXCEPTION 'parent survived failed atomic component replacement';
-  END IF;
-END $$;
+-- (An atomicity check of a retired session-with-components RPC stood here.
+-- That RPC was dropped by 20260925200000_set_telemetry_storage.sql.)
 
 -- Reusing the deletion mutation for a different target is rejected.
 DO $$ BEGIN
