@@ -263,6 +263,15 @@ tombstone is removed in the same call. Receipt time never stands in for a
 missing `updatedAt` here, so an undated push keeps losing to a delete. The
 comparison is by instant, not by string.
 
+The gate removes the tombstone in its own call, before the row is written. If
+that push then fails (a retryable 503) before the write commits, the id is
+neither tombstoned nor stored until the device retries. In that window a
+stale push from another device is not stopped by the gate. The retry of the
+newer edit still converges under LWW. Clearing the tombstone from an insert
+trigger instead would close the window, but it would also erase the tombstone
+of a delete that races the push, which is the one the R-4 re-delete check
+looks for.
+
 ### Local profile ownership
 
 A push that names a session or routine another local profile holds (stored
