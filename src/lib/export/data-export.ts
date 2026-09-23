@@ -372,7 +372,7 @@ function readmeText(
 		`Exported at: ${exportedAt}`,
 		"",
 		"Each table is in data/<table>.json (a JSON array of rows).",
-		"Rep telemetry is in data/rep_telemetry/part-NNNNN.ndjson (one JSON row per line, one part per 1,000-row page).",
+		"Rep telemetry is in data/rep_telemetry/part-NNNNN.ndjson (one JSON row per line, one part per page of about 1,000 rows, whole sets).",
 		"Uploaded files (your avatar) are in files/<bucket>/. Every file listed in",
 		"data/storage_avatars.json is included; the export fails rather than omit one.",
 		"export-manifest.json lists every table, its row count and its files.",

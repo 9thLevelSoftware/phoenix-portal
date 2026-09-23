@@ -30,6 +30,32 @@
 -- Idempotent: safe to re-run. Timestamped after 20260922120000.
 
 -- ---------------------------------------------------------------------------
+-- 0. Retired component RPCs
+-- ---------------------------------------------------------------------------
+-- replace_session_components and upsert_workout_sessions_with_components
+-- (20260920120000) are the retired component write path; nothing calls them
+-- (mobile-sync-push writes children through replace_session_children). They
+-- INSERT ... ON CONFLICT into rep_telemetry, which becomes a view below, so
+-- they are dropped, every overload, before that happens. Never recreated.
+DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT p.oid::regprocedure AS sig
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public'
+       AND p.proname IN ('replace_session_components', 'upsert_workout_sessions_with_components')
+  LOOP
+    EXECUTE pg_catalog.format('DROP FUNCTION IF EXISTS %s', r.sig);
+  END LOOP;
+END
+$$;
+DROP FUNCTION IF EXISTS public.replace_session_components(UUID, UUID[], JSONB, JSONB, JSONB, JSONB);
+DROP FUNCTION IF EXISTS public.upsert_workout_sessions_with_components(UUID, BOOLEAN, JSONB, UUID[], JSONB, JSONB, JSONB, JSONB);
+
+-- ---------------------------------------------------------------------------
 -- 1. Storage
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.set_telemetry (
@@ -939,3 +965,76 @@ REVOKE ALL ON FUNCTION private.backfill_set_telemetry(UUID, INTEGER)
 
 COMMENT ON FUNCTION private.backfill_set_telemetry(UUID, INTEGER) IS
   'Folds rep_telemetry_legacy sets into set_telemetry, p_max_sets per call, keyset on set_id. Idempotent; never deletes legacy rows. 20260925200000.';
+
+-- ---------------------------------------------------------------------------
+-- 9. Linear GDPR export of rep_telemetry
+-- ---------------------------------------------------------------------------
+-- Keyset-paging the view by sample id would unpack every set of the user on
+-- each page (the id only exists after unnest), so an export is quadratic in
+-- samples. This pages by set instead: the next sets after p_after_set_id, in
+-- set_id order, until about p_target_rows samples, unpacked once. Rows are
+-- exactly the view's rows for those sets (both stores), in (set_id,
+-- timestamp_ms, id) order. Service role only (export-user-data).
+CREATE INDEX IF NOT EXISTS set_telemetry_user_set_idx
+  ON public.set_telemetry (user_id, set_id);
+
+CREATE OR REPLACE FUNCTION public.export_rep_telemetry_page(
+  p_user_id UUID,
+  p_after_set_id UUID DEFAULT NULL,
+  p_target_rows INTEGER DEFAULT 1000
+)
+RETURNS TABLE(
+  id UUID, set_id UUID, timestamp_ms BIGINT, force_n NUMERIC,
+  velocity_mps NUMERIC, position_mm NUMERIC, cable TEXT, user_id UUID
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  WITH candidate AS (
+    SELECT t.set_id, t.sample_count::bigint AS n
+      FROM public.set_telemetry t
+     WHERE t.user_id = p_user_id
+       AND (p_after_set_id IS NULL OR t.set_id > p_after_set_id)
+    UNION ALL
+    SELECT l.set_id, count(*)
+      FROM public.rep_telemetry_legacy l
+     WHERE l.user_id = p_user_id
+       AND (p_after_set_id IS NULL OR l.set_id > p_after_set_id)
+       AND NOT EXISTS (
+         SELECT 1 FROM public.set_telemetry t2
+          WHERE t2.set_id = l.set_id AND t2.user_id = l.user_id
+       )
+     GROUP BY l.set_id
+  ),
+  next_sets AS (
+    SELECT c.set_id, sum(c.n) AS n
+      FROM candidate c
+     GROUP BY c.set_id
+     ORDER BY c.set_id
+     LIMIT GREATEST(COALESCE(p_target_rows, 1000), 1)
+  ),
+  page AS (
+    SELECT s.set_id
+      FROM (
+        SELECT ns.set_id,
+               sum(ns.n) OVER (ORDER BY ns.set_id ROWS UNBOUNDED PRECEDING) - ns.n AS before
+          FROM next_sets ns
+      ) s
+     WHERE s.before < GREATEST(COALESCE(p_target_rows, 1000), 1)
+  )
+  SELECT r.id, r.set_id, r.timestamp_ms, r.force_n, r.velocity_mps,
+         r.position_mm, r.cable, r.user_id
+    FROM public.rep_telemetry r
+   WHERE r.user_id = p_user_id
+     AND r.set_id IN (SELECT page.set_id FROM page)
+   ORDER BY r.set_id, r.timestamp_ms, r.id;
+$$;
+
+REVOKE ALL ON FUNCTION public.export_rep_telemetry_page(UUID, UUID, INTEGER)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.export_rep_telemetry_page(UUID, UUID, INTEGER) TO service_role;
+
+COMMENT ON FUNCTION public.export_rep_telemetry_page(UUID, UUID, INTEGER) IS
+  'GDPR export: the rep_telemetry rows of the user''s next sets after p_after_set_id (set_id order, ~p_target_rows samples), each set unpacked once. Service role only.';

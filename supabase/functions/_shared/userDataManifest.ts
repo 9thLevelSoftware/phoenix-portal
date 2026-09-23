@@ -72,6 +72,12 @@ export interface UserDataTable {
 	/** Exported columns (selected explicitly; credentials never listed). */
 	columns: readonly string[];
 	/**
+	 * Page through a service-role RPC instead of keyset on `keyColumns`: the
+	 * RPC takes (p_user_id, p_after_<cursorColumn>, p_target_rows) and returns
+	 * the table's rows ordered by `cursorColumn` first, whole groups per page.
+	 */
+	exportPager?: { rpc: string; cursorColumn: string };
+	/**
 	 * Columns that exist in prod but not in migrations (dashboard drift).
 	 * Selected too; if the database lacks them (42703), the page is re-read
 	 * with `columns` only.
@@ -373,7 +379,11 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"position_mm",
 		"cable",
 		"user_id",
-	]),
+	], {
+		// Keyset by sample id would unpack every set of the user per page (the
+		// id exists only after unnest): paged by set instead, linear.
+		exportPager: { rpc: "export_rep_telemetry_page", cursorColumn: "set_id" },
+	}),
 	owned("personal_records", "cascade", [
 		"id",
 		"user_id",
