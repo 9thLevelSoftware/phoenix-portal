@@ -8590,21 +8590,22 @@ function realPushHandler(
   });
 }
 
-function realTombstonePushHandler(
-  fixture: TombstonePushFixture,
-): (request: Request) => Promise<Response> {
-  const admin = fixture.admin;
-  const client = {
+/**
+ * The real admin client for data, with the sync_complete broadcast stubbed at
+ * today's transport (realtime.setAuth + channel(topic, opts).httpSend). A real
+ * httpSend leaves an unread response body and a pending timeout timer, which
+ * Deno's resource sanitizer reports as a leak in the test that made it.
+ */
+function broadcastStubbedAdmin(admin: SupabaseClient, topics: string[] = []) {
+  return {
     from: (table: string) => admin.from(table),
     rpc: (name: string, args?: Record<string, unknown>) => admin.rpc(name, args),
-    channel() {
+    realtime: { async setAuth() {} },
+    channel(topic: string) {
       return {
-        subscribe(callback: (status: string) => void) {
-          callback("SUBSCRIBED");
-          return {};
-        },
-        async send() {
-          return "ok";
+        async httpSend() {
+          topics.push(topic);
+          return { success: true };
         },
       };
     },
@@ -8612,6 +8613,12 @@ function realTombstonePushHandler(
       return "ok";
     },
   };
+}
+
+function realTombstonePushHandler(
+  fixture: TombstonePushFixture,
+): (request: Request) => Promise<Response> {
+  const client = broadcastStubbedAdmin(fixture.admin);
   return createMobileSyncPushHandler({
     createAuthClient() {
       return {
@@ -10440,7 +10447,7 @@ function realTransactionalPushHandler(
       };
     },
     createAdminClient() {
-      return admin;
+      return broadcastStubbedAdmin(admin) as never;
     },
     logOperationalFailure: () => {},
     now: () => Date.now(),
