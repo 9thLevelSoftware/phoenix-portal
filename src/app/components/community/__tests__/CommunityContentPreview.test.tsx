@@ -262,4 +262,68 @@ describe("CommunityContentPreview", () => {
 		expect(screen.getByText("View Push Routine")).toBeInTheDocument();
 		expect(screen.getByText("Rest Day")).toBeInTheDocument();
 	});
+
+	// NF-16: mobile ships per_set_echo_levels as a JSON string, stored as a
+	// jsonb string scalar since 20260920007600.
+	it("renders per-set echo levels stored as a JSON string", () => {
+		render(
+			<RoutineSnapshotPreview
+				exercises={routineExercisesSnapshotSchema.parse([
+					{
+						name: "Echo Row",
+						muscle_group: "Back",
+						sets: 2,
+						reps: 10,
+						weight: 20,
+						rest_seconds: 60,
+						mode: "ECHO",
+						order_index: 0,
+						per_set_echo_levels: '["HARD","EPIC"]',
+					},
+				])}
+			/>,
+		);
+		expect(screen.getByText("Echo: Hard, Epic")).toBeInTheDocument();
+	});
+
+	it("renders per-set echo levels stored as an array and skips a malformed string", () => {
+		const { unmount } = render(
+			<RoutineSnapshotPreview
+				exercises={routineExercisesSnapshotSchema.parse([
+					{
+						name: "Array Row",
+						muscle_group: "Back",
+						sets: 2,
+						reps: 10,
+						weight: 20,
+						rest_seconds: 60,
+						mode: "ECHO",
+						order_index: 0,
+						per_set_echo_levels: ["HARDER", "HARDEST"],
+					},
+				])}
+			/>,
+		);
+		expect(screen.getByText("Echo: Harder, Hardest")).toBeInTheDocument();
+		unmount();
+
+		render(
+			<RoutineSnapshotPreview
+				exercises={routineExercisesSnapshotSchema.parse([
+					{
+						name: "Broken Row",
+						muscle_group: "Back",
+						sets: 2,
+						reps: 10,
+						weight: 20,
+						rest_seconds: 60,
+						mode: "OLD_SCHOOL",
+						order_index: 0,
+						per_set_echo_levels: "not json",
+					},
+				])}
+			/>,
+		);
+		expect(screen.queryByText(/^Echo:/)).toBeNull();
+	});
 });
