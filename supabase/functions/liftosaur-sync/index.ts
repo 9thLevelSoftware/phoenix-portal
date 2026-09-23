@@ -285,12 +285,21 @@ async function runLiftosaurSync(
 		// cannot be made by a worker whose lease was reclaimed.
 		let ownedAttempt: number | null = null;
 		if (ownedQueueId) {
-			const { data: claimRow } = await supabase
+			const { data: claimRow, error: claimError } = await supabase
 				.from("sync_queue")
 				.select("retry_count")
 				.eq("id", ownedQueueId)
 				.eq("user_id", userId)
 				.maybeSingle();
+			// Without the generation every later save would be refused: fail
+			// retryably now, before any provider work.
+			if (claimError) {
+				console.error("Failed to read the sync queue claim:", claimError);
+				return new Response(
+					JSON.stringify({ error: "Sync temporarily unavailable", code: "queue_claim_unreadable" }),
+					{ status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+				);
+			}
 			ownedAttempt = Number((claimRow as { retry_count?: number } | null)?.retry_count ?? 0);
 		}
 
@@ -597,7 +606,9 @@ async function runLiftosaurSync(
 							started_at: null,
 							completed_at: null,
 							error_message: null,
-							retry_count: 0,
+							// retry_count is kept, never reset: it is the claim
+							// generation, and it must stay monotonic so a stale
+							// worker's generation can never match again.
 						})
 						.eq("id", ownedQueueId)
 						.eq("user_id", userId)
