@@ -13,6 +13,8 @@ interface FakeOptions {
   functions?: Record<string, Array<Record<string, unknown>>>;
   /** Result rows for a data statement, chosen by the first matching needle. */
   results?: Array<{ match: string; rows?: Array<Record<string, unknown>>; error?: unknown }>;
+  /** Thrown by every catalog lookup. */
+  catalogError?: unknown;
 }
 
 function fakeExecutor(options: FakeOptions = {}) {
@@ -21,6 +23,7 @@ function fakeExecutor(options: FakeOptions = {}) {
   const executor: SqlExecutor = {
     async query(text, params) {
       log.push({ text, params });
+      if (options.catalogError && text.includes("pg_catalog.")) throw options.catalogError;
       if (text.includes("pg_catalog.pg_attribute")) {
         const cols = options.columns?.[params[0]] ?? {};
         return Object.entries(cols).map(([name, type]) => ({ name, type }));
@@ -216,6 +219,17 @@ Deno.test("a transaction Postgres ended under a call is marked aborted and fails
   const next = await tx.client.from("t").select("id");
   assertEquals(next.error?.code, "25P04");
   assertEquals(fake.log.length, before, "no statement is sent on a dead transaction");
+});
+
+Deno.test("a catalog lookup that fails marks the transaction aborted", async () => {
+  const gone = Object.assign(new Error("terminating connection due to transaction timeout"), { code: "25P04" });
+  const fake = fakeExecutor();
+  const tx = await beginPushTransaction(fake.executor);
+  // Fail only the catalog lookups made after BEGIN.
+  const failing = fakeExecutor({ catalogError: gone });
+  fake.executor.query = failing.executor.query;
+  await tx.client.from("t").select("id").then(() => undefined, () => undefined);
+  assertEquals(tx.aborted, true);
 });
 
 Deno.test("concurrent calls are serialized, so savepoints never interleave", async () => {
