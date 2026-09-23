@@ -6,12 +6,13 @@ import { cn } from "./utils";
 const cardVariants = cva("text-card-foreground flex flex-col gap-6", {
 	variants: {
 		variant: {
-			default: "bg-card border rounded-lg shadow-sm",
-			elevated: "bg-surface-1 border-0 shadow-md",
-			inset: "bg-surface-2 border-0 shadow-none",
+			default: "bg-card border rounded-xl",
+			elevated: "bg-surface-1 border-0 shadow-md rounded-xl",
+			inset: "bg-surface-2 border-0 shadow-none rounded-xl",
 			stat: "bg-card border rounded-lg shadow-sm",
 		},
 		padding: {
+			none: "",
 			sm: "p-3",
 			md: "p-6",
 			lg: "p-8",
@@ -19,7 +20,7 @@ const cardVariants = cva("text-card-foreground flex flex-col gap-6", {
 	},
 	defaultVariants: {
 		variant: "default",
-		padding: "md",
+		padding: "none",
 	},
 });
 
@@ -27,15 +28,10 @@ type CardProps = React.ComponentProps<"div"> &
 	VariantProps<typeof cardVariants>;
 
 function Card({ className, variant, padding, ...props }: CardProps) {
-	const resolvedPadding = padding ?? (variant === "stat" ? "sm" : "md");
-
 	return (
 		<div
 			data-slot="card"
-			className={cn(
-				cardVariants({ variant, padding: resolvedPadding }),
-				className,
-			)}
+			className={cn(cardVariants({ variant, padding }), className)}
 			{...props}
 		/>
 	);

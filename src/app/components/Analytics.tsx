@@ -392,7 +392,7 @@ interface MobileStatCardProps {
 
 function MobileStatCard({ label, value, icon, delta }: MobileStatCardProps) {
 	return (
-		<Card variant="stat" className="min-w-[120px]">
+		<Card variant="stat" padding="sm" className="min-w-[120px]">
 			<div className="flex flex-col">
 				<div className="text-muted-foreground text-xs mb-1">{label}</div>
 				<div className="flex items-center justify-between">
@@ -1492,7 +1492,7 @@ export function Analytics() {
 										animate={{ opacity: 1, y: 0 }}
 										transition={{ delay: index * 0.08 }}
 									>
-										<Card variant="stat">
+										<Card variant="stat" padding="sm">
 											<div className="flex items-center justify-between mb-1">
 												<span className="text-sm text-muted-foreground">
 													{stat.label}

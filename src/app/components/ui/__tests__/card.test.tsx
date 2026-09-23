@@ -3,14 +3,17 @@ import { describe, expect, it } from "vitest";
 import { cardVariants } from "../card";
 
 describe("cardVariants", () => {
-	it("keeps the default card surface and medium padding", () => {
+	it("keeps legacy defaults without outer padding", () => {
 		const classes = cardVariants();
 
 		expect(classes).toContain("bg-card");
 		expect(classes).toContain("border");
-		expect(classes).toContain("rounded-lg");
-		expect(classes).toContain("shadow-sm");
-		expect(classes).toContain("p-6");
+		expect(classes).toContain("rounded-xl");
+		expect(classes.split(/\s+/)).not.toContain("p-6");
+	});
+
+	it("supports explicit medium padding", () => {
+		expect(cardVariants({ padding: "md" })).toContain("p-6");
 	});
 
 	it("provides the elevated surface variant", () => {
@@ -29,13 +32,16 @@ describe("cardVariants", () => {
 		expect(classes).toContain("shadow-none");
 	});
 
-	it("uses compact padding for stat tiles by default", () => {
-		const classes = cardVariants({ variant: "stat", padding: "sm" });
+	it("resolves the stat surface without implicit padding", () => {
+		const classes = cardVariants({ variant: "stat" });
 
 		expect(classes).toContain("bg-card");
 		expect(classes).toContain("rounded-lg");
 		expect(classes).toContain("shadow-sm");
-		expect(classes).toContain("p-3");
+	});
+
+	it("supports compact stat padding", () => {
+		expect(cardVariants({ variant: "stat", padding: "sm" })).toContain("p-3");
 	});
 
 	it("supports each explicit padding preset", () => {

@@ -119,7 +119,13 @@
   --text-small-lh: 1.25rem;
   --text-micro: 0.75rem;
   --text-micro-lh: 1rem;
-  --page-stack-gap: 1.5rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
 }
 
 :root[data-theme='light'] {
@@ -228,7 +234,13 @@
   --text-small-lh: 1.25rem;
   --text-micro: 0.75rem;
   --text-micro-lh: 1rem;
-  --page-stack-gap: 1.5rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
 
   /* Data-viz colors must stay brandable but readable on white: */
   --cable-a: #d94e1f;
@@ -293,18 +305,32 @@
   --font-family-display: var(--font-display);
   --font-size-display: var(--text-display);
   --font-size-display--line-height: var(--text-display-lh);
+  --text-display: var(--text-display);
+  --text-display--line-height: var(--text-display-lh);
   --font-size-h1: var(--text-h1);
   --font-size-h1--line-height: var(--text-h1-lh);
+  --text-h1: var(--text-h1);
+  --text-h1--line-height: var(--text-h1-lh);
   --font-size-h2: var(--text-h2);
   --font-size-h2--line-height: var(--text-h2-lh);
+  --text-h2: var(--text-h2);
+  --text-h2--line-height: var(--text-h2-lh);
   --font-size-h3: var(--text-h3);
   --font-size-h3--line-height: var(--text-h3-lh);
+  --text-h3: var(--text-h3);
+  --text-h3--line-height: var(--text-h3-lh);
   --font-size-body: var(--text-body);
   --font-size-body--line-height: var(--text-body-lh);
+  --text-body: var(--text-body);
+  --text-body--line-height: var(--text-body-lh);
   --font-size-small: var(--text-small);
   --font-size-small--line-height: var(--text-small-lh);
+  --text-small: var(--text-small);
+  --text-small--line-height: var(--text-small-lh);
   --font-size-micro: var(--text-micro);
   --font-size-micro--line-height: var(--text-micro-lh);
+  --text-micro: var(--text-micro);
+  --text-micro--line-height: var(--text-micro-lh);
   --color-semantic-positive: var(--semantic-positive);
   --color-semantic-caution: var(--semantic-caution);
   --color-semantic-info: var(--semantic-info);
@@ -318,9 +344,11 @@
   --font-family-data: var(--font-data);
 }
 
+@source inline("text-display text-h1 text-h2 text-h3 text-body text-small text-micro");
+
 .page-stack {
   display: grid;
-  gap: var(--page-stack-gap);
+  gap: var(--space-6);
 }
 
 /* Wire shadow values to Tailwind shadow-sm/md/lg utility classes */
