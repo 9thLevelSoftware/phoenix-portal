@@ -176,7 +176,9 @@ jobs:
       # an equality check, so adding tests never fails the gate.
       - name: pgTAP test-count floor
         env:
-          PGTAP_TEST_FLOOR: "763"
+          # C10 added supabase/tests/database/epoch_zero_session_repair.test.sql
+          # with plan(27): 763 + 27 = 790.
+          PGTAP_TEST_FLOOR: "790"
         run: |
           set -euo pipefail
           summary="$(supabase test db 2>&1 | tee /dev/stderr | grep -oE 'Tests=[0-9]+' | tail -1 || true)"
