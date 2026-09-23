@@ -40,8 +40,8 @@ const authedPages = [
 
 test.describe("WCAG Accessibility Audit - Public Pages", () => {
 	test.beforeEach(async ({ page }) => {
-		// MotionConfig reducedMotion="user" drops transform animations; the
-		// authenticated block below already relies on this.
+		// The app's MotionConfig respects prefers-reduced-motion; emulating that
+		// media query drops entrance transforms before axe samples contrast.
 		await page.emulateMedia({ reducedMotion: "reduce" });
 	});
 
@@ -49,9 +49,6 @@ test.describe("WCAG Accessibility Audit - Public Pages", () => {
 		test(`${name} has no critical WCAG violations`, async ({ page }) => {
 			await page.goto(path);
 			await page.waitForLoadState("networkidle");
-			// Wait for Framer Motion entrance animations to complete
-			// (longest delay is 0.6s + transition duration ~0.3s)
-			await page.waitForTimeout(2000);
 			await waitForAnimationsToSettle(page);
 
 			const results = await new AxeBuilder({ page })
@@ -96,8 +93,6 @@ test.describe("WCAG Accessibility Audit - Authenticated Pages", () => {
 		test(`${name} has no critical WCAG violations`, async ({ page }) => {
 			await page.goto(path);
 			await page.waitForLoadState("networkidle");
-			// Wait for any entrance animations to settle
-			await page.waitForTimeout(2000);
 			await waitForAnimationsToSettle(page);
 
 			const results = await new AxeBuilder({ page })

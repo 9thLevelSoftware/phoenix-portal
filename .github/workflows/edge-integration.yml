@@ -28,6 +28,7 @@ on:
       - "supabase/**"
       - "scripts/test-edge-functions.mjs"
       - "package.json"
+      - ".supabase-cli-version"
       - ".github/workflows/edge-integration.yml"
 
 permissions:
@@ -60,7 +61,7 @@ jobs:
           fi
           changed=$(git diff --name-only "$BASE_SHA" HEAD)
           echo "$changed"
-          if grep -Eq '^(supabase/|scripts/test-edge-functions\.mjs$|package\.json$|\.github/workflows/edge-integration\.yml$)' <<<"$changed"; then
+          if grep -Eq '^(supabase/|scripts/test-edge-functions\.mjs$|package\.json$|\.supabase-cli-version$|\.github/workflows/edge-integration\.yml$)' <<<"$changed"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
