@@ -68,6 +68,8 @@ Deno.test('fetchLiftosaurHistory: a 200 that is not a history page fails instead
     { data: { records: {}, hasMore: false } },
     { data: { records: [{ id: 1 }], hasMore: false } },
     { data: { records: [null], hasMore: false } },
+    { data: { records: [{ id: '', text: 'x' }, { id: '', text: 'y' }], hasMore: false } },
+    { data: { records: [{ id: '  ', text: 'x' }], hasMore: false } },
     [],
     null,
   ];

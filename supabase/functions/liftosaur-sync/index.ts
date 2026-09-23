@@ -283,16 +283,20 @@ async function runLiftosaurSync(
 		// lease reclaim increments retry_count before another worker takes the
 		// same id, so a state save or hand-on that also matches retry_count
 		// cannot be made by a worker whose lease was reclaimed.
+		// process-sync-queue passes the generation it claimed; a row this run
+		// created itself starts at 0. Only a dispatcher that predates
+		// claim_generation makes the run read it (and fail retryably if it
+		// cannot).
 		let ownedAttempt: number | null = null;
-		if (ownedQueueId) {
+		if (dispatchedQueueId && Number.isInteger(body.claim_generation)) {
+			ownedAttempt = body.claim_generation as number;
+		} else if (dispatchedQueueId) {
 			const { data: claimRow, error: claimError } = await supabase
 				.from("sync_queue")
 				.select("retry_count")
-				.eq("id", ownedQueueId)
+				.eq("id", dispatchedQueueId)
 				.eq("user_id", userId)
 				.maybeSingle();
-			// Without the generation every later save would be refused: fail
-			// retryably now, before any provider work.
 			if (claimError) {
 				console.error("Failed to read the sync queue claim:", claimError);
 				return new Response(
@@ -301,6 +305,8 @@ async function runLiftosaurSync(
 				);
 			}
 			ownedAttempt = Number((claimRow as { retry_count?: number } | null)?.retry_count ?? 0);
+		} else if (ownedQueueId) {
+			ownedAttempt = 0;
 		}
 
 		// If api_key provided, store it in oauth_tokens (server-only table)
@@ -669,6 +675,7 @@ async function runLiftosaurSync(
 			userId,
 			provider: "liftosaur",
 			queueId: ownedQueueId,
+			claimGeneration: ownedAttempt,
 		});
 		if (!completed) {
 			return new Response(

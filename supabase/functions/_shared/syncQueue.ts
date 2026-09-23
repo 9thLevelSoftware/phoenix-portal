@@ -41,6 +41,11 @@ export interface CompleteSyncQueueEntryOptions {
   provider: string;
   /** The row this run owns (dispatched or self-created), if any. */
   queueId: string | null;
+  /**
+   * The row's claim generation (retry_count) when this run was claimed. When
+   * given, a row reclaimed by another worker since is not completed.
+   */
+  claimGeneration?: number | null;
 }
 
 /**
@@ -63,7 +68,7 @@ export async function completeSyncQueueEntry(
 ): Promise<boolean> {
   if (!options.queueId) return true;
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('sync_queue')
     .update({
       status: 'completed',
@@ -73,8 +78,11 @@ export async function completeSyncQueueEntry(
     .eq('id', options.queueId)
     .eq('user_id', options.userId)
     .eq('provider', options.provider)
-    .eq('status', 'processing')
-    .select('id');
+    .eq('status', 'processing');
+  if (options.claimGeneration !== undefined && options.claimGeneration !== null) {
+    query = query.eq('retry_count', options.claimGeneration);
+  }
+  const { data, error } = await query.select('id');
 
   if (error) {
     console.error(`Failed to complete ${options.provider} sync queue entry:`, error);

@@ -406,7 +406,7 @@ async function processSyncQueue(
         .update({ status: 'processing', started_at: new Date().toISOString() })
         .eq('id', task.id)
         .eq('status', 'pending')
-        .select('id')
+        .select('id, retry_count')
         .maybeSingle();
 
       if (!claimed) {
@@ -442,6 +442,10 @@ async function processSyncQueue(
             task.user_id,
             task.sync_type ?? 'incremental',
             task.id,
+            // The claim generation this invocation won: a stale-lease reclaim
+            // bumps retry_count before re-claiming the same id, so the worker
+            // checks its writes against this, never a value it reads later.
+            Number((claimed as { retry_count?: number | null }).retry_count ?? 0),
           ),
           {
             numOfAttempts: 3,
@@ -539,6 +543,7 @@ async function callSyncFunction(
   userId: string,
   syncType: string,
   queueId: string,
+  claimGeneration: number,
 ) {
   if (provider === 'garmin') {
     // A local refusal, not a provider response: carry an explicit code so the
@@ -560,7 +565,12 @@ async function callSyncFunction(
         'Authorization': `Bearer ${deps.env('SUPABASE_SERVICE_ROLE_KEY')}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ user_id: userId, sync_type: syncType, queue_id: queueId }),
+      body: JSON.stringify({
+        user_id: userId,
+        sync_type: syncType,
+        queue_id: queueId,
+        claim_generation: claimGeneration,
+      }),
     }
   );
 
