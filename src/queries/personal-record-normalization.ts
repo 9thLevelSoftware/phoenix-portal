@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { fetchAllSupabasePages } from "@/lib/supabasePaging";
 
 export const PERSONAL_RECORD_WITH_CATALOG_SELECT =
 	"*, catalog:exercise_catalog(id, name, display_name)";
@@ -142,16 +143,22 @@ export async function resolvePersonalRecordDisplayNames<
 	// hundred sessions (F-035). `exercises.user_id` is indexed and RLS already
 	// restricts the rows to the caller; the lookup map is keyed by
 	// `${session_id}:${exercise id}`, so widening the fetch cannot mismatch.
-	const { data, error } = await supabase
-		.from("exercises")
-		.select(
-			"id, session_id, name, exercise_id, catalog:exercise_catalog(id, name, display_name)",
-		)
-		.eq("user_id", userId);
-	if (error) throw error;
+	// Paged with a stable order: a user-wide read passes PostgREST's silent
+	// 1,000-row cap, which dropped every later exercise's name (NF-18).
+	const exercises = await fetchAllSupabasePages((from, to) =>
+		supabase
+			.from("exercises")
+			.select(
+				"id, session_id, name, exercise_id, catalog:exercise_catalog(id, name, display_name)",
+			)
+			.eq("user_id", userId)
+			.order("session_id", { ascending: true })
+			.order("id", { ascending: true })
+			.range(from, to),
+	);
 
 	return normalizePersonalRecordSessionExerciseDisplayNames(
 		catalogNormalized,
-		(data ?? []) as SessionExerciseCatalogJoinRow[],
+		exercises as SessionExerciseCatalogJoinRow[],
 	);
 }

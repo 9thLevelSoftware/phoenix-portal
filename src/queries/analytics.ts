@@ -1,6 +1,8 @@
 import { queryOptions } from "@tanstack/react-query";
 import { classifyMuscleGroup } from "@/lib/exercise-muscles";
 import { supabase } from "@/lib/supabase";
+import { fetchAllKeysetPages } from "@/lib/supabasePaging";
+import { exerciseFrequencySchema } from "./exercise-frequency";
 import { queryKeys } from "./keys";
 import {
 	resolvePersonalRecordDisplayNames,
@@ -18,6 +20,44 @@ export function browserTimeZone(): string {
 	} catch {
 		return "UTC";
 	}
+}
+
+/**
+ * True when a zone-bucketing RPC refused the browser's zone. The SQL
+ * aggregates validate `p_tz` against pg_timezone_names and raise 22023; an
+ * older or unusual browser can report a zone the server does not know (NF-20).
+ * "unknown period" also raises 22023, so match the zone message too.
+ */
+export function isUnknownTimeZoneError(error: unknown): boolean {
+	if (!error || typeof error !== "object") return false;
+	const { code, message } = error as { code?: unknown; message?: unknown };
+	return (
+		code === "22023" &&
+		typeof message === "string" &&
+		message.includes("unknown time zone")
+	);
+}
+
+/** Position of the last session row a keyset page returned. */
+interface SessionCursor {
+	started_at: string;
+	id: string;
+}
+
+function sessionCursorOf(row: {
+	started_at: string;
+	id: string;
+}): SessionCursor {
+	return { started_at: row.started_at, id: row.id };
+}
+
+/**
+ * PostgREST `or` filter for "strictly after this (started_at, id)". The
+ * timestamp is quoted because an ISO value carries `.` and `:`, which the
+ * filter grammar reserves.
+ */
+function afterSessionFilter(after: SessionCursor): string {
+	return `started_at.gt."${after.started_at}",and(started_at.eq."${after.started_at}",id.gt.${after.id})`;
 }
 
 /**
@@ -41,11 +81,19 @@ export function volumeTrendOptions(
 			profileId,
 		),
 		queryFn: async () => {
-			const { data, error } = await supabase.rpc("session_volume_buckets", {
-				p_period: period,
-				p_tz: browserTimeZone(),
-				...(profileId ? { p_profile_id: profileId } : {}),
-			});
+			const read = (tz: string) =>
+				supabase.rpc("session_volume_buckets", {
+					p_period: period,
+					p_tz: tz,
+					...(profileId ? { p_profile_id: profileId } : {}),
+				});
+			const zone = browserTimeZone();
+			let { data, error } = await read(zone);
+			// Buckets in UTC rather than failing the chart when the server does
+			// not recognise the browser's zone.
+			if (error && zone !== "UTC" && isUnknownTimeZoneError(error)) {
+				({ data, error } = await read("UTC"));
+			}
 			if (error) throw error;
 			return data ?? [];
 		},
@@ -67,6 +115,7 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 				profileId ? { p_profile_id: profileId } : {},
 			);
 			if (error) throw error;
+			const exerciseFrequency = exerciseFrequencySchema.parse(exercises ?? []);
 
 			// Classify by exercise NAME (canonical 6 groups), falling back to a
 			// real muscle_group hint only when the name is unclassifiable. The DB
@@ -75,7 +124,7 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 			// collapsed the entire distribution into a single "General" bucket.
 			// Genuinely unclassifiable rows are dropped from the distribution.
 			const counts: Record<string, number> = {};
-			for (const ex of exercises ?? []) {
+			for (const ex of exerciseFrequency) {
 				const group = classifyMuscleGroup(
 					ex.exercise_name ?? "",
 					ex.muscle_group,
@@ -158,42 +207,37 @@ export function volumeComparisonOptions(
 			const previousStart = new Date();
 			previousStart.setDate(previousStart.getDate() - daysBack * 2);
 
-			let currentQuery = supabase
-				.from("workout_sessions")
-				.select(
-					"started_at, total_volume, duration_seconds, set_count, exercise_count",
-				)
-				.eq("user_id", userId);
-			let previousQuery = supabase
-				.from("workout_sessions")
-				.select(
-					"started_at, total_volume, duration_seconds, set_count, exercise_count",
-				)
-				.eq("user_id", userId);
+			// Keyset-paged: one select per window was silently capped at 1,000
+			// rows, so a long "all" window lost its newest sessions (NF-19).
+			const readWindow = (start: Date, end: Date | null) =>
+				fetchAllKeysetPages((after: SessionCursor | null, limit) => {
+					let query = supabase
+						.from("workout_sessions")
+						.select(
+							"id, started_at, total_volume, duration_seconds, set_count, exercise_count",
+						)
+						.eq("user_id", userId)
+						.gte("started_at", after?.started_at ?? start.toISOString());
+					if (end) query = query.lt("started_at", end.toISOString());
+					if (profileId) query = query.eq("local_profile_id", profileId);
+					if (after) query = query.or(afterSessionFilter(after));
+					return query
+						.order("started_at", { ascending: true })
+						.order("id", { ascending: true })
+						.limit(limit);
+				}, sessionCursorOf);
 
-			if (profileId) {
-				currentQuery = currentQuery.eq("local_profile_id", profileId);
-				previousQuery = previousQuery.eq("local_profile_id", profileId);
-			}
-
-			const [currentData, previousData] = await Promise.all([
-				currentQuery
-					.gte("started_at", currentStart.toISOString())
-					.order("started_at", { ascending: true }),
-				previousQuery
-					.gte("started_at", previousStart.toISOString())
-					.lt("started_at", currentStart.toISOString())
-					.order("started_at", { ascending: true }),
+			const [current, previous] = await Promise.all([
+				readWindow(currentStart, null),
+				readWindow(previousStart, currentStart),
 			]);
-
-			if (currentData.error) throw currentData.error;
-			if (previousData.error) throw previousData.error;
-			return { current: currentData.data, previous: previousData.data };
+			return { current, previous };
 		},
 	});
 }
 
-function periodToDays(period: string): number {
+/** Days in a query period; the window length the insight rules also use. */
+export function periodToDays(period: string): number {
 	if (period === "all") return 3650;
 	if (period === "52w") return 365;
 	if (period === "12w") return 84;
@@ -227,25 +271,21 @@ export function formScoreTrendOptions(
 		queryFn: async () => {
 			const cutoff = periodCutoffISO(period);
 
-			let query = supabase
-				.from("workout_sessions")
-				.select("started_at, form_score")
-				.eq("user_id", userId)
-				.not("form_score", "is", null);
-
-			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
-			}
-
-			if (cutoff) {
-				query = query.gte("started_at", cutoff);
-			}
-
-			const { data, error } = await query.order("started_at", {
-				ascending: true,
-			});
-			if (error) throw error;
-			return data;
+			return fetchAllKeysetPages((after: SessionCursor | null, limit) => {
+				let query = supabase
+					.from("workout_sessions")
+					.select("id, started_at, form_score")
+					.eq("user_id", userId)
+					.not("form_score", "is", null);
+				if (profileId) query = query.eq("local_profile_id", profileId);
+				const since = after?.started_at ?? cutoff;
+				if (since) query = query.gte("started_at", since);
+				if (after) query = query.or(afterSessionFilter(after));
+				return query
+					.order("started_at", { ascending: true })
+					.order("id", { ascending: true })
+					.limit(limit);
+			}, sessionCursorOf);
 		},
 	});
 }
@@ -265,26 +305,26 @@ export function safetyTrendOptions(
 		queryFn: async () => {
 			const cutoff = periodCutoffISO(period);
 
-			let query = supabase
-				.from("workout_sessions")
-				.select(
-					"started_at, deload_warnings, rom_violations, spotter_activations",
-				)
-				.eq("user_id", userId);
-
-			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
-			}
-
-			if (cutoff) {
-				query = query.gte("started_at", cutoff);
-			}
-
-			const { data, error } = await query.order("started_at", {
-				ascending: true,
-			});
-			if (error) throw error;
-			return (data ?? []).filter(
+			const rows = await fetchAllKeysetPages(
+				(after: SessionCursor | null, limit) => {
+					let query = supabase
+						.from("workout_sessions")
+						.select(
+							"id, started_at, deload_warnings, rom_violations, spotter_activations",
+						)
+						.eq("user_id", userId);
+					if (profileId) query = query.eq("local_profile_id", profileId);
+					const since = after?.started_at ?? cutoff;
+					if (since) query = query.gte("started_at", since);
+					if (after) query = query.or(afterSessionFilter(after));
+					return query
+						.order("started_at", { ascending: true })
+						.order("id", { ascending: true })
+						.limit(limit);
+				},
+				sessionCursorOf,
+			);
+			return rows.filter(
 				(r) =>
 					(r.deload_warnings ?? 0) > 0 ||
 					(r.rom_violations ?? 0) > 0 ||
@@ -309,25 +349,21 @@ export function calorieHistoryOptions(
 		queryFn: async () => {
 			const cutoff = periodCutoffISO(period);
 
-			let query = supabase
-				.from("workout_sessions")
-				.select("started_at, estimated_calories")
-				.eq("user_id", userId)
-				.not("estimated_calories", "is", null);
-
-			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
-			}
-
-			if (cutoff) {
-				query = query.gte("started_at", cutoff);
-			}
-
-			const { data, error } = await query.order("started_at", {
-				ascending: true,
-			});
-			if (error) throw error;
-			return data;
+			return fetchAllKeysetPages((after: SessionCursor | null, limit) => {
+				let query = supabase
+					.from("workout_sessions")
+					.select("id, started_at, estimated_calories")
+					.eq("user_id", userId)
+					.not("estimated_calories", "is", null);
+				if (profileId) query = query.eq("local_profile_id", profileId);
+				const since = after?.started_at ?? cutoff;
+				if (since) query = query.gte("started_at", since);
+				if (after) query = query.or(afterSessionFilter(after));
+				return query
+					.order("started_at", { ascending: true })
+					.order("id", { ascending: true })
+					.limit(limit);
+			}, sessionCursorOf);
 		},
 	});
 }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+	DEFAULT_WIRE_MODE,
 	normalizeEccentricLoad,
 	toEchoLevel,
 	toRepCountTiming,
@@ -37,7 +38,7 @@ export const routineExerciseSnapshotSchema = z.object({
 	weight: z.number().finite().nonnegative().default(0),
 	rest_seconds: z.number().finite().nonnegative().default(90),
 	duration_seconds: z.number().finite().nonnegative().nullable().optional(),
-	mode: z.string().default("OLD_SCHOOL"),
+	mode: z.string().default(DEFAULT_WIRE_MODE),
 	order_index: z.number().int().nonnegative().default(0),
 	superset_id: z.string().nullable().optional(),
 	superset_color: nullableSetting(toSupersetColorName),

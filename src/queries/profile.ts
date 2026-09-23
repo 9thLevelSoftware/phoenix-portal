@@ -5,6 +5,7 @@ import {
 	gamificationStatsSchema,
 	rpgAttributesSchema,
 } from "@/schemas/transforms";
+import { exerciseFrequencySchema } from "./exercise-frequency";
 import { queryKeys } from "./keys";
 
 /**
@@ -92,9 +93,10 @@ export function topExercisesOptions(userId: string, profileId?: string | null) {
 			);
 			if (error) throw error;
 
-			return (data ?? [])
+			return exerciseFrequencySchema
+				.parse(data ?? [])
 				.slice(0, 5)
-				.map((row: { exercise_name: string | null; sessions: number }) => ({
+				.map((row) => ({
 					name: row.exercise_name,
 					count: row.sessions,
 				}));
