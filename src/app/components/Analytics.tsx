@@ -611,7 +611,10 @@ export function Analytics() {
 		enabled: !!user,
 	});
 	const { data: volumeComparison } = useQuery({
-		...volumeComparisonOptions(userId, queryPeriod, activeProfileId),
+		// Insight windows (30D = 30 days, as generate-insights computes them),
+		// not the chart's week buckets (4w = 28 days): the local insight
+		// fallback runs the shared rules over this comparison.
+		...volumeComparisonOptions(userId, insightPeriod, activeProfileId),
 		enabled: !!userId,
 	});
 	const {
@@ -830,7 +833,7 @@ export function Analytics() {
 	const totalWorkouts = volumeData.reduce((sum, d) => sum + d.workouts, 0);
 	const insights = buildLocalInsights(
 		volumeComparison,
-		queryPeriodDays(queryPeriod),
+		queryPeriodDays(insightPeriod),
 		muscleGroupData,
 		unit,
 	);

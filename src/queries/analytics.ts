@@ -236,9 +236,18 @@ export function volumeComparisonOptions(
 	});
 }
 
-/** Days in a query period; the window length the insight rules also use. */
+/**
+ * Days in a period. Accepts the chart's week-based periods ("4w" = 28 days)
+ * and the insight periods generate-insights uses ("30d" = 30 days, PERIOD_DAYS
+ * in supabase/functions/generate-insights/index.ts), which must not be
+ * confused: the local insight fallback has to use the server's windows.
+ */
 export function periodToDays(period: string): number {
 	if (period === "all") return 3650;
+	if (period === "1y") return 365;
+	if (period === "90d") return 90;
+	if (period === "30d") return 30;
+	if (period === "7d") return 7;
 	if (period === "52w") return 365;
 	if (period === "12w") return 84;
 	if (period === "4w") return 28;

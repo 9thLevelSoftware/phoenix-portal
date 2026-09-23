@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { fetchAllSupabasePages } from "@/lib/supabasePaging";
+import { fetchAllSupabasePagesForChunks } from "@/lib/supabasePaging";
 
 export const PERSONAL_RECORD_WITH_CATALOG_SELECT =
 	"*, catalog:exercise_catalog(id, name, display_name)";
@@ -138,23 +138,25 @@ export async function resolvePersonalRecordDisplayNames<
 	const sessionIds = sessionIdsNeedingExerciseNameLookup(catalogNormalized);
 	if (sessionIds.length === 0) return catalogNormalized;
 
-	// Scoped by user_id, not by a `.in("session_id", ids)` list: the id list
-	// grew with the number of PR rows and blew the ~8 KB GET URL limit at a few
-	// hundred sessions (F-035). `exercises.user_id` is indexed and RLS already
-	// restricts the rows to the caller; the lookup map is keyed by
-	// `${session_id}:${exercise id}`, so widening the fetch cannot mismatch.
-	// Paged with a stable order: a user-wide read passes PostgREST's silent
-	// 1,000-row cap, which dropped every later exercise's name (NF-18).
-	const exercises = await fetchAllSupabasePages((from, to) =>
-		supabase
-			.from("exercises")
-			.select(
-				"id, session_id, name, exercise_id, catalog:exercise_catalog(id, name, display_name)",
-			)
-			.eq("user_id", userId)
-			.order("session_id", { ascending: true })
-			.order("id", { ascending: true })
-			.range(from, to),
+	// Only the sessions this page needs, in bounded `.in("session_id", chunk)`
+	// reads: one unbounded id list blew the ~8 KB GET URL limit at a few
+	// hundred sessions (F-035), and a user-wide read made every records page
+	// cost the user's whole exercise history. Each chunk is paged with a stable
+	// order, because a chunk can still pass PostgREST's silent 1,000-row cap
+	// (NF-18). The lookup map is keyed by `${session_id}:${exercise id}`.
+	const exercises = await fetchAllSupabasePagesForChunks(
+		sessionIds,
+		(chunk, from, to) =>
+			supabase
+				.from("exercises")
+				.select(
+					"id, session_id, name, exercise_id, catalog:exercise_catalog(id, name, display_name)",
+				)
+				.eq("user_id", userId)
+				.in("session_id", chunk)
+				.order("session_id", { ascending: true })
+				.order("id", { ascending: true })
+				.range(from, to),
 	);
 
 	return normalizePersonalRecordSessionExerciseDisplayNames(
