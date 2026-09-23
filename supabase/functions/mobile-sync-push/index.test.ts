@@ -12222,6 +12222,20 @@ Deno.test("repairEpochZeroSessionStarts: group B — pre-2000 with an implausibl
   assertEquals(sessions[0].durationSeconds, 0);
 });
 
+Deno.test("repairEpochZeroSessionStarts: a pre-2000 updatedAt is not used; the receipt time is", () => {
+  const receivedAt = "2026-09-23T12:00:00.000Z";
+  const sessions = [
+    {
+      id: "a",
+      startedAt: "1970-01-01T00:00:00.000Z",
+      durationSeconds: 1800,
+      updatedAt: "1970-01-01T00:30:00.000Z",
+    },
+  ];
+  repairEpochZeroSessionStarts(sessions, receivedAt);
+  assertEquals(sessions[0].startedAt, receivedAt);
+});
+
 Deno.test("repairEpochZeroSessionStarts: group C — pre-2000 with a plausible short duration keeps the duration", () => {
   const receivedAt = "2026-09-23T12:00:00.000Z";
   const sessions = [

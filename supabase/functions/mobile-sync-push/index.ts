@@ -325,7 +325,13 @@ export function repairEpochZeroSessionStarts(
     // pushing device's own clock (its updatedAt), or receipt time when the
     // DTO carries none — identical to the undated-push rule (KD-5) applied
     // to client_updated_at below.
-    const fallbackStartedAt = session.updatedAt ?? receivedAt;
+    // An updatedAt that is itself before the plausibility threshold is as
+    // corrupt as the start it would replace: use the receipt time then.
+    const updatedMs = typeof session.updatedAt === 'string' ? Date.parse(session.updatedAt) : Number.NaN;
+    const fallbackStartedAt =
+      Number.isFinite(updatedMs) && updatedMs >= EPOCH_ZERO_SESSION_REPAIR.minPlausibleUnixSeconds * 1000
+        ? (session.updatedAt as string)
+        : receivedAt;
     session.startedAt = fallbackStartedAt;
     repaired.push({
       entity: 'session',
