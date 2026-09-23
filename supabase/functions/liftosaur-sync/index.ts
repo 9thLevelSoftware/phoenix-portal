@@ -515,11 +515,21 @@ async function runLiftosaurSync(
 				// This run is done; complete its row FIRST, because
 				// sync_queue_one_active allows one active row per user/provider
 				// and this one is still `processing`. Then make sure a run follows.
-				await completeSyncQueueEntry(supabase, {
+				const completed = await completeSyncQueueEntry(supabase, {
 					userId,
 					provider: "liftosaur",
 					queueId: ownedQueueId,
 				});
+				// A row still `processing` would make the follow-up insert
+				// conflict and read as "already queued". Retry instead: the row
+				// stays processing, so the processor re-queues it, and the saved
+				// cursor makes the retry continue where this run stopped.
+				if (!completed) {
+					return new Response(
+						JSON.stringify({ ...base, error: "Failed to complete the sync queue entry", code: "queue_complete_failed" }),
+						{ status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+					);
+				}
 				// The cursor is stored either way, so any later non-initial sync
 				// continues the chain even if the follow-up could not be queued.
 				// (A 502 here would not help: the processor only re-queues rows
