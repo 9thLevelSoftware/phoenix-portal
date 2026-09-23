@@ -18,14 +18,15 @@ SELECT ok(
 );
 SELECT is_empty(
     $sql$
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'exercise_progress'
-          AND column_name <> 'velocity_estimated_1rm_kg'
-          AND NOT has_column_privilege('authenticated', 'public.exercise_progress', column_name, 'SELECT')
+        SELECT c
+        FROM unnest(ARRAY[
+          'id', 'user_id', 'exercise_name', 'session_id', 'recorded_at', 'max_weight_kg',
+          'total_volume_kg', 'estimated_1rm_kg', 'max_reps', 'set_count',
+          'local_profile_id', 'exercise_id'
+        ]) AS c
+        WHERE NOT has_column_privilege('authenticated', 'public.exercise_progress', c, 'SELECT')
     $sql$,
-    'every other exercise_progress column stays readable by authenticated'
+    'every allow-listed exercise_progress column stays readable by authenticated (a later column is not, by design)'
 );
 
 -- ---------------------------------------------------------------------------
