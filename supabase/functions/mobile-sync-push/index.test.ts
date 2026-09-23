@@ -5282,16 +5282,22 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle deleted concurrently wi
   assertEquals(body.cycleVersions, {});
 });
 
+const RACED_TOMBSTONE = {
+  entity_id: TOMB_CYCLE_ID,
+  client_deleted_at: "2026-09-01T00:00:00.000Z",
+  deleted_at: "2026-09-19T12:00:00.000Z",
+};
+
 Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a concurrent delete older than the pushed edit loses the race`, async () => {
   const harness = makeHarness(undefined, {
     rpcBehavior: tombstoneRpcBehavior([]),
     tableResults: {
       sync_tombstones: (filters) => ({
-        data: filters.entity === "cycle"
-          ? [{ entity_id: TOMB_CYCLE_ID, client_deleted_at: "2026-09-01T00:00:00.000Z" }]
-          : [],
+        data: filters.entity === "cycle" ? [RACED_TOMBSTONE] : [],
         error: null,
       }),
+      // The row this push wrote is still there.
+      training_cycles: { data: [{ id: TOMB_CYCLE_ID, user_id: VALID_USER_ID }], error: null },
     },
   });
   const requestBody = oldBuildRoutineAndCycleBody();
@@ -5317,14 +5323,42 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a concurrent delete older than 
   );
 });
 
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a newer edit whose row a later delete already removed is reported deleted`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    tableResults: {
+      sync_tombstones: (filters) => ({
+        data: filters.entity === "cycle" ? [RACED_TOMBSTONE] : [],
+        error: null,
+      }),
+      // The delete landed after this push's write: the row is gone.
+      training_cycles: { data: [], error: null },
+    },
+  });
+  const requestBody = oldBuildRoutineAndCycleBody();
+  const [cycle] = requestBody.cycles as Array<Record<string, unknown>>;
+  requestBody.cycles = [{ ...cycle, updatedAt: "2026-09-01T00:00:00.001Z" }];
+  const response = await harness.handler(requestFromBody(requestBody));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [TOMB_CYCLE_ID] });
+  assertEquals(body.cycleVersions, {});
+  // Its tombstone stays, so a stale device cannot resurrect it.
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "sync_tombstones" && call.method === "delete"
+    ),
+    [],
+  );
+});
+
 Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a concurrent delete as new as the pushed edit wins the race`, async () => {
   const harness = makeHarness(undefined, {
     rpcBehavior: tombstoneRpcBehavior([]),
     tableResults: {
       sync_tombstones: (filters) => ({
-        data: filters.entity === "cycle"
-          ? [{ entity_id: TOMB_CYCLE_ID, client_deleted_at: "2026-09-01T00:00:00.000Z" }]
-          : [],
+        data: filters.entity === "cycle" ? [RACED_TOMBSTONE] : [],
         error: null,
       }),
     },

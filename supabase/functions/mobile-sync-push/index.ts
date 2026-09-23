@@ -2196,8 +2196,9 @@ async function mobileSyncPushHandler(
     }
     // A delete that committed after the tombstone gate ran is decided here by
     // the gate's rule (204-E): the edit survives only when its own clock is
-    // strictly newer than the delete's client clock, and then the tombstone
-    // goes; otherwise the row this push re-created is deleted again.
+    // strictly newer than the delete's client clock AND the row this push
+    // wrote is still there; then the tombstone goes. Otherwise the row is
+    // deleted again (or already gone) and the id is reported as deleted.
     const reDeleteRacedTombstones = async (
       entity: 'routine' | 'cycle',
       table: 'routines' | 'training_cycles',
@@ -2209,13 +2210,15 @@ async function mobileSyncPushHandler(
       }
       const unique = [...new Set(rows.map((row) => row.id))];
       const raced = new Set<string>();
-      const survived = new Set<string>();
+      // id -> the tombstone's deleted_at as read, so the clear below removes
+      // exactly that tombstone and never one a later delete wrote.
+      const survived = new Map<string, string>();
       const chunkSize = 100;
       for (let i = 0; i < unique.length; i += chunkSize) {
         const chunk = unique.slice(i, i + chunkSize);
         const { data, error } = await supabase
           .from('sync_tombstones')
-          .select('entity_id, client_deleted_at')
+          .select('entity_id, client_deleted_at, deleted_at')
           .eq('user_id', userId)
           .eq('entity', entity)
           .gte('deleted_at', tombstoneRaceSince)
@@ -2224,6 +2227,7 @@ async function mobileSyncPushHandler(
         for (const row of (data ?? []) as Array<{
           entity_id?: unknown;
           client_deleted_at?: unknown;
+          deleted_at?: unknown;
         }>) {
           if (typeof row.entity_id !== 'string') continue;
           const edit = editClock.get(normalizeUuid(row.entity_id)) ?? Number.NaN;
@@ -2232,18 +2236,43 @@ async function mobileSyncPushHandler(
               ? Date.parse(row.client_deleted_at)
               : Number.NaN;
           // A missing or unreadable clock never beats a delete.
-          if (edit > deleted) survived.add(row.entity_id);
-          else raced.add(row.entity_id);
+          if (edit > deleted && typeof row.deleted_at === 'string') {
+            survived.set(row.entity_id, row.deleted_at);
+          } else {
+            raced.add(row.entity_id);
+          }
         }
       }
       if (survived.size > 0) {
-        const { error: clearErr } = await supabase
-          .from('sync_tombstones')
-          .delete()
+        // The delete may have landed after this push's write, in which case
+        // the edit is already gone: keep its tombstone and report it deleted.
+        const { data: present, error: presentErr } = await supabase
+          .from(table)
+          .select('id')
           .eq('user_id', userId)
-          .eq('entity', entity)
-          .in('entity_id', [...survived]);
-        if (clearErr) throw new Error(`sync tombstone race clear failed: ${clearErr.message}`);
+          .in('id', [...survived.keys()]);
+        if (presentErr) throw new Error(`${table} race check failed: ${presentErr.message}`);
+        const stillThere = new UuidSet(
+          ((present ?? []) as Array<{ id?: unknown }>)
+            .map((row) => row.id)
+            .filter((id): id is string => typeof id === 'string'),
+        );
+        for (const [id, deletedAt] of survived) {
+          if (!stillThere.has(id)) {
+            raced.add(id);
+            continue;
+          }
+          // A delete after the existence check rewrites deleted_at, so this
+          // matches nothing and that newer tombstone stands.
+          const { error: clearErr } = await supabase
+            .from('sync_tombstones')
+            .delete()
+            .eq('user_id', userId)
+            .eq('entity', entity)
+            .eq('entity_id', id)
+            .eq('deleted_at', deletedAt);
+          if (clearErr) throw new Error(`sync tombstone race clear failed: ${clearErr.message}`);
+        }
       }
       if (raced.size === 0) return [];
       const racedIds = [...raced];
