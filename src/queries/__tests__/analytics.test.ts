@@ -597,6 +597,47 @@ describe("volumeComparisonOptions", () => {
 		expect(lt.map(days)).toEqual([30]);
 	});
 
+	it("keeps the chart comparison on calendar days across a DST change", async () => {
+		// The chart's default boundaries match session_volume_buckets (local
+		// calendar days), so across 2026-11-01 they sit an hour away from the
+		// fixed-duration insight boundaries.
+		const previousTz = process.env.TZ;
+		process.env.TZ = "America/New_York";
+		const now = Date.parse("2026-11-10T12:00:00Z");
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(now));
+		const gte: string[] = [];
+		fromFn.mockImplementation(() => {
+			const self: Record<string, ReturnType<typeof vi.fn>> = {};
+			for (const m of ["select", "eq", "or", "order", "lt"]) {
+				self[m] = vi.fn(() => self);
+			}
+			self.gte = vi.fn((_col: string, value: string) => {
+				gte.push(value);
+				return self;
+			});
+			self.limit = vi.fn(() => Promise.resolve({ data: [], error: null }));
+			return self as never;
+		});
+		let expected: string[] = [];
+		try {
+			const calendar = (days: number) => {
+				const d = new Date(now);
+				d.setDate(d.getDate() - days);
+				return d.toISOString();
+			};
+			expected = [calendar(28), calendar(56)];
+			const { volumeComparisonOptions } = await import("../analytics");
+			await volumeComparisonOptions("user-1", "4w").queryFn!({} as never);
+		} finally {
+			vi.useRealTimers();
+			if (previousTz === undefined) delete process.env.TZ;
+			else process.env.TZ = previousTz;
+		}
+		expect([...gte].sort()).toEqual([...expected].sort());
+		expect(gte).not.toContain(new Date(now - 28 * 86_400_000).toISOString());
+	});
+
 	it("computes insight boundaries in fixed 24 h days across a DST change", async () => {
 		// 30 days before 2026-11-10 crosses the 2026-11-01 New York clock change.
 		// Local-calendar setDate would land an hour off generate-insights'
@@ -621,7 +662,9 @@ describe("volumeComparisonOptions", () => {
 		});
 		try {
 			const { volumeComparisonOptions } = await import("../analytics");
-			await volumeComparisonOptions("user-1", "30d").queryFn!({} as never);
+			await volumeComparisonOptions("user-1", "30d", null, "fixed").queryFn!(
+				{} as never,
+			);
 		} finally {
 			vi.useRealTimers();
 			if (previousTz === undefined) delete process.env.TZ;
