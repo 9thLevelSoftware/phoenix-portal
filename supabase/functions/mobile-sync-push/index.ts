@@ -3259,10 +3259,13 @@ async function mobileSyncPushHandler(
       }
 
       // R-4 race guard: undo a re-create of a routine deleted meanwhile.
+      // Only rows this push wrote: a routine the LWW gate rejected was not
+      // written, and judging its older clock here could delete another
+      // push's winning edit.
       const racedRoutineIds = await reDeleteRacedTombstones(
         'routine',
         'routines',
-        liveRoutines,
+        liveRoutines.filter((r) => acceptedRoutineIds?.has(r.id) ?? true),
       );
       if (racedRoutineIds.length > 0) {
         const raced = new UuidSet(racedRoutineIds);
@@ -3567,10 +3570,11 @@ async function mobileSyncPushHandler(
       cyclesUpserted = acceptedCycleIds.size;
 
       // R-4 race guard: undo a re-create of a cycle deleted meanwhile.
+      // Only cycles the merge accepted (see the routine call above).
       const racedCycleIds = await reDeleteRacedTombstones(
         'cycle',
         'training_cycles',
-        liveCycles,
+        liveCycles.filter((c) => acceptedCycleIds.has(c.id)),
       );
       if (racedCycleIds.length > 0) {
         skippedDeleted.cycles.push(...racedCycleIds);

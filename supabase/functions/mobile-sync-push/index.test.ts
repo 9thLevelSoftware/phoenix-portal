@@ -5353,6 +5353,42 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a newer edit whose row a later 
   );
 });
 
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle the merge rejected is never race-checked or deleted`, async () => {
+  const gate = tombstoneRpcBehavior([]);
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name, args) => {
+      if (name === "merge_training_cycles_from_push") {
+        const rows = (args.p_cycles ?? []) as Array<Record<string, unknown>>;
+        return {
+          data: rows.map((row) => ({
+            id: row.id, accepted: false, structure_applied: false,
+            server_updated_at: "2026-09-02T00:00:00.000Z", client_updated_at: "2026-09-02T00:00:00.000Z",
+          })),
+          error: null,
+        };
+      }
+      return await gate(name, args);
+    },
+    tableResults: {
+      sync_tombstones: (filters) => ({
+        data: filters.entity === "cycle" ? [RACED_TOMBSTONE] : [],
+        error: null,
+      }),
+    },
+  });
+  const response = await harness.handler(requestFromBody(oldBuildRoutineAndCycleBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals((body.skippedDeleted as { cycles: string[] }).cycles, []);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "training_cycles" && call.method === "delete"
+    ),
+    [],
+  );
+});
+
 Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a concurrent delete as new as the pushed edit wins the race`, async () => {
   const harness = makeHarness(undefined, {
     rpcBehavior: tombstoneRpcBehavior([]),
