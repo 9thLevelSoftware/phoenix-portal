@@ -136,7 +136,7 @@ function QuickStatCard({
 }) {
 	return (
 		<motion.div whileHover={hover.lift}>
-			<Card className="p-4 signal-panel min-w-[120px] flex-shrink-0">
+			<Card variant="stat" className="min-w-[120px] flex-shrink-0">
 				<div
 					className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mb-3 text-white`}
 				>

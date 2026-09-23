@@ -1,13 +1,39 @@
+import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 
 import { cn } from "./utils";
 
-function Card({ className, ...props }: React.ComponentProps<"div">) {
+const cardVariants = cva("text-card-foreground flex flex-col gap-6", {
+	variants: {
+		variant: {
+			default: "bg-card border rounded-lg shadow-sm",
+			elevated: "bg-surface-1 border-0 shadow-md",
+			inset: "bg-surface-2 border-0 shadow-none",
+			stat: "bg-card border rounded-lg shadow-sm",
+		},
+		padding: {
+			sm: "p-3",
+			md: "p-6",
+			lg: "p-8",
+		},
+	},
+	defaultVariants: {
+		variant: "default",
+		padding: "md",
+	},
+});
+
+type CardProps = React.ComponentProps<"div"> &
+	VariantProps<typeof cardVariants>;
+
+function Card({ className, variant, padding, ...props }: CardProps) {
+	const resolvedPadding = padding ?? (variant === "stat" ? "sm" : "md");
+
 	return (
 		<div
 			data-slot="card"
 			className={cn(
-				"bg-card text-card-foreground flex flex-col gap-6 rounded-xl border",
+				cardVariants({ variant, padding: resolvedPadding }),
 				className,
 			)}
 			{...props}
@@ -89,4 +115,5 @@ export {
 	CardFooter,
 	CardHeader,
 	CardTitle,
+	cardVariants,
 };
