@@ -13,6 +13,7 @@ import {
 } from "../_shared/profilePreferenceContract.ts";
 import { createMobileSyncPullHandler } from "../mobile-sync-pull/index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
+import { openPgPushTransaction } from "../_shared/pushTransaction.ts";
 import {
   SYNC_LWW_ENABLED,
   SYNC_LWW_ENABLED as SYNC_LWW_ENABLED_IN_TEST,
@@ -695,6 +696,11 @@ function makeHarness(
     subscriptionResult?: { data: unknown; error: unknown };
     /** Real clients for chosen tables (real-SQL tests); others stay mocked. */
     tableClients?: Record<string, { from(table: string): unknown }>;
+    /**
+     * Run the push through a transaction double (F-014). Its client is this
+     * harness's admin double; open/commit/rollback land in operationEvents.
+     */
+    pushTransaction?: { openError?: unknown; commitError?: unknown };
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -881,6 +887,30 @@ function makeHarness(
     },
     logOperationalFailure: ((...args: unknown[]) => loggerCalls.push(args)),
     syncLwwEnabled: options.syncLwwEnabled,
+    // Explicit, so a SYNC_PUSH_TRANSACTION=true test run never reaches these
+    // doubles' per-call assertions through a real connection attempt.
+    pushTransactionEnabled: options.pushTransaction !== undefined,
+    async openPushTransaction() {
+      const tx = options.pushTransaction!;
+      operationEvents.push("transaction:open");
+      if (tx.openError !== undefined) throw tx.openError;
+      let settled = false;
+      return {
+        client: admin,
+        async commit() {
+          settled = true;
+          operationEvents.push("transaction:commit");
+          if (tx.commitError !== undefined) throw tx.commitError;
+        },
+        async rollback() {
+          settled = true;
+          operationEvents.push("transaction:rollback");
+        },
+        get settled() {
+          return settled;
+        },
+      };
+    },
     now: options.now ?? (() => 1_784_167_200_000),
   } as never);
 
@@ -3958,6 +3988,95 @@ Deno.test("routine_exercises upsert failure returns the same retryable 503", asy
     requestFromBody(validNestedRelationshipBody()),
   );
   await assertPartialWriteRetry(harness, response);
+});
+
+// ---------------------------------------------------------------------------
+// F-014: SYNC_PUSH_TRANSACTION runs the whole push in one transaction. The
+// double's client is the ordinary harness admin double, so every existing
+// write behaviour applies; these pin only commit / rollback / broadcast order.
+// ---------------------------------------------------------------------------
+
+function transactionEvents(harness: PushHarness): string[] {
+  return harness.operationEvents.filter((e) =>
+    e.startsWith("transaction:") || e === "realtime:httpSend"
+  );
+}
+
+Deno.test("push transaction: a successful push commits once, before the broadcast", async () => {
+  const harness = makeHarness(undefined, { pushTransaction: {} });
+  const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  assertEquals(transactionEvents(harness), [
+    "transaction:open",
+    "transaction:commit",
+    "realtime:httpSend",
+  ]);
+});
+
+Deno.test("push transaction: a failure part-way rolls everything back, answers 503 and never broadcasts", async () => {
+  const harness = makeHarness(undefined, {
+    pushTransaction: {},
+    rpcBehavior: async (name) =>
+      name === "merge_training_cycles_from_push"
+        ? { data: null, error: { code: "57014", message: "canceling statement due to statement timeout" } }
+        : undefined,
+  });
+  const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  await assertPartialWriteRetry(harness, response);
+  assertEquals(transactionEvents(harness), ["transaction:open", "transaction:rollback"]);
+});
+
+Deno.test("push transaction: a 4xx after the transaction opened rolls back", async () => {
+  const harness = makeHarness(undefined, {
+    pushTransaction: {},
+    syncLwwEnabled: false,
+    writeErrors: {
+      "workout_sessions:upsert": {
+        code: "42501",
+        message: "row owner is immutable: public.workout_sessions may not change user_id",
+      },
+    },
+  });
+  const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  assertEquals(response.status, 400, JSON.stringify(await json(response)));
+  assertEquals(transactionEvents(harness), ["transaction:open", "transaction:rollback"]);
+});
+
+Deno.test("push transaction: a failed COMMIT is a retryable 503 with no broadcast", async () => {
+  const harness = makeHarness(undefined, {
+    pushTransaction: { commitError: new Error("connection reset") },
+  });
+  const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  await assertPartialWriteRetry(harness, response);
+  assertEquals(transactionEvents(harness), ["transaction:open", "transaction:commit"]);
+});
+
+Deno.test("push transaction: when it cannot open, the push writes per call and logs it", async () => {
+  const harness = makeHarness(undefined, {
+    pushTransaction: { openError: new Error("SUPABASE_DB_URL is not set") },
+  });
+  const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  assertEquals(transactionEvents(harness), ["transaction:open", "realtime:httpSend"]);
+  assert(
+    harness.loggerCalls.some((call) =>
+      JSON.stringify(call) === JSON.stringify([{ name: "PushTransactionUnavailable" }])
+    ),
+    JSON.stringify(harness.loggerCalls),
+  );
+});
+
+Deno.test("push transaction: with the flag off nothing opens and the response is unchanged", async () => {
+  const withTx = makeHarness(undefined, { pushTransaction: {} });
+  const without = makeHarness();
+  const a = await withTx.handler(requestFromBody(validNestedRelationshipBody()));
+  const b = await without.handler(requestFromBody(validNestedRelationshipBody()));
+  assertEquals(await json(a), await json(b));
+  assertEquals(transactionEvents(without), ["realtime:httpSend"]);
+  assertEquals(
+    withTx.operationEvents.filter((e) => !e.startsWith("transaction:")),
+    without.operationEvents,
+  );
 });
 
 // NF-41: reject_user_id_change raises SQLSTATE 42501 when a write would move a
@@ -10287,6 +10406,155 @@ async function storedClocks(
   if (row.error) throw new Error(`${table} clock lookup failed: ${row.error.message}`);
   return row.data as unknown as { updated_at: unknown; client_updated_at: unknown };
 }
+
+// ---------------------------------------------------------------------------
+// F-014 real SQL: with SYNC_PUSH_TRANSACTION the whole push is one Postgres
+// transaction. A failure after the session and routine writes must leave
+// NOTHING committed; the same push without the failure commits everything.
+// ---------------------------------------------------------------------------
+
+function requireLocalDbUrl(): string {
+  const dbUrl = localIntegrationEnvironment?.dbUrl;
+  if (!dbUrl) {
+    throw new Error("SUPABASE_DB_URL is required for the push-transaction integration tests");
+  }
+  return dbUrl;
+}
+
+/** A real handler whose push runs in a real transaction; `failRpc` injects a failure. */
+function realTransactionalPushHandler(
+  fixture: TombstonePushFixture,
+  calls: string[],
+  failRpc?: string,
+): (request: Request) => Promise<Response> {
+  const dbUrl = requireLocalDbUrl();
+  const admin = fixture.admin;
+  return createMobileSyncPushHandler({
+    createAuthClient() {
+      return {
+        auth: {
+          async getUser() {
+            return { data: { user: { id: fixture.ownerId } }, error: null };
+          },
+        },
+      };
+    },
+    createAdminClient() {
+      return admin;
+    },
+    logOperationalFailure: () => {},
+    now: () => Date.now(),
+    pushTransactionEnabled: true,
+    async openPushTransaction() {
+      const tx = await openPgPushTransaction(dbUrl);
+      const client = tx.client;
+      const wrapped = {
+        from(table: string) {
+          calls.push(`from:${table}`);
+          return client.from(table);
+        },
+        rpc(name: string, args?: Record<string, unknown>) {
+          calls.push(`rpc:${name}`);
+          if (name === failRpc) {
+            return Promise.resolve({
+              data: null,
+              error: { code: "57014", message: "injected failure", details: null, hint: null },
+            });
+          }
+          return client.rpc(name, args);
+        },
+      };
+      return {
+        client: wrapped as never,
+        commit: () => tx.commit(),
+        rollback: () => tx.rollback(),
+        get settled() {
+          return tx.settled;
+        },
+      };
+    },
+  } as never);
+}
+
+async function rowExists(
+  fixture: TombstonePushFixture,
+  table: "workout_sessions" | "routines" | "training_cycles",
+  id: string,
+): Promise<boolean> {
+  const { data, error } = await fixture.admin.from(table).select("id").eq("id", id);
+  if (error) throw new Error(`${table} lookup failed: ${error.message}`);
+  return (data ?? []).length === 1;
+}
+
+Deno.test({
+  name: "integration: push transaction: a failure after the session and routine writes commits nothing",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const ids = {
+        sessionId: crypto.randomUUID(),
+        routineId: crypto.randomUUID(),
+        cycleId: crypto.randomUUID(),
+      };
+      const calls: string[] = [];
+      const response = await realTransactionalPushHandler(
+        fixture,
+        calls,
+        "merge_training_cycles_from_push",
+      )(requestFromBody(undatedPush(ids)));
+      const body = await json(response);
+      assertEquals(response.status, 503, JSON.stringify(body));
+      assertEquals(body, PARTIAL_WRITE_BODY);
+      // The session and routine were written inside the transaction first...
+      const failedAt = calls.indexOf("rpc:merge_training_cycles_from_push");
+      assert(failedAt > 0, calls.join(", "));
+      const before = calls.slice(0, failedAt);
+      assert(
+        before.includes("rpc:upsert_workout_session_lww") || before.includes("from:workout_sessions"),
+        before.join(", "),
+      );
+      assert(
+        before.includes("rpc:upsert_routine_lww") || before.includes("from:routines"),
+        before.join(", "),
+      );
+      // ...and the rollback discarded them.
+      assertEquals(await rowExists(fixture, "workout_sessions", ids.sessionId), false);
+      assertEquals(await rowExists(fixture, "routines", ids.routineId), false);
+      assertEquals(await rowExists(fixture, "training_cycles", ids.cycleId), false);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name: "integration: push transaction: the same push without a failure commits every row",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const ids = {
+        sessionId: crypto.randomUUID(),
+        routineId: crypto.randomUUID(),
+        cycleId: crypto.randomUUID(),
+      };
+      const response = await realTransactionalPushHandler(fixture, [])(
+        requestFromBody(undatedPush(ids)),
+      );
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+      assertEquals(await rowExists(fixture, "workout_sessions", ids.sessionId), true);
+      assertEquals(await rowExists(fixture, "routines", ids.routineId), true);
+      assertEquals(await rowExists(fixture, "training_cycles", ids.cycleId), true);
+      // Committed rows are read back through PostgREST like any other push.
+      const clocks = await storedClocks(fixture, "workout_sessions", ids.sessionId);
+      assert(clocks.client_updated_at !== null);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
 
 Deno.test({
   name:

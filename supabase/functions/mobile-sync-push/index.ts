@@ -4,7 +4,11 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { redactTokenShapedJson } from '../_shared/garminIdentity.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
-import { SYNC_LWW_ENABLED } from '../_shared/flags.ts';
+import { SYNC_LWW_ENABLED, SYNC_PUSH_TRANSACTION } from '../_shared/flags.ts';
+import {
+  openPgPushTransaction,
+  type PushTransaction,
+} from '../_shared/pushTransaction.ts';
 import { describeSyncPlatformInput } from '../_shared/syncPlatform.ts';
 import {
   buildLocalProfileRepairRowsForDedicatedRecords,
@@ -1059,6 +1063,23 @@ export interface MobileSyncPushHandlerDependencies {
    * SYNC_LWW_ENABLED cold-start flag applies.
    */
   syncLwwEnabled?: boolean;
+  /**
+   * Test seam for the single-transaction push (F-014). Omitted in
+   * production, where the SYNC_PUSH_TRANSACTION cold-start flag applies.
+   */
+  pushTransactionEnabled?: boolean;
+  /**
+   * Opens the push transaction. Defaults to a SUPABASE_DB_URL connection;
+   * tests pass a double.
+   */
+  openPushTransaction?(): Promise<PushTransaction>;
+}
+
+/** The default transaction opener: a dedicated SUPABASE_DB_URL connection. */
+async function openDefaultPushTransaction(): Promise<PushTransaction> {
+  const dbUrl = Deno.env.get('SUPABASE_DB_URL');
+  if (!dbUrl) throw new Error('SUPABASE_DB_URL is not set');
+  return await openPgPushTransaction(dbUrl);
 }
 
 function defaultMobileSyncPushDependencies(): MobileSyncPushHandlerDependencies {
@@ -1220,6 +1241,10 @@ async function mobileSyncPushHandler(
 ): Promise<Response> {
   const cors = getCorsHeaders(req);
   const syncLwwEnabled = dependencies.syncLwwEnabled ?? SYNC_LWW_ENABLED;
+  const pushTransactionEnabled =
+    dependencies.pushTransactionEnabled ?? SYNC_PUSH_TRANSACTION;
+  // Declared outside the try so the finally can roll back on every exit.
+  let pushTx: PushTransaction | null = null;
 
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -1564,6 +1589,25 @@ async function mobileSyncPushHandler(
     const gate = await requireSubscription(supabase, userId, 'EMBER', cors);
     if (!gate.allowed) return gate.response;
 
+    // F-014: with SYNC_PUSH_TRANSACTION every read and write below runs on one
+    // connection inside one transaction (see _shared/pushTransaction.ts), so a
+    // failure part-way through commits nothing. The rate limit and the
+    // entitlement gate above stay on the ordinary client: a refused push still
+    // spends its budget. If the transaction cannot be opened the push falls
+    // back to per-call writes rather than failing every device.
+    if (pushTransactionEnabled) {
+      try {
+        pushTx = await (dependencies.openPushTransaction ?? openDefaultPushTransaction)();
+      } catch (openErr) {
+        console.warn(
+          'mobile-sync-push transaction unavailable, writing per call:',
+          safeErrorName(openErr, 'PushTransactionOpenFailure'),
+        );
+        dependencies.logOperationalFailure({ name: 'PushTransactionUnavailable' });
+      }
+    }
+    const db = pushTx ? (pushTx.client as unknown as SupabaseClient) : supabase;
+
     // Upsert custom catalog rows before any session/routine child rows that may
     // reference those catalog IDs through FK columns.
     if (payload.customExercises.length > 0) {
@@ -1588,7 +1632,7 @@ async function mobileSyncPushHandler(
       });
 
       const catalogIds = catalogRows.map((row) => row.id);
-      const { data: existingCatalogRows, error: existingCatalogError } = await supabase
+      const { data: existingCatalogRows, error: existingCatalogError } = await db
         .from('exercise_catalog')
         .select('id, is_custom, user_id')
         .in('id', catalogIds);
@@ -1607,7 +1651,7 @@ async function mobileSyncPushHandler(
         );
       }
 
-      const { error: catalogError } = await supabase
+      const { error: catalogError } = await db
         .from('exercise_catalog')
         .upsert(catalogRows, { onConflict: 'id' });
 
@@ -1623,7 +1667,7 @@ async function mobileSyncPushHandler(
       [
         ...(await getPublicCatalogRows(supabase, publicCatalogCache, dependencies.now())),
         ...(await fetchCatalogLookupPages((from, to) =>
-          supabase
+          db
             .from('exercise_catalog')
             .select(CATALOG_LOOKUP_COLUMNS)
             .eq('is_custom', true)
@@ -1708,7 +1752,7 @@ async function mobileSyncPushHandler(
     // a change so the portal is still told to refresh.
     let localProfilesChanged = false;
     const storedLocalProfiles = async (): Promise<StoredLocalProfile[] | null> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('local_profiles')
         .select('id, name, color_index, device_id')
         .eq('user_id', userId)
@@ -1737,7 +1781,7 @@ async function mobileSyncPushHandler(
       localProfilesChanged = storedProfiles === null ||
         localProfilesPushChangesRows(storedProfiles, profileRows, payload.deviceId);
 
-      const { error: upsertError } = await supabase
+      const { error: upsertError } = await db
         .from('local_profiles')
         .upsert(profileRows, { onConflict: 'user_id,id' });
 
@@ -1775,7 +1819,7 @@ async function mobileSyncPushHandler(
         storedActive === undefined ||
         storedActive.name !== profileName ||
         storedActive.device_id !== payload.deviceId;
-      const { error: profileError } = await supabase
+      const { error: profileError } = await db
         .from('local_profiles')
         .upsert(
           {
@@ -1806,7 +1850,7 @@ async function mobileSyncPushHandler(
 
       if (candidateIds.length > 0) {
         for (const chunk of chunkLocalProfileIdsForRepair(candidateIds)) {
-          const { data: existingProfiles, error: lookupError } = await supabase
+          const { data: existingProfiles, error: lookupError } = await db
             .from('local_profiles')
             .select('id')
             .eq('user_id', userId)
@@ -1845,7 +1889,7 @@ async function mobileSyncPushHandler(
             payload.deviceId,
             repairUpdatedAt,
           );
-          const { data: repairedProfiles, error: repairError } = await supabase
+          const { data: repairedProfiles, error: repairError } = await db
             .from('local_profiles')
             .upsert(repairRows, { onConflict: 'user_id,id' })
             .select('id')
@@ -1872,7 +1916,7 @@ async function mobileSyncPushHandler(
     // after commit, so their exact mutation ids are safe acknowledgements.
     let acknowledgedOwnershipTransferIds: string[] = [];
     if (payload.ownershipTransfers.length > 0) {
-      const { data, error } = await supabase.rpc('transfer_profile_ownership', {
+      const { data, error } = await db.rpc('transfer_profile_ownership', {
         p_user_id: userId,
         p_transfers: payload.ownershipTransfers,
       });
@@ -1884,7 +1928,7 @@ async function mobileSyncPushHandler(
 
     let acknowledgedWorkoutDeletionIds: string[] = [];
     if (payload.workoutDeletions.length > 0) {
-      const { data, error } = await supabase.rpc('apply_workout_deletions', {
+      const { data, error } = await db.rpc('apply_workout_deletions', {
         p_user_id: userId,
         // Deletion routing is immutable operation metadata. Profile sync above
         // may clear localProfileId when the original profile was deleted and
@@ -1908,7 +1952,7 @@ async function mobileSyncPushHandler(
       // recovering device never knew about. Never cascade-delete an omitted
       // registration while it still owns cloud preference sections. Profile
       // preference transfer/merge is intentionally outside this contract.
-      const { data: preferenceOwners, error: preferenceOwnerError } = await supabase
+      const { data: preferenceOwners, error: preferenceOwnerError } = await db
         .from('local_profile_preferences')
         .select('local_profile_id')
         .eq('user_id', userId)
@@ -1920,7 +1964,7 @@ async function mobileSyncPushHandler(
       } else {
         const retainedProfileIds = new Set(profileIdsForDeferredCleanup);
         for (const row of preferenceOwners ?? []) retainedProfileIds.add(row.local_profile_id);
-        const { error: deleteError } = await supabase
+        const { error: deleteError } = await db
           .from('local_profiles')
           .delete()
           .eq('user_id', userId)
@@ -1941,7 +1985,7 @@ async function mobileSyncPushHandler(
     let blockedWorkoutSessionIds = new UuidSet();
     let blockedWorkoutComponentIds = new UuidSet();
     if (payload.sessions.length > 0) {
-      const { data, error } = await supabase.rpc('get_blocked_workout_session_ids', {
+      const { data, error } = await db.rpc('get_blocked_workout_session_ids', {
         p_user_id: userId,
         p_sessions: payload.sessions.map((session) => ({
           id: session.id,
@@ -1962,7 +2006,7 @@ async function mobileSyncPushHandler(
         }))
       );
       if (components.length > 0) {
-        const { data: componentData, error: componentError } = await supabase.rpc(
+        const { data: componentData, error: componentError } = await db.rpc(
           'get_blocked_workout_component_ids',
           { p_user_id: userId, p_components: components },
         );
@@ -2025,14 +2069,14 @@ async function mobileSyncPushHandler(
       await settleBounded(
         directOwnerChecks,
         OWNERSHIP_PROBE_CONCURRENCY,
-        ([table, ids]) => assertRowsOwnedByUser(supabase, table, ids, userId, cors),
+        ([table, ids]) => assertRowsOwnedByUser(db, table, ids, userId, cors),
       ),
     );
     if (directOutcome) return directOutcome;
 
     // Parent-FK ownership checks for tables without a user_id column
     const reBlocked = await assertChildRowsOwnedViaParent(
-      supabase,
+      db,
       'routine_exercises',
       'routine_id',
       'routines',
@@ -2058,7 +2102,7 @@ async function mobileSyncPushHandler(
       .filter((sid) => !setIdSet.has(sid));
     // Started together, applied in this order (F-039).
     const telParentProbeSettled = settleLater(assertParentRowsExistAndOwnedByUser(
-      supabase,
+      db,
       'sets',
       telemetrySetIdsToVerify,
       userId,
@@ -2069,7 +2113,7 @@ async function mobileSyncPushHandler(
       .map((p) => p.sessionId)
       .filter((sid) => !sessionIdSet.has(sid));
     const phaseParentProbeSettled = settleLater(assertParentRowsExistAndOwnedByUser(
-      supabase,
+      db,
       'workout_sessions',
       phaseSessionIdsToVerify,
       userId,
@@ -2091,7 +2135,7 @@ async function mobileSyncPushHandler(
     // the reference is written as NULL instead (the FK's ON DELETE SET NULL
     // semantics), see step 7c. Another user's routine is still refused.
     const dayRoutineProbeSettled = settleLater(assertParentRowsExistAndOwnedByUser(
-      supabase,
+      db,
       'routines',
       dayRoutineIdsToVerify,
       userId,
@@ -2118,7 +2162,7 @@ async function mobileSyncPushHandler(
       ),
     ];
     const personalRecordSessionProbeSettled = settleLater(assertParentRowsExistAndOwnedByUser(
-      supabase,
+      db,
       'workout_sessions',
       personalRecordSessionIdsToVerify,
       userId,
@@ -2236,7 +2280,7 @@ async function mobileSyncPushHandler(
       const chunkSize = 100;
       for (let i = 0; i < unique.length; i += chunkSize) {
         const chunk = unique.slice(i, i + chunkSize);
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('sync_tombstones')
           .select('entity_id, client_deleted_at, deleted_at')
           .eq('user_id', userId)
@@ -2308,7 +2352,7 @@ async function mobileSyncPushHandler(
       for (const id of raced) {
         const key = writtenKey.get(normalizeUuid(id));
         if (!key) continue;
-        const { data: deleted, error: delErr } = await supabase
+        const { data: deleted, error: delErr } = await db
           .from(table)
           .delete()
           .eq('user_id', userId)
@@ -2341,7 +2385,7 @@ async function mobileSyncPushHandler(
     ): Promise<Map<string, string | null>> => {
       const conflicts = new Map<string, string | null>();
       for (const chunk of chunked(ids, 100)) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from(table)
           .select('id, local_profile_id, client_updated_at')
           .in('id', chunk)
@@ -2401,7 +2445,7 @@ async function mobileSyncPushHandler(
       // tombstone in the same transaction (docs/sync-reliability-contract.md).
       // The DTO clock is used, never the receipt time: an undated push must
       // keep losing to a delete (KD-4).
-      const { data: tombstoneRows, error: tombstoneErr } = await supabase.rpc(
+      const { data: tombstoneRows, error: tombstoneErr } = await db.rpc(
         'apply_sync_tombstone_gate',
         {
           p_user_id: userId,
@@ -2519,7 +2563,7 @@ async function mobileSyncPushHandler(
         // to filter the exercises/sets/rep_summaries child upserts below.
         // The rows already carry the LWW key (`pushReceivedAt` when the DTO
         // omitted `updatedAt`), identically to the LWW-off branch.
-        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+        const { data: lwwData, error: lwwErr } = await db.rpc(
           'upsert_workout_session_lww',
           { p_rows: sessionRows },
         );
@@ -2539,7 +2583,7 @@ async function mobileSyncPushHandler(
         // parents. Keep every payload session id in validPersonalRecordSessionIds;
         // acceptedSessionIds only gates child-row rewrites below.
       } else {
-        const { error: sessErr } = await supabase
+        const { error: sessErr } = await db
           .from('workout_sessions')
           .upsert(sessionRows, { onConflict: 'id' });
         if (sessErr) {
@@ -2761,7 +2805,7 @@ async function mobileSyncPushHandler(
         dedupedExerciseRows.length > 0 ||
         dedupedTelemetryRows.length > 0
       ) {
-        const { data: replaceData, error: replaceErr } = await supabase.rpc('replace_session_children', {
+        const { data: replaceData, error: replaceErr } = await db.rpc('replace_session_children', {
           p_user_id: userId,
           p_session_ids: affectedSessionIds,
           p_exercises: dedupedExerciseRows,
@@ -2848,7 +2892,7 @@ async function mobileSyncPushHandler(
         const chunkSize = 100;
         for (let i = 0; i < personalRecordExerciseCatalogIdsToLookup.length; i += chunkSize) {
           const chunk = personalRecordExerciseCatalogIdsToLookup.slice(i, i + chunkSize);
-          const { data: catalogRows, error: catalogLookupErr } = await supabase
+          const { data: catalogRows, error: catalogLookupErr } = await db
             .from('exercise_catalog')
             .select('id, user_id, name, display_name')
             .in('id', chunk);
@@ -2916,7 +2960,7 @@ async function mobileSyncPushHandler(
       const existingPrs: PersonalRecordIdentityCandidate[] = [];
       let existingPrCursor: string | null = null;
       for (;;) {
-        const { data: page, error: existingPrErr } = await supabase.rpc(
+        const { data: page, error: existingPrErr } = await db.rpc(
           'get_personal_record_identity_candidates',
           {
             p_user_id: userId,
@@ -3010,10 +3054,10 @@ async function mobileSyncPushHandler(
         // index on their derived identity (R-3): a re-push or a concurrent
         // push of the same PR updates one row instead of inserting another.
         const writePersonalRecords = (rows: typeof prRowsToWrite) => dedicatedPrsPresent
-          ? supabase
+          ? db
               .from('personal_records')
               .upsert(rows, { onConflict: 'id' })
-          : supabase.rpc('upsert_set_derived_personal_records', {
+          : db.rpc('upsert_set_derived_personal_records', {
               p_user_id: userId,
               p_rows: rows,
             });
@@ -3134,7 +3178,7 @@ async function mobileSyncPushHandler(
       // Ownership of every routine id was verified once in directOwnerChecks.
 
       if (syncLwwEnabled) {
-        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+        const { data: lwwData, error: lwwErr } = await db.rpc(
           'upsert_routine_lww',
           { p_rows: routineRows },
         );
@@ -3150,7 +3194,7 @@ async function mobileSyncPushHandler(
         }
         routinesUpserted = acceptedRoutineIds.size;
       } else {
-        const { error: routErr } = await supabase
+        const { error: routErr } = await db
           .from('routines')
           .upsert(routineRows, { onConflict: 'id' });
         if (routErr) {
@@ -3196,7 +3240,7 @@ async function mobileSyncPushHandler(
         const chunkSize = 100;
         for (let i = 0; i < dropSetProbeIds.length; i += chunkSize) {
           const chunk = dropSetProbeIds.slice(i, i + chunkSize);
-          const { data: existingExercises, error: existingDropSetErr } = await supabase
+          const { data: existingExercises, error: existingDropSetErr } = await db
             .from('routine_exercises')
             .select('id, drop_set_enabled, drop_set_min_weight_kg, duration_seconds')
             .in('id', chunk);
@@ -3266,7 +3310,7 @@ async function mobileSyncPushHandler(
       }));
 
       if (reRows.length > 0) {
-        const { error: reErr } = await supabase
+        const { error: reErr } = await db
           .from('routine_exercises')
           .upsert(reRows, { onConflict: 'id' });
         // Same retryable contract as the orphan cleanup that follows (R-5).
@@ -3288,7 +3332,7 @@ async function mobileSyncPushHandler(
 
         if (idsForRoutine.length > 0) {
           // Delete exercises in this routine that are NOT in the payload
-          const { error: orphanErr } = await supabase
+          const { error: orphanErr } = await db
             .from('routine_exercises')
             .delete()
             .eq('routine_id', routineId)
@@ -3296,7 +3340,7 @@ async function mobileSyncPushHandler(
           if (orphanErr) throw new PartialWriteRetryError('routine_exercises orphan cleanup', orphanErr);
         } else {
           // Routine has zero exercises now -- delete all
-          const { error: orphanErr } = await supabase
+          const { error: orphanErr } = await db
             .from('routine_exercises')
             .delete()
             .eq('routine_id', routineId);
@@ -3328,7 +3372,7 @@ async function mobileSyncPushHandler(
     // =========================================================================
     if (payload.deletedRoutineIds && payload.deletedRoutineIds.length > 0) {
       const ownershipResp = await assertRowsOwnedByUser(
-        supabase,
+        db,
         'routines',
         payload.deletedRoutineIds,
         userId,
@@ -3337,7 +3381,7 @@ async function mobileSyncPushHandler(
       if (ownershipResp) return ownershipResp;
 
       await deleteOwnedRowsInChunks(
-        supabase,
+        db,
         'routines',
         payload.deletedRoutineIds,
         userId,
@@ -3392,7 +3436,7 @@ async function mobileSyncPushHandler(
       // Ownership: a crafted id that belongs to somebody else is still a 400,
       // whichever delete form named it.
       const cycleDelOwnershipResp = await assertRowsOwnedByUser(
-        supabase,
+        db,
         'training_cycles',
         cycleDeleteProbeIds,
         userId,
@@ -3408,7 +3452,7 @@ async function mobileSyncPushHandler(
       // it); an id the server no longer holds is tombstoned with the device
       // clock so a later stale upload cannot recreate it.
       if (clockedDeleteIds.length > 0) {
-        const { data: deleteRows, error: deleteErr } = await supabase.rpc(
+        const { data: deleteRows, error: deleteErr } = await db.rpc(
           'delete_cycles_clocked',
           {
             p_user_id: userId,
@@ -3452,7 +3496,7 @@ async function mobileSyncPushHandler(
       if (legacyDeleteIds.length > 0) {
         const storedLwwById = new Map<string, string | null>();
         for (const chunk of chunked(legacyDeleteIds, 100)) {
-          const { data: rows, error } = await supabase
+          const { data: rows, error } = await db
             .from('training_cycles')
             .select('id, client_updated_at')
             .in('id', chunk)
@@ -3587,7 +3631,7 @@ async function mobileSyncPushHandler(
       // PR 22: the merge is transactional, so an RPC error rolls its own
       // writes back but leaves this push's earlier writes in place — a
       // partial write. Answer 503 partial_write_retry so the device retries.
-      const { data: mergeData, error: mergeErr } = await supabase.rpc(
+      const { data: mergeData, error: mergeErr } = await db.rpc(
         'merge_training_cycles_from_push',
         { p_user_id: userId, p_cycles: cycleRows, p_use_lww: syncLwwEnabled },
       );
@@ -3686,7 +3730,7 @@ async function mobileSyncPushHandler(
 
       // Both flag paths go through the RPC: it is the only writer that knows
       // which columns are device-owned.
-      const { data: lwwData, error: lwwErr } = await supabase.rpc(
+      const { data: lwwData, error: lwwErr } = await db.rpc(
         'upsert_rpg_attributes_lww',
         { p_rows: [rpgRow] },
       );
@@ -3717,7 +3761,7 @@ async function mobileSyncPushHandler(
         earned_at: b.earnedAt ?? new Date().toISOString(),
       }));
 
-      const { error: badgeErr } = await supabase
+      const { error: badgeErr } = await db
         .from('earned_badges')
         .upsert(badgeRows, { onConflict: 'user_id,badge_id' });
       if (badgeErr) throw new Error(`earned_badges upsert failed: ${badgeErr.message}`);
@@ -3754,7 +3798,7 @@ async function mobileSyncPushHandler(
         last_workout_at: deviceLastWorkoutAt,
       };
 
-      const { data: lwwData, error: lwwErr } = await supabase.rpc(
+      const { data: lwwData, error: lwwErr } = await db.rpc(
         'upsert_gamification_stats_lww',
         { p_rows: [gsRow] },
       );
@@ -3796,7 +3840,7 @@ async function mobileSyncPushHandler(
         eccentric_watt_max: ps.eccentricWattMax,
       }));
 
-      const { error: psErr } = await supabase
+      const { error: psErr } = await db
         .from('session_phase_statistics')
         .upsert(phaseRows, { onConflict: 'session_id' });
       if (psErr) {
@@ -3828,7 +3872,7 @@ async function mobileSyncPushHandler(
         }];
       });
 
-      const { error: sigErr } = await supabase
+      const { error: sigErr } = await db
         .from('exercise_signatures')
         .upsert(sigRows, { onConflict: 'user_id,exercise_id' });
       if (sigErr) {
@@ -3870,7 +3914,7 @@ async function mobileSyncPushHandler(
       // true new-row count. clientId is stripped before the write and kept
       // for `failed` reporting (PR 22).
       if (assessRows.length > 0) {
-        const { data: insertedAssess, error: aErr } = await supabase
+        const { data: insertedAssess, error: aErr } = await db
           .from('vbt_assessments')
           .upsert(
             assessRows.map(({ clientId: _clientId, ...row }) => row),
@@ -3920,7 +3964,7 @@ async function mobileSyncPushHandler(
         // Phase 3.2: route through LWW RPC so a stale webhook push does not
         // overwrite a newer mobile-captured row (or vice versa). The RPC
         // returns the canonical server id which we surface in the ack list.
-        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+        const { data: lwwData, error: lwwErr } = await db.rpc(
           'upsert_external_activity_lww',
           { p_rows: activityRows },
         );
@@ -3952,7 +3996,7 @@ async function mobileSyncPushHandler(
       } else {
         // fix(audit #10): .select() after upsert so we can return the
         // server-canonical row metadata (including updated_at) to the client.
-        const { data: extData, error: extErr } = await supabase
+        const { data: extData, error: extErr } = await db
           .from('external_activities')
           .upsert(activityRows, { onConflict: 'user_id,provider,external_id' })
           .select('id, external_id, provider, updated_at');
@@ -3982,7 +4026,7 @@ async function mobileSyncPushHandler(
     ];
     try {
       for (const mutation of preferenceEnvelope.validatedMutations) {
-        const { data, error } = await supabase.rpc(
+        const { data, error } = await db.rpc(
           'mutate_local_profile_preference_section',
           {
             p_user_id: verifiedUserId,
@@ -4040,7 +4084,7 @@ async function mobileSyncPushHandler(
     // The counters are self-healing (the next push and the delete triggers
     // reconcile them), so a stale counter is strictly better than a wedged
     // sync. index.test.ts pins this direction.
-    const { error: recomputeErr } = await supabase.rpc(
+    const { error: recomputeErr } = await db.rpc(
       'recompute_gamification_stats',
       { p_user_id: userId },
     );
@@ -4087,6 +4131,17 @@ async function mobileSyncPushHandler(
       canonicalProfilePreferenceSections.length > 0 ||
       optionalWriteFailed ||
       recomputeFailed;
+    // Nothing is visible to the portal until this commits, so the broadcast
+    // comes after it. A failed COMMIT committed nothing: retryable.
+    if (pushTx) {
+      try {
+        await pushTx.commit();
+      } catch (commitErr) {
+        throw new PartialWriteRetryError('push transaction commit', {
+          message: safeErrorName(commitErr, 'CommitFailure'),
+        });
+      }
+    }
     if (pushChangedPortalData) {
       await broadcastSyncComplete(supabase, userId, syncTime);
     }
@@ -4191,6 +4246,17 @@ async function mobileSyncPushHandler(
       JSON.stringify(errorBody),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
+  } finally {
+    // Every exit that did not commit (a thrown failure or an early 4xx after
+    // the transaction opened) discards the push's writes.
+    if (pushTx && !pushTx.settled) {
+      await pushTx.rollback().catch((rollbackErr) => {
+        console.warn(
+          'mobile-sync-push rollback failed:',
+          safeErrorName(rollbackErr, 'RollbackFailure'),
+        );
+      });
+    }
   }
 }
 

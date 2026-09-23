@@ -88,6 +88,7 @@ Edge Function secrets (Supabase Dashboard → Edge Functions → Secrets; read w
 - `PADDLE_API_KEY` (server API calls from `delete-account` and the three `paddle-*-subscription` functions), `PADDLE_WEBHOOK_SECRET`, `PADDLE_CUSTOM_DATA_SECRET`, `PADDLE_ENVIRONMENT`, `PADDLE_EMBER_PRICE_IDS` / `PADDLE_FLAME_PRICE_IDS` / `PADDLE_INFERNO_PRICE_IDS`
 - `CRON_SECRET` — the shared secret for pg_cron-invoked functions, compared in constant time against the `x-cron-secret` header by `_shared/cronSecret.ts`. `process-sync-queue` still accepts the legacy names `PROCESS_SYNC_QUEUE_SECRET` and `CRON_SYNC_QUEUE_SECRET`, but only when `CRON_SECRET` is unset; nothing else does. The DB half is the Vault secret `edge_cron_secret` used by `private.invoke_edge_function` (KD-10).
 - `SYNC_LWW_ENABLED` — cold-start flag in `supabase/functions/_shared/flags.ts`, `"false"` unless the secret is exactly `true`. Flipping it requires a redeploy; there is no runtime refresh. Its production value is not recorded in this repo — ask the operator rather than assuming.
+- `SYNC_PUSH_TRANSACTION` — cold-start flag in the same file, `"false"` unless exactly `true`. When on, `mobile-sync-push` runs its whole write sequence in one Postgres transaction (F-014, `_shared/pushTransaction.ts`): a failure part-way commits nothing, and the `sync_complete` broadcast happens only after COMMIT. It connects with `SUPABASE_DB_URL` (provided by Supabase to Edge Functions); if that connection cannot be opened the push falls back to per-call writes and logs `PushTransactionUnavailable`. The response contract is identical either way.
 - `OAUTH_TOKEN_ENCRYPTION_KEY`, `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET`, `FITBIT_CLIENT_ID` / `FITBIT_CLIENT_SECRET`, `GARMIN_CONSUMER_KEY` / `GARMIN_CONSUMER_SECRET`, `GARMIN_WEBHOOK_SECRET` (the webhook 503s without it). The Fitbit client secrets are still read by `complete-oauth`, `fitbit-sync` and `_shared/providerRevoke.ts`, the Garmin consumer secrets only by `_shared/providerRevoke.ts`; the disabled `fitbit-oauth` / `garmin-oauth` callbacks read none.
 
 Tooling only: `SUPABASE_PROJECT_REF` and the `SUPABASE_AUTH_*` values used by
@@ -458,10 +459,12 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
 - **`edge-integration.yml`** — the real-SQL Deno tests. `pull_request` has no
   `paths:` filter (so it always reports and is safe as a required check); a
   `changes` job decides whether the heavy job runs. It starts a local stack,
-  applies every migration, and runs `npm run test:edge:integration` **twice**,
-  once per `SYNC_LWW_ENABLED` value, because the push handler has a separate
-  write path for each and the production value is unknown. Only the local
-  stack's demo keys are used.
+  applies every migration, and runs `npm run test:edge:integration` **three
+  times**: once per `SYNC_LWW_ENABLED` value, because the push handler has a
+  separate write path for each and the production value is unknown, and once
+  more with `SYNC_PUSH_TRANSACTION=true` so every push test also runs through
+  the single-transaction path. Only the local stack's demo keys and its own
+  `SUPABASE_DB_URL` are used.
 - **`sync-tests.yml`** — `npm run test:sync` in mock mode on PRs and `main`
   pushes touching the sync surface. Live mode (`npm run test:sync:live`) is
   `workflow_dispatch`-only against an isolated preview project.

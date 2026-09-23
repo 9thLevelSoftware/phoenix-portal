@@ -30,3 +30,16 @@
  */
 export const SYNC_LWW_ENABLED =
 	(Deno.env.get("SYNC_LWW_ENABLED") ?? "false").trim().toLowerCase() === "true";
+
+/**
+ * Run the mobile push's whole write sequence in ONE Postgres transaction
+ * (F-014). When false (default) every write is its own PostgREST request, as
+ * before, so a failure part-way through leaves the earlier writes committed
+ * and the device retries (503 partial_write_retry). When true, the handler
+ * opens a connection with SUPABASE_DB_URL and runs the same Design K calls
+ * inside BEGIN … COMMIT (see _shared/pushTransaction.ts): a failure commits
+ * nothing, and the broadcast happens only after COMMIT. Exactly "true"
+ * enables it; the response contract is identical either way.
+ */
+export const SYNC_PUSH_TRANSACTION =
+	(Deno.env.get("SYNC_PUSH_TRANSACTION") ?? "false").trim().toLowerCase() === "true";
