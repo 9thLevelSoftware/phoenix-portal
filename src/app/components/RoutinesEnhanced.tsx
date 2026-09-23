@@ -367,15 +367,17 @@ function RoutineGrid({
 								</div>
 								<div className="flex gap-2">
 									<Button
-										size="sm"
 										variant="outline"
 										onClick={() => onEdit(routine.id)}
-										className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+										className="min-h-11 px-4 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 									>
 										<Edit className="w-4 h-4 mr-1" />
 										Edit
 									</Button>
-									<Button size="sm" onClick={() => onView(routine.id)}>
+									<Button
+										onClick={() => onView(routine.id)}
+										className="min-h-11 px-4"
+									>
 										<Eye className="w-4 h-4 mr-1" />
 										View
 									</Button>

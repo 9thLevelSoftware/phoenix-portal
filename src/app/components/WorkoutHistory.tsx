@@ -393,7 +393,6 @@ export function WorkoutHistory() {
 							{/* Compare Toggle */}
 							{isPremium ? (
 								<Button
-									size="sm"
 									variant={compareMode ? "default" : "outline"}
 									onClick={() => {
 										if (compareMode) {
@@ -402,21 +401,20 @@ export function WorkoutHistory() {
 											setCompareMode(true);
 										}
 									}}
-									className={
+									className={`min-h-11 ${
 										compareMode
 											? "bg-primary border-0 text-foreground"
 											: "border-secondary text-muted-foreground hover:border-primary hover:text-primary"
-									}
+									}`}
 								>
 									<BarChart3 className="w-4 h-4 mr-2" />
 									{compareMode ? "Exit Compare" : "Compare"}
 								</Button>
 							) : (
 								<Button
-									size="sm"
 									variant="outline"
 									asChild
-									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+									className="min-h-11 px-4 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 								>
 									<Link to="/pricing">
 										<Lock className="w-4 h-4 mr-2" />
@@ -435,7 +433,7 @@ export function WorkoutHistory() {
 							<select
 								value={dateRange}
 								onChange={(e) => setDateRange(e.target.value)}
-								className="px-4 py-2 rounded-lg bg-surface-2 border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
+								className="min-h-11 px-4 rounded-lg bg-surface-2 border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
 							>
 								<option>Last 7 days</option>
 								<option>Last 30 days</option>
@@ -462,9 +460,8 @@ export function WorkoutHistory() {
 									</div>
 									<Button
 										asChild
-										size="sm"
 										variant="outline"
-										className="ml-auto border-primary text-primary hover:bg-primary/10 shrink-0"
+										className="ml-auto min-h-11 px-4 border-primary text-primary hover:bg-primary/10 shrink-0"
 									>
 										<Link to="/pricing">Upgrade</Link>
 									</Button>
@@ -487,7 +484,10 @@ export function WorkoutHistory() {
 									Select 2 sessions to compare ({selectedForCompare.length}/2)
 								</span>
 								{selectedForCompare.length === 2 && (
-									<Button size="sm" onClick={handleCompareSelected}>
+									<Button
+										className="min-h-11 px-4"
+										onClick={handleCompareSelected}
+									>
 										<BarChart3 className="w-4 h-4 mr-2" />
 										Compare Selected
 									</Button>
@@ -673,9 +673,8 @@ export function WorkoutHistory() {
 								</div>
 								<Button
 									variant="outline"
-									size="sm"
 									onClick={() => setSelectedDay(null)}
-									className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+									className="min-h-11 min-w-11 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 								>
 									<X className="w-4 h-4" />
 								</Button>

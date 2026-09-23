@@ -43,7 +43,7 @@ export function CookieConsentBanner() {
 						data is collected. See our{" "}
 						<Link
 							to="/privacy"
-							className="text-primary hover:text-accent underline"
+							className="inline-flex min-h-11 items-center text-primary hover:text-accent underline"
 						>
 							Privacy Policy
 						</Link>{" "}
