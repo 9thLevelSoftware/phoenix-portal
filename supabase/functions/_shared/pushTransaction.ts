@@ -156,6 +156,7 @@ interface FunctionInfo {
 type Filter =
   | { op: "eq" | "neq" | "gte"; column: string; value: unknown }
   | { op: "in"; column: string; values: ReadonlyArray<unknown> }
+  | { op: "overlaps"; column: string; values: ReadonlyArray<unknown> }
   | { op: "notIn"; column: string; values: ReadonlyArray<unknown> };
 
 const COMPARATORS = { eq: "=", neq: "<>", gte: ">=" } as const;
@@ -411,6 +412,12 @@ export class TransactionalQuery implements PromiseLike<QueryResult> {
     return this;
   }
 
+  /** PostgREST `ov` / supabase-js overlaps: an array column shares an element. */
+  overlaps(column: string, values: ReadonlyArray<unknown>): this {
+    this.#filters.push({ op: "overlaps", column, values });
+    return this;
+  }
+
   not(column: string, operator: string, value: string): this {
     if (operator !== "in") {
       throw new Error(`push transaction: unsupported not(${operator})`);
@@ -453,6 +460,11 @@ export class TransactionalQuery implements PromiseLike<QueryResult> {
     const where = this.#filters.map((f) => {
       const column = ident(f.column);
       const type = typeOf(f.column);
+      if (f.op === "overlaps") {
+        // The column is itself an array (format_type reports e.g. uuid[]).
+        params.push(arrayLiteral(f.values));
+        return `${column} && $${params.length}::text::${type}`;
+      }
       if (f.op === "in" || f.op === "notIn") {
         params.push(arrayLiteral(f.values));
         const test = `${column} = ANY($${params.length}::text::${type}[])`;

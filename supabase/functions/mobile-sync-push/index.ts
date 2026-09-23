@@ -446,6 +446,55 @@ async function assertRowsOwnedByUser(
 }
 
 /**
+ * `assertRowsOwnedByUser` for sample ids. Since 20260925200000 `rep_telemetry`
+ * is a per-sample VIEW over `set_telemetry` (one row per set, ids in an array)
+ * plus not-yet-folded legacy rows; an `id IN (...)` filter on the view would
+ * unnest every set. So the probe asks the two stores directly, each on an
+ * index: the GIN index on `set_telemetry.ids` and the legacy primary key. The
+ * refusal names `rep_telemetry`, as before.
+ */
+async function assertTelemetryIdsOwnedByUser(
+  supabase: SupabaseClient,
+  ids: string[],
+  userId: string,
+  cors: Record<string, string>,
+): Promise<Response | null> {
+  const unique = [...new UuidSet(ids.filter(Boolean))];
+  const outcomes = await settleBounded(
+    chunked(unique, 100),
+    OWNERSHIP_PROBE_CONCURRENCY,
+    async (chunk): Promise<Response | null> => {
+      const [perSet, legacy] = await Promise.all([
+        supabase
+          .from('set_telemetry')
+          .select('set_id')
+          .overlaps('ids', chunk)
+          .neq('user_id', userId),
+        supabase
+          .from('rep_telemetry_legacy')
+          .select('id')
+          .in('id', chunk)
+          .neq('user_id', userId),
+      ]);
+      for (const { error } of [perSet, legacy]) {
+        if (error) {
+          // Fail closed, exactly like assertRowsOwnedByUser.
+          throw new Error(`Ownership check on rep_telemetry failed: ${error.message}`);
+        }
+      }
+      if ((perSet.data?.length ?? 0) > 0 || (legacy.data?.length ?? 0) > 0) {
+        return new Response(
+          JSON.stringify({ error: 'Refused: existing rep_telemetry row belongs to another user' }),
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      return null;
+    },
+  );
+  return firstInOrder(outcomes);
+}
+
+/**
  * Parent-reference variant of `assertRowsOwnedByUser`. Unlike
  * `assertRowsOwnedByUser` (used for primary-key upsert checks where
  * absent rows are allowed because the upsert may be inserting them), this
@@ -2080,7 +2129,10 @@ async function mobileSyncPushHandler(
       await settleBounded(
         directOwnerChecks,
         OWNERSHIP_PROBE_CONCURRENCY,
-        ([table, ids]) => assertRowsOwnedByUser(db, table, ids, userId, cors),
+        ([table, ids]) =>
+          table === 'rep_telemetry'
+            ? assertTelemetryIdsOwnedByUser(db, ids, userId, cors)
+            : assertRowsOwnedByUser(db, table, ids, userId, cors),
       ),
     );
     if (directOutcome) return directOutcome;

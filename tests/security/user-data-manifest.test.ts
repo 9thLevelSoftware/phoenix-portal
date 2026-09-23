@@ -65,6 +65,8 @@ const TABLES_WITHOUT_MIGRATION_DDL: Record<string, string> = {
 	// table is now parseable from the migrations and the column checks apply to
 	// all of them. Add an entry here only for a table that genuinely has no
 	// DDL on the branch.
+	rep_telemetry_legacy:
+		"Created by ALTER TABLE rep_telemetry RENAME TO (20260925200000), which the lightweight parser does not follow; it keeps the old table's columns and FKs.",
 };
 
 const CREDENTIAL_COLUMN = /token|api_key|secret|password/;
