@@ -12,10 +12,12 @@
 --    around its own DELETE, and falls back to now().
 -- 3. delete_cycles_clocked(p_user_id, p_deletions) replaces the Edge's
 --    separate "probe the clock" and "delete" PostgREST calls, which a
---    concurrent cycle write could land between. Per id it takes the per-cycle
---    advisory lock every training_cycles write already holds (the
---    guard_training_cycle_lww trigger's 'training-cycle:' key), locks the row,
---    compares the stored client_updated_at with the deletion clock, and either
+--    concurrent cycle write could land between. Per id it locks the row, then
+--    takes the per-cycle advisory lock every training_cycles write already
+--    holds (the guard_training_cycle_lww trigger's 'training-cycle:' key) --
+--    the order every other cycle writer uses, since a BEFORE ROW trigger runs
+--    with the row already locked -- then compares the stored
+--    client_updated_at with the deletion clock, and either
 --    reports a rejection (stored key strictly newer) or deletes the row. The
 --    tombstone trigger records the device's clock. An id the server no longer
 --    holds is tombstoned directly, so a later stale upload cannot recreate it.
@@ -121,17 +123,31 @@ BEGIN
       RAISE EXCEPTION 'delete_cycles_clocked: id and updatedAt are required' USING ERRCODE = '22023';
     END IF;
 
-    -- The same key guard_training_cycle_lww takes on every cycle insert and
-    -- update, so a concurrent merge of this id waits for the decision.
-    PERFORM pg_catalog.pg_advisory_xact_lock(
-      pg_catalog.hashtextextended('training-cycle:' || v_id::TEXT, 0)
-    );
-
+    -- Row lock first, then the key guard_training_cycle_lww takes on every
+    -- cycle insert and update. That is the order of every other cycle
+    -- writer: an UPDATE (portal edit, merge_training_cycles_from_push's
+    -- FOR UPDATE) holds the row before its BEFORE ROW trigger takes the
+    -- advisory lock, so taking the advisory lock first here deadlocked
+    -- against a concurrent merge of the same cycle.
     SELECT c.client_updated_at INTO v_stored
       FROM public.training_cycles c
      WHERE c.id = v_id AND c.user_id = p_user_id
        FOR UPDATE;
     v_found := FOUND;
+
+    PERFORM pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended('training-cycle:' || v_id::TEXT, 0)
+    );
+
+    IF NOT v_found THEN
+      -- A concurrent insert of this id held the advisory lock until it
+      -- committed; look again now that it has.
+      SELECT c.client_updated_at INTO v_stored
+        FROM public.training_cycles c
+       WHERE c.id = v_id AND c.user_id = p_user_id
+         FOR UPDATE;
+      v_found := FOUND;
+    END IF;
 
     -- A delete may win only when its clock is at least the stored LWW key; a
     -- row with no stored key loses to a clocked delete.

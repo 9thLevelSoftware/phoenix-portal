@@ -5282,6 +5282,69 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle deleted concurrently wi
   assertEquals(body.cycleVersions, {});
 });
 
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a concurrent delete older than the pushed edit loses the race`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    tableResults: {
+      sync_tombstones: (filters) => ({
+        data: filters.entity === "cycle"
+          ? [{ entity_id: TOMB_CYCLE_ID, client_deleted_at: "2026-09-01T00:00:00.000Z" }]
+          : [],
+        error: null,
+      }),
+    },
+  });
+  const requestBody = oldBuildRoutineAndCycleBody();
+  const [cycle] = requestBody.cycles as Array<Record<string, unknown>>;
+  requestBody.cycles = [{ ...cycle, updatedAt: "2026-09-01T00:00:00.001Z" }];
+  const response = await harness.handler(requestFromBody(requestBody));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "training_cycles" && call.method === "delete"
+    ),
+    [],
+  );
+  // The strictly newer edit wins, so its tombstone goes.
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "sync_tombstones" && call.method === "delete"
+    ).length,
+    1,
+  );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a concurrent delete as new as the pushed edit wins the race`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    tableResults: {
+      sync_tombstones: (filters) => ({
+        data: filters.entity === "cycle"
+          ? [{ entity_id: TOMB_CYCLE_ID, client_deleted_at: "2026-09-01T00:00:00.000Z" }]
+          : [],
+        error: null,
+      }),
+    },
+  });
+  const requestBody = oldBuildRoutineAndCycleBody();
+  const [cycle] = requestBody.cycles as Array<Record<string, unknown>>;
+  requestBody.cycles = [{ ...cycle, updatedAt: "2026-09-01T00:00:00.000Z" }];
+  const response = await harness.handler(requestFromBody(requestBody));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [TOMB_CYCLE_ID] });
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "sync_tombstones" && call.method === "delete"
+    ),
+    [],
+  );
+});
+
 Deno.test("tombstones: a push without routines or cycles makes no tombstone lookup", async () => {
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody(validPushBody()));
@@ -11615,6 +11678,20 @@ Deno.test(`NF-37 (LWW=${SYNC_LWW_ENABLED}): an outlier session is stored clamped
   assertEquals(written.length, 1);
   assertEquals(written[0].total_volume, 1_000_000);
   assertEquals(written[0].duration_seconds, 604_800);
+});
+
+Deno.test(`NF-37 (LWW=${SYNC_LWW_ENABLED}): a clamped session that is rejected is not reported`, async () => {
+  const harness = makeHarness(undefined, { tableResults: storedUnderProfile(null) });
+  const body = namedProfileBody();
+  const [session] = body.sessions as Array<Record<string, unknown>>;
+  body.sessions = [{ ...session, totalVolume: 9_999_999 }];
+  const response = await harness.handler(requestFromBody(body));
+  const result = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(result));
+  assertEquals((result.rejections as Record<string, unknown[]>).sessions.length, 1);
+  assertEquals(sessionWriteIds(harness), []);
+  assertEquals(result.clamped, []);
 });
 
 Deno.test("NF-37: a push with nothing to clamp reports an empty list", async () => {

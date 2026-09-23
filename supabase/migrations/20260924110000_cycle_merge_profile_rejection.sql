@@ -13,8 +13,37 @@
 --
 -- Body otherwise identical to 20260920002101; same signature and return
 -- type, so CREATE OR REPLACE keeps grants and database.types.ts.
+--
+-- guard_profile_ownership_update now raises its refusal under the dedicated
+-- SQLSTATE P204D instead of the generic P0001, so the handler below matches a
+-- machine-readable code rather than the message text. Nothing else keyed on
+-- P0001 for this error; the message is unchanged. Body otherwise identical
+-- to 20260922120000 section 5.
 
 BEGIN;
+
+CREATE OR REPLACE FUNCTION public.guard_profile_ownership_update()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF COALESCE(OLD.local_profile_id, 'default') IS DISTINCT FROM COALESCE(NEW.local_profile_id, 'default')
+     AND COALESCE(current_setting('phoenix.allow_profile_transfer', TRUE), '') <> 'on'
+     -- The profile FKs are ON DELETE SET NULL: deleting a local profile
+     -- detaches its rows. The parent is already gone in this transaction.
+     AND NOT (
+       NEW.local_profile_id IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM public.local_profiles lp
+         WHERE lp.user_id = OLD.user_id AND lp.id = OLD.local_profile_id
+       )
+     ) THEN
+    RAISE EXCEPTION 'profile_ownership_transfer_required' USING ERRCODE = 'P204D';
+  END IF;
+  RETURN NEW;
+END;
+$$;
 
 CREATE OR REPLACE FUNCTION public.merge_training_cycles_from_push(
   p_user_id UUID,
@@ -354,16 +383,14 @@ BEGIN
       FROM public.training_cycles c WHERE c.id = rec.id;
     structure_applied := NOT v_stale;
     RETURN NEXT;
-    EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    EXCEPTION WHEN SQLSTATE 'P204D' THEN
       -- guard_profile_ownership_update refuses a local_profile_id change
       -- outside an ownership transfer (a portal-created cycle pushed under a
-      -- named phone profile). The subtransaction rolled back this cycle's
-      -- writes; report it as a structured rejection carrying the stored LWW
-      -- key, keep the stored profile, and go on with the rest of the batch.
-      -- Anything else is still an error.
-      IF SQLERRM <> 'profile_ownership_transfer_required' THEN
-        RAISE;
-      END IF;
+      -- named phone profile), under its own SQLSTATE (below). The
+      -- subtransaction rolled back this cycle's writes; report it as a
+      -- structured rejection carrying the stored LWW key, keep the stored
+      -- profile, and go on with the rest of the batch. Any other error,
+      -- P0001 included, still fails the merge.
       id := v_item ->> 'id';
       accepted := FALSE;
       structure_applied := FALSE;

@@ -9,12 +9,16 @@
 -- original fix decided, pre-existing values are treated as portal-owned.
 --
 -- The column already exists everywhere this runs, so "pre-existing" is
--- decided by updated_at (training_cycles has no created_at): a row not
--- written since before 2026-09-20 — the earliest date 20260920001800 could
--- have been applied — predates the marker. A mobile-created row always has a
--- later updated_at, so re-running never relabels one. A row written since
--- then either went through a push (the merge already decided its duration) or
--- a portal edit (which stamped the marker itself).
+-- decided by updated_at (training_cycles has no created_at), against a fixed
+-- cutoff so a re-run relabels nothing new. The cutoff must not fall before
+-- the moment 20260920001800 reached the database: production applied it on
+-- 2026-09-23 (UTC), so every row it holds from before the marker was last
+-- written before 2026-09-24. (The earlier 2026-09-20 cutoff was the file
+-- date, not the apply date, and would have left every cycle edited between
+-- then and the production apply looking mobile-owned.) A row written after
+-- the marker went through the marker-aware merge or a portal edit; labelling
+-- one of those that falls before the cutoff costs at most that a later legacy
+-- push no longer re-derives its duration, which is the safe side (KD-6).
 --
 -- updated_at is the pull cursor and each cycle's baseUpdatedAt; the backfill
 -- must not move it, so cycles_updated_at is disabled for this one UPDATE. As
@@ -29,7 +33,7 @@ ALTER TABLE public.training_cycles DISABLE TRIGGER cycles_updated_at;
 UPDATE public.training_cycles
    SET portal_duration_set_at = updated_at
  WHERE portal_duration_set_at IS NULL
-   AND updated_at < '2026-09-20T00:00:00Z'::timestamptz;
+   AND updated_at < '2026-09-24T00:00:00Z'::timestamptz;
 
 ALTER TABLE public.training_cycles ENABLE TRIGGER cycles_updated_at;
 

@@ -2194,27 +2194,56 @@ async function mobileSyncPushHandler(
     if (clamped.length > 0) {
       console.warn(`Clamped ${clamped.length} outlier session field(s)`);
     }
+    // A delete that committed after the tombstone gate ran is decided here by
+    // the gate's rule (204-E): the edit survives only when its own clock is
+    // strictly newer than the delete's client clock, and then the tombstone
+    // goes; otherwise the row this push re-created is deleted again.
     const reDeleteRacedTombstones = async (
       entity: 'routine' | 'cycle',
       table: 'routines' | 'training_cycles',
-      ids: string[],
+      rows: Array<{ id: string; updatedAt?: string | null }>,
     ): Promise<string[]> => {
-      const unique = [...new Set(ids)];
+      const editClock = new Map<string, number>();
+      for (const row of rows) {
+        editClock.set(normalizeUuid(row.id), row.updatedAt ? Date.parse(row.updatedAt) : Number.NaN);
+      }
+      const unique = [...new Set(rows.map((row) => row.id))];
       const raced = new Set<string>();
+      const survived = new Set<string>();
       const chunkSize = 100;
       for (let i = 0; i < unique.length; i += chunkSize) {
         const chunk = unique.slice(i, i + chunkSize);
         const { data, error } = await supabase
           .from('sync_tombstones')
-          .select('entity_id')
+          .select('entity_id, client_deleted_at')
           .eq('user_id', userId)
           .eq('entity', entity)
           .gte('deleted_at', tombstoneRaceSince)
           .in('entity_id', chunk);
         if (error) throw new Error(`sync tombstone race check failed: ${error.message}`);
-        for (const row of (data ?? []) as Array<{ entity_id?: unknown }>) {
-          if (typeof row.entity_id === 'string') raced.add(row.entity_id);
+        for (const row of (data ?? []) as Array<{
+          entity_id?: unknown;
+          client_deleted_at?: unknown;
+        }>) {
+          if (typeof row.entity_id !== 'string') continue;
+          const edit = editClock.get(normalizeUuid(row.entity_id)) ?? Number.NaN;
+          const deleted =
+            typeof row.client_deleted_at === 'string'
+              ? Date.parse(row.client_deleted_at)
+              : Number.NaN;
+          // A missing or unreadable clock never beats a delete.
+          if (edit > deleted) survived.add(row.entity_id);
+          else raced.add(row.entity_id);
         }
+      }
+      if (survived.size > 0) {
+        const { error: clearErr } = await supabase
+          .from('sync_tombstones')
+          .delete()
+          .eq('user_id', userId)
+          .eq('entity', entity)
+          .in('entity_id', [...survived]);
+        if (clearErr) throw new Error(`sync tombstone race clear failed: ${clearErr.message}`);
       }
       if (raced.size === 0) return [];
       const racedIds = [...raced];
@@ -3204,7 +3233,7 @@ async function mobileSyncPushHandler(
       const racedRoutineIds = await reDeleteRacedTombstones(
         'routine',
         'routines',
-        liveRoutines.map((r) => r.id),
+        liveRoutines,
       );
       if (racedRoutineIds.length > 0) {
         const raced = new UuidSet(racedRoutineIds);
@@ -3512,7 +3541,7 @@ async function mobileSyncPushHandler(
       const racedCycleIds = await reDeleteRacedTombstones(
         'cycle',
         'training_cycles',
-        liveCycles.map((c) => c.id),
+        liveCycles,
       );
       if (racedCycleIds.length > 0) {
         skippedDeleted.cycles.push(...racedCycleIds);
@@ -4032,8 +4061,9 @@ async function mobileSyncPushHandler(
         acknowledgedOwnershipTransferIds,
         acknowledgedDeletedCycleIds,
         // NF-37: session fields stored at a push limit instead of the value
-        // sent. Additive; older builds ignore it.
-        clamped,
+        // sent, for committed sessions only (a rejected session kept the
+        // stored row). Additive; older builds ignore it.
+        clamped: clamped.filter((c) => acceptedSessionIds?.has(c.id) ?? false),
         ...(preferenceEnvelope.present ? { profilePreferencesAccepted: true } : {}),
         canonicalProfilePreferenceSections,
         profilePreferenceRejections,

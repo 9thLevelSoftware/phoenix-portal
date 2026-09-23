@@ -20,7 +20,11 @@ INSERT INTO public.training_cycles (id, user_id, name, duration_weeks, updated_a
     ('27272727-0000-4000-8000-0000000000c1'::uuid, '27272727-0000-4000-8000-000000000001'::uuid,
      'Pre-marker cycle', 6, '2026-06-01T00:00:00Z'),
     ('27272727-0000-4000-8000-0000000000c2'::uuid, '27272727-0000-4000-8000-000000000001'::uuid,
-     'Mobile cycle after the marker', 1, '2026-09-21T00:00:00Z');
+     'Mobile cycle after the marker', 1, '2026-09-25T00:00:00Z'),
+    -- Edited after the file date but before production applied the marker:
+    -- the case a 2026-09-20 cutoff got wrong.
+    ('27272727-0000-4000-8000-0000000000c3'::uuid, '27272727-0000-4000-8000-000000000001'::uuid,
+     'Portal cycle edited before the marker reached prod', 5, '2026-09-22T00:00:00Z');
 UPDATE public.training_cycles SET portal_duration_set_at = NULL
  WHERE user_id = '27272727-0000-4000-8000-000000000001';
 
@@ -28,11 +32,11 @@ UPDATE public.training_cycles SET portal_duration_set_at = NULL
 UPDATE public.training_cycles
    SET portal_duration_set_at = updated_at
  WHERE portal_duration_set_at IS NULL
-   AND updated_at < '2026-09-20T00:00:00Z'::timestamptz;
+   AND updated_at < '2026-09-24T00:00:00Z'::timestamptz;
 UPDATE public.training_cycles
    SET portal_duration_set_at = updated_at
  WHERE portal_duration_set_at IS NULL
-   AND updated_at < '2026-09-20T00:00:00Z'::timestamptz;
+   AND updated_at < '2026-09-24T00:00:00Z'::timestamptz;
 ALTER TABLE public.training_cycles ENABLE TRIGGER cycles_updated_at;
 
 SELECT results_eq(
@@ -40,7 +44,8 @@ SELECT results_eq(
            WHERE user_id = '27272727-0000-4000-8000-000000000001' ORDER BY id $sql$,
     $values$ VALUES
       ('27272727-0000-4000-8000-0000000000c1'::uuid, '2026-06-01T00:00:00Z'::timestamptz, '2026-06-01T00:00:00Z'::timestamptz),
-      ('27272727-0000-4000-8000-0000000000c2'::uuid, NULL::timestamptz, '2026-09-21T00:00:00Z'::timestamptz)
+      ('27272727-0000-4000-8000-0000000000c2'::uuid, NULL::timestamptz, '2026-09-25T00:00:00Z'::timestamptz),
+      ('27272727-0000-4000-8000-0000000000c3'::uuid, '2026-09-22T00:00:00Z'::timestamptz, '2026-09-22T00:00:00Z'::timestamptz)
     $values$,
     'a pre-marker cycle is portal-owned, a later mobile cycle stays unmarked, updated_at never moves'
 );
