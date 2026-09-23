@@ -20,6 +20,8 @@
 -- Writers: replace_session_children writes set_telemetry directly (below).
 -- Single-row INSERTs into the rep_telemetry view (service role, fixtures)
 -- are routed by an INSTEAD OF trigger. The view grants no UPDATE or DELETE.
+-- Every sample id stays globally unique, as the old primary key made it:
+-- set_telemetry_sample_ids (section 1b) is a trigger-maintained unique index.
 --
 -- Read gating is unchanged: set_telemetry and rep_telemetry_legacy carry the
 -- same INFERNO SELECT policy as rep_telemetry had (20260920003800), and both
@@ -75,6 +77,107 @@ GRANT ALL ON public.set_telemetry TO service_role;
 
 COMMENT ON TABLE public.set_telemetry IS
   'Force-curve samples, one row per set as aligned arrays ordered by (timestamp_ms, id). Read per sample through the rep_telemetry view. INFERNO-gated. 20260925200000.';
+
+-- ---------------------------------------------------------------------------
+-- 1b. Sample ids stay globally unique
+-- ---------------------------------------------------------------------------
+-- rep_telemetry.id was a primary key. Inside per-set arrays nothing stops two
+-- concurrent pushes from storing the same sample id in two sets, and an
+-- EXISTS pre-check cannot close that race. This side table restores the key
+-- at the database level: one row per stored sample id, maintained by a
+-- trigger on every set_telemetry write (replace_session_children, the view's
+-- INSTEAD OF insert, the backfill), so a duplicate raises 23505 atomically;
+-- a concurrent writer of the same id blocks on the index and then fails.
+-- Rows go with their set (ON DELETE CASCADE), and so with the account:
+-- set_telemetry cascades from auth.users. It is an index, not user content,
+-- so it is not exported (see EXCLUDED in _shared/userDataManifest.ts).
+-- Owner-only: RLS on, no policies, no grants; only the trigger writes it.
+CREATE TABLE IF NOT EXISTS public.set_telemetry_sample_ids (
+  id UUID PRIMARY KEY,
+  set_id UUID NOT NULL REFERENCES public.set_telemetry(set_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS set_telemetry_sample_ids_set_id_idx
+  ON public.set_telemetry_sample_ids (set_id);
+
+ALTER TABLE public.set_telemetry_sample_ids ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.set_telemetry_sample_ids
+  FROM PUBLIC, anon, authenticated, service_role;
+
+COMMENT ON TABLE public.set_telemetry_sample_ids IS
+  'Unique index of every sample id stored in set_telemetry.ids (the old rep_telemetry primary key). Trigger-maintained, owner-only, not user content. 20260925200000.';
+
+-- SECURITY DEFINER so the side table needs no grants; a trigger function
+-- cannot be called directly. The legacy check keeps an id unique against an
+-- unfolded legacy row of ANOTHER set too (folding a set re-uses its own legacy
+-- ids by design). rep_telemetry_legacy receives no new rows, so that check
+-- has no race.
+CREATE OR REPLACE FUNCTION private.set_telemetry_sample_ids_sync()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_added UUID[];
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    v_added := NEW.ids;
+  ELSE
+    IF (SELECT count(DISTINCT x) FROM unnest(NEW.ids) AS x) <> cardinality(NEW.ids) THEN
+      RAISE EXCEPTION 'duplicate key value violates unique constraint "set_telemetry_sample_ids_pkey"'
+        USING ERRCODE = '23505',
+              DETAIL = format('set %s holds a sample id twice', NEW.set_id);
+    END IF;
+    -- Set differences, hashed: a move strips a few ids from a large set.
+    DELETE FROM public.set_telemetry_sample_ids s
+     WHERE s.set_id = OLD.set_id
+       AND s.id IN (SELECT unnest(OLD.ids) EXCEPT SELECT unnest(NEW.ids));
+    SELECT array_agg(d.x) INTO v_added
+      FROM (SELECT unnest(NEW.ids) AS x EXCEPT SELECT unnest(OLD.ids)) AS d;
+  END IF;
+
+  IF v_added IS NULL OR cardinality(v_added) = 0 THEN
+    RETURN NULL;
+  END IF;
+
+  IF to_regclass('public.rep_telemetry_legacy') IS NOT NULL THEN
+    PERFORM 1
+      FROM public.rep_telemetry_legacy l
+     WHERE l.id = ANY(v_added)
+       AND l.set_id <> NEW.set_id
+     LIMIT 1;
+    IF FOUND THEN
+      RAISE EXCEPTION 'duplicate key value violates unique constraint "set_telemetry_sample_ids_pkey"'
+        USING ERRCODE = '23505',
+              DETAIL = format('a sample id for set %s is stored for another set in rep_telemetry_legacy', NEW.set_id);
+    END IF;
+  END IF;
+
+  INSERT INTO public.set_telemetry_sample_ids (id, set_id)
+  SELECT x, NEW.set_id FROM unnest(v_added) AS x;
+  RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.set_telemetry_sample_ids_sync()
+  FROM PUBLIC, anon, authenticated, service_role;
+
+DROP TRIGGER IF EXISTS set_telemetry_sample_ids_sync ON public.set_telemetry;
+CREATE TRIGGER set_telemetry_sample_ids_sync
+  AFTER INSERT OR UPDATE OF ids ON public.set_telemetry
+  FOR EACH ROW EXECUTE FUNCTION private.set_telemetry_sample_ids_sync();
+
+-- Rows written before the trigger existed (a re-run). A genuine cross-set
+-- duplicate among them raises 23505 here rather than being hidden.
+INSERT INTO public.set_telemetry_sample_ids (id, set_id)
+SELECT x, t.set_id
+FROM public.set_telemetry t
+CROSS JOIN LATERAL unnest(t.ids) AS x
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.set_telemetry_sample_ids s
+  WHERE s.id = x AND s.set_id = t.set_id
+);
 
 -- ---------------------------------------------------------------------------
 -- 2. The per-sample table keeps its rows under a new name

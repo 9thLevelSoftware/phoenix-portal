@@ -80,7 +80,7 @@ function ownershipColumn(entry: UserDataTable): string {
 /**
  * The purge behaviour the parsed FKs actually give, or null if unknown: the
  * ownership column's FK to auth.users, else an ON DELETE CASCADE FK to a
- * manifest table that itself cascades.
+ * manifest or EXCLUDED table that itself cascades.
  */
 function derivedPurge(
 	table: string,
@@ -99,10 +99,13 @@ function derivedPurge(
 		if (!fk.ref.startsWith("public.") || fk.onDelete !== "cascade") continue;
 		const parentTable = fk.ref.slice(7);
 		const parent = USER_DATA_MANIFEST.find((e) => e.table === parentTable);
+		const excludedParent = EXCLUDED.find((e) => e.table === parentTable);
+		const parentColumn = parent
+			? ownershipColumn(parent)
+			: excludedParent?.purgeMatch.column;
 		if (
-			parent &&
-			derivedPurge(parentTable, ownershipColumn(parent), new Set(seen)) ===
-				"cascade"
+			parentColumn &&
+			derivedPurge(parentTable, parentColumn, new Set(seen)) === "cascade"
 		) {
 			return "cascade";
 		}
