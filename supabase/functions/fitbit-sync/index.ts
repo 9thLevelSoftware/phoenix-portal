@@ -24,8 +24,34 @@ import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
  */
 type DbClient = SupabaseClient<any, any, any>;
 
-const FITBIT_CLIENT_ID = Deno.env.get('FITBIT_CLIENT_ID')!;
-const FITBIT_CLIENT_SECRET = Deno.env.get('FITBIT_CLIENT_SECRET')!;
+/**
+ * Injection points, so handler tests never reach Fitbit, Supabase or the real
+ * environment. Every field is optional; the defaults are what production runs.
+ */
+export interface FitbitSyncHandlerDependencies {
+  env?: (key: string) => string | undefined;
+  // deno-lint-ignore no-explicit-any
+  createClient?: (url: string, key: string, options?: any) => DbClient;
+  /** Used for Fitbit API calls; defaults to global fetch. */
+  fetch?: typeof fetch;
+}
+
+interface FitbitSyncDependencies {
+  env: (key: string) => string | undefined;
+  // deno-lint-ignore no-explicit-any
+  createClient: (url: string, key: string, options?: any) => DbClient;
+  fetch: typeof fetch;
+}
+
+function resolveDeps(d: FitbitSyncHandlerDependencies): FitbitSyncDependencies {
+  return {
+    env: d.env ?? ((key: string) => Deno.env.get(key)),
+    createClient: d.createClient ??
+      // deno-lint-ignore no-explicit-any
+      ((url: string, key: string, options?: any) => createClient(url, key, options)),
+    fetch: d.fetch ?? ((input, init) => fetch(input, init)),
+  };
+}
 
 /**
  * Fitbit's documented ceiling: 150 requests per hour, per authorized user,
@@ -63,6 +89,7 @@ async function refreshTokenIfNeeded(
   supabase: DbClient,
   userId: string,
   tokens: FitbitTokens,
+  deps: FitbitSyncDependencies,
 ): Promise<FitbitTokens> {
   const expiresAt = new Date(tokens.token_expires_at).getTime();
   const tenMinutesFromNow = Date.now() + 10 * 60 * 1000;
@@ -73,9 +100,9 @@ async function refreshTokenIfNeeded(
 
   console.log('Fitbit token expired or expiring soon, refreshing...');
 
-  const basicAuth = btoa(`${FITBIT_CLIENT_ID}:${FITBIT_CLIENT_SECRET}`);
+  const basicAuth = btoa(`${deps.env('FITBIT_CLIENT_ID')}:${deps.env('FITBIT_CLIENT_SECRET')}`);
 
-  const response = await fetch('https://api.fitbit.com/oauth2/token', {
+  const response = await deps.fetch('https://api.fitbit.com/oauth2/token', {
     method: 'POST',
     headers: {
       'Authorization': `Basic ${basicAuth}`,
@@ -232,7 +259,11 @@ async function upsertFitbitRateLimitRow(
  *
  * Called by the sync queue processor or manually via integration management UI.
  */
-async function runFitbitSync(req: Request, owned: OwnedQueueRow): Promise<Response> {
+async function runFitbitSync(
+  req: Request,
+  owned: OwnedQueueRow,
+  deps: FitbitSyncDependencies,
+): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
@@ -256,9 +287,9 @@ async function runFitbitSync(req: Request, owned: OwnedQueueRow): Promise<Respon
     let userId: string;
 
     // Try JWT auth first (browser-initiated calls)
-    const supabaseAuth = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
+    const supabaseAuth = deps.createClient(
+      deps.env('SUPABASE_URL')!,
+      deps.env('SUPABASE_ANON_KEY')!,
       { global: { headers: { Authorization: authHeader } } },
     );
     const { data: { user: jwtUser } } = await supabaseAuth.auth.getUser();
@@ -272,7 +303,7 @@ async function runFitbitSync(req: Request, owned: OwnedQueueRow): Promise<Respon
       // time so the comparison leaks neither the key's bytes nor its length.
       const isServiceRole = isServiceRoleBearer(
         authHeader,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+        deps.env('SUPABASE_SERVICE_ROLE_KEY'),
       );
 
       if (!isServiceRole || !body.user_id) {
@@ -289,9 +320,9 @@ async function runFitbitSync(req: Request, owned: OwnedQueueRow): Promise<Respon
     let ownedQueueId =
       calledByQueueProcessor && typeof body.queue_id === 'string' ? body.queue_id : null;
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    const supabase = deps.createClient(
+      deps.env('SUPABASE_URL')!,
+      deps.env('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
     // Cap browser-initiated invocations per user. Keyed on the JWT-verified
@@ -354,7 +385,7 @@ async function runFitbitSync(req: Request, owned: OwnedQueueRow): Promise<Respon
     };
 
     // Refresh token if needed
-    const tokens = await refreshTokenIfNeeded(supabase, userId, decrypted);
+    const tokens = await refreshTokenIfNeeded(supabase, userId, decrypted, deps);
 
     // Captured before fetching: the next incremental window starts here.
     const syncStartedAt = new Date().toISOString();
@@ -378,7 +409,7 @@ async function runFitbitSync(req: Request, owned: OwnedQueueRow): Promise<Respon
       activitiesUrl.searchParams.set('offset', String(offset));
       activitiesUrl.searchParams.set('limit', String(limit));
 
-      const activitiesResponse = await fetch(activitiesUrl.toString(), {
+      const activitiesResponse = await deps.fetch(activitiesUrl.toString(), {
         headers: {
           'Authorization': `Bearer ${tokens.access_token}`,
         },
@@ -489,10 +520,13 @@ async function runFitbitSync(req: Request, owned: OwnedQueueRow): Promise<Respon
   }
 }
 
-export function createFitbitSyncHandler(): (req: Request) => Promise<Response> {
+export function createFitbitSyncHandler(
+  dependencies: FitbitSyncHandlerDependencies = {},
+): (req: Request) => Promise<Response> {
+  const deps = resolveDeps(dependencies);
   return async (req) => {
     const owned = noOwnedQueueRow();
-    const response = await runFitbitSync(req, owned);
+    const response = await runFitbitSync(req, owned, deps);
     if (!response.ok) await releaseOwnedQueueRow(owned);
     return response;
   };

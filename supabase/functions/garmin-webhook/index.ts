@@ -1,4 +1,4 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
@@ -104,7 +104,37 @@ function normalizeGarminWebhookActivity(
   };
 }
 
-Deno.serve(async (req) => {
+/** Loose client type: the bare generated one collapses payloads to `never`. */
+// deno-lint-ignore no-explicit-any
+type DbClient = SupabaseClient<any, any, any>;
+
+/**
+ * Injection points, so handler tests never reach Supabase or the real
+ * environment. The defaults are what production runs.
+ */
+export interface GarminWebhookDependencies {
+  env?: (key: string) => string | undefined;
+  createAdminClient?: () => DbClient;
+}
+
+export function createGarminWebhookHandler(
+  dependencies: GarminWebhookDependencies = {},
+): (req: Request) => Promise<Response> {
+  const env = dependencies.env ?? ((key: string) => Deno.env.get(key));
+  const createAdminClient = dependencies.createAdminClient ??
+    (() => createClient(env('SUPABASE_URL')!, env('SUPABASE_SERVICE_ROLE_KEY')!) as DbClient);
+  return (req) => garminWebhook(req, env, createAdminClient);
+}
+
+if (import.meta.main) {
+  Deno.serve(createGarminWebhookHandler());
+}
+
+async function garminWebhook(
+  req: Request,
+  env: (key: string) => string | undefined,
+  createAdminClient: () => DbClient,
+): Promise<Response> {
   const cors = getCorsHeaders(req);
 
   // CORS preflight
@@ -130,7 +160,7 @@ Deno.serve(async (req) => {
 
   try {
     // Validate HMAC-SHA256 signature — mandatory, reject if not configured
-    const WEBHOOK_SECRET = Deno.env.get('GARMIN_WEBHOOK_SECRET');
+    const WEBHOOK_SECRET = env('GARMIN_WEBHOOK_SECRET');
     if (!WEBHOOK_SECRET) {
       console.error('[GARMIN_WEBHOOK] GARMIN_WEBHOOK_SECRET not configured');
       return new Response(
@@ -201,10 +231,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
+    const supabase = createAdminClient();
 
     const { data: connectedIntegrations, error: integrationsError } = await supabase
       .from('user_integrations')
@@ -234,9 +261,12 @@ Deno.serve(async (req) => {
     }
 
     const tokenByUserId = new Map(
-      (tokenRows ?? []).map((token) => [token.user_id, token.access_token]),
+      ((tokenRows ?? []) as Array<{ user_id: string; access_token: string }>)
+        .map((token) => [token.user_id, token.access_token]),
     );
-    const identityCandidates: GarminIdentityCandidate[] = (connectedIntegrations ?? [])
+    const identityCandidates: GarminIdentityCandidate[] = (
+      (connectedIntegrations ?? []) as Array<{ user_id: string; provider_user_id: string | null }>
+    )
       .map((integration) => ({
         user_id: integration.user_id,
         provider_user_id: integration.provider_user_id ?? null,
@@ -351,13 +381,15 @@ Deno.serve(async (req) => {
     );
   } catch (err) {
     // fix(audit): C5 — stop swallowing errors. Propagate 5xx so Garmin retries.
+    // The message can carry DB or parse internals: log it, return a code.
     console.error('[GARMIN_WEBHOOK] unhandled error:', err);
     return new Response(
       JSON.stringify({
         received: false,
-        error: err instanceof Error ? err.message : 'Processing error',
+        error: 'Processing error',
+        code: 'internal_error',
       }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
-});
+}

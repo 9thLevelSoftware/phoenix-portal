@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { createMobileIntegrationSyncHandler } from "./index.ts";
+import { FakeDb, fakeClient } from "../_shared/testing/fakeSupabase.ts";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -128,4 +129,135 @@ Deno.test("mobile-integration-sync: disconnect is not subscription gated", async
   const res = await silenced(() => handlerFor(state)(post({ provider: "hevy", action: "disconnect" })));
   assertEquals(res.status, 200);
   assertEquals(state.calls.filter((c) => c.kind === "from" && c.table === "subscriptions"), []);
+});
+
+// ---------------------------------------------------------------------------
+// Imports (F-020 / #204): shared Liftosaur fetcher + resumable backfill, and a
+// Hevy backfill that never truncates silently. In-process DB double, fake
+// providers; no real provider calls.
+// ---------------------------------------------------------------------------
+
+const NOW_MS = Date.parse("2026-09-19T12:00:00.000Z");
+
+function importDb(provider: string, lastSyncAt: string | null = null): FakeDb {
+  return new FakeDb({
+    subscriptions: [{
+      user_id: USER_ID,
+      tier: "FLAME",
+      status: "active",
+      current_period_end: "2099-01-01T00:00:00.000Z",
+    }],
+    oauth_tokens: [{ user_id: USER_ID, provider, api_key: "plain-api-key" }],
+    user_integrations: [{ user_id: USER_ID, provider, status: "connected", last_sync_at: lastSyncAt }],
+    external_activities: [],
+  });
+}
+
+function importHandler(db: FakeDb, fetchImpl: typeof fetch, now: () => Date = () => new Date(NOW_MS)) {
+  return createMobileIntegrationSyncHandler({
+    createAuthClient: () => ({
+      auth: { getUser: () => Promise.resolve({ data: { user: { id: USER_ID } } }) },
+    }),
+    // deno-lint-ignore no-explicit-any
+    createAdminClient: () => fakeClient(db, null, now) as any,
+    revoke: {
+      fetch: (() => Promise.reject(new Error("no revoke expected"))) as typeof fetch,
+      fitbitClientId: undefined,
+      fitbitClientSecret: undefined,
+      stravaClientId: undefined,
+      stravaClientSecret: undefined,
+      garminConsumerKey: undefined,
+      garminConsumerSecret: undefined,
+    },
+    fetch: fetchImpl,
+    now,
+  });
+}
+
+/** Liftosaur /history, newest first, honouring endDate (exclusive) and cursor. */
+function liftosaurApi(records: Array<{ id: number; at: number | null }>): typeof fetch {
+  return ((input: string | URL | Request) => {
+    const url = new URL(String(input));
+    const end = url.searchParams.get("endDate");
+    const window = records.filter((r) => end === null || (r.at !== null && r.at < Date.parse(end)));
+    const cursor = Number(url.searchParams.get("cursor") ?? 0);
+    const page = window.slice(cursor, cursor + 200).map((r) => ({
+      id: r.id,
+      text: `${r.at === null ? "" : `${new Date(r.at).toISOString()} / `}program: "P" / duration: 60s`,
+    }));
+    const next = cursor + page.length;
+    return Promise.resolve(Response.json({
+      data: { records: page, hasMore: next < window.length, nextCursor: next },
+    }));
+  }) as typeof fetch;
+}
+
+Deno.test("mobile-integration-sync: a Liftosaur history over one run's budget continues on the next sync, never silently truncated", async () => {
+  const db = importDb("liftosaur");
+  const newest = Date.parse("2026-09-01T00:00:00.000Z");
+  const api = liftosaurApi(Array.from({ length: 2500 }, (_, i) => ({ id: i + 1, at: newest - i * 60_000 })));
+  const handler = importHandler(db, api);
+
+  const first = await silenced(() => handler(post({ provider: "liftosaur", action: "sync" })));
+  assertEquals(first.status, 200, await first.clone().text());
+  const firstBody = await first.json();
+  assertEquals([firstBody.status, firstBody.truncated, firstBody.continuing], ["synced", true, true]);
+  assertEquals(firstBody.activities.length, 2000);
+  let [integration] = db.rows("user_integrations");
+  assertEquals(integration.last_sync_at, null, "the watermark waits for the whole chain");
+  assertEquals(typeof integration.backfill_before, "string");
+
+  const second = await silenced(() => handler(post({ provider: "liftosaur", action: "sync" })));
+  assertEquals(second.status, 200, await second.clone().text());
+  const secondBody = await second.json();
+  assertEquals([secondBody.status, secondBody.truncated], ["synced", undefined]);
+  assertEquals(db.rows("external_activities").length, 2500);
+  [integration] = db.rows("user_integrations");
+  assertEquals(integration.last_sync_at, new Date(NOW_MS).toISOString());
+  assertEquals(integration.backfill_before, null);
+  // external_activities.synced_at is the server's pull cursor (NF-10).
+  assert(db.rows("external_activities").every((row) => typeof row.synced_at === "string"));
+});
+
+Deno.test("mobile-integration-sync: an undated Liftosaur record keeps and reports one stored date across syncs", async () => {
+  const db = importDb("liftosaur");
+  const api = liftosaurApi([{ id: 7, at: null }]);
+  let clock = NOW_MS;
+  const handler = importHandler(db, api, () => new Date(clock));
+
+  const first = await silenced(() => handler(post({ provider: "liftosaur", action: "sync" })));
+  assertEquals(first.status, 200, await first.clone().text());
+  const firstStart = (await first.json()).activities[0].startedAt;
+  assertEquals(firstStart, new Date(NOW_MS).toISOString());
+
+  clock += 3 * 60 * 60 * 1000;
+  const second = await silenced(() => handler(post({ provider: "liftosaur", action: "sync" })));
+  assertEquals(second.status, 200, await second.clone().text());
+  assertEquals((await second.json()).activities[0].startedAt, firstStart, "never re-dated to now");
+  assertEquals(db.rows("external_activities")[0].started_at, firstStart);
+});
+
+Deno.test("mobile-integration-sync: a Hevy backfill past its page budget is stored, reported, and never advances the watermark", async () => {
+  const db = importDb("hevy", "2026-09-01T00:00:00.000Z");
+  const hevy = ((input: string | URL | Request) => {
+    const url = new URL(String(input));
+    const page = Number(url.searchParams.get("page"));
+    const workouts = Array.from({ length: 10 }, (_, i) => ({
+      id: `w-${page}-${i}`,
+      title: "Workout",
+      start_time: "2026-08-01T10:00:00Z",
+      end_time: "2026-08-01T11:00:00Z",
+      exercises: [],
+    }));
+    return Promise.resolve(Response.json({ page, page_count: 101, workouts }));
+  }) as typeof fetch;
+
+  const res = await silenced(() => importHandler(db, hevy)(post({ provider: "hevy", action: "sync" })));
+  assertEquals(res.status, 500);
+  const body = await res.json();
+  assertEquals([body.code, body.truncated, body.imported], ["history_truncated", true, 1000]);
+  assertEquals(db.rows("external_activities").length, 1000);
+  const [integration] = db.rows("user_integrations");
+  assertEquals(integration.last_sync_at, "2026-09-01T00:00:00.000Z");
+  assertEquals(integration.status, "error");
 });
