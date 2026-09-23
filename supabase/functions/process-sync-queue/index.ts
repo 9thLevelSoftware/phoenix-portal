@@ -433,20 +433,21 @@ async function processSyncQueue(
         continue;
       }
 
+      // retry_count is the claim generation (nullable in the schema; a NULL
+      // is normalised to 0 once, so every later check can compare exactly).
+      const claimedRetry = (claimed as { retry_count?: number | null }).retry_count;
+      if (claimedRetry === null || claimedRetry === undefined) {
+        await supabase
+          .from('sync_queue')
+          .update({ retry_count: 0 })
+          .eq('id', task.id)
+          .eq('status', 'processing')
+          .is('retry_count', null);
+      }
+      const claimGeneration = Number(claimedRetry ?? 0);
+
       try {
         // Call provider-specific sync function with exponential backoff on transient errors
-        // retry_count is the claim generation (nullable in the schema; a NULL
-        // is normalised to 0 once, so every later check can compare exactly).
-        const claimedRetry = (claimed as { retry_count?: number | null }).retry_count;
-        if (claimedRetry === null || claimedRetry === undefined) {
-          await supabase
-            .from('sync_queue')
-            .update({ retry_count: 0 })
-            .eq('id', task.id)
-            .eq('status', 'processing')
-            .is('retry_count', null);
-        }
-        const claimGeneration = Number(claimedRetry ?? 0);
         const outcome = await backOff(
           () => callSyncFunction(
             deps,
@@ -497,7 +498,7 @@ async function processSyncQueue(
         results.processed++;
       } catch (error) {
         const err = error as SyncFunctionError;
-        const nextRetryCount = (task.retry_count ?? 0) + 1;
+        const nextRetryCount = claimGeneration + 1;
 
         // SQ-03: Re-queue on retryable statuses (429, 502, 503, 504), mark failed otherwise
         // SQ-04: If retries exhausted, mark permanently_failed regardless of status code
@@ -540,8 +541,10 @@ async function processSyncQueue(
             ...(nextStatus !== 'pending' && { completed_at: new Date().toISOString() }),
           })
           .eq('id', task.id)
-          // Same rule as the success path (PR 54 R-7).
-          .eq('status', 'processing');
+          // Same rule as the success path (PR 54 R-7): only this pass's own
+          // claim generation, never a successor that reclaimed the row.
+          .eq('status', 'processing')
+          .eq('retry_count', claimGeneration);
 
         results.failed++;
       }
