@@ -1932,6 +1932,29 @@ export type Database = {
 					},
 				];
 			};
+			set_telemetry_sample_ids: {
+				Row: {
+					id: string;
+					set_id: string;
+				};
+				Insert: {
+					id: string;
+					set_id: string;
+				};
+				Update: {
+					id?: string;
+					set_id?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "set_telemetry_sample_ids_set_id_fkey";
+						columns: ["set_id"];
+						isOneToOne: false;
+						referencedRelation: "set_telemetry";
+						referencedColumns: ["set_id"];
+					},
+				];
+			};
 			sets: {
 				Row: {
 					actual_reps: number;
