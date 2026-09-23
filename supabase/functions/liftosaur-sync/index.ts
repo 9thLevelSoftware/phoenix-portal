@@ -557,7 +557,21 @@ async function runLiftosaurSync(
 				// continues the chain even if the follow-up could not be queued.
 				// (A 502 here would not help: the processor only re-queues rows
 				// that are still `processing`, and this one is completed.)
-				const followUpQueued = await ensureFollowUpTask(supabase, userId);
+				let followUpQueued = await ensureFollowUpTask(supabase, userId);
+				if (!followUpQueued && ownedQueueId) {
+					// The follow-up insert failed, and this row is already
+					// completed, so nothing would resume the chain. Reopen this
+					// row as the follow-up (incremental, so it continues from the
+					// saved cursor instead of restarting).
+					const { data: reopened } = await supabase
+						.from("sync_queue")
+						.update({ status: "pending", sync_type: "incremental", started_at: null, completed_at: null })
+						.eq("id", ownedQueueId)
+						.eq("user_id", userId)
+						.eq("status", "completed")
+						.select("id");
+					followUpQueued = Array.isArray(reopened) && reopened.length > 0;
+				}
 				return new Response(
 					JSON.stringify({
 						...base,
@@ -586,16 +600,33 @@ async function runLiftosaurSync(
 		// Everything in the window has been read and stored. Uses the chain's
 		// pre-fetch timestamp so concurrent Liftosaur writes land in the next
 		// window, and ends any backfill.
+		// A row a disconnect cancelled, or a lease reclaim handed to another
+		// worker, is no longer this run's: then it must not write `connected`
+		// or a watermark over the newer state. Checked before any state write;
+		// a failed watermark save below still leaves the row processing for
+		// the processor to retry.
+		if (!(await queueRowStillOwned(supabase, ownedQueueId, userId))) {
+			return new Response(
+				JSON.stringify({ error: "Sync queue entry is no longer this run's", code: "queue_not_owned" }),
+				{ status: 409, headers: { ...cors, "Content-Type": "application/json" } },
+			);
+		}
 		const { error: watermarkError } = await updateIntegration(completedSyncColumns(plan));
 		if (watermarkError) return await saveFailed("watermark_save_failed", watermarkError);
 
 		// Complete only the row this run owns. Never sweep every pending row:
 		// a second queued task (a kept `initial`) must still run.
-		await completeSyncQueueEntry(supabase, {
+		const completed = await completeSyncQueueEntry(supabase, {
 			userId,
 			provider: "liftosaur",
 			queueId: ownedQueueId,
 		});
+		if (!completed) {
+			return new Response(
+				JSON.stringify({ error: "Failed to complete the sync queue entry", code: "queue_complete_failed" }),
+				{ status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+			);
+		}
 
 		return new Response(
 			JSON.stringify({
@@ -628,6 +659,22 @@ async function runLiftosaurSync(
  * chain; an `initial` one would restart it). Returns true when one is queued,
  * including when `sync_queue_one_active` reports that one already is (23505).
  */
+/** True when this run has no queue row, or its row is still `processing`. */
+async function queueRowStillOwned(
+	supabase: DbClient,
+	queueId: string | null,
+	userId: string,
+): Promise<boolean> {
+	if (!queueId) return true;
+	const { data, error } = await supabase
+		.from("sync_queue")
+		.select("id")
+		.eq("id", queueId)
+		.eq("user_id", userId)
+		.eq("status", "processing");
+	return !error && Array.isArray(data) && data.length > 0;
+}
+
 async function ensureFollowUpTask(supabase: DbClient, userId: string): Promise<boolean> {
 	const { error } = await supabase.from("sync_queue").insert({
 		user_id: userId,
