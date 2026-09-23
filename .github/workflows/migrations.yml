@@ -150,9 +150,11 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260920003100_scheduler_and_sync_queue_cron.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$dir/check.sql"
           # seed.sql drops sync_queue unique indexes to load duplicate fixtures,
-          # and re-applying 003100 overwrites the PR-52 client-insert guard.
-          # Restore the production shape before pgTAP.
+          # and re-applying 003100 overwrites the PR-52 client-insert guard and
+          # the 20260922120000 scheduler fix. Restore the production shape
+          # before pgTAP.
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260920005200_sync_queue_pending_unique.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260922120000_restore_regressed_functions_and_definer_grants.sql
 
       # Full pgTAP suite (every file in supabase/tests/database/): definer
       # grant guard, dashboard capture, cross-user RLS isolation, trust plane,

@@ -90,9 +90,6 @@ INSERT INTO auth.users (id, email)
 VALUES ('21212121-0000-4000-8000-000000000001'::uuid, 'lww-clock-owner@example.test')
 ON CONFLICT (id) DO NOTHING;
 
--- Portal writes need EMBER (RLS).
-INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
-VALUES ('21212121-0000-4000-8000-000000000001'::uuid, 'EMBER', 'active', '2099-01-01+00');
 -- Portal writes need FLAME (RLS).
 INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
 VALUES ('21212121-0000-4000-8000-000000000001'::uuid, 'FLAME', 'active', '2099-01-01+00');
@@ -258,9 +255,15 @@ SELECT set_config(
     true
 );
 SET LOCAL ROLE authenticated;
-INSERT INTO public.workout_sessions (id, user_id, name, started_at, updated_at, client_updated_at)
-VALUES ('21212121-0000-4000-8000-0000000000a8'::uuid, '21212121-0000-4000-8000-000000000001'::uuid,
-        'S portal insert', '2026-01-01+00', now() - interval '1 day', '9999-01-01+00');
+-- Sessions are server-written only: the forged-key INSERT never lands.
+SELECT throws_ok(
+    $$ INSERT INTO public.workout_sessions (id, user_id, name, started_at, updated_at, client_updated_at)
+       VALUES ('21212121-0000-4000-8000-0000000000a8'::uuid, '21212121-0000-4000-8000-000000000001'::uuid,
+               'S portal insert', '2026-01-01+00', now() - interval '1 day', '9999-01-01+00') $$,
+    '42501',
+    NULL,
+    'session: an authenticated INSERT with a forged client_updated_at is refused (sessions are server-written)'
+);
 INSERT INTO public.routines (id, user_id, name, updated_at, client_updated_at)
 VALUES ('21212121-0000-4000-8000-0000000000b8'::uuid, '21212121-0000-4000-8000-000000000001'::uuid,
         'R portal insert', now() - interval '1 day', '9999-01-01+00');
@@ -272,11 +275,6 @@ VALUES ('21212121-0000-4000-8000-0000000000c8'::uuid, '21212121-0000-4000-8000-0
 UPDATE public.routines SET client_updated_at = '9999-01-01+00'
 WHERE id = '21212121-0000-4000-8000-0000000000b1';
 RESET ROLE;
-SELECT is(
-    (SELECT client_updated_at FROM public.workout_sessions WHERE id = '21212121-0000-4000-8000-0000000000a8'),
-    now(),
-    'session: an authenticated INSERT stamps client_updated_at over a forged far-future value (R-8/R-14)'
-);
 SELECT is(
     (SELECT client_updated_at FROM public.routines WHERE id = '21212121-0000-4000-8000-0000000000b8'),
     now(),

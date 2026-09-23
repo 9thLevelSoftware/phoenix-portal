@@ -1,10 +1,5 @@
 -- Cross-user RLS isolation.
 --
--- Users A and B are both FLAME (owner write policies are FLAME-gated since
--- 20260920000900); C has no subscription row (FREE). A owns one
--- fixture row in every private user-owned relation listed in rls_cases.
--- fixture row in every private user-owned relation listed in rls_cases. Tier
--- denials live in trust_plane.test.sql (EMBER) and tier_matrix.test.sql (FLAME).
 -- Users A and B are both FLAME, so every owner write policy (including the
 -- FLAME-gated ones from 20260920000900) has a positive control; C has no
 -- subscription row (FREE). A owns one fixture row in every private
@@ -18,9 +13,6 @@
 -- subscription-tier section below asserts that A cannot raise its own tier —
 -- so tier_matrix.test.sql section 6 owns the INFERNO positive control and
 -- this file asserts the FLAME denial plus the usual B / C isolation.
--- trust_plane.test.sql (EMBER) and tier_matrix.test.sql (FLAME).
--- Users A and B are both EMBER; C has no subscription row (FREE). A owns one
--- fixture row in every private user-owned relation listed in rls_cases.
 --
 -- Coverage guard: every public table must have RLS enabled, and every public
 -- relation with a user_id column must be either in rls_cases or on the
@@ -49,12 +41,8 @@
 -- A refusal with 42501 (privilege or RLS) is reported as -1 / '42501', so a
 -- later privilege hardening keeps these assertions green.
 --
--- Fixtures are inserted as postgres (bypassing the EMBER-gated INSERT
--- policies, which trust_plane.test.sql covers).
 -- Fixtures are inserted as postgres (bypassing the tier-gated INSERT
 -- policies, which trust_plane.test.sql and tier_matrix.test.sql cover).
--- Fixtures are inserted as postgres (bypassing the EMBER-gated INSERT
--- policies, which trust_plane.test.sql covers).
 
 BEGIN;
 
@@ -206,13 +194,11 @@ VALUES
         'a1a1a1a1-5555-4000-8000-00000000000a'::uuid,
         'a1a1a1a1-0000-4000-8000-00000000000a'::uuid,
         'FLAME', 'active', now() + INTERVAL '30 days'
-        'EMBER', 'active', now() + INTERVAL '30 days'
     ),
     (
         'b2b2b2b2-5555-4000-8000-00000000000b'::uuid,
         'b2b2b2b2-0000-4000-8000-00000000000b'::uuid,
         'FLAME', 'active', now() + INTERVAL '30 days'
-        'EMBER', 'active', now() + INTERVAL '30 days'
     );
 
 INSERT INTO public.workout_sessions (id, user_id)
@@ -499,6 +485,34 @@ VALUES (
     'fitbit'
 );
 
+-- Service-written relations from 20260920005600 (leaderboard snapshots) and
+-- 20260920120000 (deletion tombstones, profile ownership transfer). Only a
+-- SELECT-own policy exists on some of them; none has a client write policy.
+INSERT INTO public.leaderboard_snapshots (metric, period, user_id, value, rank)
+VALUES ('total_volume', 'all_time', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1);
+
+INSERT INTO public.training_cycle_deletion_tombstones (user_id, cycle_id, deleted_at)
+VALUES ('a1a1a1a1-0000-4000-8000-00000000000a', 'a1a1a1a1-0036-4000-8000-00000000000a', now());
+
+INSERT INTO public.profile_ownership_transfers (mutation_id, user_id, request_hash, target_profile_id)
+VALUES ('a1a1a1a1-0037-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a', 'rls-fixture', 'rls-local-profile-a');
+
+INSERT INTO public.profile_ownership_events
+    (mutation_id, user_id, target_profile_id, target_profile_name, target_profile_color_index, transferred_at)
+VALUES ('a1a1a1a1-0037-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a', 'rls-local-profile-a', 'A', 0, now());
+
+-- A claim on an id no fixture row uses, so the claim guard trigger
+-- (20260920120000) never fires during the routine/session probes.
+INSERT INTO public.profile_ownership_claims (entity_type, entity_id, user_id, target_profile_id, mutation_id)
+VALUES ('workout_session', 'a1a1a1a1-0039-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a', 'rls-local-profile-a',
+        'a1a1a1a1-0037-4000-8000-00000000000a');
+
+INSERT INTO public.workout_deletion_tombstones
+    (mutation_id, user_id, request_hash, scope, portal_session_id, deleted_at)
+VALUES ('a1a1a1a1-0038-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a', 'rls-fixture', 'WORKOUT',
+        -- not A's live session: guard_workout_tombstone would freeze it
+        'a1a1a1a1-0040-4000-8000-00000000000a', now());
+
 -- One row per private user-owned relation.
 --   key_col / row_key: how the probe finds A's fixture row.
 --   owner_select: rows A must see; NULL = service-only (expect <= 0).
@@ -525,8 +539,6 @@ INSERT INTO rls_cases VALUES
     ('rep_summaries',             'id', 'a1a1a1a1-0004-4000-8000-00000000000a', 1, NULL, NULL, $s$rep_number = 99$s$),
     ('rep_telemetry',             'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 0, NULL, NULL, $s$timestamp_ms = 99$s$),
     ('telemetry_points',          'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 0, NULL, NULL, $s$timestamp_ms = 99$s$),
-    ('rep_telemetry',             'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 1, NULL, NULL, $s$timestamp_ms = 99$s$),
-    ('telemetry_points',          'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 1, NULL, NULL, $s$timestamp_ms = 99$s$),
     ('routines',                  'id', 'a1a1a1a1-0006-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
     ('routine_exercises',         'id', 'a1a1a1a1-0007-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
     ('training_cycles',           'id', 'a1a1a1a1-0008-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
@@ -542,9 +554,7 @@ INSERT INTO rls_cases VALUES
     ('earned_badges',             'id', 'a1a1a1a1-0018-4000-8000-00000000000a', 1, NULL, 1,    $s$badge_name = 'rls-probe'$s$),
     ('exercise_catalog',          'id', 'rls-custom-exercise-a',                1, 1,    1,    $s$display_name = 'rls-probe'$s$),
     ('exercise_signatures',       'id', 'a1a1a1a1-0019-4000-8000-00000000000a', 0, NULL, NULL, $s$exercise_id = 'rls-probe'$s$),
-    ('exercise_signatures',       'id', 'a1a1a1a1-0019-4000-8000-00000000000a', 1, NULL, NULL, $s$exercise_id = 'rls-probe'$s$),
     ('external_activities',       'id', 'a1a1a1a1-0020-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
-    ('gamification_stats',        'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$pr_count = 99$s$),
     ('gamification_stats',        'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, NULL, NULL, $s$pr_count = 99$s$),
     ('goal_snapshots',            'id', 'a1a1a1a1-0021-4000-8000-00000000000a', 1, NULL, NULL, $s$progress_pct = 99$s$),
     -- Client DML is revoked; access goes through definer RPCs
@@ -556,11 +566,9 @@ INSERT INTO rls_cases VALUES
     ('paddle_webhook_events',     'id', 'a1a1a1a1-0024-4000-8000-00000000000a', NULL, NULL, NULL, $s$payload = '{}'::jsonb$s$),
     ('profiles',                  'id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1,    NULL, $s$display_name = 'rls-probe'$s$),
     ('rate_limit_tracking',       'id', 'a1a1a1a1-0025-4000-8000-00000000000a', NULL, NULL, NULL, $s$provider = 'rls-probe'$s$),
-    ('rpg_attributes',            'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$level = 99$s$),
     ('rpg_attributes',            'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, NULL, NULL, $s$level = 99$s$),
     ('saved_community_items',     'id', 'a1a1a1a1-0026-4000-8000-00000000000a', 1, NULL, 1,    $s$item_type = 'cycle'$s$),
     ('session_phase_statistics',  'id', 'a1a1a1a1-0028-4000-8000-00000000000a', 0, NULL, NULL, $s$concentric_kg_avg = 99$s$),
-    ('session_phase_statistics',  'id', 'a1a1a1a1-0028-4000-8000-00000000000a', 1, NULL, NULL, $s$concentric_kg_avg = 99$s$),
     ('subscription_events',       'id', 'a1a1a1a1-0029-4000-8000-00000000000a', NULL, NULL, NULL, $s$operation = 'UPDATE'$s$),
     ('sync_queue',                'id', 'a1a1a1a1-0030-4000-8000-00000000000a', 1, NULL, NULL, $s$provider = 'rls-probe'$s$),
     ('sync_tombstones',           'entity_id', 'a1a1a1a1-0035-4000-8000-00000000000a', 1, NULL, NULL, $s$deleted_at = '2000-01-01T00:00:00Z'$s$),
@@ -568,6 +576,12 @@ INSERT INTO rls_cases VALUES
     ('user_insights',             'id', 'a1a1a1a1-0032-4000-8000-00000000000a', 1, NULL, NULL, $s$title = 'rls-probe'$s$),
     ('user_onboarding',           'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', 1, 1, NULL, $s$version_seen = 'rls-probe'$s$),
     ('vbt_assessments',           'id', 'a1a1a1a1-0033-4000-8000-00000000000a', 0, NULL, NULL, $s$estimated_1rm_kg = 99$s$),
+    ('leaderboard_snapshots',     'user_id', 'a1a1a1a1-0000-4000-8000-00000000000a', NULL, NULL, NULL, $s$value = 0$s$),
+    ('profile_ownership_claims',  'entity_id', 'a1a1a1a1-0039-4000-8000-00000000000a', NULL, NULL, NULL, $s$target_profile_id = 'rls-probe'$s$),
+    ('profile_ownership_events',  'mutation_id', 'a1a1a1a1-0037-4000-8000-00000000000a', 1, NULL, NULL, $s$target_profile_name = 'rls-probe'$s$),
+    ('profile_ownership_transfers', 'mutation_id', 'a1a1a1a1-0037-4000-8000-00000000000a', NULL, NULL, NULL, $s$request_hash = 'rls-probe'$s$),
+    ('training_cycle_deletion_tombstones', 'cycle_id', 'a1a1a1a1-0036-4000-8000-00000000000a', NULL, NULL, NULL, $s$deleted_at = '2000-01-01T00:00:00Z'$s$),
+    ('workout_deletion_tombstones', 'mutation_id', 'a1a1a1a1-0038-4000-8000-00000000000a', 1, NULL, NULL, $s$request_hash = 'rls-probe'$s$),
     ('wearable_daily_summaries',  'id', 'a1a1a1a1-0034-4000-8000-00000000000a', 1, NULL, NULL, $s$provider = 'rls-probe'$s$);
 
 -- PR 38: force-curve and biomechanics relations whose SELECT policy requires
@@ -583,9 +597,6 @@ INSERT INTO rls_inferno_gated VALUES
     ('vbt_assessments'),
     ('session_phase_statistics'),
     ('exercise_signatures');
-
-    ('vbt_assessments',           'id', 'a1a1a1a1-0033-4000-8000-00000000000a', 1, NULL, NULL, $s$estimated_1rm_kg = 99$s$),
-    ('wearable_daily_summaries',  'id', 'a1a1a1a1-0034-4000-8000-00000000000a', 1, NULL, NULL, $s$provider = 'rls-probe'$s$);
 
 -- Public relations with a user_id column that are readable by design and
 -- therefore not isolation cases:
@@ -739,8 +750,6 @@ SELECT is(
         ) others
         WHERE others.n > 0
           -- B's subscription is needed for owner-tier positive controls; no client UPDATE/DELETE
-          -- B's subscription is needed for FLAME; no client UPDATE/DELETE
-          -- B's subscription is needed for EMBER; no client UPDATE/DELETE
           -- policy may ever match it, so the blind probe still expects 0.
           AND rc.table_name <> 'subscriptions'
     ),
@@ -969,11 +978,6 @@ INSERT INTO spoof_cases VALUES
     -- only `notes`, so the user_id rewrite is refused by the column grant
     -- before any row is matched; no setup row is needed.
     ('workout_sessions: UPDATE own row to user_id = A',
-     $q$INSERT INTO public.workout_sessions (id, user_id) VALUES ('b2b2b2b2-0001-4000-8000-00000000000b', 'b2b2b2b2-0000-4000-8000-00000000000b')$q$,
-    -- Clients cannot INSERT sessions (server-written only) and may UPDATE
-    -- only `notes`, so the user_id rewrite is refused by the column grant
-    -- before any row is matched; no setup row is needed.
-    ('workout_sessions: UPDATE own row to user_id = A',
      NULL,
      $q$UPDATE public.workout_sessions SET user_id = 'a1a1a1a1-0000-4000-8000-00000000000a'$q$),
     ('routines: UPDATE own row to user_id = A',
@@ -1089,9 +1093,6 @@ SELECT throws_ok(
 
 SELECT is(
     public.user_has_min_tier('INFERNO'),
-    false,
-    'A still does not hold INFERNO after the attempts'
-    public.user_has_min_tier('FLAME'),
     false,
     'A still does not hold INFERNO after the attempts'
 );

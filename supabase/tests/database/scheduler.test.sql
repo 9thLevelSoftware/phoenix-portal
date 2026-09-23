@@ -282,9 +282,6 @@ SELECT cron.schedule(
 SELECT lives_ok(
     $$ SELECT private.schedule_sync_queue_jobs() $$,
     'schedule_sync_queue_jobs runs with pg_cron installed and removes legacy tombstone retention'
-SELECT lives_ok(
-    $$ SELECT private.schedule_sync_queue_jobs() $$,
-    'schedule_sync_queue_jobs runs with pg_cron installed'
 );
 
 CREATE OR REPLACE FUNCTION pg_temp.scheduler_jobs() RETURNS TABLE(jobname text, schedule text, command text, active boolean, jobid bigint)
@@ -306,16 +303,6 @@ SELECT set_eq(
 SELECT is(
     (SELECT count(*)::int FROM pg_temp.scheduler_jobs()),
     2,
-        ('sync-tombstones-retention', '23 3 * * *',
-         'DELETE FROM public.sync_tombstones WHERE deleted_at < now() - interval ''180 days'''),
-        ('cron-job-run-details-retention', '41 3 * * *',
-         'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days''')
-    $$,
-    'the three scheduler jobs exist with the expected schedule and command'
-);
-SELECT is(
-    (SELECT count(*)::int FROM pg_temp.scheduler_jobs()),
-    3,
     'each scheduler job exists exactly once'
 );
 SELECT is(
