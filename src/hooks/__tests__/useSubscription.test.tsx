@@ -1,5 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import {
+	focusManager,
+	QueryClient,
+	QueryClientProvider,
+} from "@tanstack/react-query";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -381,6 +385,57 @@ describe("useSubscription entitlement boundary", () => {
 		});
 		expect(result.current.isEntitled).toBe(false);
 	}, 10_000);
+});
+
+// NF-35 review: returning from Paddle must refetch even while the row is fresh.
+describe("useSubscription window focus", () => {
+	beforeEach(() => {
+		mockSubscriptionError = null;
+		mockSubscriptionRow = null;
+	});
+
+	it("refetches a still-fresh subscription when the window regains focus", async () => {
+		mockSubscriptionRow = {
+			tier: "EMBER",
+			status: "active",
+			price_id: "pri_ember_monthly",
+			current_period_end: "2999-04-01T00:00:00Z",
+			cancel_at_period_end: false,
+		};
+		// Mirror the app's QueryProvider, which turns focus refetch off globally.
+		const queryClient = new QueryClient({
+			defaultOptions: {
+				queries: { retry: false, refetchOnWindowFocus: false },
+			},
+		});
+		const { result } = renderHook(() => useSubscription(), {
+			wrapper: ({ children }: { children: ReactNode }) => (
+				<QueryClientProvider client={queryClient}>
+					{children}
+				</QueryClientProvider>
+			),
+		});
+		await waitFor(() => expect(result.current.tier).toBe("EMBER"));
+
+		// The upgrade landed while the user was on Paddle's page; the cached row
+		// is well inside its 5-minute staleTime.
+		mockSubscriptionRow = {
+			...mockSubscriptionRow,
+			tier: "INFERNO",
+			price_id: "pri_inferno_monthly",
+		};
+		try {
+			act(() => {
+				focusManager.setFocused(false);
+			});
+			act(() => {
+				focusManager.setFocused(true);
+			});
+			await waitFor(() => expect(result.current.tier).toBe("INFERNO"));
+		} finally {
+			focusManager.setFocused(undefined);
+		}
+	});
 });
 
 describe("useSubscription billing action", () => {
