@@ -11695,6 +11695,26 @@ Deno.test(`profile guard (LWW=${SYNC_LWW_ENABLED}): rows held by the default pro
   );
 });
 
+Deno.test(`profile guard (LWW=${SYNC_LWW_ENABLED}): a rejected session's sets mint no fallback PRs`, async () => {
+  const harness = makeHarness(undefined, { tableResults: storedUnderProfile(null) });
+  const body = namedProfileBody();
+  const [session] = body.sessions as Array<Record<string, unknown>>;
+  const exercises = (session.exercises as Array<Record<string, unknown>>).map((exercise) => ({
+    ...exercise,
+    sets: (exercise.sets as Array<Record<string, unknown>>).map((set) => ({
+      ...set, isPr: true, prType: "MAX_WEIGHT", prPhase: "COMBINED",
+    })),
+  }));
+  body.sessions = [{ ...session, exercises }];
+  delete body.personalRecords;
+  const response = await harness.handler(requestFromBody(body));
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  assertEquals(
+    harness.adminRpcCalls.filter((call) => call.name === "upsert_set_derived_personal_records"),
+    [],
+  );
+});
+
 Deno.test(`profile guard (LWW=${SYNC_LWW_ENABLED}): rows already held by the pushing profile are written`, async () => {
   const harness = makeHarness(undefined, { tableResults: storedUnderProfile(PROFILE_B_ID) });
   const response = await harness.handler(requestFromBody(namedProfileBody()));

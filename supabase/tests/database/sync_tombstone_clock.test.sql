@@ -113,10 +113,10 @@ SELECT results_eq(
     $sql$,
     $values$ VALUES
       ('cycle'::text, '24242424-0000-4000-8000-0000000000c2'::uuid, true),
-      ('cycle'::text, '24242424-0000-4000-8000-0000000000c4'::uuid, true),
-      ('cycle'::text, '24242424-0000-4000-8000-0000000000c3'::uuid, false)
+      ('cycle'::text, '24242424-0000-4000-8000-0000000000c3'::uuid, false),
+      ('cycle'::text, '24242424-0000-4000-8000-0000000000c4'::uuid, true)
     $values$,
-    'equal or missing clocks are skipped; a strictly newer clock wins; live rows and ids with no tombstone are not reported'
+    'rows come back in (entity, id) order: equal or missing clocks are skipped; a strictly newer clock wins; live rows and ids with no tombstone are not reported'
 );
 SELECT results_eq(
     $sql$ SELECT entity_id FROM public.sync_tombstones

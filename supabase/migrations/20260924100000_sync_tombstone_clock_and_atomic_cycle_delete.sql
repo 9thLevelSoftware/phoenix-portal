@@ -221,7 +221,11 @@ BEGIN
     RAISE EXCEPTION 'apply_sync_tombstone_gate: p_user_id is required' USING ERRCODE = '22023';
   END IF;
 
-  FOR v_row IN SELECT value FROM jsonb_array_elements(COALESCE(p_rows, '[]'::JSONB))
+  -- Stable (entity, id) order, so two pushes gating the same rows in
+  -- opposite payload orders take the row/tombstone locks in the same order.
+  FOR v_row IN
+    SELECT value FROM jsonb_array_elements(COALESCE(p_rows, '[]'::JSONB))
+     ORDER BY value ->> 'entity', (value ->> 'id')::UUID
   LOOP
     v_entity := v_row ->> 'entity';
     v_id := (v_row ->> 'id')::UUID;

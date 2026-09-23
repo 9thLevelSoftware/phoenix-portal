@@ -2771,8 +2771,12 @@ async function mobileSyncPushHandler(
     // clients. Set-derived rows remain the fallback for old clients that only
     // send isPr/prType/prPhase/prVolume on sets.
     // =========================================================================
+    // No set-derived fallback rows from a blocked session: one held by another
+    // local profile (204-D) would otherwise mint current-profile PRs pointing
+    // at that profile's row. An LWW-rejected session stays in: its row is this
+    // profile's, and an identical re-push must stay idempotent (PR 57).
     let prRows = buildPersonalRecordRowsForPush(
-      payload.sessions ?? [],
+      (payload.sessions ?? []).filter((s) => !blockedWorkoutSessionIds.has(s.id)),
       payload.personalRecords ?? [],
       userId,
       localProfileId,
