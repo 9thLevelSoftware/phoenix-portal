@@ -42,7 +42,9 @@ export const SYNC_LWW_ENABLED = parseBoolFlag("SYNC_LWW_ENABLED");
  * and the device retries (503 partial_write_retry). When true, the handler
  * opens a connection with SUPABASE_DB_URL and runs the same Design K calls
  * inside BEGIN … COMMIT (see _shared/pushTransaction.ts): a failure commits
- * nothing, and the broadcast happens only after COMMIT. Exactly "true"
- * enables it; the response contract is identical either way.
+ * nothing, and the broadcast happens only after COMMIT. A push must commit
+ * within PUSH_TRANSACTION_TIMEOUT_MS (100 s, inside the pull's two-minute
+ * re-read overlap) or Postgres ends it and the device retries. Exactly
+ * "true" enables it; the response contract is identical either way.
  */
 export const SYNC_PUSH_TRANSACTION = parseBoolFlag("SYNC_PUSH_TRANSACTION");
