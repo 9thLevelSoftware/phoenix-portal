@@ -331,7 +331,7 @@ async function runLiftosaurSync(
 			}
 
 			// Update user_integrations with non-sensitive status only
-			await supabase.from("user_integrations").upsert(
+			const { error: statusError } = await supabase.from("user_integrations").upsert(
 				{
 					user_id: userId,
 					provider: "liftosaur",
@@ -340,6 +340,13 @@ async function runLiftosaurSync(
 				},
 				{ onConflict: "user_id,provider" }
 			);
+			if (statusError) {
+				console.error("Failed to mark Liftosaur connected:", statusError);
+				return new Response(
+					JSON.stringify({ error: "Failed to save the connection. Please retry." }),
+					{ status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+				);
+			}
 		}
 
 		// Retrieve the stored API key from oauth_tokens (server-only)
@@ -526,6 +533,15 @@ async function runLiftosaurSync(
 		// with an explicit, non-retryable error where it is not.
 		if (fetched.truncated) {
 			const outcome = resolveLiftosaurTruncation(fetched, plan, effectiveSyncType, importedCount);
+			// No state write for a row this run no longer owns (a disconnect
+			// cancelled it, or a lease reclaim handed it on): writing the
+			// cursor would mark a disconnected integration connected again.
+			if (!(await queueRowStillOwned(supabase, ownedQueueId, userId))) {
+				return new Response(
+					JSON.stringify({ error: "Sync queue entry is no longer this run's", code: "queue_not_owned" }),
+					{ status: 409, headers: { ...cors, "Content-Type": "application/json" } },
+				);
+			}
 			const { error: cursorError } = await updateIntegration(outcome.columns);
 			if (cursorError) return await saveFailed("cursor_save_failed", cursorError);
 			console.warn(outcome.message);
@@ -535,42 +551,42 @@ async function runLiftosaurSync(
 				imported: importedCount,
 			};
 			if (outcome.kind === "continue") {
-				// This run is done; complete its row FIRST, because
-				// sync_queue_one_active allows one active row per user/provider
-				// and this one is still `processing`. Then make sure a run follows.
-				const completed = await completeSyncQueueEntry(supabase, {
-					userId,
-					provider: "liftosaur",
-					queueId: ownedQueueId,
-				});
-				// A row still `processing` would make the follow-up insert
-				// conflict and read as "already queued". Retry instead: the row
-				// stays processing, so the processor re-queues it, and the saved
-				// cursor makes the retry continue where this run stopped.
-				if (!completed) {
-					return new Response(
-						JSON.stringify({ ...base, error: "Failed to complete the sync queue entry", code: "queue_complete_failed" }),
-						{ status: 502, headers: { ...cors, "Content-Type": "application/json" } },
-					);
-				}
-				// The cursor is stored either way, so any later non-initial sync
-				// continues the chain even if the follow-up could not be queued.
-				// (A 502 here would not help: the processor only re-queues rows
-				// that are still `processing`, and this one is completed.)
-				let followUpQueued = await ensureFollowUpTask(supabase, userId);
-				if (!followUpQueued && ownedQueueId) {
-					// The follow-up insert failed, and this row is already
-					// completed, so nothing would resume the chain. Reopen this
-					// row as the follow-up (incremental, so it continues from the
-					// saved cursor instead of restarting).
-					const { data: reopened } = await supabase
+				// Hand this run's own row on as the follow-up in ONE conditional
+				// update: `processing` -> `pending` incremental, so it continues
+				// from the saved cursor. Atomic, so the chain can never be left
+				// with this row completed and no follow-up; and it matches only
+				// while the row is still ours. (sync_queue_one_active allows one
+				// active row per user/provider, so the row is reused rather than
+				// completed plus a new insert.) A run without a queue row inserts
+				// the follow-up instead.
+				let followUpQueued: boolean;
+				if (ownedQueueId) {
+					const { data: handedOn, error: handOnError } = await supabase
 						.from("sync_queue")
-						.update({ status: "pending", sync_type: "incremental", started_at: null, completed_at: null })
+						.update({
+							status: "pending",
+							sync_type: "incremental",
+							started_at: null,
+							completed_at: null,
+							error_message: null,
+							retry_count: 0,
+						})
 						.eq("id", ownedQueueId)
 						.eq("user_id", userId)
-						.eq("status", "completed")
+						.eq("status", "processing")
 						.select("id");
-					followUpQueued = Array.isArray(reopened) && reopened.length > 0;
+					followUpQueued = !handOnError && Array.isArray(handedOn) && handedOn.length > 0;
+					if (!followUpQueued) {
+						// Still processing (a write error): the processor re-queues
+						// it and the saved cursor continues the chain. Lost (0 rows):
+						// nothing of ours to hand on.
+						return new Response(
+							JSON.stringify({ ...base, error: "Failed to queue the backfill follow-up", code: "follow_up_failed" }),
+							{ status: handOnError ? 502 : 409, headers: { ...cors, "Content-Type": "application/json" } },
+						);
+					}
+				} else {
+					followUpQueued = await ensureFollowUpTask(supabase, userId);
 				}
 				return new Response(
 					JSON.stringify({
