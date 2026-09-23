@@ -26,6 +26,7 @@ const queueRow = (id: string, syncType: string, status: string, startedAt: strin
   started_at: startedAt,
   completed_at: null,
   error_message: null,
+  retry_count: 0,
 });
 
 function tables(syncQueue: Row[]): Record<string, Row[]> {
@@ -124,7 +125,9 @@ function harness(
     (async () => {
       if (args.p_queue_id) {
         const owned = db.rows("sync_queue").some((r) =>
-          r.id === args.p_queue_id && r.user_id === args.p_user_id && r.status === "processing"
+          r.id === args.p_queue_id && r.user_id === args.p_user_id && r.status === "processing" &&
+          (args.p_attempt === null || args.p_attempt === undefined ||
+            Number(r.retry_count ?? 0) === args.p_attempt)
         );
         if (!owned) return { data: false, error: null };
       }
@@ -293,6 +296,21 @@ function claim(db: FakeDb, index: number, id: string): void {
   row.status = "processing";
   row.started_at = CLAIMED_AT;
 }
+
+Deno.test("liftosaur-sync: a worker whose lease was reclaimed writes no state", async () => {
+  const db = new FakeDb(tables([{ ...queueRow(QUEUE_ID, "manual", "processing", CLAIMED_AT), retry_count: 0 }]));
+  const upstream = descendingLiftosaur(5);
+  const reclaimMidRun = (input: string | URL | Request) => {
+    // process-sync-queue reclaimed the stale lease and a new worker holds it.
+    const row = db.rows("sync_queue")[0];
+    row.retry_count = 1;
+    return upstream.fetch(input);
+  };
+  const res = await harness(db, reclaimMidRun)({ sync_type: "manual", queue_id: QUEUE_ID });
+  assertEquals(res.status, 409, await res.clone().text());
+  assertEquals(db.rows("user_integrations")[0].last_sync_at, null);
+  assertEquals(db.rows("sync_queue")[0].status, "processing", "left to the new worker");
+});
 
 Deno.test("liftosaur-sync: a failed follow-up hand-on is retried, never reported as queued", async () => {
   const db = new FakeDb(

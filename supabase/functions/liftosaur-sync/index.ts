@@ -279,6 +279,21 @@ async function runLiftosaurSync(
 			owned.userId = userId;
 		}
 
+		// The claim generation of this run's row. process-sync-queue's stale-
+		// lease reclaim increments retry_count before another worker takes the
+		// same id, so a state save or hand-on that also matches retry_count
+		// cannot be made by a worker whose lease was reclaimed.
+		let ownedAttempt: number | null = null;
+		if (ownedQueueId) {
+			const { data: claimRow } = await supabase
+				.from("sync_queue")
+				.select("retry_count")
+				.eq("id", ownedQueueId)
+				.eq("user_id", userId)
+				.maybeSingle();
+			ownedAttempt = Number((claimRow as { retry_count?: number } | null)?.retry_count ?? 0);
+		}
+
 		// If api_key provided, store it in oauth_tokens (server-only table)
 		if (api_key) {
 			// A new key may be another account: drop the previous key's backfill
@@ -515,6 +530,7 @@ async function runLiftosaurSync(
 				p_user_id: userId,
 				p_provider: "liftosaur",
 				p_queue_id: ownedQueueId ?? null,
+				p_attempt: ownedAttempt,
 				p_state: values,
 			});
 			return { owned: data !== false, error };
@@ -586,6 +602,7 @@ async function runLiftosaurSync(
 						.eq("id", ownedQueueId)
 						.eq("user_id", userId)
 						.eq("status", "processing")
+						.eq("retry_count", ownedAttempt ?? 0)
 						.select("id");
 					followUpQueued = !handOnError && Array.isArray(handedOn) && handedOn.length > 0;
 					if (!followUpQueued) {
