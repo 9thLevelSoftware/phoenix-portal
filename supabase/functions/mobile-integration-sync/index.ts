@@ -353,7 +353,7 @@ async function mobileIntegrationSyncHandler(
       }
 
       // Update user_integrations status
-      await supabase
+      const { error: stateError } = await supabase
         .from('user_integrations')
         .upsert(
           {
@@ -370,6 +370,15 @@ async function mobileIntegrationSyncHandler(
           },
           { onConflict: 'user_id,provider' }
         );
+      if (stateError) {
+        // A Liftosaur key whose previous cursor was not cleared must not be
+        // read against it; retryable.
+        console.error(`Failed to save ${provider} connection state:`, stateError);
+        return new Response(
+          JSON.stringify({ status: 'error', error: 'Failed to save connection state. Please retry.' }),
+          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
 
       return await importActivities({
         supabase, userId, provider, apiKey, action: 'connect', cors, deps,
