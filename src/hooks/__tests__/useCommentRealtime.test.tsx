@@ -13,6 +13,7 @@ type MockChannel = {
 const mocks = vi.hoisted(() => {
 	const invalidateQueries = vi.fn();
 	const getQueryData = vi.fn();
+	const isFetching = vi.fn(() => 0);
 	const removeChannel = vi.fn();
 	const channels = new Map<string, MockChannel & { subscribed: boolean }>();
 	const channelTopics: string[] = [];
@@ -42,6 +43,7 @@ const mocks = vi.hoisted(() => {
 		channelTopics,
 		invalidateQueries,
 		getQueryData,
+		isFetching,
 		removeChannel,
 		mockSupabase: {
 			channel: vi.fn((topic: string) => {
@@ -62,6 +64,8 @@ const mocks = vi.hoisted(() => {
 			channelTopics.length = 0;
 			invalidateQueries.mockClear();
 			getQueryData.mockReset();
+			isFetching.mockReset();
+			isFetching.mockReturnValue(0);
 			removeChannel.mockClear();
 			this.mockSupabase.channel.mockClear();
 		},
@@ -72,6 +76,7 @@ vi.mock("@tanstack/react-query", () => ({
 	useQueryClient: () => ({
 		invalidateQueries: mocks.invalidateQueries,
 		getQueryData: mocks.getQueryData,
+		isFetching: mocks.isFetching,
 	}),
 }));
 
@@ -139,6 +144,21 @@ describe("useCommentRealtime", () => {
 			render(<TestComponent />);
 
 			deleteHandler()({ old: { id: "comment-1" } });
+			vi.advanceTimersByTime(1000);
+
+			expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["comments", ITEM_ID],
+			});
+		});
+
+		it("invalidates on a delete of an uncached comment while a refetch is in flight", () => {
+			mocks.reset();
+			vi.useFakeTimers();
+			mocks.getQueryData.mockReturnValue([{ id: "comment-1" }]);
+			mocks.isFetching.mockReturnValue(1);
+			render(<TestComponent />);
+
+			deleteHandler()({ old: { id: "comment-new" } });
 			vi.advanceTimersByTime(1000);
 
 			expect(mocks.invalidateQueries).toHaveBeenCalledWith({
