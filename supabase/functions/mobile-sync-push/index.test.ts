@@ -7956,7 +7956,9 @@ async function createTombstonePushFixture(): Promise<TombstonePushFixture> {
   try {
     const subscription = await admin.from("subscriptions").insert({
       user_id: ownerId,
-      tier: "EMBER",
+      // FLAME: the fixture also authors routines/cycles through the portal
+      // (asPortalUser), which is FLAME-only since 20260920000900.
+      tier: "FLAME",
       status: "active",
       current_period_end: "2099-01-01T00:00:00.000Z",
     });
@@ -8173,15 +8175,13 @@ function realGatePushHandler(
 ): (request: Request) => Promise<Response> {
   const admin = new Proxy(fixture.admin, {
     get(target, property, receiver) {
+      // broadcastSyncComplete posts through channel(topic, opts).httpSend
+      // (no WebSocket join); realtime.setAuth passes through to the client.
       if (property === "channel") {
         return (topic: string) => ({
-          subscribe(callback: (status: string) => void) {
-            callback("SUBSCRIBED");
-            return {};
-          },
-          async send() {
+          async httpSend() {
             broadcastTopics.push(topic);
-            return "ok";
+            return { success: true };
           },
         });
       }

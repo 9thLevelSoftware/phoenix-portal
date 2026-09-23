@@ -629,11 +629,14 @@ Deno.test({
         id: crypto.randomUUID(),
         user_id: fixture.ownerId,
         provider: "strava",
+        // Terminal: only one pending/processing row per user/provider (PR 52).
+        status: "completed",
       }));
       const otherRows = Array.from({ length: 30 }, () => ({
         id: crypto.randomUUID(),
         user_id: fixture.otherId,
         provider: "fitbit",
+        status: "completed",
       }));
       await insertOrThrow(fixture.admin, "sync_queue", [...ownerRows, ...otherRows]);
 
@@ -812,6 +815,8 @@ Deno.test({
         id: crypto.randomUUID(),
         user_id: fixture.ownerId,
         provider: providers[i % 2],
+        // Terminal: only one pending/processing row per user/provider (PR 52).
+        status: "completed",
       }));
       await insertOrThrow(fixture.admin, "sync_queue", [
         ...ownerRows,
@@ -819,6 +824,7 @@ Deno.test({
           id: crypto.randomUUID(),
           user_id: fixture.otherId,
           provider: providers[0],
+          status: "completed",
         })),
       ]);
       // Synthetic composite-keyed entry: no composite-keyed manifest table
