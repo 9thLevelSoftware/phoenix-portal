@@ -63,6 +63,12 @@ CREATE INDEX IF NOT EXISTS comment_rate_events_user_created_idx
 
 REVOKE ALL ON TABLE private.comment_rate_events FROM PUBLIC, anon, authenticated;
 
+-- No comment may commit between the backfill below and the trigger swap:
+-- one written under the old trigger would leave no rate event, and the new
+-- limiter counts only events. SHARE ROW EXCLUSIVE blocks INSERTs (not reads)
+-- until this transaction commits.
+LOCK TABLE public.community_comments IN SHARE ROW EXCLUSIVE MODE;
+
 -- Carry the current hour's window over once, from the comments that exist.
 INSERT INTO private.comment_rate_events (user_id, created_at)
 SELECT c.user_id, c.created_at
