@@ -1,32 +1,23 @@
-import { useQuery } from "@tanstack/react-query";
 import {
-	Award,
 	BarChart3,
-	CreditCard,
+	ChevronDown,
 	Dumbbell,
-	Flame,
 	History,
 	LayoutDashboard,
-	Link2,
-	Palette,
 	Repeat,
+	Settings,
+	Target,
 	Trophy,
 	User,
 	Users,
 } from "lucide-react";
 import * as React from "react";
 import { NavLink, useLocation } from "react-router";
-import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuSeparator,
-	DropdownMenuSub,
-	DropdownMenuSubContent,
-	DropdownMenuSubTrigger,
-	DropdownMenuTrigger,
-} from "@/app/components/ui/dropdown-menu";
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@/app/components/ui/collapsible";
 import {
 	Sidebar,
 	SidebarContent,
@@ -42,13 +33,9 @@ import {
 	useSidebar,
 } from "@/app/components/ui/sidebar";
 import { useAuth } from "@/app/hooks/useAuth";
-import { PHOENIX } from "@/lib/colors";
-import { profileOptions } from "@/queries/profile";
-import { useUIStore } from "@/stores/useUIStore";
 import { LocalProfileFilter } from "./LocalProfileFilter";
 import { PhoenixLogo } from "./PhoenixLogo";
 import { ThemeToggle } from "./ThemeToggle";
-import { TierBadge } from "./TierBadge";
 
 // ---------------------------------------------------------------------------
 // Nav group definitions
@@ -63,33 +50,28 @@ type NavItem = {
 type NavGroup = {
 	label: string;
 	items: NavItem[];
+	collapsible?: boolean;
 };
 
 const navGroups: NavGroup[] = [
 	{
-		label: "Training",
+		label: "Train",
+		collapsible: true,
 		items: [
 			{ path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
 			{ path: "/history", label: "Workouts", icon: History },
-			{ path: "/analytics", label: "Analytics", icon: BarChart3 },
 			{ path: "/routines", label: "Routines", icon: Dumbbell },
-			{ path: "/cycles", label: "Cycles", icon: Repeat },
+			{ path: "/cycles", label: "Training Cycles", icon: Repeat },
 		],
 	},
 	{
-		label: "Social",
+		label: "Explore",
 		items: [
+			{ path: "/analytics", label: "Analytics", icon: BarChart3 },
+			{ path: "/goals", label: "Goals", icon: Target },
+			{ path: "/leaderboard", label: "Leaderboard", icon: Trophy },
 			{ path: "/community", label: "Community", icon: Users },
 			{ path: "/challenges", label: "Challenges", icon: Trophy },
-			{ path: "/leaderboard", label: "Leaderboard", icon: Award },
-		],
-	},
-	{
-		label: "Account",
-		items: [
-			{ path: "/profile", label: "Profile", icon: User },
-			{ path: "/integrations", label: "Integrations", icon: Link2 },
-			{ path: "/pricing", label: "Subscription", icon: CreditCard },
 		],
 	},
 ];
@@ -159,27 +141,58 @@ function useAutoCollapse() {
 export function AppSidebar() {
 	const location = useLocation();
 	const { user, signOut } = useAuth();
-	const streak = useUIStore((s) => s.streak);
 	const { state } = useSidebar();
 	const isCollapsed = state === "collapsed";
 
 	useAutoCollapse();
 
 	const userId = user?.id ?? "";
-	const { data: profile } = useQuery({
-		...profileOptions(userId),
-		enabled: !!userId,
-	});
+	const isNavItemActive = (item: NavItem) => {
+		if (item.path.includes("?")) {
+			return `${location.pathname}${location.search}` === item.path;
+		}
 
-	// Derive user initials from profile display name or email
-	const displayName =
-		profile?.display_name ?? user?.email?.split("@")[0] ?? "User";
-	const initials = displayName
-		.split(" ")
-		.map((n: string) => n[0])
-		.join("")
-		.toUpperCase()
-		.slice(0, 2);
+		return (
+			location.pathname === item.path ||
+			(item.path !== "/dashboard" &&
+				location.pathname.startsWith(`${item.path}/`))
+		);
+	};
+
+	const renderNavItems = (items: NavItem[]) =>
+		items.map((item) => {
+			const isActive = isNavItemActive(item);
+			return (
+				<SidebarMenuItem key={item.path}>
+					<SidebarMenuButton
+						asChild
+						isActive={isActive}
+						tooltip={item.label}
+						size="lg"
+						className={
+							isActive
+								? "group-data-[collapsible=icon]:ring-1 group-data-[collapsible=icon]:ring-primary/20"
+								: undefined
+						}
+					>
+						<NavLink
+							to={item.path}
+							className="relative"
+							aria-label={item.label}
+							aria-current={isActive ? "page" : undefined}
+						>
+							<item.icon className="shrink-0" />
+							<span className="group-data-[collapsible=icon]:hidden">
+								{item.label}
+							</span>
+							{isActive && (
+								<span className="absolute left-0 top-1 bottom-1 w-[3px] bg-primary rounded-full group-data-[collapsible=icon]:hidden" />
+							)}
+						</NavLink>
+					</SidebarMenuButton>
+				</SidebarMenuItem>
+			);
+		});
 
 	return (
 		<Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -218,137 +231,125 @@ export function AppSidebar() {
 						{groupIndex > 0 && (
 							<SidebarSeparator className="sidebar-separator-phoenix" />
 						)}
-						<SidebarGroup>
-							<SidebarGroupLabel className="eyebrow text-muted-foreground">
-								{group.label}
-							</SidebarGroupLabel>
-							<SidebarMenu>
-								{group.items.map((item) => {
-									const isActive =
-										location.pathname === item.path ||
-										(item.path !== "/dashboard" &&
-											location.pathname.startsWith(item.path));
-									return (
-										<SidebarMenuItem key={item.path}>
-											<SidebarMenuButton
-												asChild
-												isActive={isActive}
-												tooltip={item.label}
-												size="lg"
-												className={
-													isActive
-														? "group-data-[collapsible=icon]:ring-1 group-data-[collapsible=icon]:ring-primary/20"
-														: undefined
-												}
-											>
-												<NavLink
-													to={item.path}
-													className="relative"
-													aria-label={item.label}
-												>
-													<item.icon className="shrink-0" />
-													<span className="group-data-[collapsible=icon]:hidden">
-														{item.label}
-													</span>
-													{isActive && (
-														<span className="absolute left-0 top-1 bottom-1 w-[3px] bg-primary rounded-full group-data-[collapsible=icon]:hidden" />
-													)}
-												</NavLink>
-											</SidebarMenuButton>
-										</SidebarMenuItem>
-									);
-								})}
-							</SidebarMenu>
-						</SidebarGroup>
+						{group.collapsible ? (
+							<Collapsible defaultOpen>
+								<SidebarGroup>
+									<SidebarGroupLabel
+										asChild
+										className="eyebrow text-muted-foreground"
+									>
+										<CollapsibleTrigger className="w-full justify-between">
+											{group.label}
+											<ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
+										</CollapsibleTrigger>
+									</SidebarGroupLabel>
+									<CollapsibleContent>
+										<SidebarMenu>{renderNavItems(group.items)}</SidebarMenu>
+									</CollapsibleContent>
+								</SidebarGroup>
+							</Collapsible>
+						) : (
+							<SidebarGroup>
+								<SidebarGroupLabel className="eyebrow text-muted-foreground">
+									{group.label}
+								</SidebarGroupLabel>
+								<SidebarMenu>{renderNavItems(group.items)}</SidebarMenu>
+							</SidebarGroup>
+						)}
 					</React.Fragment>
 				))}
 			</SidebarContent>
 
 			{/* ----------------------------------------------------------------- */}
-			{/* Footer: Avatar dropdown + collapse toggle                          */}
+			{/* Footer: account navigation, theme controls, and sign out             */}
 			{/* ----------------------------------------------------------------- */}
 			<SidebarFooter className="gap-1 pb-3 group-data-[collapsible=icon]:px-0">
 				<SidebarSeparator className="sidebar-separator-phoenix" />
-				<div className="flex justify-center py-1 group-data-[collapsible=icon]:hidden">
+				<SidebarGroup className="p-2">
+					<SidebarMenu>
+						<SidebarMenuItem>
+							<SidebarMenuButton
+								asChild
+								isActive={isNavItemActive({
+									path: "/profile",
+									label: "Profile",
+									icon: User,
+								})}
+								tooltip="Profile"
+								size="lg"
+							>
+								<NavLink
+									to="/profile"
+									aria-label="Profile"
+									aria-current={
+										isNavItemActive({
+											path: "/profile",
+											label: "Profile",
+											icon: User,
+										})
+											? "page"
+											: undefined
+									}
+								>
+									<User className="shrink-0" />
+									<span className="group-data-[collapsible=icon]:hidden">
+										Profile
+									</span>
+								</NavLink>
+							</SidebarMenuButton>
+						</SidebarMenuItem>
+						<SidebarMenuItem>
+							<SidebarMenuButton
+								asChild
+								isActive={isNavItemActive({
+									path: "/profile?tab=settings",
+									label: "Settings",
+									icon: Settings,
+								})}
+								tooltip="Settings"
+								size="lg"
+							>
+								<NavLink
+									to="/profile?tab=settings"
+									aria-label="Settings"
+									aria-current={
+										isNavItemActive({
+											path: "/profile?tab=settings",
+											label: "Settings",
+											icon: Settings,
+										})
+											? "page"
+											: undefined
+									}
+								>
+									<Settings className="shrink-0" />
+									<span className="group-data-[collapsible=icon]:hidden">
+										Settings
+									</span>
+								</NavLink>
+							</SidebarMenuButton>
+						</SidebarMenuItem>
+					</SidebarMenu>
+				</SidebarGroup>
+				<div className="flex items-center justify-between px-2 py-1 group-data-[collapsible=icon]:hidden">
+					<span className="text-sm text-muted-foreground">Theme</span>
 					<ThemeToggle />
 				</div>
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<button
+				<SidebarMenu className="px-2">
+					<SidebarMenuItem>
+						<SidebarMenuButton
 							type="button"
-							className="sidebar-avatar-hover flex w-full items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors outline-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
-						>
-							<Avatar className="h-8 w-8 shrink-0 ring-2 ring-primary/40">
-								<AvatarFallback className="bg-primary text-foreground text-xs font-semibold">
-									{initials}
-								</AvatarFallback>
-							</Avatar>
-
-							{!isCollapsed && (
-								<div className="flex min-w-0 flex-1 flex-col items-start gap-0.5 group-data-[collapsible=icon]:hidden">
-									<span className="truncate font-medium text-sidebar-foreground text-sm">
-										{displayName}
-									</span>
-									<div className="flex items-center gap-2">
-										<TierBadge className="text-[10px] py-0 h-4" />
-										{streak > 0 && (
-											<span className="flex items-center gap-1 text-xs text-muted-foreground">
-												<Flame
-													className="h-3 w-3"
-													color={PHOENIX().ember}
-													fill={PHOENIX().ember}
-												/>
-												{streak}
-											</span>
-										)}
-									</div>
-								</div>
-							)}
-						</button>
-					</DropdownMenuTrigger>
-
-					<DropdownMenuContent
-						side="right"
-						align="end"
-						sideOffset={8}
-						className="w-48"
-					>
-						<DropdownMenuItem asChild>
-							<NavLink to="/profile" className="cursor-pointer">
-								<User className="mr-2 h-4 w-4" />
-								Profile
-							</NavLink>
-						</DropdownMenuItem>
-						<DropdownMenuItem asChild>
-							<NavLink to="/integrations" className="cursor-pointer">
-								<Link2 className="mr-2 h-4 w-4" />
-								Integrations
-							</NavLink>
-						</DropdownMenuItem>
-						<DropdownMenuItem asChild>
-							<NavLink to="/pricing" className="cursor-pointer">
-								<CreditCard className="mr-2 h-4 w-4" />
-								Subscription
-							</NavLink>
-						</DropdownMenuItem>
-						<DropdownMenuSub>
-							<DropdownMenuSubTrigger className="cursor-pointer">
-								<Palette className="mr-2 h-4 w-4" />
-								Theme
-							</DropdownMenuSubTrigger>
-							<DropdownMenuSubContent>
-								<ThemeToggle />
-							</DropdownMenuSubContent>
-						</DropdownMenuSub>
-						<DropdownMenuSeparator />
-						<DropdownMenuItem
+							size="lg"
 							onClick={() => signOut()}
-							className="text-destructive focus:text-destructive cursor-pointer"
+							tooltip="Sign out"
+							className="text-destructive hover:text-destructive"
 						>
-							Logout
-						</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
+							<span className="group-data-[collapsible=icon]:hidden">
+								Sign out
+							</span>
+						</SidebarMenuButton>
+					</SidebarMenuItem>
+				</SidebarMenu>
 			</SidebarFooter>
 		</Sidebar>
 	);
