@@ -146,8 +146,7 @@ deletion timestamp.
 - `transfer_profile_ownership(p_user_id uuid, p_transfers jsonb)`
 - `verify_profile_recovery_source(p_source_profile_id text, p_workout_session_ids uuid[], p_routine_ids uuid[], p_cycle_ids uuid[], p_personal_record_ids uuid[], p_proof_workout_session_ids uuid[], p_proof_routine_ids uuid[], p_proof_cycle_ids uuid[], p_proof_personal_record_ids uuid[])`
 - `apply_workout_deletions(p_user_id uuid, p_request_profile_id text, p_deletions jsonb)`
-- `replace_session_components(p_user_id uuid, p_component_ids uuid[], p_exercises jsonb, p_sets jsonb, p_rep_summaries jsonb, p_rep_telemetry jsonb)`
-- `upsert_workout_sessions_with_components(p_user_id uuid, p_enforce_lww boolean, p_rows jsonb, p_component_ids uuid[], p_exercises jsonb, p_sets jsonb, p_rep_summaries jsonb, p_rep_telemetry jsonb)`
+- (`replace_session_components` and `upsert_workout_sessions_with_components` were dropped by 20260925200000: retired, uncalled, and incompatible with the `rep_telemetry` view.)
 - `delete_workout_with_tombstone(p_mutation_id uuid, p_portal_session_id uuid, p_component_session_id uuid, p_scope text, p_profile_id text, p_deleted_at timestamptz)`
 - `delete_training_cycles_lww(p_user_id uuid, p_rows jsonb)`
 - `upsert_training_cycles_with_days_lww(p_user_id uuid, p_rows jsonb, p_days jsonb)`

@@ -672,6 +672,71 @@ Deno.test({
 
 Deno.test({
   name:
+    "integration: rep_telemetry exports the view's exact rows, paged by set (pages scale with sets, not samples)",
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createExportFixture();
+    try {
+      const sessionId = crypto.randomUUID();
+      const exerciseId = crypto.randomUUID();
+      await insertOrThrow(fixture.admin, "workout_sessions", [{ id: sessionId, user_id: fixture.ownerId }]);
+      await insertOrThrow(fixture.admin, "exercises", [
+        { id: exerciseId, session_id: sessionId, name: "Row", user_id: fixture.ownerId },
+      ]);
+      // 30 sets of 100 samples: 3,000 rows.
+      const sets = Array.from({ length: 30 }, (_, n) => ({
+        id: crypto.randomUUID(), exercise_id: exerciseId, set_number: n + 1, user_id: fixture.ownerId,
+      }));
+      await insertOrThrow(fixture.admin, "sets", sets);
+      await insertOrThrow(fixture.admin, "set_telemetry", sets.map((set) => ({
+        set_id: set.id,
+        user_id: fixture.ownerId,
+        sample_count: 100,
+        ids: Array.from({ length: 100 }, () => crypto.randomUUID()),
+        timestamp_ms: Array.from({ length: 100 }, (_, i) => i * 10),
+        force_n: Array.from({ length: 100 }, (_, i) => i),
+        velocity_mps: Array.from({ length: 100 }, () => null),
+        position_mm: Array.from({ length: 100 }, () => null),
+        cable: Array.from({ length: 100 }, () => null),
+      })));
+
+      const pages = await exportAll(realHandler(fixture, fixture.ownerId), "rep_telemetry");
+      // ~1,000 rows per page, whole sets: 10 sets of 100 samples each.
+      assertEquals(pages.map((page) => page.length), [1000, 1000, 1000]);
+      const exported = pages.flat();
+
+      // Exactly the rows the view serves (what the id-keyset export returned).
+      // (Read in 1,000-row ranges: PostgREST caps a response at max_rows.)
+      const viewRows: unknown[] = [];
+      for (let from = 0; from < 3000; from += 1000) {
+        const { data, error } = await fixture.admin.from("rep_telemetry")
+          .select([...getUserDataTable("rep_telemetry")!.columns].join(","))
+          .eq("user_id", fixture.ownerId)
+          .order("id")
+          .range(from, from + 999);
+        if (error) throw new Error(error.message);
+        viewRows.push(...(data ?? []));
+      }
+      const key = (row: Record<string, unknown>) => JSON.stringify(
+        [...getUserDataTable("rep_telemetry")!.columns].map((c) => row[c]),
+      );
+      assertEquals(exported.map(key).sort(), (viewRows as unknown as Array<Record<string, unknown>>).map(key).sort());
+      assertEquals(new Set(exported.map((row) => row.id)).size, 3000);
+      assertEquals(
+        Object.keys(exported[0]).sort(),
+        [...getUserDataTable("rep_telemetry")!.columns].sort(),
+      );
+
+      const otherPages = await exportAll(realHandler(fixture, fixture.otherId), "rep_telemetry");
+      assertEquals(otherPages.map((page) => page.length), [0]);
+    } finally {
+      await destroyExportFixture(fixture);
+    }
+  },
+});
+
+Deno.test({
+  name:
     "integration: parent-owned, non-id-keyed, drift-column and non-table sources export only the caller's data",
   ignore: localIntegrationEnvironment === null,
   fn: async () => {

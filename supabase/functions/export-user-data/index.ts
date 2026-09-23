@@ -112,14 +112,15 @@ export function parseExportRequest(body: unknown): ParsedRequest {
   }
   if (!isPlainObject(cursor)) return { ok: false, error: 'cursor must be an object' };
   const keys = Object.keys(cursor);
+  const cursorColumns = entry.exportPager ? [entry.exportPager.cursorColumn] : entry.keyColumns;
   if (
-    keys.length !== entry.keyColumns.length ||
-    !entry.keyColumns.every((column) => Object.hasOwn(cursor, column))
+    keys.length !== cursorColumns.length ||
+    !cursorColumns.every((column) => Object.hasOwn(cursor, column))
   ) {
-    return { ok: false, error: `cursor must have exactly: ${entry.keyColumns.join(', ')}` };
+    return { ok: false, error: `cursor must have exactly: ${cursorColumns.join(', ')}` };
   }
   const parsed: ExportCursor = {};
-  for (const column of entry.keyColumns) {
+  for (const column of cursorColumns) {
     const value = cursor[column];
     if (typeof value === 'number' && Number.isFinite(value)) {
       parsed[column] = value;
@@ -213,12 +214,47 @@ async function queryPage(
   return await query.limit(limit);
 }
 
+async function readPagerPage(
+  admin: SupabaseClient,
+  entry: UserDataTable & { exportPager: { rpc: string; cursorColumn: string } },
+  userId: string,
+  cursor: ExportCursor | null,
+): Promise<ExportPageResult> {
+  const { rpc, cursorColumn } = entry.exportPager;
+  const call = (after: CursorValue | null, target: number) =>
+    admin.rpc(rpc, { p_user_id: userId, p_after_set_id: after, p_target_rows: target });
+  const { data, error } = await call(cursor ? cursor[cursorColumn] : null, USER_DATA_PAGE_SIZE);
+  if (error) {
+    if (cursor && isInvalidInput(error as PgError)) return { ok: false, reason: 'invalid_cursor', error };
+    return { ok: false, reason: 'query_failed', error };
+  }
+  const rows = ((data ?? []) as Row[]).map((row) => {
+    const out: Row = {};
+    for (const column of entry.columns) out[column] = row[column];
+    return out;
+  });
+  if (rows.length === 0) return { ok: true, rows, nextCursor: null, tableMissing: false };
+  const lastKey: ExportCursor = { [cursorColumn]: rows[rows.length - 1][cursorColumn] as CursorValue };
+  const probe = await call(lastKey[cursorColumn], 1);
+  if (probe.error) return { ok: false, reason: 'query_failed', error: probe.error };
+  const nextCursor = ((probe.data ?? []) as Row[]).length > 0 ? lastKey : null;
+  return { ok: true, rows, nextCursor, tableMissing: false };
+}
+
 export async function readExportPage(
   admin: SupabaseClient,
   entry: UserDataTable,
   userId: string,
   cursor: ExportCursor | null,
 ): Promise<ExportPageResult> {
+  if (entry.exportPager) {
+    return await readPagerPage(
+      admin,
+      entry as UserDataTable & { exportPager: { rpc: string; cursorColumn: string } },
+      userId,
+      cursor,
+    );
+  }
   const optional = entry.optionalColumns ?? [];
   let result = await queryPage(admin, entry, userId, cursor, [...entry.columns, ...optional]);
   if (result.error && optional.length > 0 && isUndefinedColumn(result.error)) {

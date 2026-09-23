@@ -3193,6 +3193,23 @@ export type Database = {
 				};
 				Returns: Json;
 			};
+			export_rep_telemetry_page: {
+				Args: {
+					p_after_set_id?: string;
+					p_target_rows?: number;
+					p_user_id: string;
+				};
+				Returns: {
+					cable: string;
+					force_n: number;
+					id: string;
+					position_mm: number;
+					set_id: string;
+					timestamp_ms: number;
+					user_id: string;
+					velocity_mps: number;
+				}[];
+			};
 			get_acwr: {
 				Args: {
 					p_acute_days?: number;
@@ -3698,17 +3715,6 @@ export type Database = {
 				};
 				Returns: Json;
 			};
-			replace_session_components: {
-				Args: {
-					p_component_ids: string[];
-					p_exercises: Json;
-					p_rep_summaries: Json;
-					p_rep_telemetry: Json;
-					p_sets: Json;
-					p_user_id: string;
-				};
-				Returns: Json;
-			};
 			replace_user_insights: {
 				Args: { p_period: string; p_rows: Json; p_user_id: string };
 				Returns: number;
@@ -3861,23 +3867,6 @@ export type Database = {
 			};
 			upsert_workout_session_lww: {
 				Args: { p_rows: Json };
-				Returns: {
-					accepted: boolean;
-					id: string;
-					server_updated_at: string;
-				}[];
-			};
-			upsert_workout_sessions_with_components: {
-				Args: {
-					p_component_ids: string[];
-					p_enforce_lww: boolean;
-					p_exercises: Json;
-					p_rep_summaries: Json;
-					p_rep_telemetry: Json;
-					p_rows: Json;
-					p_sets: Json;
-					p_user_id: string;
-				};
 				Returns: {
 					accepted: boolean;
 					id: string;
