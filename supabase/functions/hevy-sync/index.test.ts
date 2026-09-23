@@ -1,6 +1,11 @@
 import { assertEquals } from "jsr:@std/assert@1";
 import { createHevySyncHandler } from "./index.ts";
-import { FakeDb, fakeClient, type Row } from "../_shared/testing/fakeSupabase.ts";
+import {
+  FakeDb,
+  fakeClient,
+  type Row,
+  syncQueueOneActiveIndex,
+} from "../_shared/testing/fakeSupabase.ts";
 
 const SERVICE_ROLE_KEY = "test-service-role-key";
 const USER_ID = "00000000-0000-4000-8000-000000000001";
@@ -20,6 +25,14 @@ const queueRow = (id: string, syncType: string, status: string, startedAt: strin
   completed_at: null,
   error_message: null,
 });
+
+/**
+ * A database with migration 20260920005200's `sync_queue_one_active` in force,
+ * so a duplicate sync is rejected here exactly as Postgres rejects it.
+ */
+function queueDb(syncQueue: Row[]): FakeDb {
+  return new FakeDb(tables(syncQueue), [syncQueueOneActiveIndex]);
+}
 
 function tables(syncQueue: Row[]): Record<string, Row[]> {
   return {
@@ -132,15 +145,16 @@ Deno.test("hevy-sync: the queue lease is renewed while a backfill runs", async (
   assertEquals(db.rows("sync_queue")[0].started_at, new Date(NOW).toISOString());
 });
 
-Deno.test("hevy-sync: a JWT caller cannot touch another user's rows", async () => {
+Deno.test("hevy-sync: a JWT caller works on its own new row and cannot touch another user's", async () => {
   const OTHER_USER_ID = "00000000-0000-4000-8000-000000000002";
   const foreignRow: Row = {
     ...queueRow(QUEUE_ID, "manual", "pending", null),
     user_id: OTHER_USER_ID,
   };
-  const db = new FakeDb(tables([foreignRow]));
-  // A live row of the JWT user's own, which a browser run must not lease.
-  db.rows("sync_queue").push(queueRow(OTHER_QUEUE_ID, "manual", "processing", CLAIMED_AT));
+  const db = queueDb([foreignRow]);
+  // A kept `initial` of the JWT user's own (the other class): a browser
+  // `manual` run neither leases nor completes it.
+  db.rows("sync_queue").push(queueRow(OTHER_QUEUE_ID, "initial", "pending", null));
 
   // The JWT identity wins over body.user_id, and queue_id names a foreign row.
   const res = await harness(db, 2, USER_ID)({
@@ -150,16 +164,65 @@ Deno.test("hevy-sync: a JWT caller cannot touch another user's rows", async () =
   });
   assertEquals(res.status, 200, await res.clone().text());
 
-  const [foreign, own] = db.rows("sync_queue");
+  const [foreign, ownInitial, created] = db.rows("sync_queue");
   assertEquals(foreign.status, "pending");
   assertEquals(foreign.completed_at, null);
-  assertEquals(own.status, "processing");
-  assertEquals(own.started_at, CLAIMED_AT);
+  assertEquals(ownInitial.status, "pending");
+  assertEquals(ownInitial.completed_at, null);
+  // Its own row, created for the JWT user and completed by id.
+  assertEquals(created.user_id, USER_ID);
+  assertEquals(created.sync_type, "manual");
+  assertEquals(created.status, "completed");
   // The workouts were written for the JWT user, not for body.user_id.
   assertEquals(
     new Set(db.rows("external_activities").map((r) => r.user_id)),
     new Set([USER_ID]),
   );
+});
+
+Deno.test("hevy-sync: a manual sync with no queue_id creates its row; a concurrent one gets 409", async () => {
+  const db = queueDb([]);
+  const call = harness(db, 2, USER_ID);
+
+  const [a, b] = await Promise.all([
+    call({ sync_type: "manual" }),
+    call({ sync_type: "manual" }),
+  ]);
+
+  assertEquals([a.status, b.status].sort(), [200, 409]);
+  const conflict = a.status === 409 ? a : b;
+  assertEquals((await conflict.json()).code, "sync_already_queued");
+  // One row only, owned and completed by the winner.
+  assertEquals(db.rows("sync_queue").length, 1);
+  const [created] = db.rows("sync_queue");
+  assertEquals(created.provider, "hevy");
+  assertEquals(created.sync_type, "manual");
+  assertEquals(created.status, "completed");
+  assertEquals(created.created_at, new Date(NOW).toISOString());
+});
+
+Deno.test("hevy-sync: saving an API key with no sync_type still takes a queue row", async () => {
+  const db = queueDb([]);
+  const res = await harness(db, 1, USER_ID)({ api_key: "new-key" });
+  assertEquals(res.status, 200, await res.clone().text());
+
+  const [created] = db.rows("sync_queue");
+  // The connect call sends no sync_type: it is a manual, non-`initial` run, so
+  // it never collides with an `initial` row queued elsewhere.
+  assertEquals(created.sync_type, "manual");
+  assertEquals(created.status, "completed");
+});
+
+Deno.test("hevy-sync: a failed browser run hands its own row back", async () => {
+  const db = queueDb([]);
+  // No stored API key and none supplied: the run 400s before fetching.
+  db.tables.oauth_tokens = [];
+  const res = await harness(db, 1, USER_ID)({ sync_type: "manual" });
+  assertEquals(res.status, 400);
+
+  const [created] = db.rows("sync_queue");
+  assertEquals(created.status, "failed");
+  assertEquals(created.error_message, "Sync run failed");
 });
 
 Deno.test("hevy-sync: a run that names another user's queue row completes nothing", async () => {

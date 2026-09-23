@@ -820,7 +820,12 @@ Deno.test({
   },
 import { assertEquals } from "jsr:@std/assert@1";
 import { createLiftosaurSyncHandler } from "./index.ts";
-import { FakeDb, fakeClient, type Row } from "../_shared/testing/fakeSupabase.ts";
+import {
+  FakeDb,
+  fakeClient,
+  type Row,
+  syncQueueOneActiveIndex,
+} from "../_shared/testing/fakeSupabase.ts";
 
 const SERVICE_ROLE_KEY = "test-service-role-key";
 const USER_ID = "00000000-0000-4000-8000-000000000001";
@@ -881,7 +886,7 @@ function fakeLiftosaur(count: number) {
   };
 }
 
-function harness(db: FakeDb, recordCount: number) {
+function harness(db: FakeDb, recordCount: number, jwtUserId: string | null = null) {
   const handler = createLiftosaurSyncHandler({
     env: (key) =>
       ({
@@ -890,7 +895,7 @@ function harness(db: FakeDb, recordCount: number) {
         SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_KEY,
       } as Record<string, string>)[key],
     // deno-lint-ignore no-explicit-any
-    createClient: () => fakeClient(db) as any,
+    createClient: () => fakeClient(db, jwtUserId) as any,
     fetch: fakeLiftosaur(recordCount) as typeof fetch,
     now: () => new Date(NOW),
   });
@@ -900,7 +905,7 @@ function harness(db: FakeDb, recordCount: number) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+          Authorization: jwtUserId ? "Bearer user-jwt" : `Bearer ${SERVICE_ROLE_KEY}`,
         },
         body: JSON.stringify({ user_id: USER_ID, ...body }),
       }),
@@ -968,6 +973,28 @@ Deno.test("liftosaur-sync: a run without queue_id holds no lease", async () => {
   assertEquals(heartbeats.value, 0);
   assertEquals(db.rows("sync_queue")[0].status, "processing");
   assertEquals(db.rows("sync_queue")[0].started_at, CLAIMED_AT);
+});
+
+Deno.test("liftosaur-sync: a manual sync with no queue_id creates its row; a concurrent one gets 409", async () => {
+  // With migration 20260920005200's `sync_queue_one_active` in force.
+  const db = new FakeDb(tables([]), [syncQueueOneActiveIndex]);
+  const call = harness(db, 2, USER_ID);
+  const heartbeats = countHeartbeats(db);
+
+  const [a, b] = await Promise.all([
+    call({ sync_type: "manual" }),
+    call({ sync_type: "manual" }),
+  ]);
+
+  assertEquals([a.status, b.status].sort(), [200, 409]);
+  const conflict = a.status === 409 ? a : b;
+  assertEquals((await conflict.json()).code, "sync_already_queued");
+  assertEquals(db.rows("sync_queue").length, 1);
+  const [created] = db.rows("sync_queue");
+  assertEquals(created.provider, "liftosaur");
+  assertEquals(created.status, "completed");
+  // A browser-owned row is leased and heartbeats like a dispatched one.
+  assertEquals(heartbeats.value > 0, true);
 });
 
 Deno.test("liftosaur-sync: a run that names another user's queue row completes nothing", async () => {

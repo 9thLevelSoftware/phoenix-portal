@@ -10,7 +10,15 @@ import {
 } from '../_shared/providerRateLimit.ts';
 import { computeIncrementalWindow } from '../_shared/incrementalWindow.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
-import { completeSyncQueueEntry, heartbeatSyncQueueEntry } from '../_shared/syncQueue.ts';
+import {
+  completeSyncQueueEntry,
+  createSyncQueueEntry,
+  heartbeatSyncQueueEntry,
+  noOwnedQueueRow,
+  type OwnedQueueRow,
+  releaseOwnedQueueRow,
+  syncAlreadyQueuedResponse,
+} from '../_shared/syncQueue.ts';
 import { nextWatermark } from '../_shared/syncWatermark.ts';
 import {
   refreshStravaAccessToken,
@@ -53,7 +61,10 @@ const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
  *   - user_id: string
  *   - sync_type: 'initial' | 'manual' | 'incremental'
  *   - queue_id?: string (sent by process-sync-queue; the only row this run
- *     completes, and the row whose lease it heartbeats)
+ *     completes, and the row whose lease it heartbeats). A browser-initiated
+ *     run (user JWT) instead creates its own row, directly in `processing`,
+ *     and owns it the same way; a concurrent duplicate loses the
+ *     `sync_queue_one_active` race and gets 409 `sync_already_queued`.
  *
  * Environment variables:
  *   - STRAVA_CLIENT_ID
@@ -264,9 +275,27 @@ function resolveDeps(d: StravaSyncHandlerDependencies): ResolvedStravaSyncDeps {
   };
 }
 
+<<<<<<< ours
 async function stravaSyncHandler(
   req: Request,
   deps: ResolvedStravaSyncDeps,
+=======
+async function stravaSync(req: Request, deps: StravaSyncDependencies): Promise<Response> {
+  // A browser-initiated run owns the row it created: hand it back when the run
+  // ends badly, so the user's next manual sync is not refused with a 409 until
+  // the lease expires. Queue-dispatched rows deliberately stay `processing`
+  // for process-sync-queue to re-run (PR 51).
+  const owned: OwnedQueueRow = noOwnedQueueRow();
+  const response = await runStravaSync(req, deps, owned);
+  if (!response.ok) await releaseOwnedQueueRow(owned);
+  return response;
+}
+
+async function runStravaSync(
+  req: Request,
+  deps: StravaSyncDependencies,
+  owned: OwnedQueueRow,
+>>>>>>> theirs
 ): Promise<Response> {
   const cors = getCorsHeaders(req);
   const sleep = deps.sleep;
@@ -315,21 +344,40 @@ async function stravaSyncHandler(
     }
 
     const sync_type = body.sync_type ?? 'incremental';
-    const queueId = typeof body.queue_id === 'string' ? body.queue_id : null;
     const calledByQueueProcessor = !jwtUser;
-    // Only the queue path holds a lease on a sync_queue row.
-    const leaseQueueId = calledByQueueProcessor ? queueId : null;
+    // The dispatched row (queue path only): a browser caller's `queue_id` is
+    // ignored — it may name any row at all — and replaced by its own below.
+    const dispatchedQueueId =
+      calledByQueueProcessor && typeof body.queue_id === 'string' ? body.queue_id : null;
+    // The row this run owns and leases.
+    let ownedQueueId = dispatchedQueueId;
 
     const supabase = deps.createAdminClient();
 
     // Renew the lease immediately: the processor claimed this row before it
     // called us, and the work below (subscription check, token refresh, page
     // fetches) must not be counted against that claim's clock.
-    await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
+    await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 
     // Subscription gate — FLAME or higher required for integrations
     const gate = await requireSubscription(supabase, userId, 'FLAME', cors);
     if (!gate.allowed) return gate.response;
+
+    // Browser-initiated: take a queue row of our own so this run is visible to
+    // the portal, holds a lease, and blocks a concurrent duplicate sync.
+    if (!calledByQueueProcessor) {
+      const created = await createSyncQueueEntry(supabase, {
+        userId,
+        provider: 'strava',
+        syncType: typeof sync_type === 'string' ? sync_type : 'manual',
+        now: deps.now(),
+      });
+      if (created.conflict) return syncAlreadyQueuedResponse(cors);
+      ownedQueueId = created.queueId;
+      owned.supabase = supabase;
+      owned.queueId = ownedQueueId;
+      owned.userId = userId;
+    }
 
     // ---------------------------------------------------------------
     // Fetch user's Strava tokens from oauth_tokens (server-only table)
@@ -580,9 +628,29 @@ async function stravaSyncHandler(
       return true;
     };
 
+<<<<<<< ours
     for (const pass of passes) {
       // Re-check headroom before opening another pass, not only between pages.
       if (reserveReached(lastSnapshot)) {
+=======
+      // Record what Strava reports about our quota on every response, success
+      // or failure — a 429 is exactly when this information matters most.
+      lastSnapshot = parseStravaRateLimitHeaders(activitiesResponse.headers);
+      await recordStravaUsage(supabase, lastSnapshot);
+      // Renew the lease per page: the fetch phase is otherwise silent, and a
+      // reclaimed row would be dispatched a second time while this run lives.
+      await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
+
+      if (activitiesResponse.status === 429) {
+        const retryAfter = parseRetryAfterSeconds(activitiesResponse.headers);
+        console.warn(
+          `Strava rate limited; retry-after=${retryAfter ?? 'unspecified'}s, ` +
+            `${rawActivities.length} activities fetched before the limit`,
+        );
+        // Stop cleanly rather than erroring: activities already fetched are
+        // persisted below, and last_sync_at is withheld so the queue retry
+        // resumes from the same cutoff.
+>>>>>>> theirs
         budgetExhausted = true;
         break;
       }
@@ -727,7 +795,7 @@ async function stravaSyncHandler(
         failedCount += chunkRaw.length;
         errors.push(`${rangeLabel}: ${(err as Error).message}`);
       }
-      await heartbeatSyncQueueEntry(supabase, leaseQueueId, userId, deps.now());
+      await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
     }
 
     // ---------------------------------------------------------------
@@ -889,12 +957,12 @@ async function stravaSyncHandler(
       .eq('user_id', userId)
       .eq('provider', 'strava');
 
+    // Complete only the row this run owns. Never sweep every pending row:
+    // a second queued task (a kept `initial`) must still run.
     await completeSyncQueueEntry(supabase, {
       userId,
       provider: 'strava',
-      syncType: sync_type,
-      queueId,
-      calledByQueueProcessor,
+      queueId: ownedQueueId,
     });
 
     return new Response(

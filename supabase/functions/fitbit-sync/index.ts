@@ -3,6 +3,7 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { errorMessage } from '../_shared/errorMessage.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import { completeSyncQueueEntry } from '../_shared/syncQueue.ts';
 import { nextWatermark } from '../_shared/syncWatermark.ts';
 
 /**
@@ -212,82 +213,6 @@ async function upsertFitbitRateLimitRow(
   }
 }
 
-async function completeSyncQueueEntry(
-  supabase: DbClient,
-  options: {
-    userId: string;
-    provider: string;
-    syncType: string;
-    queueId: string | null;
-    calledByQueueProcessor: boolean;
-  },
-) {
-  const targetStatus = options.calledByQueueProcessor ? 'processing' : 'pending';
-  let queueId = options.queueId;
-
-  if (queueId) {
-    const { data: queueRow, error: selectError } = await supabase
-      .from('sync_queue')
-      .select('id')
-      .eq('id', queueId)
-      .eq('user_id', options.userId)
-      .eq('provider', options.provider)
-      .eq('status', targetStatus)
-      .maybeSingle();
-
-    if (selectError) {
-      console.error(`Failed to verify ${options.provider} sync queue entry:`, selectError);
-      return;
-    }
-
-    if (!queueRow) return;
-    queueId = queueRow.id;
-  }
-
-  if (!queueId) {
-    let query = supabase
-      .from('sync_queue')
-      .select('id')
-      .eq('user_id', options.userId)
-      .eq('provider', options.provider)
-      .eq('status', targetStatus);
-
-    if (!options.calledByQueueProcessor) {
-      query = query.eq('sync_type', options.syncType);
-    }
-
-    const { data: queueRow, error: selectError } = await query
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (selectError) {
-      console.error(`Failed to find ${options.provider} sync queue entry:`, selectError);
-      return;
-    }
-
-    queueId = queueRow?.id ?? null;
-  }
-
-  if (!queueId) return;
-
-  const { error: updateError } = await supabase
-    .from('sync_queue')
-    .update({
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-      error_message: null,
-    })
-    .eq('id', queueId)
-    .eq('user_id', options.userId)
-    .eq('provider', options.provider)
-    .eq('status', targetStatus);
-
-  if (updateError) {
-    console.error(`Failed to complete ${options.provider} sync queue entry:`, updateError);
-  }
-}
-
 /**
  * Fitbit Activity Sync Edge Function.
  *
@@ -346,8 +271,13 @@ Deno.serve(async (req) => {
     }
 
     const sync_type = body.sync_type ?? 'incremental';
-    const queueId = typeof body.queue_id === 'string' ? body.queue_id : null;
     const calledByQueueProcessor = !jwtUser;
+    // Only the queue path owns a row here. fitbit-sync has no injectable
+    // dependencies yet, so unlike strava/hevy/liftosaur a browser-initiated
+    // run does not create (and cannot be tested against) a row of its own —
+    // see the PR 52 follow-ups.
+    const ownedQueueId =
+      calledByQueueProcessor && typeof body.queue_id === 'string' ? body.queue_id : null;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -502,9 +432,7 @@ Deno.serve(async (req) => {
     await completeSyncQueueEntry(supabase, {
       userId,
       provider: 'fitbit',
-      syncType: sync_type,
-      queueId,
-      calledByQueueProcessor,
+      queueId: ownedQueueId,
     });
 
     return new Response(

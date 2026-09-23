@@ -364,6 +364,22 @@ SELECT throws_ok(
     NULL,
     'an unknown sync_type is rejected'
 );
+-- PR 52: the guard now also restricts the provider. Garmin is webhook-driven
+-- and process-sync-queue refuses it, so a client may not queue one.
+SELECT throws_ok(
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type)
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'garmin', 'manual') $$,
+    '22023',
+    NULL,
+    'a client cannot queue a garmin sync'
+);
+SELECT throws_ok(
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type)
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'not-a-provider', 'manual') $$,
+    '22023',
+    NULL,
+    'an unknown provider is rejected'
+);
 RESET ROLE;
 SELECT set_config('request.jwt.claims', '', true);
 
@@ -376,9 +392,9 @@ SELECT is(
 );
 SELECT lives_ok(
     $$ INSERT INTO public.sync_queue (user_id, provider, sync_type, status, created_at)
-       VALUES ('31313131-0000-4000-8000-0000000000f0', 'strava', 'incremental', 'pending',
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'liftosaur', 'incremental', 'pending',
                '2020-01-01') $$,
-    'service-side (postgres) inserts are not clamped or deduplicated'
+    'service-side (postgres) inserts are not clamped'
 );
 SELECT is(
     (SELECT count(*)::int FROM public.sync_queue
@@ -386,6 +402,22 @@ SELECT is(
        AND created_at = '2020-01-01'::timestamptz),
     1,
     'a postgres insert keeps its created_at'
+);
+-- PR 52 (20260920005200): the guard trigger skips postgres and the service
+-- role, but `sync_queue_one_active` does not — the dedupe invariant holds for
+-- every role now, which is what lets the provider Edge Functions insert their
+-- own row and return 409 on the loser.
+SELECT throws_ok(
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type, status)
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'liftosaur', 'manual', 'processing') $$,
+    '23505',
+    NULL,
+    'a postgres insert duplicating an active row is rejected by the unique index'
+);
+SELECT lives_ok(
+    $$ INSERT INTO public.sync_queue (user_id, provider, sync_type, status)
+       VALUES ('31313131-0000-4000-8000-0000000000f0', 'liftosaur', 'initial', 'processing') $$,
+    'an initial alongside an active incremental is still allowed (other class)'
 );
 
 SELECT * FROM finish();

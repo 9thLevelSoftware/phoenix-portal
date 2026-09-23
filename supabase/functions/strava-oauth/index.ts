@@ -187,8 +187,15 @@ Deno.serve(async (req) => {
     });
 
     if (queueError) {
-      // Non-fatal: tokens are saved, sync can be triggered manually later
-      console.error('Failed to queue initial sync:', queueError);
+      // A reconnect while the first initial import is still queued or running
+      // hits `sync_queue_one_active` (23505). That is the intended outcome —
+      // the import is already on its way — so it is not even worth an error.
+      if ((queueError as { code?: string }).code === '23505') {
+        console.log('Strava initial sync already queued for this user');
+      } else {
+        // Non-fatal: tokens are saved, sync can be triggered manually later
+        console.error('Failed to queue initial sync:', queueError);
+      }
     }
 
     // ----------------------------------------------------------------
