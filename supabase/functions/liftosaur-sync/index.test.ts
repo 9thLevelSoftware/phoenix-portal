@@ -529,8 +529,9 @@ Deno.test("liftosaur-sync: a new key whose state reset fails is not read against
   db.from = (table: string) => {
     const query = from(table);
     if (table === "user_integrations") {
-      query.upsert = () => {
+      query.update = () => {
         const failed = {
+          eq: () => failed,
           then: (resolve: (value: unknown) => unknown) =>
             Promise.resolve({ data: null, error: { message: "write failed" } }).then(resolve),
         };
@@ -544,6 +545,7 @@ Deno.test("liftosaur-sync: a new key whose state reset fails is not read against
   const res = await harness(db, upstream.fetch, USER_ID)({ api_key: "new-account-key" });
   assertEquals(res.status, 502, await res.clone().text());
   assertEquals(upstream.requests.length, 0, "no provider read");
+  assertEquals(db.rows("oauth_tokens")[0].api_key, "plain-api-key", "the old key is kept");
 });
 
 Deno.test("liftosaur-sync: a queue row no longer processing is not completed and nothing follows", async () => {

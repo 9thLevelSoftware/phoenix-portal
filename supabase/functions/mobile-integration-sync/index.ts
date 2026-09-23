@@ -331,6 +331,25 @@ async function mobileIntegrationSyncHandler(
         );
       }
 
+      // A new Liftosaur key may be another account: clear the previous key's
+      // cursor and watermark BEFORE the key is replaced, so no later sync can
+      // read the new account against them (a failed key write below then only
+      // costs the old key a full, idempotent re-read).
+      if (provider === 'liftosaur') {
+        const { error: resetError } = await supabase
+          .from('user_integrations')
+          .update({ last_sync_at: null, backfill_before: null, backfill_after: null, backfill_started_at: null })
+          .eq('user_id', userId)
+          .eq('provider', provider);
+        if (resetError) {
+          console.error('Failed to reset liftosaur sync state:', resetError);
+          return new Response(
+            JSON.stringify({ status: 'error', error: 'Failed to save connection state. Please retry.' }),
+            { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+
       // Store API key in oauth_tokens (server-only table, same as hevy-sync/liftosaur-sync)
       const { error: tokenUpsertError } = await supabase
         .from('oauth_tokens')
@@ -362,11 +381,6 @@ async function mobileIntegrationSyncHandler(
             status: 'connected',
             connected_at: new Date().toISOString(),
             error_message: null,
-            // A new Liftosaur key may be another account: drop the previous
-            // key's cursor and watermark so no later sync resumes them.
-            ...(provider === 'liftosaur'
-              ? { last_sync_at: null, backfill_before: null, backfill_after: null, backfill_started_at: null }
-              : {}),
           },
           { onConflict: 'user_id,provider' }
         );
