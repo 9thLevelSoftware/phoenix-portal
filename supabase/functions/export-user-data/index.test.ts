@@ -357,7 +357,7 @@ Deno.test("composite keys page with a quoted row-value comparison", async () => 
     cursor: { entity: "cycle", entity_id: "e1" },
   }));
   assertEquals(recorded.ops, [
-    ["select", ["user_id,entity,entity_id,deleted_at"]],
+    ["select", ["user_id,entity,entity_id,deleted_at,client_deleted_at"]],
     ["eq", ["user_id", USER_ID]],
     ["or", ['entity.gt."cycle",and(entity.eq."cycle",entity_id.gt."e1")']],
     ["order", ["entity", { ascending: true }]],
