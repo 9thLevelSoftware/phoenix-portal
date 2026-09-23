@@ -263,15 +263,9 @@ curl -X POST "https://api.paddle.com/notifications/{notification_id}/replay" \
 ### Important notes on replay
 
 - The webhook handler skips an event whose `event_id` equals the stored `last_event_id` (duplicate), and `apply_subscription_event` refuses an event whose `occurred_at` is not newer than the stored `last_event_occurred_at` (stale). Both return 200 and change nothing.
-- **Workaround:** If a replay is being skipped, clear **both** markers first. Clearing only `last_event_id` is not enough: the stored clock still rejects any replayed event older than it (see "Reset a stuck subscription row entirely" above).
-  ```sql
-  -- Clear the idempotency and ordering markers to allow reprocessing
-  UPDATE subscriptions
-  SET last_event_id = NULL,
-      last_event_occurred_at = NULL
-  WHERE user_id = '<uuid>';
-  ```
-- Then retry the webhook replay.
+- **A skipped replay is correct; do not clear the markers to force it.** If the replayed notification is older than an event already applied, `classifyPaddleEventOrder` / `apply_subscription_event` reject it on purpose. Clearing `last_event_occurred_at` would make the stale payload look unconditional: it would overwrite the current tier, status and period with older values and move the ordering clock backwards, which can wrongly grant or revoke paid access.
+- **To repair the row, run `paddle-refresh-subscription`** for the user. It re-reads the subscription from Paddle's API and writes the current state through the same guard (see "Prefer `paddle-refresh-subscription`" above).
+- **Only if refresh cannot reach the subscription** (for example Paddle answers 404), replay the missing notifications **in chronological order**, oldest first, after confirming in the Paddle dashboard that each is newer than the stored `last_event_occurred_at`. Never reset the ordering clock to make an out-of-order event apply.
 
 ---
 
