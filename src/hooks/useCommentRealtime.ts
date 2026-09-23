@@ -65,11 +65,17 @@ export function useCommentRealtime(itemId: string) {
 					const cached =
 						queryClient.getQueryData<Array<{ id: string }>>(commentsKey);
 					// A fetch in flight (the first load, or a refetch after an
-					// insert) may already have read the deleted row, and the
-					// cache cannot show it yet: refetch rather than drop the event.
+					// insert) may already have read the deleted row. Invalidating
+					// alone would dedupe against it, so cancel it first (its
+					// result is then discarded) and fetch again.
+					if (queryClient.isFetching({ queryKey: commentsKey }) > 0) {
+						void queryClient
+							.cancelQueries({ queryKey: commentsKey })
+							.finally(scheduleInvalidate);
+						return;
+					}
 					if (
 						cached === undefined ||
-						queryClient.isFetching({ queryKey: commentsKey }) > 0 ||
 						cached.some((comment) => comment.id === deletedId)
 					) {
 						scheduleInvalidate();
