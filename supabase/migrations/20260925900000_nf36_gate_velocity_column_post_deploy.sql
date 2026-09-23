@@ -54,13 +54,24 @@ AS $$
   WITH gate AS MATERIALIZED (
     SELECT public.user_has_min_tier('INFERNO') AS inferno
   )
+  -- An explicit allow-list: the row type is kept for the signature, but a
+  -- column added to exercise_progress later comes back NULL until it is
+  -- deliberately listed here (this function is SECURITY DEFINER).
   SELECT masked.*
   FROM public.exercise_progress ep
   CROSS JOIN gate
   CROSS JOIN LATERAL pg_catalog.jsonb_populate_record(
-    ep,
-    CASE WHEN gate.inferno THEN '{}'::jsonb
-         ELSE '{"velocity_estimated_1rm_kg": null}'::jsonb END
+    NULL::public.exercise_progress,
+    pg_catalog.jsonb_build_object(
+      'id', ep.id, 'user_id', ep.user_id, 'exercise_name', ep.exercise_name,
+      'session_id', ep.session_id, 'recorded_at', ep.recorded_at,
+      'max_weight_kg', ep.max_weight_kg, 'total_volume_kg', ep.total_volume_kg,
+      'estimated_1rm_kg', ep.estimated_1rm_kg, 'max_reps', ep.max_reps,
+      'set_count', ep.set_count, 'local_profile_id', ep.local_profile_id,
+      'exercise_id', ep.exercise_id,
+      'velocity_estimated_1rm_kg',
+        CASE WHEN gate.inferno THEN ep.velocity_estimated_1rm_kg END
+    )
   ) AS masked
   WHERE ep.user_id = auth.uid()
     AND ep.exercise_name = p_exercise
@@ -106,10 +117,18 @@ AS $$
     SELECT
       r.exercise_name,
       max(r.recorded_at) AS latest_recorded_at,
+      -- The same explicit allow-list as exercise_progress_series.
       jsonb_agg(
-        (to_jsonb(r) - 'rn')
-          || CASE WHEN gate.inferno THEN '{}'::jsonb
-                  ELSE '{"velocity_estimated_1rm_kg": null}'::jsonb END
+        pg_catalog.jsonb_build_object(
+          'id', r.id, 'user_id', r.user_id, 'exercise_name', r.exercise_name,
+          'session_id', r.session_id, 'recorded_at', r.recorded_at,
+          'max_weight_kg', r.max_weight_kg, 'total_volume_kg', r.total_volume_kg,
+          'estimated_1rm_kg', r.estimated_1rm_kg, 'max_reps', r.max_reps,
+          'set_count', r.set_count, 'local_profile_id', r.local_profile_id,
+          'exercise_id', r.exercise_id,
+          'velocity_estimated_1rm_kg',
+            CASE WHEN gate.inferno THEN r.velocity_estimated_1rm_kg END
+        )
         ORDER BY r.recorded_at DESC, r.id DESC
       ) AS rows
     FROM ranked r
