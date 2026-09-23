@@ -311,7 +311,7 @@ async function runLiftosaurSync(
 			// may be another account: drop the previous key's backfill cursor and
 			// watermark now, so a later keyless sync cannot resume them even if
 			// this run fails before saving any state of its own.
-			await supabase.from("user_integrations").upsert(
+			const { error: resetError } = await supabase.from("user_integrations").upsert(
 				{
 					user_id: userId,
 					provider: "liftosaur",
@@ -324,6 +324,14 @@ async function runLiftosaurSync(
 				},
 				{ onConflict: "user_id,provider" }
 			);
+			// Never read the new account against the old account's cursor.
+			if (resetError) {
+				console.error("Failed to reset Liftosaur sync state for the new key:", resetError);
+				return new Response(
+					JSON.stringify({ error: "Failed to save the new key's sync state. Please retry." }),
+					{ status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+				);
+			}
 		}
 
 		// Retrieve the stored API key from oauth_tokens (server-only)

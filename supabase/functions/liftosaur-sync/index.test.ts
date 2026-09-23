@@ -515,6 +515,37 @@ Deno.test("liftosaur-sync: a new key clears the old cursor even when its first f
   );
 });
 
+Deno.test("liftosaur-sync: a new key whose state reset fails is not read against the old cursor", async () => {
+  const db = new FakeDb({
+    ...tables([]),
+    user_integrations: [{
+      user_id: USER_ID, provider: "liftosaur", status: "connected",
+      last_sync_at: "2025-06-01T00:00:00.000Z",
+      backfill_before: "2025-01-01T00:00:00.000Z", backfill_after: null,
+      backfill_started_at: "2025-01-01T00:00:00.000Z",
+    }],
+  });
+  const from = db.from.bind(db);
+  db.from = (table: string) => {
+    const query = from(table);
+    if (table === "user_integrations") {
+      query.upsert = () => {
+        const failed = {
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve({ data: null, error: { message: "write failed" } }).then(resolve),
+        };
+        // deno-lint-ignore no-explicit-any
+        return failed as any;
+      };
+    }
+    return query;
+  };
+  const upstream = descendingLiftosaur(5);
+  const res = await harness(db, upstream.fetch, USER_ID)({ api_key: "new-account-key" });
+  assertEquals(res.status, 502, await res.clone().text());
+  assertEquals(upstream.requests.length, 0, "no provider read");
+});
+
 Deno.test("liftosaur-sync: a queue row no longer processing is not completed and nothing follows", async () => {
   // A disconnect cancelled the row while this run was reading.
   const db = new FakeDb(
