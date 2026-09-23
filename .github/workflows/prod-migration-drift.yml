@@ -365,9 +365,7 @@ jobs:
             ('request_account_deletion()'),
             ('delete_training_cycle_lww(uuid, timestamp with time zone)'),
             ('delete_workout_with_tombstone(uuid, uuid, uuid, text, text, timestamp with time zone)'),
-            ('verify_profile_recovery_source(text, uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[])'),
-            ('exercise_progress_series(text, text, integer)'),
-            ('exercise_progress_series_many(text[], text, integer)')
+            ('verify_profile_recovery_source(text, uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[])')
           ),
           anon_tier_allow(sig) AS (VALUES
             ('user_has_min_tier(text)'),
