@@ -467,12 +467,33 @@ async function runLiftosaurSync(
 				.eq("user_id", userId)
 				.eq("provider", "liftosaur");
 
+		// supabase-js resolves a failed write as `{ error }`; it does not throw.
+		// A lost cursor or watermark must not be reported as progress: leave this
+		// run's row `processing` (so the processor retries it), queue nothing, and
+		// return the retryable 502. The rows already imported are idempotent.
+		const saveFailed = async (code: string, error: unknown) => {
+			console.error("Liftosaur sync state save failed:", error);
+			await supabase
+				.from("user_integrations")
+				.update({
+					status: "error",
+					error_message: "Liftosaur sync failed; will retry",
+				})
+				.eq("user_id", userId)
+				.eq("provider", "liftosaur");
+			return new Response(
+				JSON.stringify({ error: "Liftosaur sync failed; will retry", code }),
+				{ status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+			);
+		};
+
 		// Liftosaur still has records this run did not read: never advance the
 		// watermark past them. Continue the import where it is safe to, and fail
 		// with an explicit, non-retryable error where it is not.
 		if (fetched.truncated) {
 			const outcome = resolveLiftosaurTruncation(fetched, plan, sync_type, importedCount);
-			await updateIntegration(outcome.columns);
+			const { error: cursorError } = await updateIntegration(outcome.columns);
+			if (cursorError) return await saveFailed("cursor_save_failed", cursorError);
 			console.warn(outcome.message);
 			const base = {
 				truncated: true,
@@ -521,7 +542,8 @@ async function runLiftosaurSync(
 		// Everything in the window has been read and stored. Uses the chain's
 		// pre-fetch timestamp so concurrent Liftosaur writes land in the next
 		// window, and ends any backfill.
-		await updateIntegration(completedSyncColumns(plan));
+		const { error: watermarkError } = await updateIntegration(completedSyncColumns(plan));
+		if (watermarkError) return await saveFailed("watermark_save_failed", watermarkError);
 
 		// Complete only the row this run owns. Never sweep every pending row:
 		// a second queued task (a kept `initial`) must still run.
