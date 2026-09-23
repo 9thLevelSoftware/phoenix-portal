@@ -15,10 +15,12 @@ name: Edge Integration (real SQL)
 # check. "Edge integration tests against local Supabase" can therefore be made
 # a required check without blocking unrelated PRs.
 #
-# The tests run twice on the same stack, once per SYNC_LWW_ENABLED value (the
-# flag's prod value is unknown and the push handler has a separate write path
-# for each). Two steps in one job rather than a matrix keep a single check
-# name, which a job skipped via `if:` reports reliably.
+# The tests run three times on the same stack: once per SYNC_LWW_ENABLED value
+# (the flag's prod value is unknown and the push handler has a separate write
+# path for each), and once more with SYNC_PUSH_TRANSACTION=true, so every push
+# test also runs through the single-transaction path (F-014). Steps in one job
+# rather than a matrix keep a single check name, which a job skipped via `if:`
+# reports reliably.
 
 on:
   pull_request:
@@ -123,8 +125,9 @@ jobs:
           api_url=$(jq -r '.API_URL // empty' <<<"$status_json")
           anon_key=$(jq -r '.ANON_KEY // .PUBLISHABLE_KEY // empty' <<<"$status_json")
           service_key=$(jq -r '.SERVICE_ROLE_KEY // .SECRET_KEY // empty' <<<"$status_json")
-          if [ -z "$api_url" ] || [ -z "$anon_key" ] || [ -z "$service_key" ]; then
-            echo "::error::supabase status did not report API_URL / ANON_KEY / SERVICE_ROLE_KEY"
+          db_url=$(jq -r '.DB_URL // empty' <<<"$status_json")
+          if [ -z "$api_url" ] || [ -z "$anon_key" ] || [ -z "$service_key" ] || [ -z "$db_url" ]; then
+            echo "::error::supabase status did not report API_URL / ANON_KEY / SERVICE_ROLE_KEY / DB_URL"
             jq 'keys' <<<"$status_json"
             exit 1
           fi
@@ -135,6 +138,9 @@ jobs:
             echo "SUPABASE_URL=$api_url"
             echo "SUPABASE_ANON_KEY=$anon_key"
             echo "SUPABASE_SERVICE_ROLE_KEY=$service_key"
+            # The local stack's own Postgres (demo password), for the
+            # single-transaction push tests.
+            echo "SUPABASE_DB_URL=$db_url"
           } >> "$GITHUB_ENV"
 
       - name: Run real-SQL Edge integration tests (SYNC_LWW_ENABLED=false)
@@ -146,6 +152,13 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           SYNC_LWW_ENABLED: "true"
+        run: npm run test:edge:integration
+
+      - name: Run real-SQL Edge integration tests (SYNC_PUSH_TRANSACTION=true)
+        if: ${{ !cancelled() }}
+        env:
+          SYNC_LWW_ENABLED: "true"
+          SYNC_PUSH_TRANSACTION: "true"
         run: npm run test:edge:integration
 
       - name: Stop stack
