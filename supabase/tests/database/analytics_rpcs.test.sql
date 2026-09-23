@@ -257,7 +257,8 @@ SELECT is(
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'public'
           AND p.proname IN (
-              'exercise_frequency', 'exercise_names', 'personal_record_history',
+              'exercise_frequency', 'exercise_names', 'exercise_progress_series',
+              'exercise_progress_series_many', 'personal_record_history',
               'personal_record_bests', 'profile_workout_stats', 'session_volume_buckets'
           )
           AND NOT p.prosecdef
@@ -269,31 +270,8 @@ SELECT is(
               WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'
           )
     ),
-    6,
-    'six are SECURITY INVOKER, search_path pinned, authenticated-only (no anon, no PUBLIC)'
-);
-
--- The two progress series read velocity_estimated_1rm_kg, which is not
--- client-readable (INFERNO gate, 20260923100000), so they run as DEFINER and
--- stay caller-scoped by auth.uid(). Same pin and grants otherwise.
-SELECT is(
-    (
-        SELECT count(*)::integer
-        FROM pg_proc p
-        JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = 'public'
-          AND p.proname IN ('exercise_progress_series', 'exercise_progress_series_many')
-          AND p.prosecdef
-          AND 'search_path=""' = ANY (p.proconfig)
-          AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
-          AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')
-          AND NOT EXISTS (
-              SELECT 1 FROM aclexplode(p.proacl) a
-              WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'
-          )
-    ),
-    2,
-    'the two progress series are SECURITY DEFINER, search_path pinned, authenticated-only'
+    8,
+    'all eight are SECURITY INVOKER, search_path pinned, authenticated-only (no anon, no PUBLIC)'
 );
 
 SELECT has_index(
@@ -465,14 +443,9 @@ SELECT is(
         ) AS k
     ),
     (
-        -- pg_attribute, not information_schema.columns: the latter hides
-        -- columns the current role cannot read, and velocity_estimated_1rm_kg
-        -- is not client-readable (20260923100000). The key is still present.
-        SELECT array_agg(a.attname::text ORDER BY a.attname::text)
-        FROM pg_attribute a
-        WHERE a.attrelid = 'public.exercise_progress'::regclass
-          AND a.attnum > 0
-          AND NOT a.attisdropped
+        SELECT array_agg(column_name::text ORDER BY column_name::text)
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'exercise_progress'
     ),
     'series_many row objects carry exactly the exercise_progress columns (no rn)'
 );

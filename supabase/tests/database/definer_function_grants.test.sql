@@ -14,10 +14,7 @@
 --                  (added by 20260920003200), delete_training_cycle_lww,
 --                  delete_workout_with_tombstone,
 --                  verify_profile_recovery_source (20260920120000; each
---                  binds the caller to auth.uid() and takes no user id),
---                  exercise_progress_series, exercise_progress_series_many
---                  (20260923100000; caller-scoped by auth.uid(), DEFINER only
---                  to read the INFERNO-gated VBT 1RM column)
+--                  binds the caller to auth.uid() and takes no user id)
 --   anon:          none. Every policy that calls a tier helper is
 --                  INSERT/UPDATE/DELETE with an auth.uid() ownership
 --                  conjunct; asserted below. (The migration and the prod
@@ -62,9 +59,7 @@ SELECT set_eq(
             ('workout_current_streak(uuid)', 'authenticated'),
             ('delete_training_cycle_lww(uuid, timestamp with time zone)', 'authenticated'),
             ('delete_workout_with_tombstone(uuid, uuid, uuid, text, text, timestamp with time zone)', 'authenticated'),
-            ('verify_profile_recovery_source(text, uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[])', 'authenticated'),
-            ('exercise_progress_series(text, text, integer)', 'authenticated'),
-            ('exercise_progress_series_many(text[], text, integer)', 'authenticated')
+            ('verify_profile_recovery_source(text, uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[])', 'authenticated')
     $sql$,
     'only allow-listed SECURITY DEFINER functions are executable by anon/authenticated'
 );

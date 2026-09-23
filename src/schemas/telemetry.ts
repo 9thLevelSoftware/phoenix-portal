@@ -62,8 +62,6 @@ export const exerciseProgressSchema = z.object({
 	estimated_1rm_kg: perCableWeight,
 	// Velocity-based (VBT) 1RM — distinct from the rep-based estimated_1rm_kg.
 	// Nullable; null when the row predates VBT capture. Issue #517 Phase 6.
-	// INFERNO-only (20260923100000): the column is not client-readable, and the
-	// progress RPCs return it as null below INFERNO. Absent parses as null.
 	velocity_estimated_1rm_kg: nullablePerCableWeight,
 	max_reps: z.number().finite().nonnegative(),
 	set_count: z.number().finite().nonnegative(),
