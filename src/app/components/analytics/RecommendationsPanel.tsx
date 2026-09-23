@@ -218,7 +218,7 @@ export function RecommendationsPanel({
 						<p className="text-muted-foreground text-sm mb-4">
 							Get prioritized, actionable training advice based on your data.
 						</p>
-						<Button variant="cta" asChild>
+						<Button asChild>
 							<Link to="/pricing">Upgrade to Inferno</Link>
 						</Button>
 					</div>

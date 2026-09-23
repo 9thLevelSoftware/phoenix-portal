@@ -145,7 +145,6 @@ export function AuthCallback() {
 
 				<Button
 					type="button"
-					variant="cta"
 					className="w-full"
 					onClick={() => navigate("/", { replace: true })}
 				>

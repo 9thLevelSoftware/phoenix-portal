@@ -344,9 +344,7 @@ export function ComparisonView() {
 						Workout comparison is available on Phoenix and Elite plans. Upgrade
 						to compare sessions side by side and track your progress.
 					</p>
-					<Button onClick={() => navigate("/pricing")} variant="cta">
-						View Plans
-					</Button>
+					<Button onClick={() => navigate("/pricing")}>View Plans</Button>
 				</div>
 			</div>
 		);
@@ -377,11 +375,7 @@ export function ComparisonView() {
 					<p className="text-muted-foreground">
 						Select two different sessions to compare.
 					</p>
-					<Button
-						onClick={() => navigate("/history")}
-						variant="cta"
-						className="mt-6"
-					>
+					<Button onClick={() => navigate("/history")} className="mt-6">
 						Return to History
 					</Button>
 				</div>
@@ -414,11 +408,7 @@ export function ComparisonView() {
 					<p className="text-muted-foreground">
 						Navigate here from Workout History to compare two sessions.
 					</p>
-					<Button
-						onClick={() => navigate("/history")}
-						variant="cta"
-						className="mt-6"
-					>
+					<Button onClick={() => navigate("/history")} className="mt-6">
 						Go to History
 					</Button>
 				</div>
@@ -484,11 +474,7 @@ export function ComparisonView() {
 							errorB?.message ||
 							"One or both sessions could not be loaded."}
 					</p>
-					<Button
-						onClick={() => navigate("/history")}
-						variant="cta"
-						className="mt-6"
-					>
+					<Button onClick={() => navigate("/history")} className="mt-6">
 						Return to History
 					</Button>
 				</div>

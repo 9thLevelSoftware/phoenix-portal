@@ -109,7 +109,7 @@ export function UpgradePrompt({
 				</ul>
 
 				{/* CTA */}
-				<Button asChild variant="cta" className="px-8">
+				<Button asChild className="px-8">
 					<Link to="/pricing">Compare Plans</Link>
 				</Button>
 			</div>

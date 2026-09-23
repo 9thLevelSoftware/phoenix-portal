@@ -395,7 +395,6 @@ export function LandingPage() {
 							type="button"
 							disabled={authLoading}
 							onClick={handleResetPassword}
-							variant="cta"
 							className="w-full"
 						>
 							{authLoading ? (
@@ -487,12 +486,7 @@ export function LandingPage() {
 										Forgot password?
 									</button>
 								</div>
-								<Button
-									type="submit"
-									disabled={authLoading}
-									variant="cta"
-									className="w-full"
-								>
+								<Button type="submit" disabled={authLoading} className="w-full">
 									{authLoading ? (
 										<Loader2 className="w-4 h-4 animate-spin mr-2" />
 									) : (
@@ -569,12 +563,7 @@ export function LandingPage() {
 										</p>
 									)}
 								</div>
-								<Button
-									type="submit"
-									disabled={authLoading}
-									variant="cta"
-									className="w-full"
-								>
+								<Button type="submit" disabled={authLoading} className="w-full">
 									{authLoading ? (
 										<Loader2 className="w-4 h-4 animate-spin mr-2" />
 									) : (
@@ -802,12 +791,7 @@ export function LandingPage() {
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.8 }}
 					>
-						<Button
-							size="lg"
-							onClick={openAuth}
-							variant="cta"
-							className="w-full sm:w-auto"
-						>
+						<Button size="lg" onClick={openAuth} className="w-full sm:w-auto">
 							Preview dashboard
 						</Button>
 						<Button

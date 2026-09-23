@@ -169,7 +169,7 @@ function FreeRecoveryView() {
 							training load analysis, including ACWR ratio, volume trends, and
 							wearable data integration.
 						</p>
-						<Button variant="cta" asChild>
+						<Button asChild>
 							<Link to="/pricing">View Plans</Link>
 						</Button>
 					</Card>

@@ -163,11 +163,7 @@ export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
 						)}
 					</p>
 				</div>
-				<Button
-					variant="cta"
-					className="w-full shadow-lg shadow-primary/50"
-					asChild
-				>
+				<Button className="w-full shadow-lg shadow-primary/50" asChild>
 					<Link to={`/cycles/${cycleId}`}>
 						<Calendar className="w-4 h-4 mr-2" />
 						View Full Cycle

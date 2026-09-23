@@ -45,7 +45,6 @@ export function SelectionModeBar({
 								<Button
 									onClick={onCreateSuperset}
 									disabled={selectedCount < 2}
-									variant="cta"
 									className="disabled:opacity-50"
 								>
 									Create Superset

@@ -160,7 +160,7 @@ export function CommunityFilterPanel() {
 						>
 							Clear Filters
 						</Button>
-						<Button variant="cta" className="flex-1" onClick={handleApply}>
+						<Button className="flex-1" onClick={handleApply}>
 							Apply
 						</Button>
 					</div>

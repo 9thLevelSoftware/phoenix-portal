@@ -453,12 +453,7 @@ export function RoutineBuilder() {
 								<Eye className="w-4 h-4 mr-2" />
 								Preview
 							</Button>
-							<Button
-								size="sm"
-								onClick={handleSave}
-								disabled={isSaving}
-								variant="cta"
-							>
+							<Button size="sm" onClick={handleSave} disabled={isSaving}>
 								{isSaving ? (
 									<Loader2 className="w-4 h-4 mr-2 animate-spin" />
 								) : (

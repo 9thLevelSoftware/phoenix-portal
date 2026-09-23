@@ -119,7 +119,7 @@ export function TrainingCycles() {
 								</h1>
 								<p className="text-muted-foreground">Periodize your progress</p>
 							</div>
-							<Button onClick={() => navigate("/cycles/new")} variant="cta">
+							<Button onClick={() => navigate("/cycles/new")}>
 								<Plus className="w-4 h-4 mr-2" />
 								Create Cycle
 							</Button>
@@ -156,7 +156,7 @@ export function TrainingCycles() {
 							<p className="text-muted-foreground">Periodize your progress</p>
 						</div>
 
-						<Button onClick={() => navigate("/cycles/new")} variant="cta">
+						<Button onClick={() => navigate("/cycles/new")}>
 							<Plus className="w-4 h-4 mr-2" />
 							Create Cycle
 						</Button>

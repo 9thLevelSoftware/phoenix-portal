@@ -390,7 +390,6 @@ export function CycleBuilder() {
 						<Button
 							onClick={handleSave}
 							disabled={saveMutation.isPending || updateMutation.isPending}
-							variant="cta"
 						>
 							{saveMutation.isPending || updateMutation.isPending ? (
 								<Loader2 className="w-4 h-4 mr-2 animate-spin" />

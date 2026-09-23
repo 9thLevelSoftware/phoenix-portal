@@ -240,11 +240,7 @@ function ChallengeCard({
 						)}
 						{isJoined ? (
 							<div className="space-y-2">
-								<Button
-									variant="cta"
-									className="w-full"
-									onClick={onToggleExpand}
-								>
+								<Button className="w-full" onClick={onToggleExpand}>
 									{isExpanded ? "Hide Details" : "View Details"}
 								</Button>
 								<Button
@@ -261,7 +257,6 @@ function ChallengeCard({
 							</div>
 						) : (
 							<Button
-								variant="cta"
 								className="w-full"
 								onClick={onJoin}
 								disabled={joinPending}

@@ -243,7 +243,7 @@ export function SraRecoveryMatrix({
 							SRA Recovery tracking tells you exactly when each muscle group is
 							ready to train again.
 						</p>
-						<Button variant="cta" asChild>
+						<Button asChild>
 							<Link to="/pricing">Upgrade to Inferno</Link>
 						</Button>
 					</div>

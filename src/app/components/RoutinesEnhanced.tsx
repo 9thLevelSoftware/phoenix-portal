@@ -141,7 +141,7 @@ export function RoutinesEnhanced() {
 							</p>
 						</div>
 
-						<Button onClick={() => navigate("/routines/new")} variant="cta">
+						<Button onClick={() => navigate("/routines/new")}>
 							<Plus className="w-4 h-4 mr-2" />
 							Create Routine
 						</Button>
@@ -372,11 +372,7 @@ function RoutineGrid({
 										<Edit className="w-4 h-4 mr-1" />
 										Edit
 									</Button>
-									<Button
-										size="sm"
-										variant="cta"
-										onClick={() => onView(routine.id)}
-									>
+									<Button size="sm" onClick={() => onView(routine.id)}>
 										<Eye className="w-4 h-4 mr-1" />
 										View
 									</Button>

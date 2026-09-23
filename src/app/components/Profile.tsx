@@ -435,7 +435,7 @@ export function Profile() {
 							</div>
 							<div className="flex gap-2 flex-wrap items-center">
 								{!isEntitled ? (
-									<Button asChild variant="cta">
+									<Button asChild>
 										<Link to="/pricing">Subscribe</Link>
 									</Button>
 								) : (
@@ -781,7 +781,7 @@ export function Profile() {
 									<p className="text-sm text-muted-foreground mb-4">
 										Connect your fitness apps to sync data
 									</p>
-									<Button variant="cta" asChild>
+									<Button asChild>
 										<Link to="/integrations">Manage Integrations</Link>
 									</Button>
 								</div>

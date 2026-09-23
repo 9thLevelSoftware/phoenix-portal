@@ -104,12 +104,7 @@ export function ResetPassword() {
 
 					{error && <p className="text-sm text-red-400">{error}</p>}
 
-					<Button
-						type="submit"
-						disabled={loading}
-						variant="cta"
-						className="w-full"
-					>
+					<Button type="submit" disabled={loading} className="w-full">
 						{loading ? (
 							<Loader2 className="w-4 h-4 animate-spin mr-2" />
 						) : (

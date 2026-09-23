@@ -456,7 +456,6 @@ export function Goals() {
 						<Button
 							onClick={() => setCreateOpen(true)}
 							disabled={atLimit}
-							variant="cta"
 							title={
 								atLimit && maxGoals !== Infinity
 									? `Maximum ${maxGoals} active goal${maxGoals > 1 ? "s" : ""} reached`
@@ -1021,7 +1020,6 @@ function GoalFormDialog({
 					{/* Submit */}
 					<Button
 						onClick={handleSubmit}
-						variant="cta"
 						className="w-full"
 						disabled={
 							!targetValue ||

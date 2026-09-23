@@ -172,7 +172,7 @@ export function RoutineDetail() {
 					</p>
 				</div>
 
-				<Button asChild variant="cta">
+				<Button asChild>
 					<Link to={`/routines/${routine.id}`}>
 						<Edit className="mr-2 h-4 w-4" />
 						Edit Routine

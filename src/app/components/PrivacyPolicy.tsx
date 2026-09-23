@@ -802,7 +802,7 @@ export function PrivacyPolicy() {
 
 					{/* Back Button */}
 					<div className="mt-12 text-center">
-						<Button onClick={() => navigate(-1)} variant="cta">
+						<Button onClick={() => navigate(-1)}>
 							<ArrowLeft className="w-4 h-4 mr-2" />
 							Back to Home
 						</Button>

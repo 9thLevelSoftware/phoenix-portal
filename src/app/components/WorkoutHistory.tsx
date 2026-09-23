@@ -485,11 +485,7 @@ export function WorkoutHistory() {
 									Select 2 sessions to compare ({selectedForCompare.length}/2)
 								</span>
 								{selectedForCompare.length === 2 && (
-									<Button
-										size="sm"
-										onClick={handleCompareSelected}
-										variant="cta"
-									>
+									<Button size="sm" onClick={handleCompareSelected}>
 										<BarChart3 className="w-4 h-4 mr-2" />
 										Compare Selected
 									</Button>
@@ -573,7 +569,7 @@ export function WorkoutHistory() {
 										: `${locked.length} older workout${locked.length === 1 ? " is" : "s are"} locked. `}
 									Upgrade to Phoenix for unlimited history.
 								</p>
-								<Button asChild variant="cta">
+								<Button asChild>
 									<Link to="/pricing">View Plans</Link>
 								</Button>
 							</Card>
