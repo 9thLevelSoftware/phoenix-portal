@@ -144,8 +144,10 @@ export function useSubscription(): SubscriptionData {
 		staleTime: 5 * 60 * 1000, // 5 minutes
 		// The app disables focus refetch globally; the gate opts back in. It is
 		// one small row, and returning from Paddle's billing pages is exactly
-		// when a changed plan must show (NF-35).
-		refetchOnWindowFocus: true,
+		// when a changed plan must show (NF-35). "always", not `true`: `true`
+		// skips the refetch while the row is inside its 5-minute staleTime,
+		// which is exactly the window a user comes back from checkout in.
+		refetchOnWindowFocus: "always",
 		// Preserve the last-known entitlement across transient refetch errors so a
 		// momentary network/Supabase failure doesn't silently downgrade the user —
 		// but ONLY for the same user. `keepPreviousData` would also carry a row
