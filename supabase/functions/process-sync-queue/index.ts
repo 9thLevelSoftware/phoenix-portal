@@ -435,7 +435,19 @@ async function processSyncQueue(
 
       try {
         // Call provider-specific sync function with exponential backoff on transient errors
-        await backOff(
+        // retry_count is the claim generation (nullable in the schema; a NULL
+        // is normalised to 0 once, so every later check can compare exactly).
+        const claimedRetry = (claimed as { retry_count?: number | null }).retry_count;
+        if (claimedRetry === null || claimedRetry === undefined) {
+          await supabase
+            .from('sync_queue')
+            .update({ retry_count: 0 })
+            .eq('id', task.id)
+            .eq('status', 'processing')
+            .is('retry_count', null);
+        }
+        const claimGeneration = Number(claimedRetry ?? 0);
+        const outcome = await backOff(
           () => callSyncFunction(
             deps,
             task.provider,
@@ -445,7 +457,7 @@ async function processSyncQueue(
             // The claim generation this invocation won: a stale-lease reclaim
             // bumps retry_count before re-claiming the same id, so the worker
             // checks its writes against this, never a value it reads later.
-            Number((claimed as { retry_count?: number | null }).retry_count ?? 0),
+            claimGeneration,
           ),
           {
             numOfAttempts: 3,
@@ -458,14 +470,21 @@ async function processSyncQueue(
         );
 
         // Mark completed. Only while the row is still the one this pass
-        // claimed (PR 54 R-7): a row reclaimed after a lease expiry, or
-        // cancelled meanwhile (a disconnect), must not be overwritten by an
-        // in-flight worker.
-        await supabase
-          .from('sync_queue')
-          .update({ status: 'completed', completed_at: new Date().toISOString() })
-          .eq('id', task.id)
-          .eq('status', 'processing');
+        // claimed (PR 54 R-7), in the generation it claimed: a row reclaimed
+        // after a lease expiry, or cancelled meanwhile (a disconnect), must not
+        // be overwritten by an in-flight worker. A worker that handed its row
+        // back as its own follow-up (pending again, possibly already claimed
+        // by another pass) owns that transition: this pass must not complete it.
+        const handedOff = typeof outcome === 'object' && outcome !== null &&
+          (outcome as { queue_row_handed_off?: unknown }).queue_row_handed_off === true;
+        if (!handedOff) {
+          await supabase
+            .from('sync_queue')
+            .update({ status: 'completed', completed_at: new Date().toISOString() })
+            .eq('id', task.id)
+            .eq('status', 'processing')
+            .eq('retry_count', claimGeneration);
+        }
 
         // Increment rate limit counter
         // Charge the request against the same bucket the dispatch check reads.

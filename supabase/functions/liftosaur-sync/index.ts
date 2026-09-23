@@ -641,6 +641,9 @@ async function runLiftosaurSync(
 						partial: true,
 						continuing: true,
 						follow_up_queued: followUpQueued,
+						// The dispatcher must not complete this row: it is the
+						// pending follow-up now (maybe already claimed again).
+						queue_row_handed_off: Boolean(ownedQueueId),
 						backfill_before: outcome.nextBefore,
 					}),
 					{ status: 200, headers: { ...cors, "Content-Type": "application/json" } },
