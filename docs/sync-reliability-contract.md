@@ -92,6 +92,13 @@ type PushResponseAdditions = {
   acknowledgedWorkoutDeletionIds: string[];
   acknowledgedOwnershipTransferIds: string[];
   acknowledgedDeletedCycleIds: string[];
+  clamped: Array<{
+    entity: 'session';
+    id: string;
+    field: 'totalVolume' | 'durationSeconds' | 'startedAt';
+    original: number | string;
+    clamped: number | string;
+  }>;
 };
 ```
 
@@ -228,3 +235,68 @@ older active upload from recreating a deleted cycle. A strictly newer active
 edit may win and clears that tombstone. Legacy `deletedCycleIds` values have no
 usable clock: absent ids are harmless no-ops, while existing ids are returned
 as structured cycle rejections and are never hard-deleted.
+
+The clocked delete is one database call, `delete_cycles_clocked`, which
+compares the delete's clock with the stored LWW key (`client_updated_at`) and
+deletes under the same per-cycle advisory lock every cycle write takes, so no
+write can land between the comparison and the delete. A delete whose clock is
+at least the stored key wins; a strictly newer stored key rejects it with that
+key in `rejections.cycles[].serverUpdatedAt`. An id with no server row is
+tombstoned and acknowledged.
+
+### Tombstone clocks
+
+`sync_tombstones` carries two clocks, mirroring the entities (two clocks,
+never interchangeable):
+
+- `client_deleted_at` is the delete's own clock: the device's `updatedAt` for
+  a clocked cycle delete, `now()` for a portal delete or a legacy routine
+  delete. It is what a later push is compared against.
+- `deleted_at` is server-owned and stays the pull cursor for
+  `deletedRoutineIds` / `deletedCycleIds`.
+
+On push, `apply_sync_tombstone_gate` compares each pushed routine and cycle
+with its tombstone, if any. The row is skipped (listed in `skippedDeleted`)
+when its DTO `updatedAt` is missing or not strictly later than
+`client_deleted_at`; a strictly later edit wins, is written normally and the
+tombstone is removed in the same call. Receipt time never stands in for a
+missing `updatedAt` here, so an undated push keeps losing to a delete. The
+comparison is by instant, not by string.
+
+The gate removes the tombstone in its own call, before the row is written. If
+that push then fails (a retryable 503) before the write commits, the id is
+neither tombstoned nor stored until the device retries. In that window a
+stale push from another device is not stopped by the gate. The retry of the
+newer edit still converges under LWW. Clearing the tombstone from an insert
+trigger instead would close the window, but it would also erase the tombstone
+of a delete that races the push, which is the one the R-4 re-delete check
+looks for.
+
+### Local profile ownership
+
+A push that names a session or routine another local profile holds (stored
+`local_profile_id` differs, with `NULL` meaning `"default"`) and carries no
+`ownershipTransfers` entry for it gets a structured rejection in
+`rejections.sessions` / `rejections.routines` with the stored LWW key, and
+nothing of that row (children included) is written. Cycles get the same
+rejection from `merge_training_cycles_from_push`. The push answers 200; the
+transfer contract above is how a row moves between profiles.
+
+### Outlier limits
+
+A pushed session field past one of these limits is stored at the limit and
+reported under `clamped`; the push still answers 200 (a 400 would be permanent
+for mobile and strand the batch).
+
+| Field | Limit |
+| --- | --- |
+| `totalVolume` | 1,000,000 kg (per cable, KD-8) |
+| `durationSeconds` | 604,800 (7 days) |
+| `startedAt` | at most 24 hours after the request is received; later values become the receipt time |
+
+Values under those limits are stored as sent. The leaderboard refresh
+(`refresh_leaderboard_snapshots`) then winsorizes at rank time: it ignores
+sessions and PRs dated more than a day in the future, caps each session's
+volume contribution at 100,000 kg, and recomputes streaks and workout counts
+from non-future sessions only. Stored workout history is never rewritten by
+ranking.

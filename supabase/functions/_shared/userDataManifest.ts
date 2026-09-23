@@ -687,10 +687,10 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		table: "sync_tombstones",
 		ownership: byUserId,
 		keyColumns: ["entity", "entity_id"],
-		columns: ["user_id", "entity", "entity_id", "deleted_at"],
+		columns: ["user_id", "entity", "entity_id", "deleted_at", "client_deleted_at"],
 		purge: "explicit",
 		mayBeAbsent: true,
-		note: "PK (user_id, entity, entity_id), no FK (PR 16); purgeUser deletes it after deleteUser (R-6, R-30).",
+		note: "PK (user_id, entity, entity_id); user_id cascades from auth.users since 20260920001600, and purgeUser still deletes it explicitly (R-6, R-30). client_deleted_at is the deletion's LWW clock (204-E); deleted_at stays the server clock.",
 	},
 	// Goals, gamification, insights
 	owned(

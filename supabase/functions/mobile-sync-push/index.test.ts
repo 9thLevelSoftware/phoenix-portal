@@ -19,9 +19,13 @@ import {
 } from "../_shared/flags.ts";
 import {
   broadcastSyncComplete,
+  buildExternalActivityAcks,
+  clampSessionOutliers,
   createMobileSyncPushHandler,
+  PUSH_OUTLIER_LIMITS,
   localProfilesPushChangesRows,
 } from "./index.ts";
+import { partitionPersonalRecordRowsBySessionValidity } from "../_shared/personalRecordRow.ts";
 
 interface ByteGoldens {
   version: number;
@@ -803,6 +807,9 @@ function makeHarness(
       if (lww) return lww;
       const merge = mergeCycleDouble(name, args);
       if (merge) return merge;
+      if (name === "delete_cycles_clocked") {
+        return cycleDeleteDouble(args, options.tableResults?.training_cycles);
+      }
       if (name === "mutate_local_profile_preference_section") {
         const section = String(args.p_section);
         return {
@@ -1413,12 +1420,17 @@ Deno.test("clocked cycle deletion that wins is acknowledged and hard-deletes the
   assertEquals(response.status, 200, JSON.stringify(body));
   assertEquals(body.acknowledgedDeletedCycleIds, [deletedId]);
   assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
-  // CASCADE takes cycle_days — there is never a separate cycle_days delete
-  // racing the parent.
-  const deletes = writeQueries(harness, "training_cycles", "delete");
-  assertEquals(deletes.length, 1);
-  assertEquals(callArgs(deletes[0]!, "in")[1], [deletedId]);
-  assertEquals(callArgs(deletes[0]!, "eq"), ["user_id", VALID_USER_ID]);
+  // One SQL call decides and deletes under the per-cycle lock (204-C);
+  // CASCADE takes cycle_days, so there is never a separate delete racing it.
+  const deleteCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "delete_cycles_clocked"
+  );
+  assertEquals(deleteCalls.length, 1);
+  assertEquals(deleteCalls[0]!.args, {
+    p_user_id: VALID_USER_ID,
+    p_deletions: [{ id: deletedId, updatedAt: "2026-09-20T13:00:00.000Z" }],
+  });
+  assertEquals(writeQueries(harness, "training_cycles", "delete"), []);
   assertEquals(
     harness.adminWriteCalls.filter((call) => call.table === "cycle_days"),
     [],
@@ -1516,17 +1528,18 @@ Deno.test("clocked cycle deletion of an already-absent id records a tombstone an
   assertEquals(response.status, 200, JSON.stringify(body));
   assertEquals(body.acknowledgedDeletedCycleIds, [absentId]);
   assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
-  // No row to hard-delete; the tombstone is what stops the next stale upload
-  // from recreating the cycle.
+  // No row to hard-delete; delete_cycles_clocked records the tombstone (with
+  // the device clock) that stops the next stale upload recreating the cycle,
+  // so the Edge itself writes neither.
+  const deleteCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "delete_cycles_clocked"
+  );
+  assertEquals(
+    (deleteCalls[0]!.args.p_deletions as Array<{ id: string }>).map((d) => d.id),
+    [absentId],
+  );
   assertEquals(writeQueries(harness, "training_cycles", "delete"), []);
-  const tombstoneUpserts = writeQueries(harness, "sync_tombstones", "upsert");
-  assertEquals(tombstoneUpserts.length, 1);
-  assertEquals(callArgs(tombstoneUpserts[0]!, "upsert")[0], [{
-    user_id: VALID_USER_ID,
-    entity: "cycle",
-    entity_id: absentId,
-    deleted_at: "2026-07-16T02:00:00.000Z",
-  }]);
+  assertEquals(writeQueries(harness, "sync_tombstones", "upsert"), []);
 });
 
 Deno.test("an id named by both a clocked and a legacy delete is handled only by the clocked gate", async () => {
@@ -1550,7 +1563,11 @@ Deno.test("an id named by both a clocked and a legacy delete is handled only by 
   assertEquals(body.acknowledgedDeletedCycleIds, [deletedId]);
   // The legacy list must not also produce a rejection for the same id.
   assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
-  assertEquals(writeQueries(harness, "training_cycles", "delete").length, 1);
+  const deleteCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "delete_cycles_clocked"
+  );
+  assertEquals(deleteCalls.length, 1);
+  assertEquals((deleteCalls[0]!.args.p_deletions as unknown[]).length, 1);
 });
 
 Deno.test("byte golden metadata and raw lexemes remain exact", () => {
@@ -3483,7 +3500,10 @@ Deno.test("routine delete failure returns retryable 503 and no sync_complete", a
 
 Deno.test("cycle delete failure returns retryable 503 and no sync_complete", async () => {
   const harness = makeHarness(undefined, {
-    writeErrors: { "training_cycles:delete": INJECTED_DB_ERROR },
+    rpcBehavior: async (name) => {
+      if (name === "delete_cycles_clocked") return { data: null, error: INJECTED_DB_ERROR };
+      return undefined;
+    },
     tableResults: {
       training_cycles: {
         data: [{ id: CYCLE_ID, client_updated_at: "2026-09-20T12:00:00.000Z" }],
@@ -3491,8 +3511,8 @@ Deno.test("cycle delete failure returns retryable 503 and no sync_complete", asy
       },
     },
   });
-  // Clocked delete of a present row with a stale LWW key: it wins and takes
-  // the hard-delete path, which is where the injected failure lands.
+  // Clocked delete of a present row with a stale LWW key: the atomic delete
+  // call is where the injected failure lands.
   const response = await harness.handler(requestFromBody({
     ...validPushBody(),
     deletedCycles: [{ id: CYCLE_ID, updatedAt: "2026-09-20T13:00:00.000Z" }],
@@ -3796,7 +3816,7 @@ function manyIds(prefix: string, count: number): string[] {
   );
 }
 
-Deno.test("routine and clocked cycle deletes are chunked at 100 ids", async () => {
+Deno.test("routine deletes are chunked at 100 ids; clocked cycle deletes travel in one call body", async () => {
   const routineIds = manyIds("8a00", 250);
   const cycleIds = manyIds("8b00", 201);
   const harness = makeHarness(undefined, {
@@ -3823,23 +3843,27 @@ Deno.test("routine and clocked cycle deletes are chunked at 100 ids", async () =
 
   assertEquals(response.status, 200);
   assertEquals((await json(response)).acknowledgedDeletedCycleIds, cycleIds);
-  const cases: Array<[string, string[], number[]]> = [
-    ["routines", routineIds, [100, 100, 50]],
-    ["training_cycles", cycleIds, [100, 100, 1]],
-  ];
-  for (const [table, ids, sizes] of cases) {
-    const deletes = writeQueries(harness, table, "delete");
-    const chunks = deletes.map((query) => callArgs(query, "in")[1] as string[]);
-    assertEquals(chunks.map((chunk) => chunk.length), sizes);
-    assertEquals(chunks.flat(), ids);
-    for (const query of deletes) {
-      assertEquals(callArgs(query, "eq"), ["user_id", VALID_USER_ID]);
-    }
+  const routineDeletes = writeQueries(harness, "routines", "delete");
+  const chunks = routineDeletes.map((query) => callArgs(query, "in")[1] as string[]);
+  assertEquals(chunks.map((chunk) => chunk.length), [100, 100, 50]);
+  assertEquals(chunks.flat(), routineIds);
+  for (const query of routineDeletes) {
+    assertEquals(callArgs(query, "eq"), ["user_id", VALID_USER_ID]);
   }
+  // Cycle ids go in the RPC's POST body, so there is no URL limit to chunk for.
+  const deleteCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "delete_cycles_clocked"
+  );
+  assertEquals(deleteCalls.length, 1);
+  assertEquals(
+    (deleteCalls[0]!.args.p_deletions as Array<{ id: string }>).map((d) => d.id),
+    cycleIds,
+  );
+  assertEquals(writeQueries(harness, "training_cycles", "delete"), []);
   assertEquals(harness.broadcastPayloads.length, 1);
 });
 
-Deno.test("clocked deletes of already-absent cycles chunk the tombstone upsert at 100 ids", async () => {
+Deno.test("clocked deletes of already-absent cycles travel in one call body and are all acknowledged", async () => {
   const cycleIds = manyIds("8b00", 201);
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody({
@@ -3853,21 +3877,19 @@ Deno.test("clocked deletes of already-absent cycles chunk the tombstone upsert a
 
   assertEquals(response.status, 200, JSON.stringify(body));
   assertEquals(body.acknowledgedDeletedCycleIds, cycleIds);
-  // No server row to hard-delete; the tombstone is what stops the next stale
-  // upload from recreating the cycle.
+  // No server row to hard-delete; delete_cycles_clocked tombstones each id
+  // (in its POST body, so no URL limit) to stop the next stale upload
+  // recreating the cycle.
   assertEquals(writeQueries(harness, "training_cycles", "delete"), []);
-  const upserts = writeQueries(harness, "sync_tombstones", "upsert");
-  const chunks = upserts.map((query) =>
-    callArgs(query, "upsert")[0] as Array<{ entity_id: string }>
+  assertEquals(writeQueries(harness, "sync_tombstones", "upsert"), []);
+  const deleteCalls = harness.adminRpcCalls.filter((call) =>
+    call.name === "delete_cycles_clocked"
   );
-  assertEquals(chunks.map((chunk) => chunk.length), [100, 100, 1]);
-  assertEquals(chunks.flat().map((row) => row.entity_id), cycleIds);
-  for (const query of upserts) {
-    assertEquals(
-      callArgs(query, "upsert")[1],
-      { onConflict: "user_id,entity,entity_id" },
-    );
-  }
+  assertEquals(deleteCalls.length, 1);
+  assertEquals(
+    (deleteCalls[0]!.args.p_deletions as Array<{ id: string }>).map((d) => d.id),
+    cycleIds,
+  );
 });
 
 Deno.test("a failed tombstone delete chunk stops at that chunk with a retryable 503", async () => {
@@ -4699,17 +4721,55 @@ function oldBuildRoutineAndCycleBody(
   };
 }
 
+/**
+ * The push re-create gate (20260924100000): a pushed row is skipped when its
+ * clock is missing or not strictly newer than the tombstone's client clock; a
+ * strictly newer edit is reported skipped=false (the SQL removes the
+ * tombstone). uuid comparison is case-insensitive, as in Postgres.
+ */
+function tombstoneGateRows(
+  tombstones: Array<{ entity: string; entity_id: string; client_deleted_at?: string }>,
+  rows: Array<{ entity: string; id: string; clock?: string | null }>,
+): Array<{ entity: string; entity_id: string; skipped: boolean }> {
+  const out: Array<{ entity: string; entity_id: string; skipped: boolean }> = [];
+  for (const row of rows) {
+    const tombstone = tombstones.find((t) =>
+      t.entity === row.entity && t.entity_id.toLowerCase() === row.id.toLowerCase()
+    );
+    if (!tombstone) continue;
+    const tombstoneClock = Date.parse(tombstone.client_deleted_at ?? "2026-07-15T00:00:00.000Z");
+    const clock = typeof row.clock === "string" ? Date.parse(row.clock) : Number.NaN;
+    out.push({
+      entity: row.entity,
+      entity_id: tombstone.entity_id,
+      skipped: !Number.isFinite(clock) || clock <= tombstoneClock,
+    });
+  }
+  return out;
+}
+
 function tombstoneRpcBehavior(
-  tombstones: Array<{ entity: string; entity_id: string }>,
+  tombstones: Array<{ entity: string; entity_id: string; client_deleted_at?: string }>,
   tombstoneError: unknown = null,
 ): RpcBehavior {
   return async (name, args) => {
+    if (name === "apply_sync_tombstone_gate") {
+      if (tombstoneError) return { data: null, error: tombstoneError };
+      return {
+        data: tombstoneGateRows(
+          tombstones,
+          args.p_rows as Array<{ entity: string; id: string; clock?: string | null }>,
+        ),
+        error: null,
+      };
+    }
     if (name === "get_sync_tombstones") {
       if (tombstoneError) return { data: null, error: tombstoneError };
-      const ids = new Set(args.p_ids as string[]);
+      // p_ids is uuid[]: Postgres matches regardless of case.
+      const ids = new Set((args.p_ids as string[]).map((id) => id.toLowerCase()));
       return {
         data: tombstones
-          .filter((row) => ids.has(row.entity_id))
+          .filter((row) => ids.has(row.entity_id.toLowerCase()))
           .map((row) => ({ ...row, deleted_at: "2026-07-15T00:00:00.000Z" })),
         error: null,
       };
@@ -4816,16 +4876,19 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): old-build push of a deleted rou
   assertEquals(days.length, 1);
   assertEquals(days[0].cycle_id, TOMB_CYCLE_ID);
   assertEquals(days[0].routine_id, null);
-  // One lookup covers both entities.
+  // One gate call covers both entities; an old build sends no clocks.
   const lookups = harness.adminRpcCalls.filter((call) =>
-    call.name === "get_sync_tombstones"
+    call.name === "apply_sync_tombstone_gate"
   );
   assertEquals(lookups.length, 1);
   assertEquals(lookups[0].args.p_user_id, VALID_USER_ID);
-  assertEquals(lookups[0].args.p_entity, null);
   assertEquals(
-    [...(lookups[0].args.p_ids as string[])].sort(),
-    [TOMB_ROUTINE_ID, TOMB_CYCLE_ID].sort(),
+    [...(lookups[0].args.p_rows as Array<{ entity: string; id: string; clock: unknown }>)]
+      .sort((a, b) => a.id.localeCompare(b.id)),
+    [
+      { entity: "routine", id: TOMB_ROUTINE_ID, clock: null },
+      { entity: "cycle", id: TOMB_CYCLE_ID, clock: null },
+    ].sort((a, b) => a.id.localeCompare(b.id)),
   );
 });
 
@@ -4848,6 +4911,68 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a routine created in the same p
   const days = upsertedRows(harness, "cycle_days");
   assertEquals(days.length, 1);
   assertEquals(days[0].routine_id, TOMB_ROUTINE_ID);
+});
+
+// 204-E: the tombstone carries the delete's client clock. A dated edit that
+// is strictly newer wins (the SQL clears the tombstone); an edit dated at or
+// before the delete stays skipped. Real-SQL coverage: pgTAP
+// sync_tombstone_clock.test.sql and the "integration: tombstone clock" tests.
+function datedRoutineAndCycleBody(clock: string): Record<string, unknown> {
+  const body = oldBuildRoutineAndCycleBody();
+  const [routine] = body.routines as Array<Record<string, unknown>>;
+  const [cycle] = body.cycles as Array<Record<string, unknown>>;
+  return {
+    ...body,
+    routines: [{ ...routine, updatedAt: clock }],
+    cycles: [{ ...cycle, updatedAt: clock }],
+  };
+}
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): an edit strictly newer than the delete wins and is written`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([
+      { entity: "routine", entity_id: TOMB_ROUTINE_ID, client_deleted_at: "2026-09-20T12:00:00.000Z" },
+      { entity: "cycle", entity_id: TOMB_CYCLE_ID, client_deleted_at: "2026-09-20T12:00:00.000Z" },
+    ]),
+  });
+  const response = await harness.handler(
+    requestFromBody(datedRoutineAndCycleBody("2026-09-20T12:00:00.001Z")),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
+  assertEquals(parentWriteIds(harness, "routines"), [TOMB_ROUTINE_ID]);
+  assertEquals(parentWriteIds(harness, "training_cycles"), [TOMB_CYCLE_ID]);
+  // The day keeps its routine reference: the routine survives this push.
+  assertEquals(upsertedRows(harness, "cycle_days")[0].routine_id, TOMB_ROUTINE_ID);
+  const gate = harness.adminRpcCalls.find((call) => call.name === "apply_sync_tombstone_gate");
+  assertEquals(
+    (gate!.args.p_rows as Array<{ clock: unknown }>).map((row) => row.clock),
+    ["2026-09-20T12:00:00.001Z", "2026-09-20T12:00:00.001Z"],
+  );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): an edit dated at the delete's clock stays skipped`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([
+      { entity: "routine", entity_id: TOMB_ROUTINE_ID, client_deleted_at: "2026-09-20T12:00:00.000Z" },
+      { entity: "cycle", entity_id: TOMB_CYCLE_ID, client_deleted_at: "2026-09-20T12:00:00.000Z" },
+    ]),
+  });
+  const response = await harness.handler(
+    // Same instant, different offset: compared as instants, not strings.
+    requestFromBody(datedRoutineAndCycleBody("2026-09-20T08:00:00.000-04:00")),
+  );
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, {
+    routines: [TOMB_ROUTINE_ID],
+    cycles: [TOMB_CYCLE_ID],
+  });
+  assertEquals(parentWriteIds(harness, "routines"), []);
+  assertEquals(parentWriteIds(harness, "training_cycles"), []);
 });
 
 Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a deleted cycle is skipped with its days`, async () => {
@@ -5097,6 +5222,8 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a routine deleted concurrently 
           : [],
         error: null,
       }),
+      // The compare-and-delete finds the row this push wrote.
+      routines: { data: [{ id: TOMB_ROUTINE_ID }], error: null },
     },
   });
   const response = await harness.handler(
@@ -5135,6 +5262,7 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle deleted concurrently wi
         data: filters.entity === "cycle" ? [{ entity_id: TOMB_CYCLE_ID }] : [],
         error: null,
       }),
+      training_cycles: { data: [{ id: TOMB_CYCLE_ID }], error: null },
     },
   });
   const response = await harness.handler(
@@ -5157,6 +5285,167 @@ Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle deleted concurrently wi
   assertEquals(body.cycleVersions, {});
 });
 
+const RACED_TOMBSTONE = {
+  entity_id: TOMB_CYCLE_ID,
+  client_deleted_at: "2026-09-01T00:00:00.000Z",
+  deleted_at: "2026-09-19T12:00:00.000Z",
+};
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a concurrent delete older than the pushed edit loses the race`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    tableResults: {
+      sync_tombstones: (filters) => ({
+        data: filters.entity === "cycle" ? [RACED_TOMBSTONE] : [],
+        error: null,
+      }),
+      // The row this push wrote is still there.
+      training_cycles: { data: [{ id: TOMB_CYCLE_ID, user_id: VALID_USER_ID }], error: null },
+    },
+  });
+  const requestBody = oldBuildRoutineAndCycleBody();
+  const [cycle] = requestBody.cycles as Array<Record<string, unknown>>;
+  requestBody.cycles = [{ ...cycle, updatedAt: "2026-09-01T00:00:00.001Z" }];
+  const response = await harness.handler(requestFromBody(requestBody));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "training_cycles" && call.method === "delete"
+    ),
+    [],
+  );
+  // The strictly newer edit wins, so its tombstone goes.
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "sync_tombstones" && call.method === "delete"
+    ).length,
+    1,
+  );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a newer edit whose row a later delete already removed is reported deleted`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    tableResults: {
+      sync_tombstones: (filters) => ({
+        data: filters.entity === "cycle" ? [RACED_TOMBSTONE] : [],
+        error: null,
+      }),
+      // The delete landed after this push's write: the row is gone.
+      training_cycles: { data: [], error: null },
+    },
+  });
+  const requestBody = oldBuildRoutineAndCycleBody();
+  const [cycle] = requestBody.cycles as Array<Record<string, unknown>>;
+  requestBody.cycles = [{ ...cycle, updatedAt: "2026-09-01T00:00:00.001Z" }];
+  const response = await harness.handler(requestFromBody(requestBody));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [TOMB_CYCLE_ID] });
+  assertEquals(body.cycleVersions, {});
+  // Its tombstone stays, so a stale device cannot resurrect it.
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "sync_tombstones" && call.method === "delete"
+    ),
+    [],
+  );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a cycle the merge rejected is never race-checked or deleted`, async () => {
+  const gate = tombstoneRpcBehavior([]);
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name, args) => {
+      if (name === "merge_training_cycles_from_push") {
+        const rows = (args.p_cycles ?? []) as Array<Record<string, unknown>>;
+        return {
+          data: rows.map((row) => ({
+            id: row.id, accepted: false, structure_applied: false,
+            server_updated_at: "2026-09-02T00:00:00.000Z", client_updated_at: "2026-09-02T00:00:00.000Z",
+          })),
+          error: null,
+        };
+      }
+      return await gate(name, args);
+    },
+    tableResults: {
+      sync_tombstones: (filters) => ({
+        data: filters.entity === "cycle" ? [RACED_TOMBSTONE] : [],
+        error: null,
+      }),
+    },
+  });
+  const response = await harness.handler(requestFromBody(oldBuildRoutineAndCycleBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals((body.skippedDeleted as { cycles: string[] }).cycles, []);
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "training_cycles" && call.method === "delete"
+    ),
+    [],
+  );
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a raced row a newer edit already replaced is not deleted`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    tableResults: {
+      sync_tombstones: (filters) => ({
+        data: filters.entity === "cycle" ? [RACED_TOMBSTONE] : [],
+        error: null,
+      }),
+      // The compare-and-delete matches nothing: the stored key is no longer
+      // the one this push wrote.
+      training_cycles: { data: [], error: null },
+    },
+  });
+  const requestBody = oldBuildRoutineAndCycleBody();
+  const [cycle] = requestBody.cycles as Array<Record<string, unknown>>;
+  requestBody.cycles = [{ ...cycle, updatedAt: "2026-09-01T00:00:00.000Z" }];
+  const response = await harness.handler(requestFromBody(requestBody));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
+  const deletes = harness.adminWriteArgs.filter((call) =>
+    call.table === "training_cycles" && call.method === "delete"
+  );
+  assertEquals(deletes.length, 1, "one keyed compare-and-delete attempt");
+});
+
+Deno.test(`tombstones (LWW=${SYNC_LWW_ENABLED}): a concurrent delete as new as the pushed edit wins the race`, async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([]),
+    tableResults: {
+      sync_tombstones: (filters) => ({
+        data: filters.entity === "cycle" ? [RACED_TOMBSTONE] : [],
+        error: null,
+      }),
+      training_cycles: { data: [{ id: TOMB_CYCLE_ID }], error: null },
+    },
+  });
+  const requestBody = oldBuildRoutineAndCycleBody();
+  const [cycle] = requestBody.cycles as Array<Record<string, unknown>>;
+  requestBody.cycles = [{ ...cycle, updatedAt: "2026-09-01T00:00:00.000Z" }];
+  const response = await harness.handler(requestFromBody(requestBody));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.skippedDeleted, { routines: [], cycles: [TOMB_CYCLE_ID] });
+  assertEquals(
+    harness.adminWriteCalls.filter((call) =>
+      call.table === "sync_tombstones" && call.method === "delete"
+    ),
+    [],
+  );
+});
+
 Deno.test("tombstones: a push without routines or cycles makes no tombstone lookup", async () => {
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody(validPushBody()));
@@ -5165,7 +5454,7 @@ Deno.test("tombstones: a push without routines or cycles makes no tombstone look
   assertEquals(response.status, 200);
   assertEquals(body.skippedDeleted, { routines: [], cycles: [] });
   assertEquals(
-    harness.adminRpcCalls.filter((call) => call.name === "get_sync_tombstones"),
+    harness.adminRpcCalls.filter((call) => call.name === "apply_sync_tombstone_gate"),
     [],
   );
 });
@@ -5413,6 +5702,7 @@ Deno.test("present empty preference field is evaluated without an RPC", async ()
     acknowledgedWorkoutDeletionIds: [],
     acknowledgedOwnershipTransferIds: [],
     acknowledgedDeletedCycleIds: [],
+    clamped: [],
     rejections: {
       sessions: [],
       routines: [],
@@ -10985,7 +11275,9 @@ function storedRoutineExercises(
     const ids = inIds.args[1] as string[];
     return {
       data: stored
-        .filter((row) => ids.includes(row.id as string))
+        .filter((row) =>
+          ids.some((id) => id.toLowerCase() === String(row.id).toLowerCase())
+        )
         .map((row) =>
           Object.fromEntries(
             columns.filter((c) => c in row).map((c) => [c, row[c]]),
@@ -11073,3 +11365,647 @@ for (const bad of [-1, 1.5, "45", 2_147_483_648]) {
     assertNoPrivilegedActivity(harness);
   });
 }
+
+// ---------------------------------------------------------------------------
+// UUID casing (082df8a8, re-applied). iOS sends uppercase UUIDs; everything
+// PostgreSQL returns is lowercase. The fixture ids above are digits-only, so
+// toUpperCase() leaves them unchanged — these tests use ids with hex letters.
+// ---------------------------------------------------------------------------
+const CASE_SESSION_ID = "abcdef00-0000-4000-8000-0000000000a0";
+const CASE_EXERCISE_ID = "abcdef00-0000-4000-8000-0000000000a1";
+const CASE_SET_ID = "abcdef00-0000-4000-8000-0000000000a2";
+const CASE_REP_ID = "abcdef00-0000-4000-8000-0000000000a3";
+const CASE_TELEMETRY_ID = "abcdef00-0000-4000-8000-0000000000a4";
+const CASE_ROUTINE_ID = "abcdef00-0000-4000-8000-0000000000b0";
+const CASE_ROUTINE_EXERCISE_ID = "abcdef00-0000-4000-8000-0000000000b1";
+const CASE_CYCLE_ID = "abcdef00-0000-4000-8000-0000000000c0";
+const CASE_CYCLE_DAY_ID = "abcdef00-0000-4000-8000-0000000000c1";
+const upper = (id: string): string => id.toUpperCase();
+
+Deno.test("case-variant UUID hierarchy keeps children, telemetry and the routine exercise keep-list", async () => {
+  const body = validNestedRelationshipBody();
+  const session = (body.sessions as Record<string, unknown>[])[0];
+  const exercise = (session.exercises as Record<string, unknown>[])[0];
+  const set = (exercise.sets as Record<string, unknown>[])[0];
+  const repSummary = (set.repSummaries as Record<string, unknown>[])[0];
+  const routine = (body.routines as Record<string, unknown>[])[0];
+  const routineExercise = (routine.exercises as Record<string, unknown>[])[0];
+  const cycle = (body.cycles as Record<string, unknown>[])[0];
+  const day = (cycle.days as Record<string, unknown>[])[0];
+
+  session.id = CASE_SESSION_ID;
+  exercise.id = CASE_EXERCISE_ID;
+  exercise.sessionId = upper(CASE_SESSION_ID);
+  set.id = CASE_SET_ID;
+  set.exerciseId = upper(CASE_EXERCISE_ID);
+  repSummary.id = CASE_REP_ID;
+  repSummary.setId = upper(CASE_SET_ID);
+  routine.id = CASE_ROUTINE_ID;
+  routineExercise.id = CASE_ROUTINE_EXERCISE_ID;
+  routineExercise.routineId = upper(CASE_ROUTINE_ID);
+  cycle.id = CASE_CYCLE_ID;
+  day.id = CASE_CYCLE_DAY_ID;
+  day.cycleId = upper(CASE_CYCLE_ID);
+  body.telemetry = [{
+    id: CASE_TELEMETRY_ID,
+    setId: upper(CASE_SET_ID),
+    timestampMs: 10,
+    forceN: 100,
+    velocityMps: 0.5,
+    positionMm: 20,
+    cable: "A",
+  }];
+
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  const replace = harness.adminRpcCalls.find((call) => call.name === "replace_session_children");
+  assert(replace);
+  assertEquals((replace.args.p_exercises as unknown[]).length, 1);
+  assertEquals((replace.args.p_sets as unknown[]).length, 1);
+  assertEquals((replace.args.p_rep_summaries as unknown[]).length, 1);
+  assertEquals((replace.args.p_rep_telemetry as unknown[]).length, 1);
+
+  // The orphan cleanup keeps the pushed exercise: its routine matched.
+  const cleanup = harness.adminQueries.find((query) =>
+    query.table === "routine_exercises" &&
+    query.calls.some((call) => call.method === "delete") &&
+    query.calls.some((call) => call.method === "not")
+  );
+  assert(cleanup);
+  const keepFilter = cleanup.calls.find((call) => call.method === "not");
+  assert(String(keepFilter?.args[2]).includes(CASE_ROUTINE_EXERCISE_ID));
+});
+
+Deno.test("an uppercase push of a routine with a lowercase stored tombstone is skipped, not re-created", async () => {
+  const lowerRoutineId = "abcdef00-0000-4000-8000-0000000000e0";
+  const harness = makeHarness(undefined, {
+    rpcBehavior: tombstoneRpcBehavior([
+      { entity: "routine", entity_id: lowerRoutineId },
+    ]),
+  });
+  const body = JSON.parse(
+    JSON.stringify(oldBuildRoutineAndCycleBody()).replaceAll(
+      TOMB_ROUTINE_ID,
+      upper(lowerRoutineId),
+    ),
+  );
+  const response = await harness.handler(requestFromBody(body));
+  const responseBody = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(responseBody));
+  assertEquals(
+    (responseBody.skippedDeleted as { routines: string[] }).routines,
+    [upper(lowerRoutineId)],
+  );
+  assertEquals(parentWriteIds(harness, "routines"), []);
+  assertEquals(upsertedRows(harness, "routine_exercises"), []);
+});
+
+Deno.test("external activity LWW ack retains metadata across UUID casing", () => {
+  const lowercaseId = "abcdef00-0000-4000-8000-0000000000f0";
+  const acknowledgements = buildExternalActivityAcks(
+    [{ id: upper(lowercaseId), external_id: "external-activity-case-variant", provider: "hevy" }],
+    [{ id: lowercaseId, accepted: true, server_updated_at: "2026-07-11T13:00:00.000Z" }],
+    "2026-07-11T14:00:00.000Z",
+  );
+
+  assertEquals(acknowledgements, [{
+    localId: lowercaseId,
+    serverId: lowercaseId,
+    externalId: "external-activity-case-variant",
+    provider: "hevy",
+    updatedAt: "2026-07-11T13:00:00.000Z",
+  }]);
+});
+
+Deno.test("an uppercase active personal record UUID updates its lowercase stored row", async () => {
+  const personalRecordId = "abcdefab-cdef-4abc-8abc-abcdefabcdeb";
+  const harness = makeHarness(undefined, {
+    personalRecordsResult: {
+      data: [{
+        id: personalRecordId,
+        user_id: VALID_USER_ID,
+        local_profile_id: null,
+        exercise_id: null,
+        exercise_name: "Bench Press",
+        achieved_at: "2026-06-01T12:00:00.000Z",
+        record_type: "MAX_WEIGHT",
+        workout_phase: "COMBINED",
+        updated_at: "2026-07-02T12:00:00.000Z",
+        deleted_at: null,
+      }],
+      error: null,
+    },
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    personalRecords: [{
+      id: upper(personalRecordId),
+      exerciseName: "Bench Press",
+      recordType: "MAX_WEIGHT",
+      value: 112.5,
+      achievedAt: "2026-06-01T12:00:00.000Z",
+      updatedAt: "2026-07-03T12:00:00.000Z",
+    }],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.personalRecordsInserted, 1);
+  const written = upsertedRows(harness, "personal_records");
+  assertEquals(written.length, 1);
+  assertEquals(written[0].id, upper(personalRecordId));
+  assertEquals(written[0].value, 112.5);
+});
+
+Deno.test("personal record retry keeps a case-variant valid session reference", () => {
+  const row = {
+    id: "abcdefab-cdef-4abc-8abc-abcdefabcdec",
+    user_id: VALID_USER_ID,
+    local_profile_id: null,
+    exercise_name: "Bench Press",
+    exercise_id: null,
+    muscle_group: "Chest",
+    record_type: "MAX_WEIGHT",
+    value: 100,
+    unit: "kg",
+    session_id: upper(CASE_SESSION_ID),
+    achieved_at: "2026-07-11T12:00:00.000Z",
+    workout_phase: "COMBINED",
+    source: "dedicated" as const,
+  };
+
+  const partition = partitionPersonalRecordRowsBySessionValidity(
+    [row],
+    new Set([CASE_SESSION_ID]),
+  );
+  assertEquals(partition.validRows, [row]);
+  assertEquals(partition.invalidSessionRows, []);
+  assertEquals(partition.rowsWithInvalidSessionsNulled, [row]);
+});
+
+Deno.test("uppercase routine exercise keeps a lowercase stored duration in a mixed batch", async () => {
+  const caseExerciseId = "abcdef00-0000-4000-8000-0000000000d1";
+  const harness = makeHarness(async () => VALID_AUTH_RESULT, {
+    tableResults: {
+      routine_exercises: storedRoutineExercises([{
+        id: caseExerciseId,
+        drop_set_enabled: false,
+        drop_set_min_weight_kg: null,
+        duration_seconds: 55,
+      }]),
+    },
+  });
+  const response = await harness.handler(
+    requestFromBody(routinePushBody([
+      {
+        ...currentMobileRoutineExercise(upper(caseExerciseId)),
+        dropSetEnabled: false,
+        dropSetMinWeightKg: null,
+      },
+      {
+        ...currentMobileRoutineExercise(TIMED_ROUTINE_EXERCISE_ID),
+        orderIndex: 1,
+        durationSeconds: 30,
+        dropSetEnabled: false,
+        dropSetMinWeightKg: null,
+      },
+    ])),
+  );
+
+  assertEquals(response.status, 200);
+  const rows = routineExerciseUpsertRows(harness);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  assertEquals(byId.get(upper(caseExerciseId))?.duration_seconds, 55);
+  assertEquals(byId.get(TIMED_ROUTINE_EXERCISE_ID)?.duration_seconds, 30);
+});
+
+/**
+ * delete_cycles_clocked (20260924100000): per deletion, reject when the stored
+ * cycle's client_updated_at is strictly newer than the delete clock, otherwise
+ * accept (existed = a stored row was deleted). Stored rows come from the
+ * test's static `training_cycles` table result.
+ */
+function cycleDeleteDouble(
+  args: Record<string, unknown>,
+  storedResult: TerminalResult | undefined,
+): TerminalResultValue {
+  const stored = storedResult && typeof storedResult !== "function" &&
+      Array.isArray(storedResult.data)
+    ? storedResult.data as Array<{ id?: string; client_updated_at?: string | null }>
+    : [];
+  const deletions = args.p_deletions as Array<{ id: string; updatedAt: string }>;
+  return {
+    data: deletions.map((deletion) => {
+      const row = stored.find((r) =>
+        typeof r.id === "string" && r.id.toLowerCase() === deletion.id.toLowerCase()
+      );
+      const storedKey = row?.client_updated_at ?? null;
+      const rejected = row !== undefined && storedKey !== null &&
+        Date.parse(storedKey) > Date.parse(deletion.updatedAt);
+      return {
+        id: deletion.id.toLowerCase(),
+        accepted: !rejected,
+        existed: row !== undefined,
+        server_updated_at: rejected ? storedKey : null,
+      };
+    }),
+    error: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 204-D: a named-profile push of a row another local profile holds is a
+// structured rejection with the stored LWW key, not a 503 from the
+// guard_profile_ownership_update trigger. Cycles are refused inside the merge
+// RPC (pgTAP cycle_merge_profile_rejection.test.sql).
+// ---------------------------------------------------------------------------
+
+const PROFILE_B_ID = "00000000-0000-4000-8000-000000000040";
+
+function namedProfileBody(): Record<string, unknown> {
+  return {
+    ...validNestedRelationshipBody(),
+    cycles: [],
+    profileId: PROFILE_B_ID,
+    allProfiles: [
+      { id: "default", name: "Default", colorIndex: 0 },
+      { id: PROFILE_B_ID, name: "Partner", colorIndex: 1 },
+    ],
+  };
+}
+
+function storedUnderProfile(profile: string | null) {
+  return {
+    workout_sessions: {
+      data: [{
+        id: SESSION_ID,
+        user_id: VALID_USER_ID,
+        local_profile_id: profile,
+        client_updated_at: "2026-07-01T00:00:00.000Z",
+      }],
+      error: null,
+    },
+    routines: {
+      data: [{
+        id: ROUTINE_ID,
+        user_id: VALID_USER_ID,
+        local_profile_id: profile,
+        client_updated_at: "2026-07-02T00:00:00.000Z",
+      }],
+      error: null,
+    },
+  };
+}
+
+function sessionWriteIds(harness: PushHarness): string[] {
+  return [
+    ...harness.adminWriteArgs
+      .filter((call) => call.table === "workout_sessions" && call.method === "upsert")
+      .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id)),
+    ...harness.adminRpcCalls
+      .filter((call) => call.name === "upsert_workout_session_lww")
+      .flatMap((call) => (call.args.p_rows as Array<{ id: string }>).map((r) => r.id)),
+  ];
+}
+
+Deno.test(`profile guard (LWW=${SYNC_LWW_ENABLED}): rows held by the default profile are rejected, not a 503`, async () => {
+  const harness = makeHarness(undefined, { tableResults: storedUnderProfile(null) });
+  const response = await harness.handler(requestFromBody(namedProfileBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const rejections = body.rejections as Record<string, unknown[]>;
+  assertEquals(rejections.sessions, [
+    { id: SESSION_ID, serverUpdatedAt: "2026-07-01T00:00:00.000Z" },
+  ]);
+  assertEquals(rejections.routines, [
+    { id: ROUTINE_ID, serverUpdatedAt: "2026-07-02T00:00:00.000Z" },
+  ]);
+  // Nothing of theirs is written, children included.
+  assertEquals(sessionWriteIds(harness), []);
+  assertEquals(parentWriteIds(harness, "routines"), []);
+  assertEquals(upsertedRows(harness, "routine_exercises"), []);
+  assertEquals(
+    harness.adminRpcCalls.filter((call) => call.name === "replace_session_children"),
+    [],
+  );
+});
+
+Deno.test(`profile guard (LWW=${SYNC_LWW_ENABLED}): a rejected session's sets mint no fallback PRs`, async () => {
+  const harness = makeHarness(undefined, { tableResults: storedUnderProfile(null) });
+  const body = namedProfileBody();
+  const [session] = body.sessions as Array<Record<string, unknown>>;
+  const exercises = (session.exercises as Array<Record<string, unknown>>).map((exercise) => ({
+    ...exercise,
+    sets: (exercise.sets as Array<Record<string, unknown>>).map((set) => ({
+      ...set, isPr: true, prType: "MAX_WEIGHT", prPhase: "COMBINED",
+    })),
+  }));
+  body.sessions = [{ ...session, exercises }];
+  delete body.personalRecords;
+  const response = await harness.handler(requestFromBody(body));
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  assertEquals(
+    harness.adminRpcCalls.filter((call) => call.name === "upsert_set_derived_personal_records"),
+    [],
+  );
+});
+
+Deno.test(`profile guard (LWW=${SYNC_LWW_ENABLED}): a transfer racing the probe is a retryable 503`, async () => {
+  const raced = { code: "P204D", message: "profile_ownership_transfer_required" };
+  const harness = makeHarness(undefined, {
+    tableResults: storedUnderProfile(PROFILE_B_ID),
+    rpcBehavior: async (name) =>
+      name === "upsert_workout_session_lww" ? { data: null, error: raced } : undefined,
+    writeErrors: { "workout_sessions:upsert": raced },
+  });
+  const response = await harness.handler(requestFromBody(namedProfileBody()));
+  await assertPartialWriteRetry(harness, response);
+});
+
+Deno.test(`profile guard (LWW=${SYNC_LWW_ENABLED}): rows already held by the pushing profile are written`, async () => {
+  const harness = makeHarness(undefined, { tableResults: storedUnderProfile(PROFILE_B_ID) });
+  const response = await harness.handler(requestFromBody(namedProfileBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const rejections = body.rejections as Record<string, unknown[]>;
+  assertEquals(rejections.sessions, []);
+  assertEquals(rejections.routines, []);
+  assertEquals(sessionWriteIds(harness), [SESSION_ID]);
+  assertEquals(parentWriteIds(harness, "routines"), [ROUTINE_ID]);
+});
+
+// ---------------------------------------------------------------------------
+// NF-37: impossible session values are clamped and reported, never a 400.
+// ---------------------------------------------------------------------------
+
+Deno.test("clampSessionOutliers clamps only values past a limit and reports each", () => {
+  const receivedAt = "2026-09-20T12:00:00.000Z";
+  const sessions = [
+    {
+      id: "a",
+      startedAt: "2026-09-21T12:00:00.001Z",
+      durationSeconds: PUSH_OUTLIER_LIMITS.sessionDurationSeconds + 1,
+      totalVolume: 5_000_000,
+    },
+    {
+      // Exactly at every limit: untouched.
+      id: "b",
+      startedAt: "2026-09-21T12:00:00.000Z",
+      durationSeconds: PUSH_OUTLIER_LIMITS.sessionDurationSeconds,
+      totalVolume: PUSH_OUTLIER_LIMITS.sessionTotalVolumeKg,
+    },
+  ];
+  const clamped = clampSessionOutliers(sessions, receivedAt);
+
+  assertEquals(clamped, [
+    { entity: "session", id: "a", field: "totalVolume", original: 5_000_000, clamped: 1_000_000 },
+    {
+      entity: "session",
+      id: "a",
+      field: "durationSeconds",
+      original: 604_801,
+      clamped: 604_800,
+    },
+    {
+      entity: "session",
+      id: "a",
+      field: "startedAt",
+      original: "2026-09-21T12:00:00.001Z",
+      clamped: receivedAt,
+    },
+  ]);
+  assertEquals(sessions[0].totalVolume, 1_000_000);
+  assertEquals(sessions[0].durationSeconds, 604_800);
+  assertEquals(sessions[0].startedAt, receivedAt);
+  assertEquals(sessions[1].totalVolume, 1_000_000);
+  assertEquals(sessions[1].startedAt, "2026-09-21T12:00:00.000Z");
+});
+
+Deno.test("clampSessionOutliers: a far-future updatedAt is clamped with the start it came with", () => {
+  const receivedAt = "2026-09-20T12:00:00.000Z";
+  const sessions = [{ id: "a", startedAt: "2099-01-01T00:00:00.000Z", updatedAt: "2099-01-01T01:00:00.000Z" }];
+  clampSessionOutliers(sessions, receivedAt);
+  assertEquals([sessions[0].startedAt, sessions[0].updatedAt], [receivedAt, receivedAt]);
+});
+
+Deno.test(`NF-37 (LWW=${SYNC_LWW_ENABLED}): an outlier session is stored clamped with a 200 and reported`, async () => {
+  const harness = makeHarness();
+  const body = validNestedRelationshipBody();
+  const [session] = body.sessions as Array<Record<string, unknown>>;
+  body.sessions = [{ ...session, totalVolume: 9_999_999, durationSeconds: 2_000_000 }];
+  const response = await harness.handler(requestFromBody(body));
+  const result = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(result));
+  assertEquals(
+    (result.clamped as Array<{ field: string }>).map((entry) => entry.field),
+    ["totalVolume", "durationSeconds"],
+  );
+  const written = [
+    ...harness.adminWriteArgs
+      .filter((call) => call.table === "workout_sessions" && call.method === "upsert")
+      .flatMap((call) => call.args[0] as Array<Record<string, unknown>>),
+    ...harness.adminRpcCalls
+      .filter((call) => call.name === "upsert_workout_session_lww")
+      .flatMap((call) => call.args.p_rows as Array<Record<string, unknown>>),
+  ];
+  assertEquals(written.length, 1);
+  assertEquals(written[0].total_volume, 1_000_000);
+  assertEquals(written[0].duration_seconds, 604_800);
+});
+
+Deno.test(`NF-37 (LWW=${SYNC_LWW_ENABLED}): a clamped session that is rejected is not reported`, async () => {
+  const harness = makeHarness(undefined, { tableResults: storedUnderProfile(null) });
+  const body = namedProfileBody();
+  const [session] = body.sessions as Array<Record<string, unknown>>;
+  body.sessions = [{ ...session, totalVolume: 9_999_999 }];
+  const response = await harness.handler(requestFromBody(body));
+  const result = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(result));
+  assertEquals((result.rejections as Record<string, unknown[]>).sessions.length, 1);
+  assertEquals(sessionWriteIds(harness), []);
+  assertEquals(result.clamped, []);
+});
+
+Deno.test("NF-37: a push with nothing to clamp reports an empty list", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  const result = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(result));
+  assertEquals(result.clamped, []);
+});
+
+// ---------------------------------------------------------------------------
+// C5 real-SQL coverage: atomic clocked cycle delete (204-C), local-profile
+// rejection (204-D) and the tombstone client clock (204-E). Run by
+// `npm run test:edge:integration` under both SYNC_LWW_ENABLED values.
+// ---------------------------------------------------------------------------
+
+function clockedCyclePush(
+  ids: { routineId: string; exerciseId: string; cycleId: string; dayId: string },
+  clock: string,
+): Record<string, unknown> {
+  const body = tombstoneMobilePushBody(ids, { includeRoutine: true });
+  const [routine] = body.routines as Array<Record<string, unknown>>;
+  const [cycle] = body.cycles as Array<Record<string, unknown>>;
+  return {
+    ...body,
+    routines: [{ ...routine, updatedAt: clock }],
+    cycles: [{ ...cycle, updatedAt: clock }],
+  };
+}
+
+async function storedCycleKey(
+  fixture: TombstonePushFixture,
+  cycleId: string,
+): Promise<{ client_updated_at: string | null } | null> {
+  const row = await fixture.admin.from("training_cycles")
+    .select("client_updated_at")
+    .eq("id", cycleId)
+    .maybeSingle();
+  if (row.error) throw new Error("cycle lookup failed");
+  return row.data as { client_updated_at: string | null } | null;
+}
+
+Deno.test({
+  name:
+    `integration: tombstone clock (LWW=${SYNC_LWW_ENABLED}) a delete older than the stored key is rejected and a newer one deletes`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = freshTombstoneIds();
+      const created = new Date(Date.now() - 10 * 60_000).toISOString();
+      await pushOk(handler, clockedCyclePush(ids, created));
+      const stored = await storedCycleKey(fixture, ids.cycleId);
+      assert(stored?.client_updated_at, "the merge stores the LWW key");
+      const storedMs = epochMs(stored.client_updated_at);
+
+      const stale = await pushOk(handler, {
+        ...validPushBody(),
+        deletedCycles: [{ id: ids.cycleId, updatedAt: new Date(storedMs - 60_000).toISOString() }],
+      });
+      assertEquals(stale.acknowledgedDeletedCycleIds, []);
+      const staleRejections = (stale.rejections as RejectionLists).cycles;
+      assertEquals(staleRejections.map((r) => r.id), [ids.cycleId]);
+      assertEquals(epochMs(staleRejections[0].serverUpdatedAt), storedMs);
+      assert(await storedCycleKey(fixture, ids.cycleId), "a losing delete keeps the row");
+
+      const deleteClock = new Date(storedMs + 60_000).toISOString();
+      const winning = await pushOk(handler, {
+        ...validPushBody(),
+        deletedCycles: [{ id: ids.cycleId, updatedAt: deleteClock }],
+      });
+      assertEquals(winning.acknowledgedDeletedCycleIds, [ids.cycleId]);
+      assertEquals(await storedCycleKey(fixture, ids.cycleId), null);
+      const tombstone = await fixture.admin.from("sync_tombstones")
+        .select("client_deleted_at, deleted_at")
+        .eq("user_id", fixture.ownerId)
+        .eq("entity_id", ids.cycleId)
+        .single();
+      if (tombstone.error) throw new Error("tombstone lookup failed");
+      // The device clock is the comparison key; deleted_at stays the server
+      // clock (pull cursor).
+      assertEquals(epochMs(tombstone.data.client_deleted_at), epochMs(deleteClock));
+      assert(epochMs(tombstone.data.deleted_at) > storedMs);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: tombstone clock (LWW=${SYNC_LWW_ENABLED}) an edit dated at the delete stays skipped; a strictly newer edit wins and clears the tombstone`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = freshTombstoneIds();
+      const deleteMs = Date.now() - 5 * 60_000;
+      await pushOk(handler, clockedCyclePush(ids, new Date(deleteMs - 10 * 60_000).toISOString()));
+      await pushOk(handler, {
+        ...validPushBody(),
+        deletedCycles: [{ id: ids.cycleId, updatedAt: new Date(deleteMs).toISOString() }],
+      });
+
+      // Same instant as the delete: the delete stands.
+      const tied = await pushOk(handler, {
+        ...clockedCyclePush(ids, new Date(deleteMs).toISOString()),
+        routines: [],
+      });
+      assertEquals(tied.skippedDeleted, { routines: [], cycles: [ids.cycleId] });
+      assertEquals(await storedCycleKey(fixture, ids.cycleId), null);
+
+      // An undated push never outranks a delete (KD-4).
+      const undated = await pushOk(handler, tombstoneMobilePushBody(ids, { includeRoutine: false }));
+      assertEquals(undated.skippedDeleted, { routines: [], cycles: [ids.cycleId] });
+
+      const newer = await pushOk(handler, {
+        ...clockedCyclePush(ids, new Date(deleteMs + 1).toISOString()),
+        routines: [],
+      });
+      assertEquals(newer.skippedDeleted, { routines: [], cycles: [] });
+      assert(await storedCycleKey(fixture, ids.cycleId), "the newer edit recreates the cycle");
+      const tombstones = await fixture.admin.from("sync_tombstones")
+        .select("entity_id")
+        .eq("user_id", fixture.ownerId)
+        .eq("entity_id", ids.cycleId);
+      if (tombstones.error) throw new Error("tombstone lookup failed");
+      assertEquals(tombstones.data, []);
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
+  name:
+    `integration: profile guard (LWW=${SYNC_LWW_ENABLED}) a named-profile push of portal-created rows is 200 with structured rejections`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const handler = realTombstonePushHandler(fixture);
+      const ids = freshTombstoneIds();
+      // Portal-created: no local profile (NULL, i.e. "default").
+      await seedRoutineAndCycle(fixture, ids);
+      const partner = crypto.randomUUID();
+      const response = await handler(requestFromBody({
+        ...clockedCyclePush(ids, new Date().toISOString()),
+        profileId: partner,
+        profileName: "Partner",
+        allProfiles: [
+          { id: "default", name: "Default", colorIndex: 0 },
+          { id: partner, name: "Partner", colorIndex: 1 },
+        ],
+      }));
+      const body = await json(response);
+      assertEquals(response.status, 200, JSON.stringify(body));
+      const rejections = body.rejections as RejectionLists;
+      assertEquals(rejections.routines.map((r) => r.id), [ids.routineId]);
+      assertEquals(rejections.cycles.map((r) => r.id), [ids.cycleId]);
+      assertEquals(body.acknowledgedCycleIds, []);
+      for (const table of ["routines", "training_cycles"] as const) {
+        const id = table === "routines" ? ids.routineId : ids.cycleId;
+        const row = await fixture.admin.from(table)
+          .select("local_profile_id")
+          .eq("id", id)
+          .single();
+        if (row.error) throw new Error(`${table} lookup failed`);
+        assertEquals(row.data.local_profile_id, null, `${table} keeps its profile`);
+      }
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
