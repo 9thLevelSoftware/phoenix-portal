@@ -610,10 +610,15 @@ export function Analytics() {
 		...externalActivitiesOptions(userId),
 		enabled: !!user,
 	});
+	// The chart's window (4w = 28 days): totals, deltas, training load,
+	// consistency and efficiency all describe the same sessions.
 	const { data: volumeComparison } = useQuery({
-		// Insight windows (30D = 30 days, as generate-insights computes them),
-		// not the chart's week buckets (4w = 28 days): the local insight
-		// fallback runs the shared rules over this comparison.
+		...volumeComparisonOptions(userId, queryPeriod, activeProfileId),
+		enabled: !!userId,
+	});
+	// The insight window (30D = 30 days, as generate-insights computes it),
+	// used only by the local insight fallback so it agrees with the server.
+	const { data: insightComparison } = useQuery({
 		...volumeComparisonOptions(userId, insightPeriod, activeProfileId),
 		enabled: !!userId,
 	});
@@ -832,7 +837,7 @@ export function Analytics() {
 	const totalVolume = volumeData.reduce((sum, d) => sum + d.volume, 0);
 	const totalWorkouts = volumeData.reduce((sum, d) => sum + d.workouts, 0);
 	const insights = buildLocalInsights(
-		volumeComparison,
+		insightComparison,
 		queryPeriodDays(insightPeriod),
 		muscleGroupData,
 		unit,
