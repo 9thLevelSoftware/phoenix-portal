@@ -1,6 +1,13 @@
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
+import {
+  applySubscriptionEvent,
+  buildSubscriptionUpsertFromPaddleState,
+  type PaddleSubscriptionState,
+  paddleEventOccurredAt,
+  syntheticSubscriptionEventId,
+} from "../_shared/paddleSubscriptionState.ts";
 import { resolvePaddleCancelRequest } from "../_shared/paddleSubscriptionUpdate.ts";
 
 /** Anything with `get(key)`, e.g. `Deno.env`. */
@@ -88,10 +95,12 @@ async function paddleCancelSubscriptionHandler(
     }, cors);
     if (!rateCheck.allowed) return rateCheck.response!;
 
-    // Look up user's current subscription
+    // Look up user's current subscription. The ordered writer rewrites the
+    // whole row, so the plan fields it writes have to be read first — a cancel
+    // keeps the plan the row already had (tier / price_id).
     const { data: sub, error: subError } = await supabaseAdmin
       .from("subscriptions")
-      .select("paddle_subscription_id, status")
+      .select("paddle_subscription_id, status, tier, price_id")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -164,21 +173,70 @@ async function paddleCancelSubscriptionHandler(
     // so the UI reflects it before the webhook arrives (and even if the
     // webhook is delayed/failing). The webhook still reconciles the
     // authoritative state later.
-    const { error: updateError } = await supabaseAdmin
-      .from("subscriptions")
-      .update({
-        ...cancelRequest.localPatch,
-        updated_at: deps.now().toISOString(),
-      })
-      .eq("user_id", user.id);
-
-    if (updateError) {
-      // Paddle already scheduled the cancellation; treat the local write as
-      // best-effort and let the webhook reconcile rather than failing the call.
+    //
+    // Every write goes through `public.apply_subscription_event` — the one
+    // ordered, guarded writer — never a direct `.update`/`.upsert`. Paddle's
+    // own `updated_at` is the clock, so a cancel response older than an event
+    // already stored (a renewal webhook that landed first) cannot regress the
+    // row (same rule as paddle-refresh-subscription).
+    let paddleBody: Record<string, unknown> | null = null;
+    try {
+      paddleBody = await paddleResponse.json();
+    } catch {
       console.error(
-        "Error persisting cancel_at_period_end after Paddle cancel:",
-        updateError,
+        "Paddle cancel response was not JSON; local write skipped",
       );
+      paddleBody = null;
+    }
+    const subscription = paddleBody?.data as PaddleSubscriptionState | undefined;
+
+    // A cancel response for a different subscription than the one we asked
+    // Paddle to cancel is never stored: it would overwrite this user's row
+    // with some other subscription's state. Paddle still accepted *our*
+    // cancel, so the call stays successful and the webhook reconciles.
+    if (!subscription?.id || subscription.id !== sub.paddle_subscription_id) {
+      console.error(
+        "[BILLING_ALERT] Paddle cancel response id mismatch; local write skipped:",
+        {
+          requested: sub.paddle_subscription_id,
+          returned: subscription?.id ?? null,
+        },
+      );
+    } else {
+      const occurredAt = paddleEventOccurredAt(subscription, deps.now());
+      const upsertData = buildSubscriptionUpsertFromPaddleState({
+        userId: user.id,
+        subscription,
+        // A cancel keeps the plan the row already had.
+        tier: sub.tier ?? "FREE",
+        priceId: sub.price_id ?? undefined,
+        eventId: syntheticSubscriptionEventId(
+          "cancel",
+          subscription.id,
+          occurredAt,
+        ),
+        occurredAt,
+      });
+
+      const write = await applySubscriptionEvent(supabaseAdmin, upsertData, {
+        storedSubscriptionId: sub.paddle_subscription_id,
+      });
+
+      if (write.outcome === "error" || write.outcome === "already_bound") {
+        // Paddle already scheduled the cancellation; treat the local write as
+        // best-effort and let the webhook reconcile rather than failing the call.
+        console.error(
+          "Error persisting cancel state after Paddle cancel:",
+          write.outcome,
+          write.error,
+        );
+      } else if (write.outcome !== "applied") {
+        console.warn(
+          "[Paddle] Cancel state not stored (newer event or guard refusal):",
+          write.outcome,
+          subscription.id,
+        );
+      }
     }
 
     return new Response(
