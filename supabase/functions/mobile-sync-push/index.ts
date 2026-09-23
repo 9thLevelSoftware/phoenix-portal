@@ -1646,7 +1646,7 @@ async function mobileSyncPushHandler(
           .not(
             'id',
             'in',
-            `${[...retainedProfileIds].map((id) => `"${id}"`).join(',')}`,
+            `(${[...retainedProfileIds].map((id) => `"${id}"`).join(',')})`,
           );
         if (deleteError) console.warn('Failed to clean stale profiles:', deleteError.message);
       }
@@ -2874,7 +2874,8 @@ async function mobileSyncPushHandler(
     const clockedDeleteById = new Map<string, string>();
     for (const deletion of payload.deletedCycles ?? []) {
       const previous = clockedDeleteById.get(deletion.id);
-      if (!previous || deletion.updatedAt > previous) {
+      // Instants, not strings: `10:00-04:00` is later than `13:00Z`.
+      if (!previous || Date.parse(deletion.updatedAt) > Date.parse(previous)) {
         clockedDeleteById.set(deletion.id, deletion.updatedAt);
       }
     }
