@@ -3687,6 +3687,15 @@ export type Database = {
 				Args: { p_default: number; p_key: string; p_obj: Json };
 				Returns: number;
 			};
+			save_sync_state_if_queue_owned: {
+				Args: {
+					p_provider: string;
+					p_queue_id: string;
+					p_state: Json;
+					p_user_id: string;
+				};
+				Returns: boolean;
+			};
 			seed_device_gamification_stats: { Args: never; Returns: number };
 			session_volume_buckets: {
 				Args: { p_period?: string; p_profile_id?: string; p_tz?: string };
