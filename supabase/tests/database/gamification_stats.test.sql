@@ -22,7 +22,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(54);
+SELECT plan(56);
 
 SELECT diag('database:gamification-derivation-catalog');
 
@@ -611,7 +611,7 @@ SELECT results_eq(
         FROM public.gamification_stats
         WHERE user_id = 'f6f6f6f6-0000-4000-8000-000000000006'::uuid
     $sql$,
-    $values$ VALUES (4, NULL::integer, NULL::numeric, NULL::integer, 4, 4) $values$,
+    $values$ VALUES (4, NULL::integer, NULL::numeric, NULL::bigint, 4, 4) $values$,
     'an old-shape payload leaves every device_* shadow column untouched'
 );
 
@@ -652,7 +652,7 @@ SELECT results_eq(
         WHERE user_id = 'a7a7a7a7-0000-4000-8000-000000000007'::uuid
     $sql$,
     $values$ VALUES (NULL::integer, NULL::integer, NULL::numeric,
-                     NULL::integer, NULL::integer, NULL::integer) $values$,
+                     NULL::bigint, NULL::integer, NULL::integer) $values$,
     'the row it creates carries NULL shadow columns, not zeroes (the pull then emits null)'
 );
 
@@ -710,7 +710,7 @@ SELECT results_eq(
         FROM public.gamification_stats
         WHERE user_id = 'b8b8b8b8-0000-4000-8000-000000000008'::uuid
     $sql$,
-    $values$ VALUES (11, 22, 33::numeric, 44, 55, 66) $values$,
+    $values$ VALUES (11, 22, 33::numeric, 44::bigint, 55, 66) $values$,
     'the seed maps each canonical counter to its own shadow column (no swaps)'
 );
 
@@ -806,6 +806,34 @@ SELECT is_empty(
         WHERE user_id = 'a7a7a7a7-0000-4000-8000-000000000007'::uuid
     $sql$,
     'the deleted user keeps no stats row'
+);
+
+-- A per-user duration sum past int4 derives instead of overflowing. Prod had
+-- device timestamps stored as durations (one user past 2^31), and the
+-- 20260920002501 backfill failed with 22003 on it before the bigint widening.
+INSERT INTO auth.users (id, email)
+VALUES ('c9c9c9c9-0000-4000-8000-000000000009'::uuid, 'derived-e@example.test')
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
+
+INSERT INTO public.workout_sessions (id, user_id, name, total_volume, duration_seconds, started_at)
+VALUES
+    ('c9c9c9c9-1111-4000-8000-000000000001'::uuid, 'c9c9c9c9-0000-4000-8000-000000000009'::uuid,
+     'huge duration 1', 0, 1788222680, now() - interval '2 days'),
+    ('c9c9c9c9-1111-4000-8000-000000000002'::uuid, 'c9c9c9c9-0000-4000-8000-000000000009'::uuid,
+     'huge duration 2', 0, 1788222680, now() - interval '3 days');
+
+SELECT lives_ok(
+    $sql$
+        SELECT * FROM public.derive_gamification_stats('c9c9c9c9-0000-4000-8000-000000000009'::uuid)
+    $sql$,
+    'a duration sum past int4 derives without 22003'
+);
+
+SELECT is(
+    (SELECT total_time_seconds
+       FROM public.derive_gamification_stats('c9c9c9c9-0000-4000-8000-000000000009'::uuid)),
+    3576445360::bigint,
+    'total_time_seconds is the exact bigint sum'
 );
 
 SELECT * FROM finish();
