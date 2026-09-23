@@ -9,11 +9,13 @@
 --
 -- The duplicates that incident produced (361k rows for ~4k logical PRs) were
 -- the SAME record re-inserted under fresh ids: identical content. So the
--- legacy identity here is the derived identity PLUS the whole content
--- (value, weight_kg, reps, session_id), with NULLs equal. Two legacy rows that
--- match on every one of those are indistinguishable wherever they are shown,
--- so collapsing them loses nothing, while any real difference keeps both rows
--- and F335 holds. set_derived and dedicated rows are untouched.
+-- legacy identity here is the derived identity PLUS every user-visible or
+-- behavioural column (exercise_name, muscle_group, value, unit,
+-- previous_value, weight_kg, reps, session_id), with NULLs equal. Two legacy
+-- rows that match on every one of those are indistinguishable wherever they
+-- are shown (RecordsTab, insights, exports), so collapsing them loses
+-- nothing, while any real difference keeps both rows and F335 holds.
+-- set_derived and dedicated rows are untouched.
 --
 -- Dedupe mirrors 20260920005700: keep the most recently updated row per
 -- identity (ties: lowest id) and TOMBSTONE the others (deleted_at, updated_at
@@ -29,7 +31,8 @@
 --           THEN 'id:' || exercise_id ELSE 'name:' || exercise_name END),
 --         date_trunc('milliseconds', achieved_at AT TIME ZONE 'UTC'),
 --         record_type, COALESCE(workout_phase, 'COMBINED'),
---         value, weight_kg, reps, session_id
+--         exercise_name, muscle_group, value, unit, previous_value,
+--         weight_kg, reps, session_id
 --       ORDER BY updated_at DESC NULLS LAST, id ASC) AS rn
 --     FROM public.personal_records
 --     WHERE source IS NULL AND deleted_at IS NULL) r
@@ -63,7 +66,11 @@ AS $$
           date_trunc('milliseconds', pr.achieved_at AT TIME ZONE 'UTC'),
           pr.record_type,
           COALESCE(pr.workout_phase, 'COMBINED'),
+          pr.exercise_name,
+          pr.muscle_group,
           pr.value,
+          pr.unit,
+          pr.previous_value,
           pr.weight_kg,
           pr.reps,
           pr.session_id
@@ -105,7 +112,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_personal_records_legacy_identity
     (date_trunc('milliseconds', achieved_at AT TIME ZONE 'UTC')),
     record_type,
     (COALESCE(workout_phase, 'COMBINED')),
+    exercise_name,
+    muscle_group,
     value,
+    unit,
+    previous_value,
     weight_kg,
     reps,
     session_id
@@ -115,7 +126,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_personal_records_legacy_identity
 
 COMMENT ON INDEX public.uq_personal_records_legacy_identity IS
   'F-062: live legacy (source IS NULL) personal_records are unique on derived '
-  'identity plus content (value, weight_kg, reps, session_id), NULLs equal. '
+  'identity plus content (exercise_name, muscle_group, value, unit, previous_value, '
+  'weight_kg, reps, session_id), NULLs equal. '
   'set_derived rows use uq_personal_records_set_derived_identity; dedicated rows '
   'stay id-keyed (F335).';
 
