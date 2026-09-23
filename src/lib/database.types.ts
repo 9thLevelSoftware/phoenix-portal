@@ -2265,18 +2265,21 @@ export type Database = {
 			};
 			sync_tombstones: {
 				Row: {
+					client_deleted_at: string;
 					deleted_at: string;
 					entity: string;
 					entity_id: string;
 					user_id: string;
 				};
 				Insert: {
+					client_deleted_at?: string;
 					deleted_at?: string;
 					entity: string;
 					entity_id: string;
 					user_id: string;
 				};
 				Update: {
+					client_deleted_at?: string;
 					deleted_at?: string;
 					entity?: string;
 					entity_id?: string;
@@ -2947,6 +2950,14 @@ export type Database = {
 				};
 				Returns: boolean;
 			};
+			apply_sync_tombstone_gate: {
+				Args: { p_rows: Json; p_user_id: string };
+				Returns: {
+					entity: string;
+					entity_id: string;
+					skipped: boolean;
+				}[];
+			};
 			apply_workout_deletions: {
 				Args: {
 					p_deletions: Json;
@@ -3019,6 +3030,15 @@ export type Database = {
 					p_name: string;
 				};
 				Returns: string;
+			};
+			delete_cycles_clocked: {
+				Args: { p_deletions: Json; p_user_id: string };
+				Returns: {
+					accepted: boolean;
+					existed: boolean;
+					id: string;
+					server_updated_at: string;
+				}[];
 			};
 			delete_training_cycle_lww: {
 				Args: { p_cycle_id: string; p_updated_at: string };
