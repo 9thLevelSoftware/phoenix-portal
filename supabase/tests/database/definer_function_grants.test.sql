@@ -16,7 +16,7 @@
 --                  verify_profile_recovery_source (20260920120000; each
 --                  binds the caller to auth.uid() and takes no user id),
 --                  exercise_progress_series, exercise_progress_series_many
---                  (20260923100000; caller-scoped by auth.uid(), DEFINER only
+--                  (20260925900000; caller-scoped by auth.uid(), DEFINER only
 --                  to read the INFERNO-gated VBT 1RM column)
 --   anon:          none. Every policy that calls a tier helper is
 --                  INSERT/UPDATE/DELETE with an auth.uid() ownership

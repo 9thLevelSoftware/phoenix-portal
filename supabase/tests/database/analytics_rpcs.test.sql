@@ -274,7 +274,7 @@ SELECT is(
 );
 
 -- The two progress series read velocity_estimated_1rm_kg, which is not
--- client-readable (INFERNO gate, 20260923100000), so they run as DEFINER and
+-- client-readable (INFERNO gate, 20260925900000), so they run as DEFINER and
 -- stay caller-scoped by auth.uid(). Same pin and grants otherwise.
 SELECT is(
     (
@@ -467,7 +467,7 @@ SELECT is(
     (
         -- pg_attribute, not information_schema.columns: the latter hides
         -- columns the current role cannot read, and velocity_estimated_1rm_kg
-        -- is not client-readable (20260923100000). The key is still present.
+        -- is not client-readable (20260925900000). The key is still present.
         SELECT array_agg(a.attname::text ORDER BY a.attname::text)
         FROM pg_attribute a
         WHERE a.attrelid = 'public.exercise_progress'::regclass
