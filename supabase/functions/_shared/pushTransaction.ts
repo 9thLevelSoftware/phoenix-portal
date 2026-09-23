@@ -533,8 +533,8 @@ export const PUSH_TRANSACTION_TIMEOUT_MS = 100_000;
 export async function beginPushTransaction(
   executor: SqlExecutor,
 ): Promise<PushTransaction> {
-  await executor.query("BEGIN", []);
   try {
+    await executor.query("BEGIN", []);
     await executor.query("SET LOCAL ROLE service_role", []);
     await executor.query(
       "SELECT set_config('request.jwt.claims', $1::text, true)",
