@@ -69,39 +69,3 @@ export function useLeaveChallenge() {
 		},
 	});
 }
-
-/** Complete a challenge -- sets completed_at on participant row */
-export function useCompleteChallenge() {
-	const { user } = useAuth();
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async (challengeId: string) => {
-			if (!user) throw new Error("Must be logged in to complete a challenge");
-
-			const { data: completed, error } = await supabase
-				.from("challenge_participants")
-				.update({ completed_at: new Date().toISOString() })
-				.eq("challenge_id", challengeId)
-				.eq("user_id", user.id)
-				.select("challenge_id")
-				.maybeSingle();
-			if (error) throw error;
-			if (!completed)
-				throw new Error("You are not participating in this challenge.");
-		},
-		onSuccess: () => {
-			toast.success("Challenge completed!");
-			queryClient.invalidateQueries({
-				queryKey: queryKeys.challenges.all,
-			});
-			queryClient.invalidateQueries({
-				queryKey: queryKeys.notifications.all,
-			});
-		},
-		onError: (error: Error) => {
-			console.error("[useCompleteChallenge] failed:", error);
-			toast.error("Failed to update challenge. Please try again.");
-		},
-	});
-}

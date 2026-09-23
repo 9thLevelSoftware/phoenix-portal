@@ -541,9 +541,11 @@ SELECT is_empty(
     'anon/authenticated hold no DELETE on the stats tables'
 );
 
+-- OP-14 (20260923100000): the notes hook had no UI and is gone, and so is
+-- the last client UPDATE grant on sessions.
 SELECT ok(
-    has_column_privilege('authenticated', 'public.workout_sessions', 'notes', 'UPDATE'),
-    'authenticated can UPDATE workout_sessions.notes'
+    NOT has_column_privilege('authenticated', 'public.workout_sessions', 'notes', 'UPDATE'),
+    'authenticated cannot UPDATE workout_sessions.notes'
 );
 
 SELECT is_empty(
@@ -553,10 +555,9 @@ SELECT is_empty(
         WHERE a.attrelid = 'public.workout_sessions'::regclass
           AND a.attnum > 0
           AND NOT a.attisdropped
-          AND a.attname <> 'notes'
           AND has_column_privilege('authenticated', a.attrelid, a.attnum, 'UPDATE')
     $sql$,
-    'authenticated can UPDATE no workout_sessions column other than notes'
+    'authenticated can UPDATE no workout_sessions column'
 );
 
 SELECT is(
@@ -702,21 +703,18 @@ SELECT pg_temp.assert_sqlstate(
     'EMBER JWT cannot UPDATE workout_sessions.duration_seconds'
 );
 
--- Same shape PostgREST sends for useSaveSessionNotes:
+-- The shape the removed notes hook sent through PostgREST:
 -- .update({ notes }).eq('id', ...).eq('user_id', ...).select('id').
-SELECT results_eq(
+SELECT pg_temp.assert_sqlstate(
     $sql$
-        WITH updated AS (
-            UPDATE public.workout_sessions
-               SET notes = 'pgtap note'
-             WHERE id = '44444444-5555-4444-8444-444444444444'::uuid
-               AND user_id = '44444444-4444-4444-8444-444444444444'::uuid
-            RETURNING id, notes
-        )
-        SELECT count(*)::integer, min(notes) FROM updated
+        UPDATE public.workout_sessions
+           SET notes = 'pgtap note'
+         WHERE id = '44444444-5555-4444-8444-444444444444'::uuid
+           AND user_id = '44444444-4444-4444-8444-444444444444'::uuid
+        RETURNING id, notes
     $sql$,
-    $values$ VALUES (1, 'pgtap note'::text) $values$,
-    'EMBER JWT can UPDATE workout_sessions.notes on its own session'
+    '42501',
+    'EMBER JWT cannot UPDATE workout_sessions.notes, even on its own session (OP-14)'
 );
 
 SELECT pg_temp.assert_sqlstate(

@@ -50,22 +50,20 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.fitbit-oauth]
-# Auth: none of handler JWT, HMAC, or cron secret. This is the browser
-# redirect from Fitbit, which carries no JWT. The handler accepts only an
-# unexpired oauth_states token issued to the user by initiate-oauth for
-# provider 'fitbit'; the token is deleted after a successful exchange.
+# DISABLED (NF-46): answers 410 Gone to every request, reads no secret and
+# never calls Fitbit (_shared/disabledOAuthCallback.ts). Fitbit is not
+# launched; initiate-oauth refuses to mint 'fitbit' state. verify_jwt stays
+# false because a provider redirect carries no JWT.
 verify_jwt = false
 
 [functions.fitbit-sync]
 verify_jwt = true
 
 [functions.garmin-oauth]
-# Auth: none of handler JWT, HMAC, or cron secret. These are browser
-# redirects that carry no JWT. Step 1 accepts only an unexpired
-# oauth_states token from initiate-oauth, deleted once the request token is
-# stored; step 2 (Garmin's callback) accepts only an oauth_token matching an
-# unexpired pending request token stored server-side in step 1. (OAuth 1.0a HMAC-SHA1 signs our outbound
-# calls to Garmin; it does not authenticate inbound requests.)
+# DISABLED (NF-46): answers 410 Gone to every request, reads no secret and
+# never calls Garmin (_shared/disabledOAuthCallback.ts). Garmin is not
+# launched; initiate-oauth refuses to mint 'garmin' state. verify_jwt stays
+# false because a provider redirect carries no JWT.
 verify_jwt = false
 
 [functions.garmin-webhook]

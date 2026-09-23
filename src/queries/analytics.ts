@@ -380,38 +380,3 @@ export function phaseStatisticsTrendOptions(
 		},
 	});
 }
-
-/** Phase statistics for a session (GAP 7) */
-export function phaseStatisticsOptions(sessionId: string) {
-	return queryOptions({
-		queryKey: [...queryKeys.analytics.all, "phase-stats", sessionId] as const,
-		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("session_phase_statistics")
-				.select("*")
-				.eq("session_id", sessionId)
-				.maybeSingle();
-			if (error) throw error;
-			return data;
-		},
-		enabled: !!sessionId,
-	});
-}
-
-/** VBT assessments for an exercise (GAP 9) */
-export function vbtAssessmentsOptions(userId: string, exerciseId: string) {
-	return queryOptions({
-		queryKey: queryKeys.analytics.vbtAssessments(userId, exerciseId),
-		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("vbt_assessments")
-				.select("*")
-				.eq("user_id", userId)
-				.eq("exercise_id", exerciseId)
-				.order("created_at", { ascending: false });
-			if (error) throw error;
-			return data;
-		},
-		enabled: !!userId && !!exerciseId,
-	});
-}

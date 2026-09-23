@@ -533,7 +533,8 @@ CREATE TEMP TABLE rls_cases (
 ) ON COMMIT DROP;
 
 INSERT INTO rls_cases VALUES
-    ('workout_sessions',          'id', 'a1a1a1a1-0001-4000-8000-00000000000a', 1, 1,    NULL, $s$notes = 'rls-probe'$s$),
+    -- Clients hold no UPDATE on sessions at all since 20260923100000 (OP-14).
+    ('workout_sessions',          'id', 'a1a1a1a1-0001-4000-8000-00000000000a', 1, NULL, NULL, $s$notes = 'rls-probe'$s$),
     ('exercises',                 'id', 'a1a1a1a1-0002-4000-8000-00000000000a', 1, NULL, NULL, $s$name = 'rls-probe'$s$),
     ('sets',                      'id', 'a1a1a1a1-0003-4000-8000-00000000000a', 1, NULL, NULL, $s$set_number = 99$s$),
     ('rep_summaries',             'id', 'a1a1a1a1-0004-4000-8000-00000000000a', 1, NULL, NULL, $s$rep_number = 99$s$),
@@ -974,9 +975,9 @@ INSERT INTO spoof_cases VALUES
     ('cycle_days: INSERT under A''s cycle', NULL,
      $q$INSERT INTO public.cycle_days (cycle_id, day_number) VALUES ('a1a1a1a1-0008-4000-8000-00000000000a', 2)$q$),
     -- Re-parent B's own row to A.
-    -- Clients cannot INSERT sessions (server-written only) and may UPDATE
-    -- only `notes`, so the user_id rewrite is refused by the column grant
-    -- before any row is matched; no setup row is needed.
+    -- Clients can neither INSERT nor UPDATE sessions (server-written only),
+    -- so the user_id rewrite is refused by the grant before any row is
+    -- matched; no setup row is needed.
     ('workout_sessions: UPDATE own row to user_id = A',
      NULL,
      $q$UPDATE public.workout_sessions SET user_id = 'a1a1a1a1-0000-4000-8000-00000000000a'$q$),

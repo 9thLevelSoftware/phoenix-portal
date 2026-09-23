@@ -7,7 +7,10 @@
 --     accepted write; an older write is rejected; server_updated_at is the
 --     stored key
 --   * merge_training_cycles_from_push compares and writes the key
---   * a portal notes edit still reaches the sessions pull RPC (#116)
+--   * a portal-JWT session edit still reaches the sessions pull RPC (#116).
+--     Clients hold no session UPDATE since 20260923100000 (OP-14), so that
+--     edit runs server-side under the portal's claims; the stamp keys on
+--     auth.role(), not the SQL role.
 --
 -- now() is frozen for the whole transaction, so device clocks are explicit
 -- offsets from it. Run locally with `supabase test db`.
@@ -195,18 +198,25 @@ SELECT set_config(
     '{"sub":"21212121-0000-4000-8000-000000000001","role":"authenticated"}',
     true
 );
-UPDATE public.workout_sessions SET notes = 'portal note'
-WHERE id = '21212121-0000-4000-8000-0000000000a2';
+SELECT throws_ok(
+    $sql$ UPDATE public.workout_sessions SET notes = 'client note'
+          WHERE id = '21212121-0000-4000-8000-0000000000a2' $sql$,
+    '42501', NULL,
+    'a client may no longer UPDATE sessions, notes included (OP-14)'
+);
 UPDATE public.routines SET name = 'R1 portal'
 WHERE id = '21212121-0000-4000-8000-0000000000b1';
 UPDATE public.training_cycles SET name = 'C1 portal'
 WHERE id = '21212121-0000-4000-8000-0000000000c1';
 RESET ROLE;
+-- The same portal claims, written server-side (the only session writer now).
+UPDATE public.workout_sessions SET notes = 'portal note'
+WHERE id = '21212121-0000-4000-8000-0000000000a2';
 SELECT results_eq(
     $sql$ SELECT client_updated_at, updated_at FROM public.workout_sessions
           WHERE id = '21212121-0000-4000-8000-0000000000a2' $sql$,
     $values$ VALUES (now(), now()) $values$,
-    'an authenticated UPDATE (portal notes edit) stamps client_updated_at'
+    'a session UPDATE under a portal JWT stamps client_updated_at'
 );
 SELECT is(
     (SELECT client_updated_at FROM public.routines WHERE id = '21212121-0000-4000-8000-0000000000b1'),
@@ -219,13 +229,11 @@ SELECT is(
     'an authenticated cycle UPDATE stamps client_updated_at'
 );
 
--- Portal with the backfill GUC on: no stamp.
-SET LOCAL ROLE authenticated;
+-- Portal claims with the backfill GUC on: no stamp.
 SELECT set_config('phoenix.skip_updated_at', 'on', true);
 UPDATE public.workout_sessions SET notes = 'quiet'
 WHERE id = '21212121-0000-4000-8000-0000000000a1';
 SELECT set_config('phoenix.skip_updated_at', 'off', true);
-RESET ROLE;
 SELECT is(
     (SELECT client_updated_at FROM public.workout_sessions WHERE id = '21212121-0000-4000-8000-0000000000a1'),
     '2026-01-02 03:04:05.123456+00'::timestamptz,
@@ -293,7 +301,7 @@ SELECT is(
 
 SELECT diag('database:lww-clock-pull-116');
 
--- The portal notes edit moved the pull cursor, so an incremental pull that
+-- The portal-JWT notes edit moved the pull cursor, so an incremental pull that
 -- already knows the session still returns it.
 SELECT is(
     (SELECT notes FROM public.get_sessions_excluding_ids(
@@ -879,6 +887,12 @@ SELECT results_eq(
     $v$ VALUES ('b3 v2'::text, '21212121-0000-4000-8000-000000000001'::uuid) $v$,
     'routine: the refused takeover left the victim''s row untouched'
 );
+SELECT results_eq(
+    $sql$ SELECT name <> 'takeover', user_id FROM public.training_cycles
+          WHERE id = '21212121-0000-4000-8000-0000000000c1' $sql$,
+    $v$ VALUES (true, '21212121-0000-4000-8000-000000000001'::uuid) $v$,
+    'cycle: the refused takeover left the victim''s row untouched'
+);
 
 -- No false positives: an ordinary UPDATE that leaves user_id alone still
 -- works (the push's own writes go through this trigger on every row).
@@ -888,6 +902,17 @@ SELECT is(
     (SELECT name FROM public.workout_sessions WHERE id = '21212121-0000-4000-8000-0000000000a1'),
     'still editable',
     'session: an UPDATE that keeps user_id is unaffected by the owner guard'
+);
+-- The flag-off upsert writes user_id on every row, so rewriting it to the SAME
+-- owner must not count as a transition either (NF-42).
+UPDATE public.routines
+   SET user_id = '21212121-0000-4000-8000-000000000001'::uuid,
+       name = 'b3 same owner'
+ WHERE id = '21212121-0000-4000-8000-0000000000b3';
+SELECT is(
+    (SELECT name FROM public.routines WHERE id = '21212121-0000-4000-8000-0000000000b3'),
+    'b3 same owner',
+    'routine: an UPDATE that rewrites user_id to the current owner is not refused'
 );
 
 SELECT * FROM finish();

@@ -83,12 +83,12 @@ Browser bundle (`VITE_`-prefixed, embedded at build time — never put a secret 
 Edge Function secrets (Supabase Dashboard → Edge Functions → Secrets; read with
 `Deno.env.get`, never `VITE_`):
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ENVIRONMENT`
-- `SUPABASE_PUBLIC_URL` — the externally reachable functions origin. `initiate-oauth`, `complete-oauth`, `strava-oauth`, `fitbit-oauth` and `garmin-oauth` build their redirect URI from it and fall back to `SUPABASE_URL`; `_shared/oauthTokenCrypto.ts` also mixes it into key derivation.
+- `SUPABASE_PUBLIC_URL` — the externally reachable functions origin. `initiate-oauth`, `complete-oauth` and `strava-oauth` build their redirect URI from it and fall back to `SUPABASE_URL`; `_shared/oauthTokenCrypto.ts` also mixes it into key derivation. (`fitbit-oauth` and `garmin-oauth` are disabled and read no env; see Edge Functions.)
 - `APP_URL` — the portal origin the OAuth callbacks redirect back to (`${APP_URL}/integrations?…`, default `http://localhost:5173`) and one of the allowed CORS origins in `_shared/cors.ts`. There is no `PORTAL_URL`.
 - `PADDLE_API_KEY` (server API calls from `delete-account` and the three `paddle-*-subscription` functions), `PADDLE_WEBHOOK_SECRET`, `PADDLE_CUSTOM_DATA_SECRET`, `PADDLE_ENVIRONMENT`, `PADDLE_EMBER_PRICE_IDS` / `PADDLE_FLAME_PRICE_IDS` / `PADDLE_INFERNO_PRICE_IDS`
 - `CRON_SECRET` — the shared secret for pg_cron-invoked functions, compared in constant time against the `x-cron-secret` header by `_shared/cronSecret.ts`. `process-sync-queue` still accepts the legacy names `PROCESS_SYNC_QUEUE_SECRET` and `CRON_SYNC_QUEUE_SECRET`, but only when `CRON_SECRET` is unset; nothing else does. The DB half is the Vault secret `edge_cron_secret` used by `private.invoke_edge_function` (KD-10).
 - `SYNC_LWW_ENABLED` — cold-start flag in `supabase/functions/_shared/flags.ts`, `"false"` unless the secret is exactly `true`. Flipping it requires a redeploy; there is no runtime refresh. Its production value is not recorded in this repo — ask the operator rather than assuming.
-- `OAUTH_TOKEN_ENCRYPTION_KEY`, `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET`, `FITBIT_CLIENT_ID` / `FITBIT_CLIENT_SECRET`, `GARMIN_CONSUMER_KEY` / `GARMIN_CONSUMER_SECRET`, `GARMIN_WEBHOOK_SECRET` (the webhook 503s without it)
+- `OAUTH_TOKEN_ENCRYPTION_KEY`, `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET`, `FITBIT_CLIENT_ID` / `FITBIT_CLIENT_SECRET`, `GARMIN_CONSUMER_KEY` / `GARMIN_CONSUMER_SECRET`, `GARMIN_WEBHOOK_SECRET` (the webhook 503s without it). The Fitbit client secrets are still read by `complete-oauth`, `fitbit-sync` and `_shared/providerRevoke.ts`, the Garmin consumer secrets only by `_shared/providerRevoke.ts`; the disabled `fitbit-oauth` / `garmin-oauth` callbacks read none.
 
 Tooling only: `SUPABASE_PROJECT_REF` and the `SUPABASE_AUTH_*` values used by
 `npm run auth:social:push`; `LINEAR_API_KEY` for Symphony.
@@ -186,7 +186,7 @@ Every deployed function has a directory under `supabase/functions/` **and** a
 a map, not a count.
 
 - **Billing:** paddle-webhooks, paddle-cancel-subscription, paddle-update-subscription, paddle-refresh-subscription, paddle-checkout-custom-data
-- **OAuth:** initiate-oauth, complete-oauth, strava-oauth, fitbit-oauth, garmin-oauth
+- **OAuth:** initiate-oauth, complete-oauth, strava-oauth, fitbit-oauth and garmin-oauth (both disabled: 410 Gone for every request until the provider launches, `_shared/disabledOAuthCallback.ts`)
 - **Provider sync:** strava-sync, fitbit-sync, hevy-sync, liftosaur-sync, garmin-webhook, process-sync-queue
 - **Mobile:** mobile-sync-push, mobile-sync-pull, mobile-integration-sync
 - **Account / GDPR:** delete-account, export-user-data
@@ -196,7 +196,8 @@ a map, not a count.
 
 `initiate-oauth` and `complete-oauth` are `verify_jwt = true`; the three
 provider callbacks (`strava-oauth`, `fitbit-oauth`, `garmin-oauth`) are
-`false` because the provider redirects a browser to them with no JWT.
+`false` because the provider redirects a browser to them with no JWT. The
+Fitbit and Garmin callbacks do nothing but answer 410 (NF-46).
 `complete-oauth` is the session-bound completion endpoint (KD-13): binding the
 provider grant to the completing user's own JWT is its entire purpose.
 

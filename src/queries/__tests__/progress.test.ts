@@ -5,7 +5,7 @@ import { queryKeys } from "@/queries/keys";
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	for (const method of ["select", "eq", "is", "order"]) {
+	for (const method of ["select", "eq", "is", "order", "gte"]) {
 		self[method] = vi.fn();
 	}
 	for (const method of Object.keys(self)) {
@@ -317,5 +317,42 @@ describe("progressionWorkbenchOptions", () => {
 		await expect(
 			progressionWorkbenchOptions("user-1").queryFn?.({} as never),
 		).rejects.toMatchObject({ message: "boom" });
+	});
+});
+
+describe("weeklySummaryOptions", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	// NF-36: velocity_estimated_1rm_kg is INFERNO-only and not client-readable
+	// (20260923100000), so a `*` select would be refused for every user.
+	it("selects explicit columns without the INFERNO-only VBT 1RM", async () => {
+		chain = buildChain({
+			data: [
+				{
+					id: "00000000-0000-4000-8000-000000000001",
+					user_id: "00000000-0000-4000-8000-0000000000aa",
+					exercise_name: "Bench Press",
+					session_id: "00000000-0000-4000-8000-0000000000bb",
+					recorded_at: "2026-09-20T10:00:00Z",
+					max_weight_kg: 40,
+					total_volume_kg: 400,
+					estimated_1rm_kg: 50,
+					max_reps: 10,
+					set_count: 3,
+				},
+			],
+			error: null,
+		});
+		const { weeklySummaryOptions } = await import("../progress");
+		const rows = await weeklySummaryOptions("user-1", "week").queryFn!(
+			{} as never,
+		);
+
+		const columns = String(chain.select.mock.calls[0]?.[0]);
+		expect(columns).not.toContain("*");
+		expect(columns).not.toContain("velocity_estimated_1rm_kg");
+		expect(rows[0]?.velocity_estimated_1rm_kg).toBeNull();
 	});
 });

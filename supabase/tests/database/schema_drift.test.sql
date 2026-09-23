@@ -25,7 +25,8 @@
 --   workout_current_streak(uuid), user_has_min_tier(text),
 --   user_subscription_tier(), request_account_deletion(),
 --   delete_training_cycle_lww, delete_workout_with_tombstone,
---   verify_profile_recovery_source (20260920120000)
+--   verify_profile_recovery_source (20260920120000),
+--   exercise_progress_series, exercise_progress_series_many (20260923100000)
 --
 -- What this file deliberately does NOT cover:
 --   * the migration's gating / idempotency / drifted-with-data behaviour. The
@@ -306,9 +307,17 @@ INSERT INTO drift_allow_list (ident, expected_on_clean_apply) VALUES
     -- 20260920120000: auth.uid()-bound portal/mobile RPCs.
     ('delete_training_cycle_lww(uuid, timestamp with time zone)', true),
     ('delete_workout_with_tombstone(uuid, uuid, uuid, text, text, timestamp with time zone)', true),
-    ('verify_profile_recovery_source(text, uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[])', true);
+    ('verify_profile_recovery_source(text, uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[])', true),
+    -- 20260923100000: caller-scoped DEFINER progress reads (INFERNO VBT gate).
+    ('exercise_progress_series(text, text, integer)', true),
+    ('exercise_progress_series_many(text[], text, integer)', true);
 UPDATE drift_allow_list SET service_role_required = false
- WHERE ident = 'verify_profile_recovery_source(text, uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[])';
+ WHERE ident IN (
+     'verify_profile_recovery_source(text, uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[], uuid[])',
+     -- auth.uid()-scoped reads; a service caller has no uid to scope by.
+     'exercise_progress_series(text, text, integer)',
+     'exercise_progress_series_many(text[], text, integer)'
+ );
 
 SELECT is_empty(
     $sql$

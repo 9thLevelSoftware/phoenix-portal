@@ -3938,6 +3938,59 @@ Deno.test("routine_exercises upsert failure returns the same retryable 503", asy
   await assertPartialWriteRetry(harness, response);
 });
 
+// NF-41: reject_user_id_change raises SQLSTATE 42501 when a write would move a
+// row to another owner. Retrying cannot succeed, so it is the ownership 400,
+// never an opaque 500 or a retryable 503, and nothing is broadcast.
+const OWNER_REFUSAL = { message: "user_id cannot change", code: "42501" };
+
+async function assertOwnerRefusal(
+  harness: ReturnType<typeof makeHarness>,
+  response: Response,
+  table: string,
+): Promise<void> {
+  const body = await json(response);
+  assertEquals(response.status, 400, JSON.stringify(body));
+  assertEquals(body, { error: `Refused: existing ${table} row belongs to another user` });
+  assertEquals(harness.httpSendCalls, []);
+}
+
+Deno.test("owner refusal on the flag-off session upsert is a 400, not a 500", async () => {
+  const harness = makeHarness(undefined, {
+    syncLwwEnabled: false,
+    writeErrors: { "workout_sessions:upsert": OWNER_REFUSAL },
+  });
+  const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  await assertOwnerRefusal(harness, response, "workout_sessions");
+});
+
+Deno.test("owner refusal from the session LWW RPC is a 400, not a 500", async () => {
+  const harness = makeHarness(undefined, {
+    syncLwwEnabled: true,
+    rpcBehavior: async (name) =>
+      name === "upsert_workout_session_lww" ? { data: null, error: OWNER_REFUSAL } : undefined,
+  });
+  const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  await assertOwnerRefusal(harness, response, "workout_sessions");
+});
+
+Deno.test("owner refusal on the flag-off routine upsert is a 400, not a 500", async () => {
+  const harness = makeHarness(undefined, {
+    syncLwwEnabled: false,
+    writeErrors: { "routines:upsert": OWNER_REFUSAL },
+  });
+  const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  await assertOwnerRefusal(harness, response, "routines");
+});
+
+Deno.test("owner refusal from the cycle merge is a 400, not a retryable 503", async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) =>
+      name === "merge_training_cycles_from_push" ? { data: null, error: OWNER_REFUSAL } : undefined,
+  });
+  const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  await assertOwnerRefusal(harness, response, "training_cycles");
+});
+
 Deno.test("retrying the identical payload after a 503 succeeds and replays the same writes", async () => {
   const deletedRoutineId = "00000000-0000-4000-8000-000000000060";
   const writeErrors: Record<string, unknown> = {

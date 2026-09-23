@@ -65,13 +65,6 @@ export const queryKeys = {
 				period,
 				profileId ?? "all",
 			] as const,
-		vbtAssessments: (userId: string, exerciseId: string) =>
-			[
-				...queryKeys.analytics.all,
-				"vbt-assessments",
-				userId,
-				exerciseId,
-			] as const,
 	},
 	routines: {
 		all: ["routines"] as const,
