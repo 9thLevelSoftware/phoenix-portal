@@ -2,8 +2,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps, ReactNode } from "react";
 import {
-	createMemoryRouter,
-	RouterProvider,
+	MemoryRouter,
+	Route,
+	Routes,
 	useLocation,
 	useNavigate,
 } from "react-router";
@@ -137,32 +138,24 @@ function NavigationHarness() {
 }
 
 function renderLayout() {
-	const router = createMemoryRouter(
-		[
-			{
-				element: <AppLayout />,
-				children: [
-					{
-						id: "dashboard",
-						path: "/dashboard/:view",
-						element: <NavigationHarness />,
-					},
-					{
-						id: "analytics",
-						path: "/analytics",
-						element: <NavigationHarness />,
-					},
-				],
-			},
-		],
-		{ initialEntries: ["/dashboard/overview"] },
+	return render(
+		<MemoryRouter initialEntries={["/dashboard/overview"]}>
+			<Routes>
+				<Route element={<AppLayout />}>
+					<Route path="/dashboard/:view" element={<NavigationHarness />} />
+					<Route path="/analytics" element={<NavigationHarness />} />
+				</Route>
+			</Routes>
+		</MemoryRouter>,
 	);
-
-	return render(<RouterProvider router={router} />);
 }
 
 describe("AppLayout route transitions", () => {
-	it("keeps the main node for search and same-route changes, but remounts different routes", async () => {
+	it("mounts under a plain MemoryRouter without requiring a data router", () => {
+		expect(() => renderLayout()).not.toThrow();
+	});
+
+	it("keeps the main node for search-only changes, but remounts pathname changes", async () => {
 		const user = userEvent.setup();
 		const { container } = renderLayout();
 		const mainBefore = container.querySelector("main#main-content");
@@ -187,7 +180,7 @@ describe("AppLayout route transitions", () => {
 				"/dashboard/stats",
 			),
 		);
-		expect(container.querySelector("main#main-content")).toBe(mainBefore);
+		expect(container.querySelector("main#main-content")).not.toBe(mainBefore);
 
 		await user.click(screen.getByRole("button", { name: "Open analytics" }));
 		await waitFor(() =>

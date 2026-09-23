@@ -35,7 +35,7 @@ import {
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
-import { fadeUp, hover, staggerContainer } from "@/lib/animations";
+import { fadeUpVariants, hover, staggerContainer } from "@/lib/animations";
 import { PHOENIX } from "@/lib/colors";
 import {
 	convertWeight,
@@ -503,10 +503,12 @@ export function Dashboard() {
 					</motion.div>
 
 					<motion.div
-						{...staggerContainer}
+						initial="hidden"
+						animate="visible"
+						variants={staggerContainer}
 						className="grid grid-cols-1 md:grid-cols-3 gap-6"
 					>
-						<motion.div {...fadeUp}>
+						<motion.div variants={fadeUpVariants}>
 							<Card className="p-6 signal-panel h-full">
 								<div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center mb-4">
 									<TrendingUp className="w-6 h-6 text-foreground" />
@@ -521,7 +523,7 @@ export function Dashboard() {
 							</Card>
 						</motion.div>
 
-						<motion.div {...fadeUp}>
+						<motion.div variants={fadeUpVariants}>
 							<Link to="/routines/new" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
@@ -538,7 +540,7 @@ export function Dashboard() {
 							</Link>
 						</motion.div>
 
-						<motion.div {...fadeUp}>
+						<motion.div variants={fadeUpVariants}>
 							<Link to="/challenges" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center mb-4">
@@ -1298,9 +1300,14 @@ export function Dashboard() {
 						</div>
 
 						{/* Right: PRs, Challenges, Badges */}
-						<motion.div {...staggerContainer} className="space-y-6">
+						<motion.div
+							initial="hidden"
+							animate="visible"
+							variants={staggerContainer}
+							className="space-y-6"
+						>
 							{/* Recent PRs */}
-							<motion.div {...fadeUp}>
+							<motion.div variants={fadeUpVariants}>
 								<Card className="p-5 signal-panel">
 									<h3 className="text-h2 text-foreground mb-4 flex items-center gap-2">
 										<Trophy className="w-5 h-5 text-accent" />
@@ -1361,7 +1368,7 @@ export function Dashboard() {
 							</motion.div>
 
 							{/* Active Challenges */}
-							<motion.div {...fadeUp}>
+							<motion.div variants={fadeUpVariants}>
 								<Card className="p-5 signal-panel">
 									<h3 className="text-h2 text-foreground mb-4">
 										Active Challenges
@@ -1371,7 +1378,7 @@ export function Dashboard() {
 							</motion.div>
 
 							{/* Badge Showcase */}
-							<motion.div {...fadeUp}>
+							<motion.div variants={fadeUpVariants}>
 								<Card className="p-5 signal-panel">
 									<h3 className="text-h2 text-foreground mb-4">
 										Recent Badges

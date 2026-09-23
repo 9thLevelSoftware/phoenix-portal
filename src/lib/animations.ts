@@ -25,15 +25,28 @@ export const fadeUp = {
 	transition: { duration: 0.18, ease: "easeOut" },
 } as const;
 
+/** Variants-shaped opacity + translate entrance for staggered children. */
+export const fadeUpVariants = {
+	hidden: { opacity: 0, y: 8 },
+	visible: {
+		opacity: 1,
+		y: 0,
+		transition: { duration: 0.18, ease: "easeOut" },
+	},
+} as const;
+
 /** Simple opacity entrance */
 export const fadeIn = {
 	hidden: { opacity: 0 },
 	visible: { opacity: 1, transition: { duration: 0.2 } },
 } as const;
 
-/** Parent recipe for staggered children. */
+/** Parent variants for staggered children. Use with `variants={staggerContainer}` and `initial="hidden" animate="visible"`. */
 export const staggerContainer = {
-	animate: { transition: { staggerChildren: 0.05 } },
+	hidden: {},
+	visible: {
+		transition: { staggerChildren: 0.05 },
+	},
 } as const;
 
 /** Route transition variant (used by AnimatePresence) */
