@@ -11,16 +11,16 @@ import {
   parsePaddlePaidTier,
 } from "../_shared/paddlePriceIds.ts";
 import {
+  applySubscriptionEvent,
   buildSubscriptionUpsertFromPaddleState,
   type PaddleSubscriptionState,
+  paddleEventOccurredAt,
   resolveBasePlanPriceId,
+  syntheticSubscriptionEventId,
 } from "../_shared/paddleSubscriptionState.ts";
 import {
   buildPaddleSubscriptionPatch,
   checkoutRequiredResponseBody,
-  decidePlanChangeGate,
-  PAYMENT_PAST_DUE_HTTP_STATUS,
-  paymentPastDueResponseBody,
 } from "../_shared/paddleSubscriptionUpdate.ts";
 import { billingAction } from "../_shared/billingAction.ts";
 
@@ -299,61 +299,6 @@ async function paddleUpdateSubscriptionHandler(
       );
     }
 
-    // Look up user's current subscription
-    const { data: sub, error: subError } = await supabaseAdmin
-      .from("subscriptions")
-      .select("paddle_subscription_id, price_id, tier, status, current_period_end, cancel_at_period_end")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (subError) {
-      console.error("Error fetching subscription:", subError);
-      return new Response(
-        JSON.stringify({ error: "Failed to fetch subscription" }),
-        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
-      );
-    }
-
-    // Validate subscription state. past_due keeps access but cannot change
-    // plan until the payment method is updated (see decidePlanChangeGate).
-    const gate = decidePlanChangeGate(sub, deps.now());
-    if (gate.action === "checkout_required") {
-      return new Response(
-        JSON.stringify(checkoutRequiredResponseBody(gate.reason)),
-        { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
-      );
-    }
-    if (gate.action === "payment_past_due") {
-      return new Response(
-        JSON.stringify(paymentPastDueResponseBody()),
-        {
-          status: PAYMENT_PAST_DUE_HTTP_STATUS,
-          headers: { ...cors, "Content-Type": "application/json" },
-        },
-      );
-    }
-    if (!sub) {
-      // Unreachable: the gate only proceeds for an existing row.
-      throw new Error("plan change gate proceeded without a subscription row");
-    }
-
-    // Call Paddle API to update the subscription
-    const paddleEnv = deps.env.get("PADDLE_ENVIRONMENT") ?? "production";
-    const baseUrl = paddleEnv === "sandbox"
-      ? "https://sandbox-api.paddle.com"
-      : "https://api.paddle.com";
-    const apiKey = deps.env.get("PADDLE_API_KEY");
-
-    if (!apiKey) {
-      console.error("PADDLE_API_KEY is not set");
-      return new Response(
-        JSON.stringify({ error: "Billing service not configured" }),
-        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
-      );
-    }
-
-    const currentPaddleSubscriptionId = gate.paddleSubscriptionId;
-
     // Fetch the authoritative current subscription so we can (a) carry forward
     // add-ons/metered items on a plan switch and (b) reconcile against Paddle's
     // current item state rather than a possibly-stale local price_id.
@@ -413,7 +358,6 @@ async function paddleUpdateSubscriptionHandler(
     }
 
     const paddleResponse = await deps.fetch(
-      `${baseUrl}/subscriptions/${gate.paddleSubscriptionId}`,
       `${baseUrl}/subscriptions/${currentPaddleSubscriptionId}`,
       {
         method: "PATCH",
@@ -491,18 +435,75 @@ async function paddleUpdateSubscriptionHandler(
       }
     }
 
+    // Every write goes through `public.apply_subscription_event` — the one
+    // ordered, guarded writer — never a direct `.upsert`/`.update`. Paddle's
+    // own `updated_at` is the clock, so an update response older than an event
+    // already stored (a renewal webhook that landed first) cannot regress the
+    // row (same rule as paddle-cancel-subscription).
+    const occurredAt = paddleEventOccurredAt(updatedSubscription, deps.now());
     const upsertData = buildSubscriptionUpsertFromPaddleState({
       userId: user.id,
       subscription: updatedSubscription,
       tier: updatedTier,
       priceId: updatedPriceId,
+      eventId: syntheticSubscriptionEventId(
+        "update",
+        updatedSubscription.id,
+        occurredAt,
+      ),
+      occurredAt,
     });
-    const { error: updateError } = await supabaseAdmin
-      .from("subscriptions")
-      .upsert(upsertData, { onConflict: "user_id" });
+    const write = await applySubscriptionEvent(supabaseAdmin, upsertData, {
+      storedSubscriptionId: sub.paddle_subscription_id,
+    });
 
-    if (updateError) {
-      console.error("Error upserting subscription after Paddle update:", updateError);
+    // On a refused write the client must copy the STORED row into its cache,
+    // not the state we just fetched: that state never landed.
+    const storedSubscriptionView = {
+      tier: sub.tier,
+      status: sub.status,
+      priceId: sub.price_id,
+      currentPeriodEnd: sub.current_period_end,
+      cancelAtPeriodEnd: sub.cancel_at_period_end,
+    };
+    const updatedSubscriptionView = {
+      tier: upsertData.tier,
+      status: upsertData.status,
+      priceId: upsertData.price_id,
+      currentPeriodEnd: upsertData.current_period_end,
+      cancelAtPeriodEnd: upsertData.cancel_at_period_end,
+    };
+
+    if (write.outcome === "already_bound") {
+      // 23505: this Paddle subscription is already bound to another user.
+      return new Response(
+        JSON.stringify({
+          error: "Subscription already bound to another account",
+          code: "subscription_already_bound",
+        }),
+        { status: 409, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+    if (write.outcome === "stale" || write.outcome === "untracked_subscription") {
+      // A newer event already wrote the row, or the untracked-subscription
+      // guard refused it. Report the stored state and let the caller refresh.
+      console.warn(
+        "[Paddle] Update state not stored:",
+        write.outcome,
+        updatedSubscription.id,
+      );
+      return new Response(
+        JSON.stringify({
+          applied: false,
+          reason: "stale",
+          subscription: storedSubscriptionView,
+        }),
+        { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
+      );
+    }
+    if (write.outcome === "error") {
+      // `write.error` is raw database text. Log it, never return it.
+      console.error("Error persisting subscription after Paddle update:", write.error);
       return new Response(
         JSON.stringify({ error: "Database upsert failed" }),
         { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
@@ -513,13 +514,7 @@ async function paddleUpdateSubscriptionHandler(
       JSON.stringify({
         success: true,
         action: patchDecision.action,
-        subscription: {
-          tier: upsertData.tier,
-          status: upsertData.status,
-          priceId: upsertData.price_id,
-          currentPeriodEnd: upsertData.current_period_end,
-          cancelAtPeriodEnd: upsertData.cancel_at_period_end,
-        },
+        subscription: updatedSubscriptionView,
       }),
       { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
     );

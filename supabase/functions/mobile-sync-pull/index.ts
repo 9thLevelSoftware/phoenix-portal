@@ -1145,7 +1145,6 @@ async function mobileSyncPullHandler(
           updatedAt: c.updated_at != null ? String(c.updated_at) : null,
           progressStatePresent: true,
           progressState: c.progress_state ?? null,
-          updatedAt: c.updated_at ?? null,
           days: cDays.map((d) => ({
             id: d.id,
             cycleId: d.cycle_id,
@@ -1179,7 +1178,7 @@ async function mobileSyncPullHandler(
         .from('workout_deletion_tombstones')
         .select('mutation_id, profile_id, scope, portal_session_id, component_session_id, deleted_at, recorded_at')
         .eq('user_id', userId)
-        .gt('recorded_at', lastSyncISO)
+        .gt('recorded_at', staleSinceISO)
         .order('recorded_at', { ascending: true })
         .order('mutation_id', { ascending: true })
         .limit(remainingPageSize + 1);
@@ -1215,7 +1214,7 @@ async function mobileSyncPullHandler(
         .from('profile_ownership_events')
         .select('*')
         .eq('user_id', userId)
-        .gt('transferred_at', lastSyncISO)
+        .gt('transferred_at', staleSinceISO)
         .order('transferred_at', { ascending: true })
         .order('mutation_id', { ascending: true })
         .limit(remainingPageSize + 1);
