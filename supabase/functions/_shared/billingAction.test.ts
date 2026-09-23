@@ -246,6 +246,53 @@ Deno.test('classifySubscriptionEventTarget: a resubscribe is adopted when the st
   );
 });
 
+Deno.test('classifySubscriptionEventTarget: a scheduled cancellation is not entitled to the renewal grace', () => {
+  // Pins the pass-through at billingAction.ts:236
+  // (`cancelAtPeriodEnd: Boolean(input.storedRow?.cancel_at_period_end)`).
+  // The predicate itself is pinned by the entitlement fixture; what was
+  // unpinned is that the classifier hands the column over at all — every
+  // other row here left it `false`, so dropping the pass-through changed no
+  // outcome.
+  //
+  // The two stored rows differ only in `cancel_at_period_end`. One hour past
+  // the period end is inside the 48h renewal grace for a row that will renew
+  // (still entitled → the untracked subscription may not replace it) and
+  // outside it for one scheduled to cancel (dead → adopt).
+  const justEnded = '2026-05-17T11:00:00Z';
+
+  assertEquals(
+    classifySubscriptionEventTarget({
+      incomingSubscriptionId: 'sub_new',
+      incomingStatus: 'active',
+      storedRow: {
+        paddle_subscription_id: 'sub_old',
+        status: 'active',
+        current_period_end: justEnded,
+        cancel_at_period_end: false,
+      },
+      now: NOW,
+    }),
+    'ignore_untracked_subscription',
+    'renewing: inside the grace window, the stored row is still entitled',
+  );
+
+  assertEquals(
+    classifySubscriptionEventTarget({
+      incomingSubscriptionId: 'sub_new',
+      incomingStatus: 'active',
+      storedRow: {
+        paddle_subscription_id: 'sub_old',
+        status: 'active',
+        current_period_end: justEnded,
+        cancel_at_period_end: true,
+      },
+      now: NOW,
+    }),
+    'apply',
+    'scheduled to cancel: no renewal grace, so the row is dead and adoptable',
+  );
+});
+
 Deno.test('classifySubscriptionEventTarget: past_due keeps access, so it is adoptable', () => {
   // The R-34 handler tests never reach this branch (they short-circuit on a
   // matching subscription id), so without this the classifier could silently
