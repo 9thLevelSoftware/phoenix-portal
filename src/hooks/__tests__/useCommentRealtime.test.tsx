@@ -132,6 +132,20 @@ describe("useCommentRealtime", () => {
 			});
 		});
 
+		it("invalidates on any delete while the comments are still loading", () => {
+			mocks.reset();
+			vi.useFakeTimers();
+			mocks.getQueryData.mockReturnValue(undefined);
+			render(<TestComponent />);
+
+			deleteHandler()({ old: { id: "comment-1" } });
+			vi.advanceTimersByTime(1000);
+
+			expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+				queryKey: ["comments", ITEM_ID],
+			});
+		});
+
 		it("ignores deletes of comments that belong to other items", () => {
 			mocks.reset();
 			vi.useFakeTimers();
