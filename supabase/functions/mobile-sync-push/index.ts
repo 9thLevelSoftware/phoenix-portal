@@ -2147,7 +2147,74 @@ async function mobileSyncPushHandler(
       );
       return racedIds;
     };
-    let liveRoutines = payload.routines ?? [];
+    // 204-D: guard_profile_ownership_update refuses to move a stored session
+    // or routine to another local profile without an ownership transfer
+    // (P0001), which would otherwise fail the whole push. The rows it would
+    // refuse are rejected here instead, with the stored LWW key (KD-5), and
+    // nothing of theirs is written. The rule mirrors the trigger (NULL is
+    // 'default'); its SET NULL exception only arises inside a profile-delete
+    // cascade, never on a push. Transfers named in this push already ran
+    // above. Cycles get the same rejection inside
+    // merge_training_cycles_from_push, under its row lock.
+    const pushProfileKey = localProfileId ?? 'default';
+    const findProfileConflicts = async (
+      table: 'workout_sessions' | 'routines',
+      ids: string[],
+    ): Promise<Map<string, string | null>> => {
+      const conflicts = new Map<string, string | null>();
+      for (const chunk of chunked(ids, 100)) {
+        const { data, error } = await supabase
+          .from(table)
+          .select('id, local_profile_id, client_updated_at')
+          .in('id', chunk)
+          .eq('user_id', userId);
+        if (error) throw new Error(`${table} profile probe failed: ${error.message}`);
+        for (const row of (data ?? []) as Array<{
+          id: string;
+          local_profile_id?: string | null;
+          client_updated_at?: string | null;
+        }>) {
+          if ((row.local_profile_id ?? 'default') === pushProfileKey) continue;
+          conflicts.set(normalizeUuid(row.id), row.client_updated_at ?? null);
+        }
+      }
+      return conflicts;
+    };
+    const profileProbeSessionIds = uniqueUuidValues(
+      (payload.sessions ?? [])
+        .map((s) => s.id)
+        .filter((id) => !blockedWorkoutSessionIds.has(id)),
+    );
+    const profileProbeRoutineIds = uniqueUuidValues((payload.routines ?? []).map((r) => r.id));
+    const [sessionProfileConflicts, routineProfileConflicts] = await Promise.all([
+      profileProbeSessionIds.length > 0
+        ? findProfileConflicts('workout_sessions', profileProbeSessionIds)
+        : Promise.resolve(new Map<string, string | null>()),
+      profileProbeRoutineIds.length > 0
+        ? findProfileConflicts('routines', profileProbeRoutineIds)
+        : Promise.resolve(new Map<string, string | null>()),
+    ]);
+    for (const id of profileProbeSessionIds) {
+      const key = normalizeUuid(id);
+      if (!sessionProfileConflicts.has(key)) continue;
+      blockedWorkoutSessionIds.add(id);
+      rejections.sessions.push({ id, serverUpdatedAt: sessionProfileConflicts.get(key) ?? null });
+    }
+    for (const id of profileProbeRoutineIds) {
+      const key = normalizeUuid(id);
+      if (!routineProfileConflicts.has(key)) continue;
+      rejections.routines.push({ id, serverUpdatedAt: routineProfileConflicts.get(key) ?? null });
+    }
+    if (sessionProfileConflicts.size > 0 || routineProfileConflicts.size > 0) {
+      console.warn(
+        `Rejected ${sessionProfileConflicts.size} session(s) and ` +
+          `${routineProfileConflicts.size} routine(s) held by another local profile`,
+      );
+    }
+
+    let liveRoutines = (payload.routines ?? []).filter(
+      (r) => !routineProfileConflicts.has(normalizeUuid(r.id)),
+    );
     let liveCycles = payload.cycles ?? [];
     if (allRoutineIds.length > 0 || allCycleIds.length > 0) {
       // 204-E: a tombstone carries the delete's client clock. A pushed row is

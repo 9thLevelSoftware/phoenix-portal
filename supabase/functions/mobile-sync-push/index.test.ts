@@ -11449,3 +11449,94 @@ function cycleDeleteDouble(
     error: null,
   };
 }
+
+// ---------------------------------------------------------------------------
+// 204-D: a named-profile push of a row another local profile holds is a
+// structured rejection with the stored LWW key, not a 503 from the
+// guard_profile_ownership_update trigger. Cycles are refused inside the merge
+// RPC (pgTAP cycle_merge_profile_rejection.test.sql).
+// ---------------------------------------------------------------------------
+
+const PROFILE_B_ID = "00000000-0000-4000-8000-000000000040";
+
+function namedProfileBody(): Record<string, unknown> {
+  return {
+    ...validNestedRelationshipBody(),
+    cycles: [],
+    profileId: PROFILE_B_ID,
+    allProfiles: [
+      { id: "default", name: "Default", colorIndex: 0 },
+      { id: PROFILE_B_ID, name: "Partner", colorIndex: 1 },
+    ],
+  };
+}
+
+function storedUnderProfile(profile: string | null) {
+  return {
+    workout_sessions: {
+      data: [{
+        id: SESSION_ID,
+        user_id: VALID_USER_ID,
+        local_profile_id: profile,
+        client_updated_at: "2026-07-01T00:00:00.000Z",
+      }],
+      error: null,
+    },
+    routines: {
+      data: [{
+        id: ROUTINE_ID,
+        user_id: VALID_USER_ID,
+        local_profile_id: profile,
+        client_updated_at: "2026-07-02T00:00:00.000Z",
+      }],
+      error: null,
+    },
+  };
+}
+
+function sessionWriteIds(harness: PushHarness): string[] {
+  return [
+    ...harness.adminWriteArgs
+      .filter((call) => call.table === "workout_sessions" && call.method === "upsert")
+      .flatMap((call) => (call.args[0] as Array<{ id: string }>).map((r) => r.id)),
+    ...harness.adminRpcCalls
+      .filter((call) => call.name === "upsert_workout_session_lww")
+      .flatMap((call) => (call.args.p_rows as Array<{ id: string }>).map((r) => r.id)),
+  ];
+}
+
+Deno.test(`profile guard (LWW=${SYNC_LWW_ENABLED}): rows held by the default profile are rejected, not a 503`, async () => {
+  const harness = makeHarness(undefined, { tableResults: storedUnderProfile(null) });
+  const response = await harness.handler(requestFromBody(namedProfileBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const rejections = body.rejections as Record<string, unknown[]>;
+  assertEquals(rejections.sessions, [
+    { id: SESSION_ID, serverUpdatedAt: "2026-07-01T00:00:00.000Z" },
+  ]);
+  assertEquals(rejections.routines, [
+    { id: ROUTINE_ID, serverUpdatedAt: "2026-07-02T00:00:00.000Z" },
+  ]);
+  // Nothing of theirs is written, children included.
+  assertEquals(sessionWriteIds(harness), []);
+  assertEquals(parentWriteIds(harness, "routines"), []);
+  assertEquals(upsertedRows(harness, "routine_exercises"), []);
+  assertEquals(
+    harness.adminRpcCalls.filter((call) => call.name === "replace_session_children"),
+    [],
+  );
+});
+
+Deno.test(`profile guard (LWW=${SYNC_LWW_ENABLED}): rows already held by the pushing profile are written`, async () => {
+  const harness = makeHarness(undefined, { tableResults: storedUnderProfile(PROFILE_B_ID) });
+  const response = await harness.handler(requestFromBody(namedProfileBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  const rejections = body.rejections as Record<string, unknown[]>;
+  assertEquals(rejections.sessions, []);
+  assertEquals(rejections.routines, []);
+  assertEquals(sessionWriteIds(harness), [SESSION_ID]);
+  assertEquals(parentWriteIds(harness, "routines"), [ROUTINE_ID]);
+});
