@@ -151,9 +151,17 @@ class OwnerRefusalError extends Error {
   }
 }
 
-/** The owner-immutable trigger's SQLSTATE. */
-function isOwnerRefusal(error: { code?: string } | null | undefined): boolean {
-  return error?.code === '42501';
+/**
+ * The owner-immutable trigger's refusal: SQLSTATE 42501 AND its own message.
+ * A bare 42501 (a missing grant, say) is not an ownership conflict and must
+ * keep its normal failure path.
+ */
+function isOwnerRefusal(
+  error: { code?: string; message?: string } | null | undefined,
+): boolean {
+  return error?.code === '42501' &&
+    typeof error.message === 'string' &&
+    error.message.startsWith('row owner is immutable');
 }
 
 /**
@@ -3129,7 +3137,9 @@ async function mobileSyncPushHandler(
         { p_user_id: userId, p_cycles: cycleRows, p_use_lww: syncLwwEnabled },
       );
       if (mergeErr) {
-        if (isOwnerRefusal(mergeErr)) throw new OwnerRefusalError('training_cycles');
+        // Cross-owner cycles come back as accepted=false rows, never as an
+        // error, and sessions/routines may already be committed above, so any
+        // merge error (a 42501 included) stays the retryable partial write.
         throw new PartialWriteRetryError('training_cycles merge RPC', mergeErr);
       }
       acceptedCycleIds = new Set<string>();
