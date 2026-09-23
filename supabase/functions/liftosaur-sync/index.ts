@@ -101,6 +101,10 @@ export interface LiftosaurSyncDependencies {
 	createAdminClient(): DbClient;
 }
 
+// A server-side client keeps no session: without this supabase-js starts a
+// token auto-refresh ticker per client that outlives the request.
+const SERVER_AUTH = { persistSession: false, autoRefreshToken: false };
+
 function resolveDeps(
 	d: LiftosaurSyncHandlerDependencies,
 ): LiftosaurSyncDependencies {
@@ -118,10 +122,16 @@ function resolveDeps(
 				make(
 					env("SUPABASE_URL")!,
 					env("SUPABASE_ANON_KEY")!,
-					{ global: { headers: { Authorization: authorization } } },
+					{
+						auth: SERVER_AUTH,
+						global: { headers: { Authorization: authorization } },
+					},
 				) as unknown as LiftosaurSyncAuthClient),
 		createAdminClient: d.createAdminClient ??
-			(() => make(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!)),
+			(() =>
+				make(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!, {
+					auth: SERVER_AUTH,
+				})),
 	};
 }
 
