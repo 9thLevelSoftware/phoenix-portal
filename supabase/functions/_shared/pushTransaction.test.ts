@@ -248,6 +248,12 @@ Deno.test("an aborted transaction refuses to commit and sends no COMMIT", async 
   assertEquals(fake.ended(), 1);
 });
 
+Deno.test("a failed BEGIN still closes the connection", async () => {
+  const fake = fakeExecutor({ results: [{ match: "BEGIN", error: new Error("socket dropped") }] });
+  await assertRejects(() => beginPushTransaction(fake.executor), Error, "socket dropped");
+  assertEquals(fake.ended(), 1);
+});
+
 Deno.test("concurrent calls are serialized, so savepoints never interleave", async () => {
   const fake = fakeExecutor({ columns: { a: { id: "uuid" }, b: { id: "uuid" } } });
   const tx = await beginPushTransaction(fake.executor);
