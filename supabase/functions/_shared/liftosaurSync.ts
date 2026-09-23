@@ -194,7 +194,12 @@ export function parseLiftosaurHistoryPage(body: unknown): LiftosaurHistoryPage {
   for (const record of records as unknown[]) {
     if (typeof record !== 'object' || record === null) fail();
     const { id, text } = record as Record<string, unknown>;
-    if (typeof text !== 'string' || (typeof id !== 'number' && typeof id !== 'string')) fail();
+    // An id must identify the record: an empty or blank string (or a
+    // non-finite number) would collapse every such record onto one
+    // external_id, overwriting all but one.
+    const validId = (typeof id === 'number' && Number.isFinite(id)) ||
+      (typeof id === 'string' && id.trim() !== '');
+    if (typeof text !== 'string' || !validId) fail();
   }
   return {
     data: {

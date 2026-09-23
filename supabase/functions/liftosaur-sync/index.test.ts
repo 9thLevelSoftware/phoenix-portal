@@ -312,6 +312,39 @@ Deno.test("liftosaur-sync: a worker whose lease was reclaimed writes no state", 
   assertEquals(db.rows("sync_queue")[0].status, "processing", "left to the new worker");
 });
 
+Deno.test("liftosaur-sync: the dispatcher's claim generation is used, not one read later", async () => {
+  // A replacement already holds the row as generation 1; this invocation was
+  // dispatched for generation 0 and must not take over.
+  const db = new FakeDb(tables([{ ...queueRow(QUEUE_ID, "manual", "processing", CLAIMED_AT), retry_count: 1 }]));
+  const res = await harness(db, descendingLiftosaur(3).fetch)({
+    sync_type: "manual", queue_id: QUEUE_ID, claim_generation: 0,
+  });
+  assertEquals(res.status, 409, await res.clone().text());
+  assertEquals(db.rows("user_integrations")[0].last_sync_at, null);
+  assertEquals(db.rows("sync_queue")[0].status, "processing", "the replacement's row is untouched");
+});
+
+Deno.test("liftosaur-sync: completion requires the claim generation", async () => {
+  const db = new FakeDb(tables([{ ...queueRow(QUEUE_ID, "manual", "processing", CLAIMED_AT), retry_count: 0 }]));
+  const res = await harness(db, descendingLiftosaur(3).fetch)({
+    sync_type: "manual", queue_id: QUEUE_ID, claim_generation: 0,
+  });
+  assertEquals(res.status, 200, await res.clone().text());
+  assertEquals(db.rows("sync_queue")[0].status, "completed");
+  // The state save passes, then a reclaim lands before the completion.
+  const again = new FakeDb(tables([{ ...queueRow(QUEUE_ID, "manual", "processing", CLAIMED_AT), retry_count: 0 }]));
+  const handler = harness(again, descendingLiftosaur(3).fetch);
+  const inner = again.rpcHandlers.save_sync_state_if_queue_owned;
+  again.rpcHandlers.save_sync_state_if_queue_owned = ((args: Row) => {
+    const result = (inner as (a: Row) => unknown)(args);
+    again.rows("sync_queue")[0].retry_count = 1;
+    return result;
+  }) as never;
+  const lost = await handler({ sync_type: "manual", queue_id: QUEUE_ID, claim_generation: 0 });
+  assertEquals(lost.status, 502, await lost.clone().text());
+  assertEquals(again.rows("sync_queue")[0].status, "processing", "the replacement's row is not completed");
+});
+
 Deno.test("liftosaur-sync: a failed follow-up hand-on is retried, never reported as queued", async () => {
   const db = new FakeDb(
     tables([queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)]),

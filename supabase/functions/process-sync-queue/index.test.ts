@@ -155,6 +155,8 @@ Deno.test("process-sync-queue: a pending initial task is dispatched and complete
     user_id: USER_ID,
     sync_type: "initial",
     queue_id: TASK_ID,
+    // The generation this invocation claimed (retry_count at the claim).
+    claim_generation: 0,
   });
 
   const task = h.db.tables.sync_queue[0];
