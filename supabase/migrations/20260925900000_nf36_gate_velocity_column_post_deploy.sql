@@ -50,7 +50,8 @@ STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-  WITH gate AS (
+  -- MATERIALIZED: one entitlement lookup per call, not one per progress row.
+  WITH gate AS MATERIALIZED (
     SELECT public.user_has_min_tier('INFERNO') AS inferno
   )
   SELECT masked.*
@@ -85,7 +86,8 @@ STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-  WITH gate AS (
+  -- MATERIALIZED: one entitlement lookup per call, not one per progress row.
+  WITH gate AS MATERIALIZED (
     SELECT public.user_has_min_tier('INFERNO') AS inferno
   )
   , ranked AS (
