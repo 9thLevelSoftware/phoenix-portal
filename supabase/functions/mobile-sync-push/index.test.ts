@@ -9698,7 +9698,7 @@ Deno.test({
 
 Deno.test({
   name:
-    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) portal notes and routine edits advance the key, reach pull, and survive an earlier-stamped push under LWW`,
+    `integration: lww clock (LWW=${SYNC_LWW_ENABLED}) a portal routine edit advances the key, reaches pull, and survives an earlier-stamped push under LWW; sessions have no portal edit`,
   ignore: localIntegrationEnvironment === null,
   fn: async () => {
     const fixture = await createTombstonePushFixture();
@@ -9712,12 +9712,14 @@ Deno.test({
       const beforePortal = await storedLwwRow(fixture, "workout_sessions", ids.sessionId);
 
       // Portal edits at T2 > T1, through PostgREST as the signed-in user.
+      // Sessions are server-written only (20260923100000 revoked the last
+      // client column, notes), so the portal cannot edit one at all.
       await asPortalUser(fixture, async (browser) => {
         const notes = await browser.from("workout_sessions")
           .update({ notes: "Portal note" }, { count: "exact" })
           .eq("id", ids.sessionId);
-        if (notes.error) throw new Error(`portal notes edit failed: ${notes.error.message}`);
-        assertEquals(notes.count, 1);
+        assert(notes.error, "a portal session edit is refused");
+        assertEquals(notes.error.code, "42501");
         const rename = await browser.from("routines")
           .update({ name: "Portal routine" }, { count: "exact" })
           .eq("id", ids.routineId);
@@ -9726,19 +9728,20 @@ Deno.test({
       });
       const session = await storedLwwRow(fixture, "workout_sessions", ids.sessionId);
       const routine = await storedLwwRow(fixture, "routines", ids.routineId);
-      assert(epochMs(session.client_updated_at) > epochMs(t1), "portal edit advances the session key");
+      assertEquals(session.client_updated_at, beforePortal.client_updated_at, "the refused edit leaves the session key");
       assert(epochMs(routine.client_updated_at) > epochMs(t1), "portal edit advances the routine key");
-      assertEquals(session.client_updated_at, session.updated_at);
+      assertEquals(routine.client_updated_at, routine.updated_at);
 
-      // #116: an incremental pull that already knows the session returns it.
-      const pulled = await fixture.admin.rpc("get_sessions_excluding_ids", {
+      // #116: an incremental pull that already knows the routine returns the
+      // portal edit (the stale arm re-sends known rows changed since lastSync).
+      const pulled = await fixture.admin.rpc("get_routines_excluding_ids", {
         p_user_id: fixture.ownerId,
-        p_known_ids: [ids.sessionId],
+        p_known_ids: [ids.routineId],
         p_last_sync_at: beforePortal.updated_at,
       });
-      if (pulled.error) throw new Error(`sessions pull RPC failed: ${pulled.error.message}`);
+      if (pulled.error) throw new Error(`routines pull RPC failed: ${pulled.error.message}`);
       const pulledRows = pulled.data as Array<Record<string, unknown>>;
-      assertEquals(pulledRows.map((r) => [r.id, r.notes]), [[ids.sessionId, "Portal note"]]);
+      assertEquals(pulledRows.map((r) => [r.id, r.name]), [[ids.routineId, "Portal routine"]]);
 
       // The device re-pushes its unchanged T1 version, then an edit stamped
       // T1 + 1 s (still before the portal edit).
@@ -9748,19 +9751,16 @@ Deno.test({
         const rejections = response.rejections as RejectionLists;
         const storedSession = await storedLwwRow(fixture, "workout_sessions", ids.sessionId);
         const storedRoutine = await storedLwwRow(fixture, "routines", ids.routineId);
+        // No portal session edit exists, so the device's own versions win.
+        assertEquals(rejections.sessions, [], version);
+        assertEquals(epochMs(storedSession.client_updated_at), epochMs(stamp));
         if (SYNC_LWW_ENABLED) {
-          assertEquals(rejections.sessions.map((r) => r.id), [ids.sessionId], version);
           assertEquals(rejections.routines.map((r) => r.id), [ids.routineId], version);
-          assertEquals(storedSession.notes, "Portal note", `${version}: portal notes survive`);
           assertEquals(storedRoutine.name, "Portal routine", `${version}: portal rename survives`);
-          assertEquals(storedSession.client_updated_at, session.client_updated_at);
         } else {
           // Documented LWW-off behaviour: the push overwrites (last push
           // wins) and stores its own key.
-          assertEquals(rejections.sessions, [], version);
-          assertEquals(storedSession.notes, null, version);
           assertEquals(storedRoutine.name, `Routine ${version}`);
-          assertEquals(epochMs(storedSession.client_updated_at), epochMs(stamp));
         }
       }
     } finally {
@@ -10081,15 +10081,16 @@ Deno.test({
         );
       }
 
-      // A portal edit now owns the LWW key. The LWW-off PostgREST upsert used
-      // to overwrite it with NULL on the next undated push (R-1), which would
-      // silently hand the row back to the server write clock the day the flag
-      // flips.
+      // A portal edit now owns the routine and cycle LWW keys. The LWW-off
+      // PostgREST upsert used to overwrite them with NULL on the next undated
+      // push (R-1), which would silently hand the row back to the server write
+      // clock the day the flag flips. Sessions are server-written only, so
+      // their key stays the push's own.
       await asPortalUser(fixture, async (browser) => {
         const notes = await browser.from("workout_sessions")
           .update({ notes: "Portal note" }, { count: "exact" })
           .eq("id", ids.sessionId);
-        if (notes.error) throw new Error(`portal notes edit failed: ${notes.error.message}`);
+        assert(notes.error, "a portal session edit is refused");
         const routine = await browser.from("routines")
           .update({ description: "Portal description" }, { count: "exact" })
           .eq("id", ids.routineId);
