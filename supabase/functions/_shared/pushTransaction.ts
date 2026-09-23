@@ -475,6 +475,17 @@ export class TransactionalQuery implements PromiseLike<QueryResult> {
 }
 
 /**
+ * Longest a push transaction may stay open (Postgres 17 transaction_timeout).
+ * Every trigger and RPC inside it stamps rows with the transaction-stable
+ * now() of BEGIN, yet nothing is visible until COMMIT. mobile-sync-pull
+ * re-reads everything changed since `lastSync - STALE_OVERLAP_MS` (two
+ * minutes), so a push that committed later than that after its BEGIN could
+ * land behind another device's cursor and never reach it. Past this limit
+ * Postgres ends the transaction, nothing commits, and the device retries.
+ */
+export const PUSH_TRANSACTION_TIMEOUT_MS = 100_000;
+
+/**
  * Wraps an executor in BEGIN … COMMIT as `service_role`, like PostgREST's
  * service-role requests. Exported for tests (fake executor).
  */
@@ -489,6 +500,10 @@ export async function beginPushTransaction(
       [JSON.stringify({ role: "service_role" })],
     );
     await executor.query("SET LOCAL TIME ZONE 'UTC'", []);
+    await executor.query(
+      `SET LOCAL transaction_timeout = ${PUSH_TRANSACTION_TIMEOUT_MS}`,
+      [],
+    );
   } catch (error) {
     await executor.query("ROLLBACK", []).catch(() => undefined);
     await executor.end().catch(() => undefined);

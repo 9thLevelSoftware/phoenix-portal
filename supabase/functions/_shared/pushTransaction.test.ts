@@ -2,9 +2,11 @@ import { assert, assertEquals, assertRejects, assertThrows } from "jsr:@std/asse
 import {
   arrayLiteral,
   beginPushTransaction,
+  PUSH_TRANSACTION_TIMEOUT_MS,
   parseListValue,
   type SqlExecutor,
 } from "./pushTransaction.ts";
+import { STALE_OVERLAP_MS } from "../mobile-sync-pull/index.ts";
 
 interface FakeOptions {
   columns?: Record<string, Record<string, string>>;
@@ -52,14 +54,19 @@ Deno.test("beginPushTransaction acts as service_role with PostgREST's claims, th
     "SET LOCAL ROLE service_role",
     "SELECT set_config('request.jwt.claims', $1::text, true)",
     "SET LOCAL TIME ZONE 'UTC'",
+    `SET LOCAL transaction_timeout = ${PUSH_TRANSACTION_TIMEOUT_MS}`,
   ]);
   assertEquals(fake.log[2].params, [JSON.stringify({ role: "service_role" })]);
   assertEquals(tx.settled, false);
   await tx.commit();
   await tx.rollback(); // settled: a no-op
-  assertEquals(statements(fake.log).slice(4), ["COMMIT"]);
+  assertEquals(statements(fake.log).slice(5), ["COMMIT"]);
   assertEquals(tx.settled, true);
   assertEquals(fake.ended(), 1);
+});
+
+Deno.test("a push transaction closes inside mobile-sync-pull's re-read overlap", () => {
+  assert(PUSH_TRANSACTION_TIMEOUT_MS < STALE_OVERLAP_MS);
 });
 
 Deno.test("select: typed filters, order and range, JSON built by Postgres", async () => {
@@ -181,9 +188,9 @@ Deno.test("a failed call is rolled back to its savepoint and returned like a Pos
     details: "Key (id)=(1) already exists.",
     hint: null,
   });
-  assertEquals(statements(fake.log).slice(4), [
+  assertEquals(statements(fake.log).slice(5), [
     "SAVEPOINT push_call_1",
-    statements(fake.log)[5],
+    statements(fake.log)[6],
     "ROLLBACK TO SAVEPOINT push_call_1",
     "RELEASE SAVEPOINT push_call_1",
   ]);
@@ -200,7 +207,7 @@ Deno.test("concurrent calls are serialized, so savepoints never interleave", asy
     tx.client.from("b").select("id"),
     tx.client.rpc("missing_fn", {}),
   ]);
-  const seq = statements(fake.log).slice(4).map((s) =>
+  const seq = statements(fake.log).slice(5).map((s) =>
     s.startsWith("SAVEPOINT") ? "S" : s.startsWith("RELEASE") ? "R" : s.startsWith("SELECT coalesce") ? "Q" : s
   );
   assertEquals(seq, ["S", "Q", "R", "S", "Q", "R"]);

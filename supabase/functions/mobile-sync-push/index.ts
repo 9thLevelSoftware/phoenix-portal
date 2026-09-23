@@ -2311,7 +2311,7 @@ async function mobileSyncPushHandler(
       if (survived.size > 0) {
         // The delete may have landed after this push's write, in which case
         // the edit is already gone: keep its tombstone and report it deleted.
-        const { data: present, error: presentErr } = await supabase
+        const { data: present, error: presentErr } = await db
           .from(table)
           .select('id')
           .eq('user_id', userId)
@@ -2330,7 +2330,7 @@ async function mobileSyncPushHandler(
           }
           // A delete after the existence check rewrites deleted_at, so this
           // matches nothing and that newer tombstone stands.
-          const { error: clearErr } = await supabase
+          const { error: clearErr } = await db
             .from('sync_tombstones')
             .delete()
             .eq('user_id', userId)
