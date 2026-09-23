@@ -58,6 +58,12 @@ export interface PushTransaction {
   rollback(): Promise<void>;
   /** True once commit or rollback has run (or been attempted). */
   readonly settled: boolean;
+  /**
+   * True once Postgres ended the transaction under a call (a savepoint could
+   * not be rolled back: transaction_timeout, a dropped connection). Nothing
+   * can commit; the push must answer as a retryable partial write.
+   */
+  readonly aborted: boolean;
 }
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -159,8 +165,14 @@ export class TransactionalClient {
   #savepoint = 0;
   #columnTypes = new Map<string, Map<string, string>>();
   #functions = new Map<string, FunctionInfo[]>();
+  #aborted: PostgrestLikeError | null = null;
 
   constructor(private readonly executor: SqlExecutor) {}
+
+  /** See PushTransaction.aborted. */
+  get aborted(): boolean {
+    return this.#aborted !== null;
+  }
 
   from(table: string): TransactionalQuery {
     return new TransactionalQuery(this, table);
@@ -182,17 +194,29 @@ export class TransactionalClient {
     text: string,
     params: ReadonlyArray<string>,
   ): Promise<{ rows: Array<Record<string, unknown>> | null; error: PostgrestLikeError | null }> {
+    if (this.#aborted) return { rows: null, error: this.#aborted };
     this.#savepoint += 1;
     const name = `push_call_${this.#savepoint}`;
-    await this.executor.query(`SAVEPOINT ${name}`, []);
+    try {
+      await this.executor.query(`SAVEPOINT ${name}`, []);
+    } catch (error) {
+      this.#aborted = toPostgrestError(error);
+      return { rows: null, error: this.#aborted };
+    }
     try {
       const rows = await this.executor.query(text, params);
       await this.executor.query(`RELEASE SAVEPOINT ${name}`, []);
       return { rows, error: null };
     } catch (error) {
-      await this.executor.query(`ROLLBACK TO SAVEPOINT ${name}`, []);
-      await this.executor.query(`RELEASE SAVEPOINT ${name}`, []);
-      return { rows: null, error: toPostgrestError(error) };
+      const failure = toPostgrestError(error);
+      try {
+        await this.executor.query(`ROLLBACK TO SAVEPOINT ${name}`, []);
+        await this.executor.query(`RELEASE SAVEPOINT ${name}`, []);
+      } catch {
+        // The transaction itself is gone (transaction_timeout, connection).
+        this.#aborted = failure;
+      }
+      return { rows: null, error: failure };
     }
   }
 
@@ -527,6 +551,9 @@ export async function beginPushTransaction(
     rollback: () => finish("ROLLBACK"),
     get settled() {
       return settled;
+    },
+    get aborted() {
+      return client.aborted;
     },
   };
 }

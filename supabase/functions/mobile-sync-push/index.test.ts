@@ -700,7 +700,7 @@ function makeHarness(
      * Run the push through a transaction double (F-014). Its client is this
      * harness's admin double; open/commit/rollback land in operationEvents.
      */
-    pushTransaction?: { openError?: unknown; commitError?: unknown };
+    pushTransaction?: { openError?: unknown; commitError?: unknown; aborted?: boolean };
   } = {},
 ): PushHarness {
   const authClientAuthorizations: string[] = [];
@@ -910,6 +910,9 @@ function makeHarness(
         },
         get settled() {
           return settled;
+        },
+        get aborted() {
+          return tx.aborted ?? false;
         },
       };
     },
@@ -4051,6 +4054,18 @@ Deno.test("push transaction: a failed COMMIT is a retryable 503 with no broadcas
   const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
   await assertPartialWriteRetry(harness, response);
   assertEquals(transactionEvents(harness), ["transaction:open", "transaction:commit"]);
+});
+
+Deno.test("push transaction: a transaction Postgres ended mid-push is a retryable 503, not a 500", async () => {
+  // Any write error that would otherwise surface as a plain 500 (here the
+  // flag-off session upsert) is a partial write once the transaction is gone.
+  const harness = makeHarness(undefined, {
+    syncLwwEnabled: false,
+    pushTransaction: { aborted: true },
+    writeErrors: { "workout_sessions:upsert": { message: "terminating connection due to transaction timeout" } },
+  });
+  const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  await assertPartialWriteRetry(harness, response);
 });
 
 Deno.test("push transaction: when it cannot open, the push writes per call and logs it", async () => {

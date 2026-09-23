@@ -4205,6 +4205,14 @@ async function mobileSyncPushHandler(
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
+    // Postgres ended the push transaction under a call (transaction_timeout,
+    // a dropped connection): whatever surfaced is a consequence, nothing
+    // committed, and the device must retry.
+    if (pushTx?.aborted && !(err instanceof PartialWriteRetryError)) {
+      err = new PartialWriteRetryError('push transaction aborted', {
+        message: safeErrorName(err, 'TransactionAborted'),
+      });
+    }
     if (err instanceof OwnerRefusalError) {
       // The SQLSTATE, not the DB message, goes to the log.
       console.warn('mobile-sync-push owner refusal, answering 400:', {

@@ -199,6 +199,25 @@ Deno.test("a failed call is rolled back to its savepoint and returned like a Pos
   assertEquals(next.error, null);
 });
 
+Deno.test("a transaction Postgres ended under a call is marked aborted and fails later calls fast", async () => {
+  const gone = Object.assign(new Error("terminating connection due to transaction timeout"), { code: "25P04" });
+  const fake = fakeExecutor({
+    columns: { t: { id: "uuid" } },
+    results: [
+      { match: "INSERT INTO", error: gone },
+      { match: "ROLLBACK TO SAVEPOINT", error: new Error("connection ended") },
+    ],
+  });
+  const tx = await beginPushTransaction(fake.executor);
+  const first = await tx.client.from("t").upsert([{ id: "1" }], { onConflict: "id" });
+  assertEquals(first.error?.code, "25P04");
+  assertEquals(tx.aborted, true);
+  const before = fake.log.length;
+  const next = await tx.client.from("t").select("id");
+  assertEquals(next.error?.code, "25P04");
+  assertEquals(fake.log.length, before, "no statement is sent on a dead transaction");
+});
+
 Deno.test("concurrent calls are serialized, so savepoints never interleave", async () => {
   const fake = fakeExecutor({ columns: { a: { id: "uuid" }, b: { id: "uuid" } } });
   const tx = await beginPushTransaction(fake.executor);
