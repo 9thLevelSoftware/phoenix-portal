@@ -346,6 +346,8 @@ export function fakeClient(
       if (fn === 'check_rate_limit') {
         return Promise.resolve(checkRateLimitRpc(db, args, now()));
       }
+      // A stub the test registered on the db.
+      if (db.rpcHandlers[fn]) return db.rpc(fn, args);
       // Postgres' "function does not exist" — callers that have a fallback
       // path take it, the rest fail closed.
       return Promise.resolve({

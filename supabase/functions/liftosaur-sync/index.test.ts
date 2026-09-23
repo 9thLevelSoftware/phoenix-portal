@@ -118,6 +118,22 @@ function harness(
   jwtUserId: string | null = null,
 ) {
   const now = () => new Date(NOW);
+  // save_sync_state_if_queue_owned (20260924150000), faithfully: write the
+  // state only while the queue row is still processing.
+  db.rpcHandlers.save_sync_state_if_queue_owned ??= ((args: Row) =>
+    (async () => {
+      if (args.p_queue_id) {
+        const owned = db.rows("sync_queue").some((r) =>
+          r.id === args.p_queue_id && r.user_id === args.p_user_id && r.status === "processing"
+        );
+        if (!owned) return { data: false, error: null };
+      }
+      const { error } = await db.from("user_integrations")
+        .update(args.p_state as Row)
+        .eq("user_id", args.p_user_id)
+        .eq("provider", args.p_provider);
+      return error ? { data: null, error } : { data: true, error: null };
+    })()) as never;
   const handler = createLiftosaurSyncHandler({
     env: (key) =>
       ({
@@ -740,7 +756,16 @@ function createDbDouble(state: DbState) {
     ) => Promise.resolve(resolve()).then(onFulfilled, onRejected);
     return builder;
   };
-  return { from };
+  // save_sync_state_if_queue_owned: these runs hold no queue row, so it saves.
+  const rpc = (name: string, args: Record<string, unknown>) => {
+    if (name === "save_sync_state_if_queue_owned") {
+      const values = args.p_state as Record<string, unknown>;
+      if ("last_sync_at" in values) state.lastSyncAt = values.last_sync_at as string;
+      return Promise.resolve({ data: true, error: null });
+    }
+    return Promise.resolve({ data: null, error: { code: "42883", message: `function public.${name} does not exist` } });
+  };
+  return { from, rpc };
 }
 
 interface UpstreamRecord {

@@ -507,6 +507,23 @@ async function runLiftosaurSync(
 				.update(values)
 				.eq("user_id", userId)
 				.eq("provider", "liftosaur");
+		// Sync state is saved only while this run still owns its queue row,
+		// atomically under the row lock (20260924150000): a disconnect or a
+		// lease reclaim between a check and the write can no longer be undone.
+		const saveStateIfOwned = async (values: Record<string, unknown>) => {
+			const { data, error } = await supabase.rpc("save_sync_state_if_queue_owned", {
+				p_user_id: userId,
+				p_provider: "liftosaur",
+				p_queue_id: ownedQueueId ?? null,
+				p_state: values,
+			});
+			return { owned: data !== false, error };
+		};
+		const notOwned = () =>
+			new Response(
+				JSON.stringify({ error: "Sync queue entry is no longer this run's", code: "queue_not_owned" }),
+				{ status: 409, headers: { ...cors, "Content-Type": "application/json" } },
+			);
 
 		// supabase-js resolves a failed write as `{ error }`; it does not throw.
 		// A lost cursor or watermark must not be reported as progress: leave this
@@ -536,14 +553,9 @@ async function runLiftosaurSync(
 			// No state write for a row this run no longer owns (a disconnect
 			// cancelled it, or a lease reclaim handed it on): writing the
 			// cursor would mark a disconnected integration connected again.
-			if (!(await queueRowStillOwned(supabase, ownedQueueId, userId))) {
-				return new Response(
-					JSON.stringify({ error: "Sync queue entry is no longer this run's", code: "queue_not_owned" }),
-					{ status: 409, headers: { ...cors, "Content-Type": "application/json" } },
-				);
-			}
-			const { error: cursorError } = await updateIntegration(outcome.columns);
-			if (cursorError) return await saveFailed("cursor_save_failed", cursorError);
+			const cursorSave = await saveStateIfOwned(outcome.columns);
+			if (cursorSave.error) return await saveFailed("cursor_save_failed", cursorSave.error);
+			if (!cursorSave.owned) return notOwned();
 			console.warn(outcome.message);
 			const base = {
 				truncated: true,
@@ -616,19 +628,12 @@ async function runLiftosaurSync(
 		// Everything in the window has been read and stored. Uses the chain's
 		// pre-fetch timestamp so concurrent Liftosaur writes land in the next
 		// window, and ends any backfill.
-		// A row a disconnect cancelled, or a lease reclaim handed to another
-		// worker, is no longer this run's: then it must not write `connected`
-		// or a watermark over the newer state. Checked before any state write;
-		// a failed watermark save below still leaves the row processing for
-		// the processor to retry.
-		if (!(await queueRowStillOwned(supabase, ownedQueueId, userId))) {
-			return new Response(
-				JSON.stringify({ error: "Sync queue entry is no longer this run's", code: "queue_not_owned" }),
-				{ status: 409, headers: { ...cors, "Content-Type": "application/json" } },
-			);
-		}
-		const { error: watermarkError } = await updateIntegration(completedSyncColumns(plan));
-		if (watermarkError) return await saveFailed("watermark_save_failed", watermarkError);
+		// Saved only while this run still owns its queue row (a disconnect
+		// cancels it; a lease reclaim hands it on), in one locked step. A
+		// failed save leaves the row processing for the processor's retry.
+		const watermarkSave = await saveStateIfOwned(completedSyncColumns(plan));
+		if (watermarkSave.error) return await saveFailed("watermark_save_failed", watermarkSave.error);
+		if (!watermarkSave.owned) return notOwned();
 
 		// Complete only the row this run owns. Never sweep every pending row:
 		// a second queued task (a kept `initial`) must still run.
@@ -675,22 +680,6 @@ async function runLiftosaurSync(
  * chain; an `initial` one would restart it). Returns true when one is queued,
  * including when `sync_queue_one_active` reports that one already is (23505).
  */
-/** True when this run has no queue row, or its row is still `processing`. */
-async function queueRowStillOwned(
-	supabase: DbClient,
-	queueId: string | null,
-	userId: string,
-): Promise<boolean> {
-	if (!queueId) return true;
-	const { data, error } = await supabase
-		.from("sync_queue")
-		.select("id")
-		.eq("id", queueId)
-		.eq("user_id", userId)
-		.eq("status", "processing");
-	return !error && Array.isArray(data) && data.length > 0;
-}
-
 async function ensureFollowUpTask(supabase: DbClient, userId: string): Promise<boolean> {
 	const { error } = await supabase.from("sync_queue").insert({
 		user_id: userId,
