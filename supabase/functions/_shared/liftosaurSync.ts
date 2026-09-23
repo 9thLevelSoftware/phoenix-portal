@@ -176,6 +176,38 @@ export interface FetchLiftosaurHistoryOptions {
 }
 
 /**
+ * Validate one decoded `/history` page. A 200 whose body is not a history page
+ * (an error envelope, a schema change) must never read as an empty final page:
+ * that would end a backfill and advance the watermark past records nobody read.
+ * Throws, so the caller's existing provider-failure path handles it and nothing
+ * is written or advanced.
+ */
+export function parseLiftosaurHistoryPage(body: unknown): LiftosaurHistoryPage {
+  const fail = (): never => {
+    throw new Error('Liftosaur API returned an unexpected history page');
+  };
+  if (typeof body !== 'object' || body === null) fail();
+  const data = (body as { data?: unknown }).data;
+  if (typeof data !== 'object' || data === null) fail();
+  const { records, hasMore, nextCursor } = data as Record<string, unknown>;
+  if (!Array.isArray(records) || typeof hasMore !== 'boolean') fail();
+  for (const record of records as unknown[]) {
+    if (typeof record !== 'object' || record === null) fail();
+    const { id, text } = record as Record<string, unknown>;
+    if (typeof text !== 'string' || (typeof id !== 'number' && typeof id !== 'string')) fail();
+  }
+  return {
+    data: {
+      records: records as LiftosaurRecord[],
+      hasMore: hasMore as boolean,
+      // An unusable cursor is not a malformed page: with hasMore it becomes the
+      // explicit `missing_cursor` truncation below.
+      nextCursor: isLiftosaurCursor(nextCursor) ? nextCursor : null,
+    },
+  };
+}
+
+/**
  * Paginated GET /v1/history, following `nextCursor` while `hasMore`.
  * Never silently stops: if records remain unread, `truncated` is set and
  * `reason` says why.
@@ -198,11 +230,11 @@ export async function fetchLiftosaurHistory(
     if (options.endDate) params.set('endDate', options.endDate);
     if (cursor !== null) params.set('cursor', String(cursor));
 
-    const data = (await fetchPage(params)) as LiftosaurHistoryPage;
-    records.push(...(data?.data?.records ?? []));
-    const next = data?.data?.nextCursor;
+    const data = parseLiftosaurHistoryPage(await fetchPage(params));
+    records.push(...data.data.records);
+    const next = data.data.nextCursor;
     cursor = isLiftosaurCursor(next) ? next : null;
-    hasMore = data?.data?.hasMore === true;
+    hasMore = data.data.hasMore;
     page++;
     await options.onPage?.();
     // A page that claims more but gives no cursor cannot be continued; treat

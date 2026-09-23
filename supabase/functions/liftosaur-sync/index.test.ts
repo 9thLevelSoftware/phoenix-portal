@@ -197,6 +197,78 @@ Deno.test("liftosaur-sync: the queue lease is renewed on entry, per page and per
   assertEquals(row.started_at, new Date(NOW).toISOString());
 });
 
+/**
+ * Make the `user_integrations` update whose patch carries `column` resolve
+ * `{ error }`, the way supabase-js reports a failed write (it does not throw).
+ */
+function failIntegrationUpdate(db: FakeDb, column: string): void {
+  const from = db.from.bind(db);
+  db.from = (table: string) => {
+    const query = from(table);
+    if (table === "user_integrations") {
+      const update = query.update.bind(query);
+      query.update = (patch: Row) => {
+        if (!(column in patch)) return update(patch);
+        const failed = {
+          eq: () => failed,
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve({ data: null, error: { message: "write failed" } }).then(resolve),
+        };
+        // deno-lint-ignore no-explicit-any
+        return failed as any;
+      };
+    }
+    return query;
+  };
+}
+
+Deno.test("liftosaur-sync: a 200 that is not a history page is a provider failure; nothing advances", async () => {
+  const db = new FakeDb(tables([queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT)]));
+  const [before] = db.rows("user_integrations");
+  const watermark = before.last_sync_at;
+  const res = await harness(db, () =>
+    Promise.resolve(
+      new Response(JSON.stringify({ error: "temporarily unavailable" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ))({ sync_type: "incremental", queue_id: QUEUE_ID });
+  assertEquals(res.status, 502);
+  assertEquals((await res.json()).code, "provider_fetch_failed");
+  const [integration] = db.rows("user_integrations");
+  assertEquals(integration.last_sync_at, watermark, "the watermark must not move");
+  assertEquals(integration.status, "error");
+  assertEquals(db.rows("external_activities").length, 0);
+  assertEquals(db.rows("sync_queue").map((r) => r.status), ["processing"]);
+});
+
+Deno.test("liftosaur-sync: a failed cursor save fails the run; the row stays processing and no follow-up is queued", async () => {
+  const db = new FakeDb(
+    tables([queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)]),
+    [syncQueueOneActiveIndex],
+  );
+  failIntegrationUpdate(db, "backfill_before");
+  const res = await harness(db, descendingLiftosaur(4500).fetch)({ sync_type: "initial", queue_id: QUEUE_ID });
+  assertEquals(res.status, 502, "retryable, so the processor re-queues the still-processing row");
+  assertEquals((await res.json()).code, "cursor_save_failed");
+  assertEquals(db.rows("sync_queue").map((r) => [r.sync_type, r.status]), [["initial", "processing"]]);
+  const [integration] = db.rows("user_integrations");
+  assertEquals(integration.last_sync_at, null);
+  assertEquals(integration.status, "error");
+});
+
+Deno.test("liftosaur-sync: a failed watermark save fails the run and does not complete the row", async () => {
+  const db = new FakeDb(tables([queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT)]));
+  const [before] = db.rows("user_integrations");
+  const watermark = before.last_sync_at;
+  failIntegrationUpdate(db, "last_sync_at");
+  const res = await harness(db, 3)({ sync_type: "incremental", queue_id: QUEUE_ID });
+  assertEquals(res.status, 502);
+  assertEquals((await res.json()).code, "watermark_save_failed");
+  assertEquals(db.rows("sync_queue").map((r) => r.status), ["processing"]);
+  assertEquals(db.rows("user_integrations")[0].last_sync_at, watermark);
+});
+
 /** What process-sync-queue does before dispatching: claim the pending row. */
 function claim(db: FakeDb, index: number, id: string): void {
   const row = db.rows("sync_queue")[index];

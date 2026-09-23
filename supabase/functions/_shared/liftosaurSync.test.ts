@@ -1,7 +1,8 @@
-import { assertEquals } from 'jsr:@std/assert@1';
+import { assertEquals, assertRejects, assertThrows } from 'jsr:@std/assert@1';
 import {
   type LiftosaurFetchResult,
   fetchLiftosaurHistory,
+  parseLiftosaurHistoryPage,
   liftosaurDateOrder,
   parseLiftoscriptMetadata,
   planLiftosaurSync,
@@ -54,6 +55,57 @@ Deno.test('fetchLiftosaurHistory: reaching the page budget reports page_budget a
   assertEquals(result.truncated, true);
   assertEquals(result.reason, 'page_budget');
   assertEquals(pages, 3);
+});
+
+Deno.test('fetchLiftosaurHistory: a 200 that is not a history page fails instead of ending the history', async () => {
+  // Each of these used to default to an empty, final page: the run "completed"
+  // and the watermark advanced past records nobody read.
+  const malformed: unknown[] = [
+    { error: 'rate limited' },
+    { data: null },
+    { data: { hasMore: false } },
+    { data: { records: [], hasMore: 'no' } },
+    { data: { records: {}, hasMore: false } },
+    { data: { records: [{ id: 1 }], hasMore: false } },
+    { data: { records: [null], hasMore: false } },
+    [],
+    null,
+  ];
+  for (const body of malformed) {
+    let pages = 0;
+    await assertRejects(
+      () => fetchLiftosaurHistory(() => Promise.resolve(body), { onPage: () => { pages++; } }),
+      Error,
+      'unexpected history page',
+    );
+    assertEquals(pages, 0, `onPage must not run for ${JSON.stringify(body)}`);
+  }
+});
+
+Deno.test('fetchLiftosaurHistory: a malformed later page fails the whole fetch', async () => {
+  let requests = 0;
+  await assertRejects(
+    () =>
+      fetchLiftosaurHistory(() => {
+        requests++;
+        return Promise.resolve(
+          requests === 1
+            ? { data: { records: [{ id: 1, text: 'x' }], hasMore: true, nextCursor: 1 } }
+            : { data: { message: 'schema changed' } },
+        );
+      }),
+    Error,
+    'unexpected history page',
+  );
+  assertEquals(requests, 2);
+});
+
+Deno.test('parseLiftosaurHistoryPage: a valid page passes; an unusable cursor becomes null', () => {
+  assertEquals(
+    parseLiftosaurHistoryPage({ data: { records: [{ id: 2, text: 't' }], hasMore: true, nextCursor: '' } }),
+    { data: { records: [{ id: 2, text: 't' }], hasMore: true, nextCursor: null } },
+  );
+  assertThrows(() => parseLiftosaurHistoryPage('not json object'), Error, 'unexpected history page');
 });
 
 Deno.test('liftosaurDateOrder: needs two distinct dates in one direction', () => {
