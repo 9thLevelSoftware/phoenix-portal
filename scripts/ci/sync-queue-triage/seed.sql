@@ -18,7 +18,16 @@
 -- A also has a completed row (40d) and D a processing row on another
 -- provider (fitbit); both are untouched.
 
+-- The clean-apply job has already applied every migration, including PR 52's
+-- sync_queue_one_active index. This fixture deliberately recreates the legacy
+-- pre-index backlog that PR 31's one-time triage had to repair, so remove that
+-- later invariant before inserting the duplicate pending rows below. The CI
+-- workflow validates the triage result first, then replays migration 05200 to
+-- restore and self-check the final schema before pgTAP runs.
+
 BEGIN;
+
+DROP INDEX IF EXISTS public.sync_queue_one_active;
 
 INSERT INTO auth.users (id, email)
 SELECT ('c1c1c1c1-0000-4000-8000-00000000000' || u)::uuid, 'triage-' || u || '@example.test'

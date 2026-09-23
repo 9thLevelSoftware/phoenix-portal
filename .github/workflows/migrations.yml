@@ -130,6 +130,11 @@ jobs:
           diff -u "$dir/expected_dry_run.txt" "$RUNNER_TEMP/dry_run.txt"
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260920003100_scheduler_and_sync_queue_cron.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$dir/check.sql"
+          # seed.sql temporarily removes the later unique index so it can
+          # reproduce a pre-PR-52 duplicate backlog. Restore the owning
+          # migration only after check.sql proves PR 31's triage did the work;
+          # replaying it earlier could mask a broken triage by deduping again.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260920005200_sync_queue_pending_unique.sql
 
       # Full pgTAP suite (every file in supabase/tests/database/): definer
       # grant guard, dashboard capture, cross-user RLS isolation, trust plane,
