@@ -596,6 +596,44 @@ describe("volumeComparisonOptions", () => {
 		expect(gte.map(days).sort((a, b) => a - b)).toEqual([30, 60]);
 		expect(lt.map(days)).toEqual([30]);
 	});
+
+	it("computes insight boundaries in fixed 24 h days across a DST change", async () => {
+		// 30 days before 2026-11-10 crosses the 2026-11-01 New York clock change.
+		// Local-calendar setDate would land an hour off generate-insights'
+		// now - days * 86_400_000; the boundaries must match it exactly.
+		const previousTz = process.env.TZ;
+		process.env.TZ = "America/New_York";
+		const now = Date.parse("2026-11-10T12:00:00Z");
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(now));
+		const gte: string[] = [];
+		fromFn.mockImplementation(() => {
+			const self: Record<string, ReturnType<typeof vi.fn>> = {};
+			for (const m of ["select", "eq", "or", "order", "lt"]) {
+				self[m] = vi.fn(() => self);
+			}
+			self.gte = vi.fn((_col: string, value: string) => {
+				gte.push(value);
+				return self;
+			});
+			self.limit = vi.fn(() => Promise.resolve({ data: [], error: null }));
+			return self as never;
+		});
+		try {
+			const { volumeComparisonOptions } = await import("../analytics");
+			await volumeComparisonOptions("user-1", "30d").queryFn!({} as never);
+		} finally {
+			vi.useRealTimers();
+			if (previousTz === undefined) delete process.env.TZ;
+			else process.env.TZ = previousTz;
+		}
+		expect([...gte].sort()).toEqual(
+			[
+				new Date(now - 60 * 86_400_000).toISOString(),
+				new Date(now - 30 * 86_400_000).toISOString(),
+			].sort(),
+		);
+	});
 });
 
 describe("periodToDays", () => {

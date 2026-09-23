@@ -189,6 +189,8 @@ export function strengthProgressOptions(
 }
 
 /** Volume trend with previous period comparison */
+const DAY_MS = 86_400_000;
+
 export function volumeComparisonOptions(
 	userId: string,
 	period: string = "4w",
@@ -201,11 +203,13 @@ export function volumeComparisonOptions(
 			profileId,
 		),
 		queryFn: async () => {
+			// One timestamp and fixed 24 h days, exactly as generate-insights
+			// computes its windows: local-calendar setDate shifts a boundary by
+			// an hour when the window crosses a DST change.
 			const daysBack = periodToDays(period);
-			const currentStart = new Date();
-			currentStart.setDate(currentStart.getDate() - daysBack);
-			const previousStart = new Date();
-			previousStart.setDate(previousStart.getDate() - daysBack * 2);
+			const now = Date.now();
+			const currentStart = new Date(now - daysBack * DAY_MS);
+			const previousStart = new Date(now - daysBack * 2 * DAY_MS);
 
 			// Keyset-paged: one select per window was silently capped at 1,000
 			// rows, so a long "all" window lost its newest sessions (NF-19).
