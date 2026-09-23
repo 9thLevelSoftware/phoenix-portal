@@ -129,8 +129,8 @@ export function TrainingCycles() {
 				<PageShell>
 					<EmptyState
 						icon={Calendar}
-						title="Plan your training cycle"
-						description="Design a structured training program with progressive overload and scheduled deload weeks."
+						title="Create your training cycle"
+						description="Set workout and rest days to build a structured program with progressive overload."
 						actionLabel="Create Cycle"
 						actionHref="/cycles/new"
 					/>

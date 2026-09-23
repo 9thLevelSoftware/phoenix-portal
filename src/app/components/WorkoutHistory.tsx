@@ -352,8 +352,10 @@ export function WorkoutHistory() {
 				<PageShell>
 					<EmptyState
 						icon={Dumbbell}
-						title="No workouts yet"
-						description="Complete your first workout in the mobile app to see your training history here."
+						title="Start tracking your workouts"
+						description="Create a routine and complete your first session to build your training history."
+						actionLabel="Create a routine"
+						actionHref="/routines/new"
 					/>
 				</PageShell>
 			</div>
@@ -491,6 +493,16 @@ export function WorkoutHistory() {
 									</Button>
 								)}
 							</div>
+						)}
+
+						{filteredWorkouts.length === 0 && (
+							<EmptyState
+								icon={BarChart3}
+								title="Adjust your date range"
+								description="No workouts match this range. Expand the range to see more of your training history."
+								actionLabel="View all workouts"
+								onAction={() => setDateRange("All Time")}
+							/>
 						)}
 
 						{/* Unlocked workout cards */}

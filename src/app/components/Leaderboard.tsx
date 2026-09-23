@@ -9,6 +9,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/app/components/ui/card";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import {
 	Tabs,
@@ -228,9 +229,13 @@ function GlobalRankings({
 
 	if (data == null) {
 		return (
-			<Card className="border-border p-8 text-center text-sm text-muted-foreground">
-				Rankings data unavailable. Check back soon.
-			</Card>
+			<EmptyState
+				icon={Trophy}
+				title="Start climbing the leaderboard"
+				description="Complete workouts to add your results to the community rankings."
+				actionLabel="Start a workout"
+				actionHref="/routines"
+			/>
 		);
 	}
 
@@ -479,9 +484,13 @@ function MyRankingsTab({ data, isLoading, isLoggedIn }: MyRankingsProps) {
 
 	if (data == null || data.length === 0) {
 		return (
-			<Card className="border-border p-8 text-center text-sm text-muted-foreground">
-				No ranking data yet. Complete workouts to appear on the leaderboard.
-			</Card>
+			<EmptyState
+				icon={Award}
+				title="Build your ranking"
+				description="Complete workouts to see your position across Phoenix performance metrics."
+				actionLabel="Start a workout"
+				actionHref="/routines"
+			/>
 		);
 	}
 

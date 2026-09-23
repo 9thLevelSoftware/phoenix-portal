@@ -181,10 +181,13 @@ export function RoutinesEnhanced() {
 
 					<TabsContent value="favorites">
 						{favoriteRoutines.length === 0 ? (
-							<div className="text-center py-12 text-muted-foreground">
-								<Heart className="w-12 h-12 mx-auto mb-3 opacity-50" />
-								<p>No favorite routines yet. Heart a routine to add it here.</p>
-							</div>
+							<EmptyState
+								icon={Heart}
+								title="Save your favorite routines"
+								description="Mark a routine as a favorite to keep your go-to workouts in one place."
+								actionLabel="Create a routine"
+								actionHref="/routines/new"
+							/>
 						) : (
 							<RoutineGrid
 								routines={favoriteRoutines}

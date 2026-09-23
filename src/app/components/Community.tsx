@@ -10,6 +10,7 @@ import { FeaturedCreators } from "@/app/components/community/FeaturedCreators";
 import { PageShell } from "@/app/components/PageShell";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import {
 	Select,
 	SelectContent,
@@ -104,6 +105,18 @@ export function Community() {
 	const hasActiveFilters = Boolean(
 		debouncedSearch || filters.muscleGroup || filters.difficulty,
 	);
+	const contentLabel = activeTab === "routines" ? "routine" : "training cycle";
+	const contentPath =
+		activeTab === "routines" ? "/routines/new" : "/cycles/new";
+	const emptyStateTitle = hasActiveFilters
+		? `Adjust your ${contentLabel} search`
+		: `Share your first ${contentLabel}`;
+	const emptyStateDescription = hasActiveFilters
+		? "Try a different search or filter, then check the community feed again."
+		: `Create a ${contentLabel} and share it with the community to start the conversation.`;
+	const emptyStateAction = hasActiveFilters
+		? `Create a ${contentLabel}`
+		: `Create a ${contentLabel}`;
 
 	const selectedItem = selectedItemId
 		? (allItems.find((item) => item.id === selectedItemId) ?? null)
@@ -208,29 +221,13 @@ export function Community() {
 									</Button>
 								</div>
 							) : allItems.length === 0 ? (
-								<div className="text-center py-12 text-muted-foreground">
-									<Search className="w-10 h-10 mx-auto mb-2 opacity-50" />
-									{hasActiveFilters ? (
-										<p>
-											No {activeTab === "routines" ? "routines" : "cycles"}{" "}
-											found
-										</p>
-									) : (
-										<>
-											<p>
-												No shared{" "}
-												{activeTab === "routines" ? "routines" : "cycles"} yet
-											</p>
-											<p className="mt-1 text-sm text-muted-foreground">
-												Be the first to share{" "}
-												{activeTab === "routines"
-													? "a routine"
-													: "a training cycle"}{" "}
-												with the community.
-											</p>
-										</>
-									)}
-								</div>
+								<EmptyState
+									icon={Search}
+									title={emptyStateTitle}
+									description={emptyStateDescription}
+									actionLabel={emptyStateAction}
+									actionHref={contentPath}
+								/>
 							) : (
 								allItems.map((item) => (
 									<CommunityFeedCard
@@ -355,27 +352,13 @@ export function Community() {
 									</button>
 								</div>
 							) : allItems.length === 0 ? (
-								<div className="text-center py-16 text-muted-foreground">
-									<Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
-									<p className="text-lg">
-										{hasActiveFilters
-											? `No ${activeTab === "routines" ? "routines" : "cycles"} found`
-											: `No shared ${activeTab === "routines" ? "routines" : "cycles"} yet`}
-									</p>
-									{hasActiveFilters ? (
-										<p className="text-sm mt-1">
-											Try adjusting your search or filters
-										</p>
-									) : (
-										<p className="mt-1 text-sm">
-											Be the first to share{" "}
-											{activeTab === "routines"
-												? "a routine"
-												: "a training cycle"}{" "}
-											with the community.
-										</p>
-									)}
-								</div>
+								<EmptyState
+									icon={Search}
+									title={emptyStateTitle}
+									description={emptyStateDescription}
+									actionLabel={emptyStateAction}
+									actionHref={contentPath}
+								/>
 							) : (
 								<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
 									{allItems.map((item) => (

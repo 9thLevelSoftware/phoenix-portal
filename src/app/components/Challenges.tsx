@@ -22,6 +22,7 @@ import {
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { Progress } from "@/app/components/ui/progress";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import {
@@ -547,13 +548,13 @@ export function Challenges() {
 					<TabsContent value="active" className="px-4 py-4 space-y-4 mt-0">
 						{activeChallenges.filter((c) => joinedIds.has(c.id)).length ===
 						0 ? (
-							<div className="text-center py-12 text-muted-foreground">
-								<Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
-								<p>No active challenges right now</p>
-								<p className="text-xs mt-1">
-									Join a challenge from the Discover tab
-								</p>
-							</div>
+							<EmptyState
+								icon={Trophy}
+								title="Join an active challenge"
+								description="Open Discover to choose a challenge and start tracking progress."
+								actionLabel="Discover challenges"
+								actionHref="/challenges"
+							/>
 						) : (
 							<>
 								<div className="text-xs text-muted-foreground mb-2">
@@ -737,15 +738,13 @@ export function Challenges() {
 						{/* Desktop Active Challenges Tab */}
 						<TabsContent value="active" className="space-y-6">
 							{activeChallenges.length === 0 ? (
-								<div className="text-center py-16">
-									<Trophy className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-									<h3 className="text-xl font-semibold text-foreground mb-2">
-										No active challenges right now
-									</h3>
-									<p className="text-muted-foreground">
-										Check back soon for new challenges
-									</p>
-								</div>
+								<EmptyState
+									icon={Trophy}
+									title="Find your next challenge"
+									description="Browse available challenges and join one to start building momentum."
+									actionLabel="Discover challenges"
+									actionHref="/challenges"
+								/>
 							) : (
 								activeChallenges.map((challenge, index) => (
 									<ChallengeCard
@@ -773,12 +772,13 @@ export function Challenges() {
 						{/* Desktop Past Challenges Tab */}
 						<TabsContent value="past" className="space-y-6">
 							{pastChallenges.length === 0 ? (
-								<div className="text-center py-16">
-									<Trophy className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-									<p className="text-muted-foreground">
-										Complete your first challenge to see it here
-									</p>
-								</div>
+								<EmptyState
+									icon={Trophy}
+									title="Complete your first challenge"
+									description="Join an active challenge to build a result worth celebrating here."
+									actionLabel="Discover challenges"
+									actionHref="/challenges"
+								/>
 							) : (
 								<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 									{pastChallenges.map((challenge, index) => (
