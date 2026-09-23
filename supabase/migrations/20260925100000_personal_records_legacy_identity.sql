@@ -102,20 +102,24 @@ COMMENT ON FUNCTION private.dedupe_legacy_personal_records() IS
 
 SELECT private.dedupe_legacy_personal_records();
 
+-- The free-text parts (exercise id/name, muscle group, unit) are indexed as
+-- md5() digests: they are unbounded TEXT, and one long historical value would
+-- otherwise exceed the B-tree tuple limit and abort this migration. The
+-- dedupe above and the collision trigger below compare the raw values.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_personal_records_legacy_identity
   ON public.personal_records (
     user_id,
-    (COALESCE(local_profile_id, 'default')),
-    (CASE WHEN NULLIF(exercise_id, '') IS NOT NULL
+    (md5(COALESCE(local_profile_id, 'default'))),
+    (md5(CASE WHEN NULLIF(exercise_id, '') IS NOT NULL
       THEN 'id:' || exercise_id
-      ELSE 'name:' || exercise_name END),
+      ELSE 'name:' || exercise_name END)),
     (date_trunc('milliseconds', achieved_at AT TIME ZONE 'UTC')),
     record_type,
     (COALESCE(workout_phase, 'COMBINED')),
-    exercise_name,
-    muscle_group,
+    (md5(exercise_name)),
+    (md5(muscle_group)),
     value,
-    unit,
+    (md5(unit)),
     previous_value,
     weight_kg,
     reps,
