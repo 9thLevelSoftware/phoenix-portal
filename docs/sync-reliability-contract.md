@@ -99,6 +99,13 @@ type PushResponseAdditions = {
     original: number | string;
     clamped: number | string;
   }>;
+  repaired: Array<{
+    entity: 'session';
+    id: string;
+    field: 'startedAt' | 'durationSeconds';
+    original: number | string;
+    repaired: number | string;
+  }>;
 };
 ```
 
@@ -299,6 +306,36 @@ sessions and PRs dated more than a day in the future, caps each session's
 volume contribution at 100,000 kg, and recomputes streaks and workout counts
 from non-future sessions only. Stored workout history is never rewritten by
 ranking.
+
+A session's `durationSeconds` is the one field this schema lets go negative at
+ingress (`sessionDurationSecondsField`, `pushPayloadSchema.ts`): a phone-side
+Int sum that wraps negative would otherwise 400 the whole batch permanently.
+`normalizeNegativeSessionDurations` stores 0 instead and reports it under
+`clamped` like every other outlier. Every other `durationSeconds` field
+(routines, cycles, external activities) keeps the strict non-negative rule.
+
+### Epoch-zero session repair (C10, NF-37 follow-up)
+
+Root cause: a mobile save raced a reset that set the workout start time to
+`0L`, so the phone pushed `startedAt` = epoch and `durationSeconds` = `now -
+0` (the save time, as Unix seconds). `repairEpochZeroSessionStarts`
+(`mobile-sync-push/index.ts`) runs on every push, after
+`normalizeNegativeSessionDurations` and before the outlier clamp above (order
+is load-bearing: the outlier clamp would otherwise destroy the Unix-seconds
+evidence this repair looks for). For any pushed session whose `startedAt` is
+before 2000-01-01:
+
+| Condition | Repair |
+| --- | --- |
+| `durationSeconds` is a plausible Unix-seconds timestamp (946,684,800 .. receipt time + 1 day) | `startedAt := durationSeconds` reinterpreted as a timestamp; `durationSeconds := 0` |
+| otherwise | `startedAt :=` the DTO's own `updatedAt` (its client clock), or receipt time when absent; `durationSeconds := 0` only if it exceeds 86,400s |
+
+Each change is reported under the new `repaired` response array (same shape
+and same "committed sessions only" rule as `clamped`) and logged the same
+way. The same rules, applied to already-stored rows, are the production
+repair in `supabase/migrations/20260926100000_repair_epoch_zero_sessions.sql`
+— see that migration's header for the one deliberate difference (its first
+group requires an EXACT epoch-zero `started_at`, not merely "before 2000").
 
 ### Single-transaction push (SYNC_PUSH_TRANSACTION)
 

@@ -23,7 +23,10 @@ import {
   buildExternalActivityAcks,
   clampSessionOutliers,
   createMobileSyncPushHandler,
+  EPOCH_ZERO_SESSION_REPAIR,
+  normalizeNegativeSessionDurations,
   PUSH_OUTLIER_LIMITS,
+  repairEpochZeroSessionStarts,
   localProfilesPushChangesRows,
 } from "./index.ts";
 import { partitionPersonalRecordRowsBySessionValidity } from "../_shared/personalRecordRow.ts";
@@ -5840,6 +5843,7 @@ Deno.test("present empty preference field is evaluated without an RPC", async ()
     acknowledgedOwnershipTransferIds: [],
     acknowledgedDeletedCycleIds: [],
     clamped: [],
+    repaired: [],
     rejections: {
       sessions: [],
       routines: [],
@@ -12137,6 +12141,176 @@ Deno.test("clampSessionOutliers: a far-future updatedAt is clamped with the star
   assertEquals([sessions[0].startedAt, sessions[0].updatedAt], [receivedAt, receivedAt]);
 });
 
+// ---------------------------------------------------------------------------
+// C10 (1970 session repair): normalizeNegativeSessionDurations and
+// repairEpochZeroSessionStarts, unit-tested directly. Both mutate their
+// `sessions` argument in place, exactly like clampSessionOutliers.
+// ---------------------------------------------------------------------------
+
+Deno.test("normalizeNegativeSessionDurations zeroes only negative durations and reports each", () => {
+  const sessions = [
+    { id: "a", durationSeconds: -5 },
+    { id: "b", durationSeconds: 0 },
+    { id: "c", durationSeconds: 100 },
+    { id: "d", durationSeconds: null as number | null },
+  ];
+  const repairs = normalizeNegativeSessionDurations(sessions);
+  assertEquals(repairs, [
+    { entity: "session", id: "a", field: "durationSeconds", original: -5, clamped: 0 },
+  ]);
+  assertEquals(sessions[0].durationSeconds, 0);
+  assertEquals(sessions[1].durationSeconds, 0);
+  assertEquals(sessions[2].durationSeconds, 100);
+  assertEquals(sessions[3].durationSeconds, null);
+});
+
+Deno.test("repairEpochZeroSessionStarts: group A — epoch zero with a plausible Unix-seconds duration", () => {
+  const receivedAt = "2026-09-23T12:00:00.000Z";
+  const sessions = [
+    { id: "a", startedAt: "1970-01-01T00:00:00.000Z", durationSeconds: 1_775_563_768 },
+  ];
+  const repaired = repairEpochZeroSessionStarts(sessions, receivedAt);
+  const expectedStartedAt = new Date(1_775_563_768 * 1000).toISOString();
+  assertEquals(repaired, [
+    {
+      entity: "session",
+      id: "a",
+      field: "startedAt",
+      original: "1970-01-01T00:00:00.000Z",
+      repaired: expectedStartedAt,
+    },
+    {
+      entity: "session",
+      id: "a",
+      field: "durationSeconds",
+      original: 1_775_563_768,
+      repaired: 0,
+    },
+  ]);
+  assertEquals(sessions[0].startedAt, expectedStartedAt);
+  assertEquals(sessions[0].durationSeconds, 0);
+});
+
+Deno.test("repairEpochZeroSessionStarts: group B — pre-2000 with an implausible/too-long duration falls back to the client clock, duration zeroed", () => {
+  const receivedAt = "2026-09-23T12:00:00.000Z";
+  const sessions = [
+    {
+      id: "a",
+      startedAt: "1970-01-01T00:00:00.000Z",
+      durationSeconds: 213_003,
+      updatedAt: "2026-09-22T08:00:00.000Z",
+    },
+  ];
+  const repaired = repairEpochZeroSessionStarts(sessions, receivedAt);
+  assertEquals(repaired, [
+    {
+      entity: "session",
+      id: "a",
+      field: "startedAt",
+      original: "1970-01-01T00:00:00.000Z",
+      repaired: "2026-09-22T08:00:00.000Z",
+    },
+    {
+      entity: "session",
+      id: "a",
+      field: "durationSeconds",
+      original: 213_003,
+      repaired: 0,
+    },
+  ]);
+  assertEquals(sessions[0].startedAt, "2026-09-22T08:00:00.000Z");
+  assertEquals(sessions[0].durationSeconds, 0);
+});
+
+Deno.test("repairEpochZeroSessionStarts: group C — pre-2000 with a plausible short duration keeps the duration", () => {
+  const receivedAt = "2026-09-23T12:00:00.000Z";
+  const sessions = [
+    {
+      id: "a",
+      startedAt: "1969-06-01T00:00:00.000Z",
+      durationSeconds: 3_600,
+      updatedAt: "2026-09-22T08:00:00.000Z",
+    },
+  ];
+  const repaired = repairEpochZeroSessionStarts(sessions, receivedAt);
+  assertEquals(repaired, [
+    {
+      entity: "session",
+      id: "a",
+      field: "startedAt",
+      original: "1969-06-01T00:00:00.000Z",
+      repaired: "2026-09-22T08:00:00.000Z",
+    },
+  ]);
+  assertEquals(sessions[0].startedAt, "2026-09-22T08:00:00.000Z");
+  assertEquals(sessions[0].durationSeconds, 3_600);
+});
+
+Deno.test("repairEpochZeroSessionStarts: no updatedAt falls back to receipt time", () => {
+  const receivedAt = "2026-09-23T12:00:00.000Z";
+  const sessions = [
+    // Duration is far past the plausible Unix-seconds ceiling (receipt + 1
+    // day), so this is NOT group A — no updatedAt, so the fallback is
+    // receivedAt itself.
+    { id: "a", startedAt: "1970-01-01T00:00:00.000Z", durationSeconds: 99_999_999_999 },
+  ];
+  const repaired = repairEpochZeroSessionStarts(sessions, receivedAt);
+  assertEquals(repaired[0].repaired, receivedAt);
+  assertEquals(sessions[0].startedAt, receivedAt);
+  assertEquals(sessions[0].durationSeconds, 0);
+});
+
+Deno.test("repairEpochZeroSessionStarts: boundary values are untouched", () => {
+  const receivedAt = "2026-09-23T12:00:00.000Z";
+  assertEquals(EPOCH_ZERO_SESSION_REPAIR.minPlausibleUnixSeconds, 946_684_800);
+  const sessions = [
+    // Exactly at the 2000-01-01 floor: NOT repaired (only strictly before).
+    { id: "a", startedAt: "2000-01-01T00:00:00.000Z", durationSeconds: 5, updatedAt: receivedAt },
+    // One ms before the floor: repaired.
+    { id: "b", startedAt: "1999-12-31T23:59:59.999Z", durationSeconds: 5, updatedAt: receivedAt },
+    // Duration one second below the plausible Unix-seconds floor: epoch-zero
+    // startedAt but NOT group A, falls to B/C by duration.
+    {
+      id: "c",
+      startedAt: "1970-01-01T00:00:00.000Z",
+      durationSeconds: EPOCH_ZERO_SESSION_REPAIR.minPlausibleUnixSeconds - 1,
+      updatedAt: receivedAt,
+    },
+  ];
+  const repaired = repairEpochZeroSessionStarts(sessions, receivedAt);
+  assertEquals(sessions[0].startedAt, "2000-01-01T00:00:00.000Z");
+  assertEquals(sessions[0].durationSeconds, 5);
+  assertEquals(sessions[1].startedAt, receivedAt);
+  assertEquals(sessions[2].startedAt, receivedAt);
+  // "c" falls to group B/C by duration (946684799 <= 86400 is false, so B):
+  // duration zeroed.
+  assertEquals(sessions[2].durationSeconds, 0);
+  // Only b and c were touched.
+  const touchedIds = new Set(repaired.map((r) => r.id));
+  assertEquals(touchedIds.has("a"), false);
+  assertEquals(touchedIds.has("b"), true);
+  assertEquals(touchedIds.has("c"), true);
+});
+
+Deno.test("repairEpochZeroSessionStarts: order dependency documented at the call site — running before the duration clamp preserves Unix-seconds evidence", () => {
+  // This is the scenario NF-37's clamp would otherwise destroy: a duration
+  // far past PUSH_OUTLIER_LIMITS.sessionDurationSeconds (604,800) that is
+  // ALSO a plausible Unix-seconds save timestamp. Repair must see the raw
+  // value before the outlier clamp caps it.
+  const receivedAt = "2026-09-23T12:00:00.000Z";
+  const sessions = [
+    { id: "a", startedAt: "1970-01-01T00:00:00.000Z", durationSeconds: 1_788_222_680 },
+  ];
+  assert(sessions[0].durationSeconds > PUSH_OUTLIER_LIMITS.sessionDurationSeconds);
+  const repaired = repairEpochZeroSessionStarts(sessions, receivedAt);
+  assertEquals(sessions[0].startedAt, new Date(1_788_222_680 * 1000).toISOString());
+  assertEquals(sessions[0].durationSeconds, 0);
+  assertEquals(repaired.length, 2);
+  // Now the outlier clamp runs on the already-repaired session: nothing left to clamp.
+  const clamped = clampSessionOutliers(sessions, receivedAt);
+  assertEquals(clamped, []);
+});
+
 Deno.test(`NF-37 (LWW=${SYNC_LWW_ENABLED}): an outlier session is stored clamped with a 200 and reported`, async () => {
   const harness = makeHarness();
   const body = validNestedRelationshipBody();
@@ -12183,6 +12357,138 @@ Deno.test("NF-37: a push with nothing to clamp reports an empty list", async () 
   const result = await json(response);
   assertEquals(response.status, 200, JSON.stringify(result));
   assertEquals(result.clamped, []);
+});
+
+// ---------------------------------------------------------------------------
+// C10 (1970 session repair): handler-level coverage. `test:edge` runs this
+// file once per SYNC_LWW_ENABLED value, so a single test definition exercises
+// both the LWW RPC and the plain-upsert write paths across the two runs; both
+// share the same `sessionRows` built from the repaired `payload.sessions`.
+// ---------------------------------------------------------------------------
+
+function writtenSessionRows(harness: PushHarness): Array<Record<string, unknown>> {
+  return [
+    ...harness.adminWriteArgs
+      .filter((call) => call.table === "workout_sessions" && call.method === "upsert")
+      .flatMap((call) => call.args[0] as Array<Record<string, unknown>>),
+    ...harness.adminRpcCalls
+      .filter((call) => call.name === "upsert_workout_session_lww")
+      .flatMap((call) => call.args.p_rows as Array<Record<string, unknown>>),
+  ];
+}
+
+function writtenProgressRows(harness: PushHarness): Array<Record<string, unknown>> {
+  return harness.adminRpcCalls
+    .filter((call) => call.name === "replace_session_children")
+    .flatMap((call) => (call.args.p_progress ?? []) as Array<Record<string, unknown>>);
+}
+
+Deno.test(`C10 (LWW=${SYNC_LWW_ENABLED}): an epoch-zero session with a plausible-duration timestamp is repaired end to end`, async () => {
+  const harness = makeHarness();
+  const body = validNestedRelationshipBody();
+  const [session] = body.sessions as Array<Record<string, unknown>>;
+  body.sessions = [{
+    ...session,
+    startedAt: "1970-01-01T00:00:00.000Z",
+    durationSeconds: 1_775_563_768,
+  }];
+  const response = await harness.handler(requestFromBody(body));
+  const result = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(result));
+  const expectedStartedAt = new Date(1_775_563_768 * 1000).toISOString();
+  assertEquals(
+    (result.repaired as Array<{ field: string; repaired: unknown }>).map((r) => [r.field, r.repaired]),
+    [
+      ["startedAt", expectedStartedAt],
+      ["durationSeconds", 0],
+    ],
+  );
+  // Not double-counted under NF-37's clamp: the repair already brought the
+  // value within every outlier limit.
+  assertEquals(result.clamped, []);
+
+  const written = writtenSessionRows(harness);
+  assertEquals(written.length, 1);
+  assertEquals(written[0].started_at, expectedStartedAt);
+  assertEquals(written[0].duration_seconds, 0);
+
+  // exercise_progress.recorded_at (via buildExerciseProgressRows) sees the
+  // SAME repaired session object, not the original payload.
+  const progress = writtenProgressRows(harness);
+  assertEquals(progress.length, 1);
+  assertEquals(progress[0].recorded_at, expectedStartedAt);
+});
+
+Deno.test(`C10 (LWW=${SYNC_LWW_ENABLED}): a pre-2000 session with no plausible duration falls back to its own updatedAt`, async () => {
+  const harness = makeHarness();
+  const body = validNestedRelationshipBody();
+  const [session] = body.sessions as Array<Record<string, unknown>>;
+  // updatedAt must be within the harness's fixed receivedAt
+  // (2026-07-16T02:00:00.000Z, see `syncTime` elsewhere in this file) plus
+  // NF-37's 24h future-clamp window, or the outlier clamp that runs right
+  // after this repair would clamp the repaired startedAt straight back down.
+  body.sessions = [{
+    ...session,
+    startedAt: "1970-01-01T00:00:00.000Z",
+    durationSeconds: 213_003,
+    updatedAt: "2026-07-15T08:00:00.000Z",
+  }];
+  const response = await harness.handler(requestFromBody(body));
+  const result = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(result));
+  assertEquals(
+    (result.repaired as Array<{ field: string; repaired: unknown }>).map((r) => [r.field, r.repaired]),
+    [
+      ["startedAt", "2026-07-15T08:00:00.000Z"],
+      ["durationSeconds", 0],
+    ],
+  );
+
+  const written = writtenSessionRows(harness);
+  assertEquals(written.length, 1);
+  assertEquals(written[0].started_at, "2026-07-15T08:00:00.000Z");
+  assertEquals(written[0].duration_seconds, 0);
+});
+
+Deno.test(`C10 (LWW=${SYNC_LWW_ENABLED}): a rejected session's repairs are not reported`, async () => {
+  const harness = makeHarness(undefined, { tableResults: storedUnderProfile(null) });
+  const body = namedProfileBody();
+  const [session] = body.sessions as Array<Record<string, unknown>>;
+  body.sessions = [{
+    ...session,
+    startedAt: "1970-01-01T00:00:00.000Z",
+    durationSeconds: 1_775_563_768,
+  }];
+  const response = await harness.handler(requestFromBody(body));
+  const result = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(result));
+  assertEquals((result.rejections as Record<string, unknown[]>).sessions.length, 1);
+  assertEquals(sessionWriteIds(harness), []);
+  assertEquals(result.repaired, []);
+});
+
+Deno.test(`C10 (LWW=${SYNC_LWW_ENABLED}): a negative durationSeconds normalizes to 0 instead of a 400`, async () => {
+  const harness = makeHarness();
+  const body = validNestedRelationshipBody();
+  const [session] = body.sessions as Array<Record<string, unknown>>;
+  body.sessions = [{ ...session, durationSeconds: -42 }];
+  const response = await harness.handler(requestFromBody(body));
+  const result = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(result));
+  const clamped = result.clamped as Array<
+    { entity: string; id: string; field: string; original: unknown; clamped: unknown }
+  >;
+  assertEquals(clamped.map((c) => [c.entity, c.field, c.original, c.clamped]), [
+    ["session", "durationSeconds", -42, 0],
+  ]);
+  assertEquals(clamped[0].id, SESSION_ID);
+  const written = writtenSessionRows(harness);
+  assertEquals(written.length, 1);
+  assertEquals(written[0].duration_seconds, 0);
 });
 
 // ---------------------------------------------------------------------------
