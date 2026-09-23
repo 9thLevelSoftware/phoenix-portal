@@ -395,5 +395,13 @@ SELECT results_eq(
 RESET ROLE;
 SELECT set_config('request.jwt.claims', '', true);
 
+SELECT ok(
+    NOT has_table_privilege('authenticated', 'public.rep_telemetry_legacy', 'INSERT')
+    AND NOT has_table_privilege('authenticated', 'public.rep_telemetry_legacy', 'UPDATE')
+    AND NOT has_table_privilege('authenticated', 'public.rep_telemetry_legacy', 'DELETE')
+    AND NOT has_table_privilege('anon', 'public.rep_telemetry_legacy', 'INSERT'),
+    'clients cannot write the legacy telemetry table'
+);
+
 SELECT * FROM finish();
 ROLLBACK;

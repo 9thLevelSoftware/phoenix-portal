@@ -198,6 +198,13 @@ BEGIN
 END
 $$;
 
+-- RENAME keeps ACLs and policies. Clients never write the legacy table (a
+-- write there would bypass set_telemetry_sample_ids and be hidden by the
+-- view once its set is folded), whatever grants or insert policy an older or
+-- dashboard-drifted database carried over from rep_telemetry.
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.rep_telemetry_legacy FROM PUBLIC, anon, authenticated;
+DROP POLICY IF EXISTS "Users can insert own telemetry" ON public.rep_telemetry_legacy;
+
 COMMENT ON TABLE public.rep_telemetry_legacy IS
   'Per-sample force-curve rows written before 20260925200000. Read through the rep_telemetry view until private.backfill_set_telemetry folds each set into set_telemetry; kept until that is verified.';
 
