@@ -8,6 +8,11 @@
  * the unit of rollout.
  */
 
+/** A boolean flag: on only when the secret is "true" (trimmed, any case). */
+function parseBoolFlag(name: string): boolean {
+	return (Deno.env.get(name) ?? "false").trim().toLowerCase() === "true";
+}
+
 /**
  * Gate the Last-Write-Wins upsert path in mobile-sync-push. When false
  * (default), the push handler uses last-push-wins `.upsert()` — the incoming
@@ -28,8 +33,7 @@
  * Resolves audit item #1 when combined with Phases 3.3 and 3.4. See
  * phoenix-portal/docs/dto-drift-matrix.md.
  */
-export const SYNC_LWW_ENABLED =
-	(Deno.env.get("SYNC_LWW_ENABLED") ?? "false").trim().toLowerCase() === "true";
+export const SYNC_LWW_ENABLED = parseBoolFlag("SYNC_LWW_ENABLED");
 
 /**
  * Run the mobile push's whole write sequence in ONE Postgres transaction
@@ -41,5 +45,4 @@ export const SYNC_LWW_ENABLED =
  * nothing, and the broadcast happens only after COMMIT. Exactly "true"
  * enables it; the response contract is identical either way.
  */
-export const SYNC_PUSH_TRANSACTION =
-	(Deno.env.get("SYNC_PUSH_TRANSACTION") ?? "false").trim().toLowerCase() === "true";
+export const SYNC_PUSH_TRANSACTION = parseBoolFlag("SYNC_PUSH_TRANSACTION");

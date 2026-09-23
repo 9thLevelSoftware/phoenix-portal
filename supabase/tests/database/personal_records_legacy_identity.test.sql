@@ -1,7 +1,8 @@
 -- F-062: identity for legacy personal_records rows (20260925100000).
 --
 -- Legacy rows (source IS NULL) are unique on derived identity PLUS content
--- (value, weight_kg, reps, session_id), NULLs equal. The dedupe keeps the
+-- (exercise_name, muscle_group, value, unit, previous_value, weight_kg, reps,
+-- session_id), NULLs equal. The dedupe keeps the
 -- newest row per group and tombstones the rest. Rows that differ in content
 -- stay distinct (F335), and set_derived / dedicated rows are untouched.
 --
@@ -14,7 +15,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(12);
+SELECT plan(13);
 
 SELECT diag('database:pr-legacy-identity-catalog');
 
@@ -71,6 +72,9 @@ VALUES
     -- A3: same derived identity, different value: a distinct record (F335)
     ('62626262-0000-4000-8000-0000000000a3'::uuid, '62626262-0000-4000-8000-000000000001'::uuid,
      'Bench', 'Chest', 'MAX_WEIGHT', 105, 'kg', '2026-01-01T10:00:00.123Z', '2026-01-01', 105, 5, NULL, NULL, NULL),
+    -- A4: A's content in another unit: a distinct row
+    ('62626262-0000-4000-8000-0000000000a4'::uuid, '62626262-0000-4000-8000-000000000001'::uuid,
+     'Bench', 'Chest', 'MAX_WEIGHT', 100, 'lb', '2026-01-01T10:00:00.123Z', '2026-01-01', 100, 5, NULL, NULL, NULL),
     -- B: duplicates whose weight, reps and session are NULL (NULLs equal)
     ('62626262-0000-4000-8000-0000000000b1'::uuid, '62626262-0000-4000-8000-000000000001'::uuid,
      'Plank', 'Core', 'MAX_VOLUME', 60, 's', '2026-02-01T00:00:00Z', '2026-02-02', NULL, NULL, NULL, NULL, NULL),
@@ -82,6 +86,14 @@ VALUES
     -- D: a dedicated row with A's content is outside the legacy identity
     ('62626262-0000-4000-8000-0000000000d1'::uuid, '62626262-0000-4000-8000-000000000001'::uuid,
      'Bench', 'Chest', 'MAX_WEIGHT', 100, 'kg', '2026-01-01T10:00:00.123Z', '2026-01-01', 100, 5, NULL, 'dedicated', NULL);
+
+-- A5: A's content with a different previous value: a distinct row
+INSERT INTO public.personal_records
+    (id, user_id, exercise_name, muscle_group, record_type, value, unit,
+     achieved_at, updated_at, weight_kg, reps, previous_value)
+VALUES
+    ('62626262-0000-4000-8000-0000000000a5'::uuid, '62626262-0000-4000-8000-000000000001'::uuid,
+     'Bench', 'Chest', 'MAX_WEIGHT', 100, 'kg', '2026-01-01T10:00:00.123Z', '2026-01-01', 100, 5, 95);
 
 SELECT is(
     private.dedupe_legacy_personal_records(),
@@ -97,10 +109,12 @@ SELECT results_eq(
     $values$ VALUES
         ('62626262-0000-4000-8000-0000000000a1'::uuid),
         ('62626262-0000-4000-8000-0000000000a3'::uuid),
+        ('62626262-0000-4000-8000-0000000000a4'::uuid),
+        ('62626262-0000-4000-8000-0000000000a5'::uuid),
         ('62626262-0000-4000-8000-0000000000b1'::uuid),
         ('62626262-0000-4000-8000-0000000000d1'::uuid)
     $values$,
-    'survivors: the newest A, the distinct A3, one B, and the dedicated row'
+    'survivors: the newest A, the distinct A3/A4/A5, one B, and the dedicated row'
 );
 SELECT is(
     (SELECT count(*)::int FROM public.personal_records
@@ -141,6 +155,16 @@ SELECT lives_ok(
                 'Bench', 'Chest', 'MAX_WEIGHT', 110, 'kg', '2026-01-01T10:00:00.123Z', 110, 5)
     $sql$,
     'a legacy row that differs in content is allowed'
+);
+SELECT lives_ok(
+    $sql$
+        INSERT INTO public.personal_records
+            (id, user_id, exercise_name, muscle_group, record_type, value, unit,
+             achieved_at, weight_kg, reps)
+        VALUES ('62626262-0000-4000-8000-0000000000e5'::uuid, '62626262-0000-4000-8000-000000000001'::uuid,
+                'Bench', 'Back', 'MAX_WEIGHT', 100, 'kg', '2026-01-01T10:00:00.123Z', 100, 5)
+    $sql$,
+    'a legacy row that differs only in muscle group is allowed'
 );
 SELECT lives_ok(
     $sql$

@@ -887,11 +887,13 @@ function makeHarness(
     },
     logOperationalFailure: ((...args: unknown[]) => loggerCalls.push(args)),
     syncLwwEnabled: options.syncLwwEnabled,
-    // Explicit, so a SYNC_PUSH_TRANSACTION=true test run never reaches these
-    // doubles' per-call assertions through a real connection attempt.
+    // Explicit, never the global flag: a SYNC_PUSH_TRANSACTION=true test run
+    // must not reach these doubles' per-call assertions through a real
+    // connection attempt. `pushTransaction` is the transaction double's
+    // configuration, so passing one (even `{}`) is what turns the path on.
     pushTransactionEnabled: options.pushTransaction !== undefined,
     async openPushTransaction() {
-      const tx = options.pushTransaction!;
+      const tx = options.pushTransaction ?? {};
       operationEvents.push("transaction:open");
       if (tx.openError !== undefined) throw tx.openError;
       let settled = false;
