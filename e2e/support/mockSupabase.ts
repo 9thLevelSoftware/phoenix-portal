@@ -1,7 +1,7 @@
 import type { Page, Route } from "@playwright/test";
 import {
-	E2E_SUPABASE_URL,
 	createStoredSession,
+	E2E_SUPABASE_URL,
 	seedStoredSession,
 } from "./supabase";
 
@@ -36,16 +36,16 @@ interface IntegrationRow {
 	error_message: string | null;
 }
 
-interface ExerciseRow {
+type ExerciseRow = {
 	id: string;
 	session_id: string;
 	name: string;
 	muscle_group: string;
 	order_index: number;
 	cable_count?: number | null;
-}
+};
 
-interface SetRow {
+type SetRow = {
 	id: string;
 	exercise_id: string;
 	set_number: number;
@@ -55,7 +55,7 @@ interface SetRow {
 	rpe: number | null;
 	is_pr: boolean;
 	notes: string | null;
-}
+};
 
 interface RepSummaryRow {
 	set_id: string;
@@ -112,10 +112,13 @@ interface MockSupabaseOptions {
 
 const MONTHLY_PRICE_IDS: Record<MockSubscriptionTier, string | null> = {
 	FREE: null,
-	EMBER: process.env.VITE_PADDLE_EMBER_MONTHLY_PRICE_ID ?? "pri_e2e_ember_monthly",
-	FLAME: process.env.VITE_PADDLE_FLAME_MONTHLY_PRICE_ID ?? "pri_e2e_flame_monthly",
+	EMBER:
+		process.env.VITE_PADDLE_EMBER_MONTHLY_PRICE_ID ?? "pri_e2e_ember_monthly",
+	FLAME:
+		process.env.VITE_PADDLE_FLAME_MONTHLY_PRICE_ID ?? "pri_e2e_flame_monthly",
 	INFERNO:
-		process.env.VITE_PADDLE_INFERNO_MONTHLY_PRICE_ID ?? "pri_e2e_inferno_monthly",
+		process.env.VITE_PADDLE_INFERNO_MONTHLY_PRICE_ID ??
+		"pri_e2e_inferno_monthly",
 };
 
 export async function mockAuthenticatedApp(
@@ -201,7 +204,12 @@ export async function installMockSupabase(
 	) =>
 		rows.filter((row) => {
 			for (const [key, value] of url.searchParams.entries()) {
-				if (key === "select" || key === "order" || key === "limit" || key === "offset") {
+				if (
+					key === "select" ||
+					key === "order" ||
+					key === "limit" ||
+					key === "offset"
+				) {
 					continue;
 				}
 				if (key.includes(".")) {
@@ -243,7 +251,9 @@ export async function installMockSupabase(
 		rows: TRow[],
 		acceptHeader?: string,
 	) => {
-		const wantsObject = acceptHeader?.includes("application/vnd.pgrst.object+json");
+		const wantsObject = acceptHeader?.includes(
+			"application/vnd.pgrst.object+json",
+		);
 		await route.fulfill({
 			status: 200,
 			contentType: "application/json",
@@ -358,8 +368,7 @@ export async function installMockSupabase(
 				.filter(
 					(record) =>
 						!record.deleted_at &&
-						(!profileId ||
-							String(record.local_profile_id ?? "") === profileId),
+						(!profileId || String(record.local_profile_id ?? "") === profileId),
 				)
 				.sort((a, b) => {
 					const byDate = String(b.achieved_at).localeCompare(
@@ -384,9 +393,7 @@ export async function installMockSupabase(
 			const sessions = sessionsForProfile(profileId);
 			const utcDays = [
 				...new Set(
-					sessions.map((session) =>
-						String(session.started_at).slice(0, 10),
-					),
+					sessions.map((session) => String(session.started_at).slice(0, 10)),
 				),
 			].sort();
 			let best = utcDays.length > 0 ? 1 : 0;
@@ -407,9 +414,8 @@ export async function installMockSupabase(
 						0,
 					),
 					best_streak: best,
-					pr_count: state.personalRecords.filter(
-						(record) => !record.deleted_at,
-					).length,
+					pr_count: state.personalRecords.filter((record) => !record.deleted_at)
+						.length,
 				},
 			];
 		}
@@ -419,8 +425,7 @@ export async function installMockSupabase(
 		// SQL, so a truncated page drops the OLDEST points (F-034).
 		const progressRowsForProfile = () =>
 			(state.exerciseProgress as Array<Record<string, unknown>>).filter(
-				(row) =>
-					!profileId || String(row.local_profile_id ?? "") === profileId,
+				(row) => !profileId || String(row.local_profile_id ?? "") === profileId,
 			);
 
 		if (fn === "exercise_names") {
@@ -435,9 +440,7 @@ export async function installMockSupabase(
 			const exercise = args.p_exercise as string | undefined;
 			const limit = Math.min(Math.max(Number(args.p_limit ?? 200), 1), 1000);
 			return progressRowsForProfile()
-				.filter(
-					(row) => !exercise || String(row.exercise_name) === exercise,
-				)
+				.filter((row) => !exercise || String(row.exercise_name) === exercise)
 				.sort((a, b) =>
 					String(b.recorded_at).localeCompare(String(a.recorded_at)),
 				)
@@ -486,7 +489,9 @@ export async function installMockSupabase(
 			syncItem.completed_at = new Date().toISOString();
 		}
 
-		const integration = state.integrations.find((item) => item.provider === provider);
+		const integration = state.integrations.find(
+			(item) => item.provider === provider,
+		);
 		if (integration) {
 			integration.status = "connected";
 			integration.error_message = null;
@@ -524,7 +529,8 @@ export async function installMockSupabase(
 						: integration,
 				);
 				state.syncQueue = state.syncQueue.map((item) =>
-					item.provider === provider && ["pending", "processing"].includes(item.status)
+					item.provider === provider &&
+					["pending", "processing"].includes(item.status)
 						? {
 								...item,
 								status: "failed",
@@ -542,7 +548,9 @@ export async function installMockSupabase(
 			}
 
 			if (functionName === "strava-sync" || functionName === "fitbit-sync") {
-				completeLatestSync(functionName.replace("-sync", "") as IntegrationProvider);
+				completeLatestSync(
+					functionName.replace("-sync", "") as IntegrationProvider,
+				);
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
@@ -820,10 +828,11 @@ export async function installMockSupabase(
 					await route.fulfill({
 						status: 201,
 						contentType: "application/json",
-						body:
-							request.headers().accept?.includes("application/vnd.pgrst.object+json")
-								? JSON.stringify({ id: row.id })
-								: JSON.stringify([row]),
+						body: request
+							.headers()
+							.accept?.includes("application/vnd.pgrst.object+json")
+							? JSON.stringify({ id: row.id })
+							: JSON.stringify([row]),
 					});
 					return;
 				}

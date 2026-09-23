@@ -1,8 +1,25 @@
 import AxeBuilder from "@axe-core/playwright";
-import { test, expect } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { mockAuthenticatedApp } from "./support/mockSupabase";
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
+
+/**
+ * Wait until no Web Animation is still running. A fixed sleep alone is not
+ * enough under parallel load: when the dev server is slow, axe can sample an
+ * entrance fade at partial opacity and report a color-contrast violation that
+ * the settled page does not have (OP-13).
+ */
+async function waitForAnimationsToSettle(page: Page) {
+	await page.waitForFunction(
+		() =>
+			document
+				.getAnimations()
+				.every((animation) => animation.playState !== "running"),
+		undefined,
+		{ timeout: 10_000 },
+	);
+}
 
 // Pages accessible without authentication
 const publicPages = [{ name: "Landing Page", path: "/" }];
@@ -22,15 +39,20 @@ const authedPages = [
 ];
 
 test.describe("WCAG Accessibility Audit - Public Pages", () => {
+	test.beforeEach(async ({ page }) => {
+		// MotionConfig reducedMotion="user" drops transform animations; the
+		// authenticated block below already relies on this.
+		await page.emulateMedia({ reducedMotion: "reduce" });
+	});
+
 	for (const { name, path } of publicPages) {
-		test(`${name} has no critical WCAG violations`, async ({
-			page,
-		}) => {
+		test(`${name} has no critical WCAG violations`, async ({ page }) => {
 			await page.goto(path);
 			await page.waitForLoadState("networkidle");
 			// Wait for Framer Motion entrance animations to complete
 			// (longest delay is 0.6s + transition duration ~0.3s)
 			await page.waitForTimeout(2000);
+			await waitForAnimationsToSettle(page);
 
 			const results = await new AxeBuilder({ page })
 				.withTags(WCAG_TAGS)
@@ -51,8 +73,7 @@ test.describe("WCAG Accessibility Audit - Public Pages", () => {
 
 			// Filter to critical/serious only for the pass/fail gate
 			const critical = results.violations.filter(
-				(v) =>
-					v.impact === "critical" || v.impact === "serious",
+				(v) => v.impact === "critical" || v.impact === "serious",
 			);
 			expect(
 				critical,
@@ -77,6 +98,7 @@ test.describe("WCAG Accessibility Audit - Authenticated Pages", () => {
 			await page.waitForLoadState("networkidle");
 			// Wait for any entrance animations to settle
 			await page.waitForTimeout(2000);
+			await waitForAnimationsToSettle(page);
 
 			const results = await new AxeBuilder({ page })
 				.withTags(WCAG_TAGS)
@@ -95,8 +117,7 @@ test.describe("WCAG Accessibility Audit - Authenticated Pages", () => {
 			}
 
 			const critical = results.violations.filter(
-				(v) =>
-					v.impact === "critical" || v.impact === "serious",
+				(v) => v.impact === "critical" || v.impact === "serious",
 			);
 			expect(
 				critical,

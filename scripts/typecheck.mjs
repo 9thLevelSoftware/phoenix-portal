@@ -29,6 +29,7 @@ const PROJECTS = {
   app: 'tsconfig.app.json',
   node: 'tsconfig.node.json',
   test: 'tsconfig.test.json',
+  e2e: 'tsconfig.e2e.json',
 };
 
 const BASELINE_README = [

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { mockAuthenticatedApp } from "./support/mockSupabase";
 import { E2E_SUPABASE_URL } from "./support/supabase";
 
@@ -56,9 +56,9 @@ function seedWorkouts(extra?: Record<string, unknown>[]) {
 
 async function openDashboard(page: Page) {
 	await page.goto("/dashboard");
-	await expect(
-		page.getByText(/Dashboard|Welcome/i).first(),
-	).toBeVisible({ timeout: 10000 });
+	await expect(page.getByText(/Dashboard|Welcome/i).first()).toBeVisible({
+		timeout: 10000,
+	});
 }
 
 function workoutHeading(page: Page, name: string) {
@@ -66,18 +66,15 @@ function workoutHeading(page: Page, name: string) {
 }
 
 test.describe("DEV CustomEvent cross-tab invalidation (not Broadcast)", () => {
-	test.skip(
-		"live Supabase Broadcast drives cross-tab invalidation — not covered here",
-		async () => {
-			// Would require VITE_SUPABASE_URL pointing to a real project that
-			// authorises WebSocket connections. This file is not that proof.
-			// Manual path if operators ever need it:
-			//   1. Log in as the same user in two tabs.
-			//   2. From tab A, complete a mobile workout (or send
-			//      sync_complete on private sync:{userId}).
-			//   3. Observe tab B's dashboard workout list refreshes within 1s.
-		},
-	);
+	test.skip("live Supabase Broadcast drives cross-tab invalidation — not covered here", async () => {
+		// Would require VITE_SUPABASE_URL pointing to a real project that
+		// authorises WebSocket connections. This file is not that proof.
+		// Manual path if operators ever need it:
+		//   1. Log in as the same user in two tabs.
+		//   2. From tab A, complete a mobile workout (or send
+		//      sync_complete on private sync:{userId}).
+		//   3. Observe tab B's dashboard workout list refreshes within 1s.
+	});
 
 	test("DEV CustomEvent: tab B reloads workout list after simulated sync", async ({
 		browser,
