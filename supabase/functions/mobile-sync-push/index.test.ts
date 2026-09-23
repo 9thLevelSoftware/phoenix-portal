@@ -1104,6 +1104,9 @@ Deno.test("omitted recovery source preferences survive recovery and the next ord
   assertEquals(cleanupFilters.length, 2);
   for (const filter of cleanupFilters) {
     assertEquals(filter.args.slice(0, 2), ["id", "in"]);
+    // supabase-js passes the value through verbatim, and PostgREST's `in`
+    // needs a parenthesized list: `not.in."a","b"` makes the delete fail.
+    assert(/^\(.*\)$/.test(String(filter.args[2])), String(filter.args[2]));
     assert(String(filter.args[2]).includes('"default"'));
     assert(String(filter.args[2]).includes(`"${sourceProfileId}"`));
   }
@@ -1420,6 +1423,32 @@ Deno.test("clocked cycle deletion that wins is acknowledged and hard-deletes the
     harness.adminWriteCalls.filter((call) => call.table === "cycle_days"),
     [],
   );
+});
+
+Deno.test("duplicate clocked cycle deletions keep the chronologically latest clock, not the lexically largest", async () => {
+  const deletedId = "30000000-0000-4000-8000-000000000011";
+  const harness = makeHarness(undefined, {
+    tableResults: {
+      training_cycles: {
+        data: [{ id: deletedId, client_updated_at: "2026-09-20T13:30:00.000Z" }],
+        error: null,
+      },
+    },
+  });
+  // 10:00-04:00 is 14:00Z: it beats the stored 13:30Z, while 13:00Z (the
+  // lexically larger string) would lose to it.
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    deletedCycles: [
+      { id: deletedId, updatedAt: "2026-09-20T13:00:00Z" },
+      { id: deletedId, updatedAt: "2026-09-20T10:00:00-04:00" },
+    ],
+  }));
+  const body = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals(body.acknowledgedDeletedCycleIds, [deletedId]);
+  assertEquals((body.rejections as { cycles: unknown[] }).cycles, []);
 });
 
 Deno.test("clocked cycle deletion that loses to a newer server row is a rejection and keeps the server copy", async () => {
