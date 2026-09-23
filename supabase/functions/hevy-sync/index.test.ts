@@ -285,21 +285,34 @@ Deno.test("hevy-sync: a browser sync is capped at 3 per 15 minutes", async () =>
   assertEquals(limited.headers.get("Retry-After"), "900");
 });
 
-Deno.test("hevy-sync: saving an API key charges both credential and provider-read budgets", async () => {
+Deno.test("hevy-sync: API-key saves spend only the credential budget, so a fourth key still saves (NF-27)", async () => {
   const db = new FakeDb(tables([]));
   const call = harness(db, 1, USER_ID);
 
-  for (const attempt of [1, 2, 3]) {
+  // Three saves (say, mistyped keys), then the corrected one: previously the
+  // 3-per-15-minute sync bucket refused the fourth.
+  for (const attempt of [1, 2, 3, 4]) {
     const res = await call({ api_key: `key-attempt-${attempt}` });
     assertEquals(res.status, 200, `attempt ${attempt}: ${await res.clone().text()}`);
   }
-  const limited = await call({ api_key: "valid-key-again" });
+  assertEquals(
+    db.rows("rate_limit_tracking").map((row) => [row.key, row.requests_this_window]),
+    [["hevy-sync-connect", 4]],
+  );
+
+  // The credential bucket still bounds key churn (10 per 15 minutes).
+  for (const attempt of [5, 6, 7, 8, 9, 10]) {
+    const res = await call({ api_key: `key-attempt-${attempt}` });
+    assertEquals(res.status, 200, `attempt ${attempt}: ${await res.clone().text()}`);
+  }
+  const limited = await call({ api_key: "one-too-many" });
   assertEquals(limited.status, 429);
 
-  const buckets = db.rows("rate_limit_tracking");
-  assertEquals(buckets.length, 2);
+  // Ordinary syncs keep their own full budget.
+  const sync = await call({ sync_type: "manual" });
+  assertEquals(sync.status, 200, await sync.clone().text());
   assertEquals(
-    buckets.map((row) => [row.key, row.requests_this_window]).sort(),
-    [["hevy-sync", 3], ["hevy-sync-connect", 4]],
+    db.rows("rate_limit_tracking").map((row) => [row.key, row.requests_this_window]).sort(),
+    [["hevy-sync", 1], ["hevy-sync-connect", 10]],
   );
 });

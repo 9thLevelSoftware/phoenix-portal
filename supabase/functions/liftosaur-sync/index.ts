@@ -1,8 +1,18 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
-import { errorMessage } from "../_shared/errorMessage.ts";
 import { decryptOAuthSecret, encryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
-import { computeIncrementalWindow } from "../_shared/incrementalWindow.ts";
+import {
+	completedSyncColumns,
+	createLiftosaurPageFetcher,
+	fetchLiftosaurHistory,
+	LiftosaurAuthError,
+	type LiftosaurFetchResult,
+	type LiftosaurIntegrationState,
+	planLiftosaurSync,
+	resolveLiftosaurTruncation,
+	toLiftosaurActivityRow,
+	writeLiftosaurRows,
+} from "../_shared/liftosaurSync.ts";
 import { checkManualSyncRateLimit } from "../_shared/manualSyncRateLimit.ts";
 import { requireSubscription } from "../_shared/requireSubscription.ts";
 import {
@@ -24,9 +34,13 @@ import { isServiceRoleBearer } from "../_shared/timingSafe.ts";
  * Like Hevy, Liftosaur uses API key authentication (Bearer token).
  * - Receives { user_id, api_key? } in request body
  * - If api_key provided, stores it in oauth_tokens.api_key (server-only)
- * - Fetches workout history from Liftosaur REST API (requires Premium)
+ * - Fetches workout history from Liftosaur REST API (requires Premium) via
+ *   the fetcher shared with mobile-integration-sync (_shared/liftosaurSync.ts)
  * - Parses Liftoscript workout text format for metadata
  * - Normalizes and upserts to external_activities
+ * - A history larger than one run (10 pages) is imported over several runs:
+ *   each run stores user_integrations.backfill_* and queues a follow-up,
+ *   and last_sync_at moves only when the whole window has been read
  *
  * API docs: https://www.liftosaur.com/doc/api
  *
@@ -41,8 +55,6 @@ import { isServiceRoleBearer } from "../_shared/timingSafe.ts";
  * second concurrent sync loses the `sync_queue_one_active` race and is
  * answered with 409 `sync_already_queued`.
  */
-
-const LIFTOSAUR_API_BASE = "https://www.liftosaur.com/api/v1";
 
 /**
  * Renew the sync_queue lease after this many upserted records. Records are
@@ -122,52 +134,6 @@ export function createLiftosaurSyncHandler(
 
 if (import.meta.main) {
 	Deno.serve(createLiftosaurSyncHandler());
-}
-
-interface LiftosaurRecord {
-	id: number;
-	text: string;
-}
-
-interface LiftosaurHistoryResponse {
-	data: {
-		records: LiftosaurRecord[];
-		hasMore: boolean;
-		nextCursor: number | null;
-	};
-}
-
-/**
- * Parses Liftoscript workout text to extract metadata.
- *
- * Format example:
- * 2026-03-01T10:00:00Z / program: "5/3/1" / dayName: "Squat Day" / week: 1 / dayInWeek: 1 / duration: 3600s / exercises: { ... }
- */
-function parseLiftoscriptMetadata(text: string): {
-	timestamp: string | null;
-	program: string | null;
-	dayName: string | null;
-	durationSeconds: number | null;
-} {
-	// Extract timestamp (ISO 8601 at the start)
-	const tsMatch = text.match(
-		/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)/
-	);
-	const timestamp = tsMatch?.[1] ?? null;
-
-	// Extract program name
-	const programMatch = text.match(/program:\s*"([^"]+)"/);
-	const program = programMatch?.[1] ?? null;
-
-	// Extract day name
-	const dayNameMatch = text.match(/dayName:\s*"([^"]+)"/);
-	const dayName = dayNameMatch?.[1] ?? null;
-
-	// Extract duration in seconds
-	const durationMatch = text.match(/duration:\s*(\d+)s/);
-	const durationSeconds = durationMatch ? parseInt(durationMatch[1], 10) : null;
-
-	return { timestamp, program, dayName, durationSeconds };
 }
 
 async function liftosaurSync(
@@ -262,24 +228,18 @@ async function runLiftosaurSync(
 		// id, so nobody can spend another user's budget; the queue path (service
 		// role) is exempt and has its own budget under the `liftosaur` key.
 		//
-		// A call carrying `api_key` is both a credential write and a full sync. It
-		// spends the roomier connect bucket first, then the ordinary sync bucket;
-		// otherwise resending a valid key would bypass the provider-read limit.
+		// A call carrying `api_key` spends ONLY the credential bucket (NF-27).
+		// Charging it to the 3-per-15-minute sync bucket too meant three mistyped
+		// keys locked the user out of saving the corrected one. The credential
+		// bucket (10 per 15 minutes) still bounds the provider reads that key
+		// saves trigger, so resending a key cannot bypass the read limit.
 		if (jwtUser) {
-			if (api_key) {
-				const credentialRateCheck = await checkManualSyncRateLimit(
-					supabase,
-					{ provider: "liftosaur", userId, credentialWrite: true },
-					cors,
-				);
-				if (!credentialRateCheck.allowed) return credentialRateCheck.response!;
-			}
-			const syncRateCheck = await checkManualSyncRateLimit(
+			const rateCheck = await checkManualSyncRateLimit(
 				supabase,
-				{ provider: "liftosaur", userId },
+				{ provider: "liftosaur", userId, credentialWrite: Boolean(api_key) },
 				cors,
 			);
-			if (!syncRateCheck.allowed) return syncRateCheck.response!;
+			if (!rateCheck.allowed) return rateCheck.response!;
 		}
 
 		// Renew the lease immediately: the processor claimed this row before it
@@ -371,100 +331,61 @@ async function runLiftosaurSync(
 		}
 
 		// Read the prior watermark so incremental syncs can ask Liftosaur for a
-		// date range instead of re-scanning the user's entire history every run.
+		// date range instead of re-scanning the user's entire history every run,
+		// plus any in-progress backfill (20260920005000; see planLiftosaurSync).
 		const { data: integration } = await supabase
 			.from("user_integrations")
-			.select("last_sync_at")
+			.select("last_sync_at, backfill_before, backfill_after, backfill_started_at")
 			.eq("user_id", userId)
 			.eq("provider", "liftosaur")
 			.maybeSingle();
 
-		const lastSyncAt = (integration?.last_sync_at as string | null) ?? null;
-		// `startDate` filters on workout date, but the watermark is wall-clock
-		// sync time. Reach back a lookback (shared with Strava) so a workout that
-		// was in progress during the last sync, or logged retroactively, is still
-		// requested. Upserts are idempotent, so the overlap is free.
-		const incrementalWindow =
-			sync_type !== "initial"
-				? computeIncrementalWindow({ lastWatermark: lastSyncAt })
-				: null;
-		const incrementalSince = incrementalWindow
-			? incrementalWindow.after.toISOString()
-			: null;
+		const plan = planLiftosaurSync(
+			(integration ?? null) as LiftosaurIntegrationState | null,
+			sync_type,
+			deps.now(),
+		);
 
-		// Capture the watermark before fetching so records Liftosaur writes while
-		// this run is in flight fall inside the next window rather than being
-		// skipped. Upserts are idempotent, so the overlap costs nothing.
-		const syncStartedAt = deps.now().toISOString();
-
-		// Fetch workout history from Liftosaur API with pagination
-		let allRecords: LiftosaurRecord[] = [];
-		let cursor: number | null = null;
-		let hasMore = true;
-		const MAX_PAGES = 10; // Safety limit
-		let page = 0;
-
+		// Fetch workout history (shared with mobile-integration-sync). Every page
+		// renews the lease and every request carries a timeout.
+		let fetched: LiftosaurFetchResult;
 		try {
-			while (hasMore && page < MAX_PAGES) {
-				const params = new URLSearchParams({ limit: "200" });
-				// GET /history supports startDate/endDate (ISO 8601) alongside the
-				// cursor. Passing it turns a full-history rescan into a delta fetch.
-				if (incrementalSince) {
-					params.set("startDate", incrementalSince);
-				}
-				if (cursor !== null) {
-					params.set("cursor", cursor.toString());
-				}
+			fetched = await fetchLiftosaurHistory(
+				createLiftosaurPageFetcher(storedApiKey, deps.fetch, PROVIDER_REQUEST_TIMEOUT_MS),
+				{
+					startDate: plan.startDate,
+					endDate: plan.endDate,
+					onPage: () =>
+						heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now()),
+				},
+			);
+		} catch (fetchError) {
+			if (fetchError instanceof LiftosaurAuthError) {
+				await supabase
+					.from("user_integrations")
+					.update({
+						status: "error",
+						error_message:
+							"API key invalid or Liftosaur Premium required",
+					})
+					.eq("user_id", userId)
+					.eq("provider", "liftosaur");
 
-				const response = await deps.fetch(
-					`${LIFTOSAUR_API_BASE}/history?${params.toString()}`,
+				return new Response(
+					JSON.stringify({
+						error: "Liftosaur API access denied. Verify your API key and Premium subscription.",
+						requires_premium: true,
+					}),
 					{
+						status: 403,
 						headers: {
-							Authorization: `Bearer ${storedApiKey}`,
+							...cors,
 							"Content-Type": "application/json",
 						},
-						signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
 					}
 				);
-
-				if (response.status === 401 || response.status === 403) {
-					await supabase
-						.from("user_integrations")
-						.update({
-							status: "error",
-							error_message:
-								"API key invalid or Liftosaur Premium required",
-						})
-						.eq("user_id", userId)
-						.eq("provider", "liftosaur");
-
-					return new Response(
-						JSON.stringify({
-							error: "Liftosaur API access denied. Verify your API key and Premium subscription.",
-							requires_premium: true,
-						}),
-						{
-							status: 403,
-							headers: {
-								...cors,
-								"Content-Type": "application/json",
-							},
-						}
-					);
-				}
-
-				if (!response.ok) {
-					throw new Error(`Liftosaur API returned ${response.status}`);
-				}
-
-				const result: LiftosaurHistoryResponse = await response.json();
-				allRecords = allRecords.concat(result.data.records);
-				hasMore = result.data.hasMore;
-				cursor = result.data.nextCursor;
-				page++;
-				await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
 			}
-		} catch (fetchError) {
+
 			// The thrown error is logged above and goes no further. The fetch+parse
 			// is wrapped as a whole, so besides our own fixed "Liftosaur API
 			// returned N" it can be a V8 JSON parse message quoting the provider's
@@ -495,132 +416,26 @@ async function runLiftosaurSync(
 			);
 		}
 
-		// The page cap is a safety bound, not a successful end-of-history signal.
-		// Persisting these first pages and advancing last_sync_at would make every
-		// unread older record unreachable to later incremental syncs. Fail before
-		// any activity write or watermark update. This bound is deterministic, so
-		// return a terminal client error rather than retrying the same ten pages.
-		if (hasMore) {
-			const pageLimitMessage =
-				`Liftosaur history still has more records after ${MAX_PAGES} pages`;
-			console.error(pageLimitMessage);
-			await supabase
-				.from("user_integrations")
-				.update({
-					status: "error",
-					error_message: "Liftosaur history exceeds the safe sync page limit",
-				})
-				.eq("user_id", userId)
-				.eq("provider", "liftosaur");
+		const allRecords = fetched.records;
 
-			return new Response(
-				JSON.stringify({
-					error: "Liftosaur history sync is incomplete",
-					code: "history_page_limit_exceeded",
-				}),
-				{
-					status: 422,
-					headers: { ...cors, "Content-Type": "application/json" },
-				},
-			);
-		}
-
-		// Normalize and upsert records to external_activities
-
-		// Capture the sync invocation time once. Records whose Liftoscript text
-		// contains no parseable ISO timestamp use this as a sentinel value instead
-		// of per-record wall-clock time. Using a single shared value makes it
-		// clear that these rows were imported at a known sync boundary, not that
-		// the wall clock happened to match the workout time.
-		const syncInvokedAt = deps.now().toISOString();
-
-		// The incremental lookback re-fetches recent records on every run. For a
-		// record without a parseable date, re-sending the sentinel would move its
-		// stored started_at to "now" each time, so leave started_at out of the
-		// upsert for undated records that are already stored (the upsert only
-		// updates the columns it sends).
-		const undatedExternalIds = allRecords
-			.filter((record) => !parseLiftoscriptMetadata(record.text).timestamp)
-			.map((record) => `liftosaur-${record.id}`);
-		const storedUndatedIds = new Set<string>();
-		const LOOKUP_CHUNK = 100;
-		for (let i = 0; i < undatedExternalIds.length; i += LOOKUP_CHUNK) {
-			const { data: existingRows, error: lookupError } = await supabase
-				.from("external_activities")
-				.select("external_id")
-				.eq("user_id", userId)
-				.eq("provider", "liftosaur")
-				.in("external_id", undatedExternalIds.slice(i, i + LOOKUP_CHUNK));
-
-			if (lookupError) {
-				// Retryable, and the watermark is not advanced.
-				console.error("Failed to look up stored Liftosaur records:", lookupError);
-				return new Response(
-					JSON.stringify({ error: "Failed to look up stored Liftosaur records" }),
-					{ status: 502, headers: { ...cors, "Content-Type": "application/json" } }
-				);
-			}
-			for (const row of (existingRows ?? []) as Array<{ external_id: string }>) {
-				storedUndatedIds.add(row.external_id);
-			}
-		}
-
-		let importedCount = 0;
-		let failedCount = 0;
-		let processedRecords = 0;
-		for (const record of allRecords) {
-			processedRecords++;
-			if (processedRecords % HEARTBEAT_EVERY_RECORDS === 0) {
-				await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
-			}
-			const meta = parseLiftoscriptMetadata(record.text);
-
-			// Build a readable workout name
-			const name = meta.dayName
-				? meta.program
-					? `${meta.program} — ${meta.dayName}`
-					: meta.dayName
-				: meta.program ?? `Workout #${record.id}`;
-
-			// Use the parsed timestamp when available; fall back to the sync
-			// invocation sentinel when the Liftoscript text has no parseable date.
-			// The sentinel makes clear that started_at reflects import time, not
-			// actual workout time.
-			const externalId = `liftosaur-${record.id}`;
-			const startedAt = meta.timestamp
-				? new Date(meta.timestamp).toISOString()
-				: storedUndatedIds.has(externalId)
-					? null // keep the stored value (see above)
-					: syncInvokedAt;
-
-			const { error: activityError } = await supabase
-				.from("external_activities")
-				.upsert(
-					{
-						user_id: userId,
-						external_id: externalId,
-						provider: "liftosaur",
-						name,
-						activity_type: "strength",
-						...(startedAt !== null ? { started_at: startedAt } : {}),
-						duration_seconds: meta.durationSeconds ?? null,
-						calories: null,
-						raw_data: { id: record.id, text: record.text },
-					},
-					{ onConflict: "user_id,provider,external_id" }
-				);
-
-			if (activityError) {
-				failedCount++;
-				console.error(`Failed to persist Liftosaur record ${record.id}:`, activityError);
-			} else {
-				importedCount++;
-			}
-		}
+		// Normalize and persist. An undated record gets ONE per-run import time on
+		// first insert and is never re-dated afterwards (writeLiftosaurRows).
+		const importedAt = deps.now().toISOString();
+		const { written: importedCount, failed: failedCount } = await writeLiftosaurRows(
+			supabase,
+			userId,
+			allRecords.map((record) => toLiftosaurActivityRow(userId, record, importedAt)),
+			{},
+			async (n) => {
+				if (n % HEARTBEAT_EVERY_RECORDS === 0) {
+					await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId, deps.now());
+				}
+			},
+		);
 
 		// If any record failed to persist, do NOT advance last_sync_at (it is the
 		// incremental cutoff and would skip the dropped rows). Returning non-2xx
-		// lets the queue processor retry; upserts are idempotent.
+		// lets the queue processor retry; the writes are idempotent.
 		if (failedCount > 0) {
 			const failMessage = `Failed to persist ${failedCount} of ${allRecords.length} records`;
 			await supabase
@@ -635,17 +450,68 @@ async function runLiftosaurSync(
 			);
 		}
 
-		// Update last sync timestamp and status (all records persisted). Uses the
-		// pre-fetch timestamp so concurrent Liftosaur writes land in the next window.
-		await supabase
-			.from("user_integrations")
-			.update({
-				last_sync_at: syncStartedAt,
-				status: "connected",
-				error_message: null,
-			})
-			.eq("user_id", userId)
-			.eq("provider", "liftosaur");
+		const updateIntegration = (values: Record<string, unknown>) =>
+			supabase
+				.from("user_integrations")
+				.update(values)
+				.eq("user_id", userId)
+				.eq("provider", "liftosaur");
+
+		// Liftosaur still has records this run did not read: never advance the
+		// watermark past them. Continue the import where it is safe to, and fail
+		// with an explicit, non-retryable error where it is not.
+		if (fetched.truncated) {
+			const outcome = resolveLiftosaurTruncation(fetched, plan, sync_type, importedCount);
+			await updateIntegration(outcome.columns);
+			console.warn(outcome.message);
+			const base = {
+				truncated: true,
+				reason: fetched.reason,
+				imported: importedCount,
+			};
+			if (outcome.kind === "continue") {
+				// This run is done; complete its row FIRST, because
+				// sync_queue_one_active allows one active row per user/provider
+				// and this one is still `processing`. Then make sure a run follows.
+				await completeSyncQueueEntry(supabase, {
+					userId,
+					provider: "liftosaur",
+					queueId: ownedQueueId,
+				});
+				// The cursor is stored either way, so any later non-initial sync
+				// continues the chain even if the follow-up could not be queued.
+				// (A 502 here would not help: the processor only re-queues rows
+				// that are still `processing`, and this one is completed.)
+				const followUpQueued = await ensureFollowUpTask(supabase, userId);
+				return new Response(
+					JSON.stringify({
+						...base,
+						success: true,
+						partial: true,
+						continuing: true,
+						follow_up_queued: followUpQueued,
+						backfill_before: outcome.nextBefore,
+					}),
+					{ status: 200, headers: { ...cors, "Content-Type": "application/json" } },
+				);
+			}
+			if (outcome.kind === "resume") {
+				return new Response(
+					JSON.stringify({ ...base, error: outcome.message, code: "history_truncated", resume_at: outcome.resumeAt }),
+					// 502 is retryable per process-sync-queue; 500 is not.
+					{ status: outcome.retryReadsFurther ? 502 : 500, headers: { ...cors, "Content-Type": "application/json" } },
+				);
+			}
+			return new Response(
+				JSON.stringify({ ...base, error: outcome.message, code: "history_cannot_resume", resume_at: null }),
+				{ status: 500, headers: { ...cors, "Content-Type": "application/json" } },
+			);
+		}
+
+		// Everything in the window has been read and stored. Uses the chain's
+		// pre-fetch timestamp so concurrent Liftosaur writes land in the next
+		// window, and ends any backfill.
+		await updateIntegration(completedSyncColumns(plan));
 
 		// Complete only the row this run owns. Never sweep every pending row:
 		// a second queued task (a kept `initial`) must still run.
@@ -666,9 +532,9 @@ async function runLiftosaurSync(
 			}
 		);
 	} catch (err) {
-		// `errorMessage` is a deliberate passthrough of `.message`, which for a
-		// driver error carries constraint/column/relation names and for a parse
-		// failure carries a slice of the provider's body. Log it, return a code.
+		// A driver error's `.message` carries constraint/column/relation names and
+		// a parse failure's carries a slice of the provider's body. Log it, return
+		// a code.
 		console.error("Liftosaur sync error:", err);
 		return new Response(
 			JSON.stringify({ error: "Liftosaur sync failed", code: "internal_error" }),
@@ -678,4 +544,23 @@ async function runLiftosaurSync(
 			}
 		);
 	}
+}
+
+/**
+ * Make sure a pending, non-initial Liftosaur task exists so an in-progress
+ * backfill continues on the next queue pass (a non-initial run resumes the
+ * chain; an `initial` one would restart it). Returns true when one is queued,
+ * including when `sync_queue_one_active` reports that one already is (23505).
+ */
+async function ensureFollowUpTask(supabase: DbClient, userId: string): Promise<boolean> {
+	const { error } = await supabase.from("sync_queue").insert({
+		user_id: userId,
+		provider: "liftosaur",
+		sync_type: "incremental",
+		status: "pending",
+	});
+	if (!error) return true;
+	if ((error as { code?: string }).code === "23505") return true;
+	console.error("Failed to queue the Liftosaur backfill follow-up:", error);
+	return false;
 }
