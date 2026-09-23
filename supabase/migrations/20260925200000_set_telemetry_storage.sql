@@ -975,18 +975,19 @@ COMMENT ON FUNCTION private.backfill_set_telemetry(UUID, INTEGER) IS
 -- set_id order, until about p_target_rows samples, unpacked once. Rows are
 -- exactly the view's rows for those sets (both stores), in (set_id,
 -- timestamp_ms, id) order. Service role only (export-user-data).
+-- Returned as ONE jsonb array, not a row set: PostgREST caps a row-set
+-- response at max_rows (1,000), which would silently cut a single set of
+-- more samples short while the cursor moved past it.
 CREATE INDEX IF NOT EXISTS set_telemetry_user_set_idx
   ON public.set_telemetry (user_id, set_id);
 
+DROP FUNCTION IF EXISTS public.export_rep_telemetry_page(UUID, UUID, INTEGER);
 CREATE OR REPLACE FUNCTION public.export_rep_telemetry_page(
   p_user_id UUID,
   p_after_set_id UUID DEFAULT NULL,
   p_target_rows INTEGER DEFAULT 1000
 )
-RETURNS TABLE(
-  id UUID, set_id UUID, timestamp_ms BIGINT, force_n NUMERIC,
-  velocity_mps NUMERIC, position_mm NUMERIC, cable TEXT, user_id UUID
-)
+RETURNS JSONB
 LANGUAGE sql
 STABLE
 SECURITY INVOKER
@@ -1024,12 +1025,20 @@ AS $$
       ) s
      WHERE s.before < GREATEST(COALESCE(p_target_rows, 1000), 1)
   )
-  SELECT r.id, r.set_id, r.timestamp_ms, r.force_n, r.velocity_mps,
-         r.position_mm, r.cable, r.user_id
+  SELECT COALESCE(
+    pg_catalog.jsonb_agg(
+      pg_catalog.jsonb_build_object(
+        'id', r.id, 'set_id', r.set_id, 'timestamp_ms', r.timestamp_ms,
+        'force_n', r.force_n, 'velocity_mps', r.velocity_mps,
+        'position_mm', r.position_mm, 'cable', r.cable, 'user_id', r.user_id
+      )
+      ORDER BY r.set_id, r.timestamp_ms, r.id
+    ),
+    '[]'::jsonb
+  )
     FROM public.rep_telemetry r
    WHERE r.user_id = p_user_id
-     AND r.set_id IN (SELECT page.set_id FROM page)
-   ORDER BY r.set_id, r.timestamp_ms, r.id;
+     AND r.set_id IN (SELECT page.set_id FROM page);
 $$;
 
 REVOKE ALL ON FUNCTION public.export_rep_telemetry_page(UUID, UUID, INTEGER)

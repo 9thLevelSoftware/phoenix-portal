@@ -3199,16 +3199,7 @@ export type Database = {
 					p_target_rows?: number;
 					p_user_id: string;
 				};
-				Returns: {
-					cable: string;
-					force_n: number;
-					id: string;
-					position_mm: number;
-					set_id: string;
-					timestamp_ms: number;
-					user_id: string;
-					velocity_mps: number;
-				}[];
+				Returns: Json;
 			};
 			get_acwr: {
 				Args: {

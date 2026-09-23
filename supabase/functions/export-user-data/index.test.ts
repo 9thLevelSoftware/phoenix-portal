@@ -683,32 +683,37 @@ Deno.test({
       await insertOrThrow(fixture.admin, "exercises", [
         { id: exerciseId, session_id: sessionId, name: "Row", user_id: fixture.ownerId },
       ]);
-      // 30 sets of 100 samples: 3,000 rows.
+      // 29 sets of 100 samples and one of 1,500 (more than PostgREST's
+      // 1,000-row response cap): 4,400 rows.
       const sets = Array.from({ length: 30 }, (_, n) => ({
         id: crypto.randomUUID(), exercise_id: exerciseId, set_number: n + 1, user_id: fixture.ownerId,
       }));
       await insertOrThrow(fixture.admin, "sets", sets);
-      await insertOrThrow(fixture.admin, "set_telemetry", sets.map((set) => ({
+      const size = (n: number) => (n === 15 ? 1500 : 100);
+      await insertOrThrow(fixture.admin, "set_telemetry", sets.map((set, n) => ({
         set_id: set.id,
         user_id: fixture.ownerId,
-        sample_count: 100,
-        ids: Array.from({ length: 100 }, () => crypto.randomUUID()),
-        timestamp_ms: Array.from({ length: 100 }, (_, i) => i * 10),
-        force_n: Array.from({ length: 100 }, (_, i) => i),
-        velocity_mps: Array.from({ length: 100 }, () => null),
-        position_mm: Array.from({ length: 100 }, () => null),
-        cable: Array.from({ length: 100 }, () => null),
+        sample_count: size(n),
+        ids: Array.from({ length: size(n) }, () => crypto.randomUUID()),
+        timestamp_ms: Array.from({ length: size(n) }, (_, i) => i * 10),
+        force_n: Array.from({ length: size(n) }, (_, i) => i),
+        velocity_mps: Array.from({ length: size(n) }, () => null),
+        position_mm: Array.from({ length: size(n) }, () => null),
+        cable: Array.from({ length: size(n) }, () => null),
       })));
+      const total = 29 * 100 + 1500;
 
       const pages = await exportAll(realHandler(fixture, fixture.ownerId), "rep_telemetry");
-      // ~1,000 rows per page, whole sets: 10 sets of 100 samples each.
-      assertEquals(pages.map((page) => page.length), [1000, 1000, 1000]);
+      // Whole sets per page, about 1,000 rows; the 1,500-sample set arrives
+      // whole, never cut at 1,000. Pages scale with sets, not samples.
+      assertEquals(pages.flat().length, total);
+      assert(pages.length <= 6, `pages: ${pages.length}`);
       const exported = pages.flat();
 
       // Exactly the rows the view serves (what the id-keyset export returned).
       // (Read in 1,000-row ranges: PostgREST caps a response at max_rows.)
       const viewRows: unknown[] = [];
-      for (let from = 0; from < 3000; from += 1000) {
+      for (let from = 0; from < total; from += 1000) {
         const { data, error } = await fixture.admin.from("rep_telemetry")
           .select([...getUserDataTable("rep_telemetry")!.columns].join(","))
           .eq("user_id", fixture.ownerId)
@@ -721,7 +726,7 @@ Deno.test({
         [...getUserDataTable("rep_telemetry")!.columns].map((c) => row[c]),
       );
       assertEquals(exported.map(key).sort(), (viewRows as unknown as Array<Record<string, unknown>>).map(key).sort());
-      assertEquals(new Set(exported.map((row) => row.id)).size, 3000);
+      assertEquals(new Set(exported.map((row) => row.id)).size, total);
       assertEquals(
         Object.keys(exported[0]).sort(),
         [...getUserDataTable("rep_telemetry")!.columns].sort(),

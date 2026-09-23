@@ -61,7 +61,9 @@ BEGIN
     v_last := NULL;
     FOR id, set_id, timestamp_ms, force_n, user_id IN
       SELECT e.id, e.set_id, e.timestamp_ms, e.force_n, e.user_id
-        FROM public.export_rep_telemetry_page('29290000-0000-4000-8000-000000000001', v_after, p_target) e
+        FROM jsonb_to_recordset(
+          public.export_rep_telemetry_page('29290000-0000-4000-8000-000000000001', v_after, p_target)
+        ) AS e(id uuid, set_id uuid, timestamp_ms bigint, force_n numeric, user_id uuid)
     LOOP
       page := v_page;
       v_last := set_id;
@@ -94,8 +96,9 @@ SELECT is(
     1,
     'every set fits one page at the default target'
 );
-SELECT is_empty(
-    $sql$ SELECT 1 FROM public.export_rep_telemetry_page('29290000-0000-4000-8000-000000000002', NULL, 1000) $sql$,
+SELECT is(
+    public.export_rep_telemetry_page('29290000-0000-4000-8000-000000000002', NULL, 1000),
+    '[]'::jsonb,
     'another account sees none of these rows'
 );
 
