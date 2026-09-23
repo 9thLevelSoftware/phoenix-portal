@@ -362,9 +362,7 @@ export function ComparisonView() {
 						Workout comparison is available to subscribers. Upgrade to compare
 						sessions side by side and track your progress.
 					</p>
-					<Button onClick={() => navigate("/pricing")}>
-						View Plans
-					</Button>
+					<Button onClick={() => navigate("/pricing")}>View Plans</Button>
 				</div>
 			</div>
 		);

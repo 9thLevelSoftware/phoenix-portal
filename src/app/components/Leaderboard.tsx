@@ -18,6 +18,7 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
+import { fadeUp } from "@/lib/animations";
 import { formatLeaderboardValue, type WeightUnit } from "@/lib/units";
 import { useAuth } from "@/providers/AuthProvider";
 import {

@@ -17,7 +17,7 @@ import {
 	CHART_COLORS,
 	CHART_MARGINS,
 	FONT_SIZES,
-	REP_COLORS,
+	useRepColors,
 } from "./shared/ChartTheme";
 import { ChartTooltipContent, useChartTooltip } from "./shared/ChartTooltip";
 
@@ -64,6 +64,7 @@ function ForceCurveInner({
 	} = useChartTooltip();
 
 	const margins = CHART_MARGINS;
+	const repColors = useRepColors();
 	// Component-scoped prefix so SVG gradient IDs don't collide across multiple
 	// ForceCurve instances on the same page.
 	const gradientPrefix = useId();

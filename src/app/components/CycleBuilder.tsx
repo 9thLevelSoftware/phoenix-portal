@@ -111,6 +111,7 @@ export function CycleBuilder() {
 	const [showRoutinePicker, setShowRoutinePicker] = useState(false);
 	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+	const [formErrors, setFormErrors] = useState<string[]>([]);
 
 	// Progression settings. Defaults mirror what the phone does when a cycle
 	// has no progression keys (no weight increase, every 2 cycles), because
@@ -245,6 +246,16 @@ export function CycleBuilder() {
 	};
 
 	const handleSave = () => {
+		const nextErrors: string[] = [];
+		if (!cycleName.trim()) {
+			nextErrors.push("Give this cycle a name.");
+		}
+		if (nextErrors.length > 0) {
+			setFormErrors(nextErrors);
+			return;
+		}
+		setFormErrors([]);
+
 		// Every value is a string so mobile's Map<String, String> decode
 		// succeeds; mobile reads frequencyCycles / weightIncreasePercent.
 		const progressionSettings = buildCycleProgressionSettings(

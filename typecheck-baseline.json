@@ -19,10 +19,6 @@
       "src/app/components/CycleBuilder.tsx": {
         "TS2345": 3
       },
-      "src/app/components/ErrorFallback.tsx": {
-        "TS18046": 1,
-        "TS2345": 2
-      },
       "src/app/components/RoutineBuilder.tsx": {
         "TS2345": 1
       },
@@ -84,6 +80,7 @@
         "TS2554": 1
       }
     },
+    "e2e": {},
     "node": {},
     "test": {
       "src/app/components/Analytics.tsx": {
@@ -92,10 +89,6 @@
       },
       "src/app/components/CycleBuilder.tsx": {
         "TS2345": 3
-      },
-      "src/app/components/ErrorFallback.tsx": {
-        "TS18046": 1,
-        "TS2345": 2
       },
       "src/app/components/RoutineBuilder.tsx": {
         "TS2345": 1

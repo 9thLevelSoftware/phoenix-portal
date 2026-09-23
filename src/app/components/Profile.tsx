@@ -491,7 +491,7 @@ export function Profile() {
 									<>
 										<Button
 											asChild
-											variant={needsPaymentUpdate ? "cta" : "outline"}
+											variant={needsPaymentUpdate ? "default" : "outline"}
 											size="sm"
 										>
 											{/* The full update-payment flow lives on the billing

@@ -4,6 +4,7 @@ import { MuscleRadar } from "@/app/components/charts/MuscleRadar";
 import { EChartsWrapper } from "@/app/components/charts/shared/EChartsWrapper";
 import { Badge } from "@/app/components/ui/badge";
 import { Card } from "@/app/components/ui/card";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import type {
 	BodyMuscleContribution,
 	BodyMuscleFocusModel,

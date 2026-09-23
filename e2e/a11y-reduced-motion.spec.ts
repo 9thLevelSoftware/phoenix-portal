@@ -4,10 +4,9 @@ import { mockAuthenticatedApp } from "./support/mockSupabase";
 const ROUTES = ["/dashboard", "/analytics", "/history"];
 
 test.describe("Reduced motion", () => {
-	test.use({ reducedMotion: "reduce" });
-
 	for (const path of ROUTES) {
 		test(`no layout-animating transforms on ${path}`, async ({ page }) => {
+			await page.emulateMedia({ reducedMotion: "reduce" });
 			await mockAuthenticatedApp(page);
 			await page.goto(path);
 			await page.waitForLoadState("networkidle");
@@ -27,9 +26,9 @@ test.describe("Reduced motion", () => {
 					) {
 						issues.push({
 							tag: element.tagName,
-							cls: (element as HTMLElement).className
-								?.toString()
-								.slice(0, 60) ?? "",
+							cls:
+								(element as HTMLElement).className?.toString().slice(0, 60) ??
+								"",
 							reason: `layout transition: ${transitionProperty}`,
 						});
 					}

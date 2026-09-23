@@ -189,10 +189,7 @@ export function SessionDetail() {
 					<p className="text-muted-foreground">
 						This workout session could not be loaded.
 					</p>
-					<Button
-						onClick={() => navigate("/history")}
-						className="mt-6"
-					>
+					<Button onClick={() => navigate("/history")} className="mt-6">
 						Return to History
 					</Button>
 				</div>
@@ -743,10 +740,7 @@ export function SessionDetail() {
 					className="flex flex-col sm:flex-row gap-3 print:hidden"
 				>
 					{isFlame ? (
-						<Button
-							className="flex-1"
-							onClick={() => setPickerOpen(true)}
-						>
+						<Button className="flex-1" onClick={() => setPickerOpen(true)}>
 							<BarChart3 className="w-4 h-4 mr-2" />
 							Compare with...
 						</Button>

@@ -499,12 +499,23 @@ export function RoutineBuilder() {
 	);
 
 	const handleSave = () => {
+		const nextErrors: string[] = [];
+		if (!routineName.trim()) {
+			nextErrors.push("Give this routine a name.");
+		}
 		if (exercises.some((exercise) => !isDropSetConfigValid(exercise))) {
+			nextErrors.push(
+				"Drop-set exercises need a minimum weight greater than zero.",
+			);
 			toast.error(
 				"Drop-set exercises need a minimum weight greater than zero.",
 			);
+		}
+		if (nextErrors.length > 0) {
+			setFormErrors(nextErrors);
 			return;
 		}
+		setFormErrors([]);
 
 		const payload = {
 			name: routineName,

@@ -37,7 +37,12 @@ import {
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
-import { fadeUp, hover, staggerContainer } from "@/lib/animations";
+import {
+	fadeUp,
+	fadeUpVariants,
+	hover,
+	staggerContainer,
+} from "@/lib/animations";
 import { formatChallengeValue } from "@/lib/challenges";
 import { PHOENIX } from "@/lib/colors";
 import { convertWeight, formatVolume, type WeightUnit } from "@/lib/units";

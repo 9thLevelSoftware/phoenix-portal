@@ -17,7 +17,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/app/components/ui/dialog";
-import { fadeUp } from "@/lib/animations";
 
 interface OnboardingOverlayProps {
 	onComplete: () => void;

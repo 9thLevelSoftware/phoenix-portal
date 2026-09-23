@@ -191,8 +191,6 @@ const BODY_OUTLINE_FRONT =
 const BODY_OUTLINE_BACK =
 	"M 90,20 Q 78,20 72,30 Q 66,42 66,54 Q 66,64 72,68 Q 58,66 48,70 Q 38,74 36,84 Q 34,96 32,114 Q 30,132 32,148 Q 30,158 28,170 L 38,170 Q 42,156 44,148 Q 48,154 56,160 Q 62,164 64,174 Q 60,190 58,210 Q 56,230 58,248 Q 56,260 56,278 Q 56,292 60,298 L 82,298 Q 84,292 84,278 Q 84,260 82,248 Q 80,230 82,210 Q 84,196 90,182 Q 96,196 98,210 Q 100,230 98,248 Q 96,260 96,278 Q 96,292 98,298 L 120,298 Q 124,292 124,278 Q 124,260 122,248 Q 120,230 122,210 Q 120,190 116,174 Q 118,164 124,160 Q 132,154 136,148 Q 138,156 142,170 L 152,170 Q 150,158 148,148 Q 150,132 148,114 Q 146,96 144,84 Q 142,74 132,70 Q 122,66 108,68 Q 114,64 114,54 Q 114,42 108,30 Q 102,20 90,20 Z";
 
-const EMBER = PHOENIX().ember;
-
 export function MuscleHeatmap({
 	muscleVolumes,
 	unit = "kg",
@@ -278,10 +276,10 @@ export function MuscleHeatmap({
 									role="img"
 									aria-label={`${region.name} muscle region`}
 									d={path}
-									fill={volume > 0 ? phoenix.ember : "none"}
+									fill={volume > 0 ? PHOENIX().ember : "none"}
 									fillOpacity={volume > 0 ? opacity : 0}
 									stroke={
-										volume > 0 ? phoenix.ember : "var(--muted-foreground)"
+										volume > 0 ? PHOENIX().ember : "var(--muted-foreground)"
 									}
 									strokeWidth={isHovered ? 2 : 1}
 									strokeOpacity={volume > 0 ? 0.8 : 0.4}
@@ -342,7 +340,7 @@ export function MuscleHeatmap({
 						whiteSpace: "nowrap",
 					}}
 				>
-					<span className="font-semibold" style={{ color: phoenix.ember }}>
+					<span className="font-semibold" style={{ color: PHOENIX().ember }}>
 						{hoveredGroup}
 					</span>
 					:{" "}

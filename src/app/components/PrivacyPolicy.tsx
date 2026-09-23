@@ -2,7 +2,6 @@ import { ArrowLeft } from "lucide-react";
 import { motion } from "motion/react";
 import { useNavigate } from "react-router";
 import { Button } from "@/app/components/ui/button";
-import { fadeUp } from "@/lib/animations";
 import { PhoenixLogo } from "./PhoenixLogo";
 
 export function PrivacyPolicy() {

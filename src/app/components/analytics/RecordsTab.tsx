@@ -19,6 +19,7 @@ import { Card } from "@/app/components/ui/card";
 import { EmptyState } from "@/app/components/ui/empty-state";
 import { CardSkeleton, Skeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { fadeUp } from "@/lib/animations";
 import type { WeightUnit } from "@/lib/units";
 import { formatLoad } from "@/lib/units/loadDisplay";
 import {

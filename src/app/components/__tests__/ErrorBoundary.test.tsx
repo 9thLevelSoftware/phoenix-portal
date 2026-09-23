@@ -222,7 +222,7 @@ describe("ErrorBoundary + PageErrorFallback", () => {
 		const heading = screen.getByText("Something went wrong");
 		expect(heading).toBeVisible();
 
-		const button = screen.getByRole("button", { name: /try again/i }));
+		const button = screen.getByRole("button", { name: /try again/i });
 		expect(button).toBeVisible();
 	});
 });

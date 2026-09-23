@@ -111,6 +111,18 @@ export function Community() {
 	const hasActiveFilters = Boolean(
 		debouncedSearch || filters.muscleGroup || filters.difficulty,
 	);
+	const kind = activeTab === "routines" ? "routines" : "cycles";
+	const emptyStateTitle = hasActiveFilters
+		? `No ${kind} match your filters`
+		: `Discover shared ${kind}`;
+	const emptyStateDescription = hasActiveFilters
+		? "Try adjusting your search or filters."
+		: `No shared ${kind} yet. Create one and share it with the community.`;
+	const emptyStateAction = hasActiveFilters
+		? undefined
+		: `Create ${activeTab === "routines" ? "a routine" : "a cycle"}`;
+	const contentPath =
+		activeTab === "routines" ? "/routines/new" : "/cycles/new";
 
 	// When viewing a creator profile, the selected item may not be in the main
 	// feed. Hold the full item so the drawer can render it regardless of source.

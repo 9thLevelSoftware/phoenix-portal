@@ -73,7 +73,9 @@ function normalizeCycle(raw: UnknownRecord): UnknownRecord {
  * Coerce every list field (top-level + nested) that the push handler
  * dereferences to an array. Returns a new object; does not mutate input.
  */
-export function normalizePushPayloadShape<T extends UnknownRecord>(payload: T): T {
+export function normalizePushPayloadShape(
+	payload: UnknownRecord,
+): UnknownRecord {
 	return {
 		...payload,
 		sessions: toArr(payload.sessions).map(normalizeSession),
@@ -88,5 +90,5 @@ export function normalizePushPayloadShape<T extends UnknownRecord>(payload: T): 
 		// allProfiles stays nullable (the handler branches on null vs array
 		// and has separate fallback logic for legacy clients — don't force
 		// it to [] or the fallback path will never fire).
-	} as T;
+	};
 }

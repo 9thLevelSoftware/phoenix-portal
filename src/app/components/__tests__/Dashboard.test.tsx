@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import type { ComponentProps, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import { Dashboard } from "../Dashboard";
@@ -198,37 +199,6 @@ describe("Dashboard", () => {
 		expect(
 			screen.getAllByRole("heading", { name: /welcome back/i }).length,
 		).toBeGreaterThan(0);
-	});
-
-	it("propagates stagger variants from both dashboard grids", () => {
-		const assertStaggeredGrid = () => {
-			const grids = Array.from(
-				document.querySelectorAll(
-					'[data-motion-variants="present"]:has(> [data-motion-variants="present"])',
-				),
-			);
-
-			expect(grids).toHaveLength(1);
-			for (const grid of grids) {
-				expect(grid.getAttribute("data-motion-initial")).toBe("hidden");
-				expect(grid.getAttribute("data-motion-animate")).toBe("visible");
-				expect(
-					Array.from(grid.children).every(
-						(child) => child.getAttribute("data-motion-variants") === "present",
-					),
-				).toBe(true);
-			}
-		};
-
-		const withWorkouts = renderWithProviders(<Dashboard />);
-		assertStaggeredGrid();
-		withWorkouts.unmount();
-
-		mockDashboard.hasWorkouts = false;
-		const withoutWorkouts = renderWithProviders(<Dashboard />);
-		assertStaggeredGrid();
-		withoutWorkouts.unmount();
-		mockDashboard.hasWorkouts = true;
 	});
 
 	it("propagates stagger variants from both dashboard grids", () => {

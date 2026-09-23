@@ -394,7 +394,10 @@ export function selectInsightsFeed(
 	};
 }
 
-const EXERCISE_COLORS = [PHOENIX().ember, PHOENIX().flameRed, PHOENIX().gold];
+function getExerciseColors(): [string, string, string] {
+	const colors = PHOENIX();
+	return [colors.ember, colors.flameRed, colors.gold];
+}
 
 interface Insight {
 	type: "positive" | "warning" | "neutral";

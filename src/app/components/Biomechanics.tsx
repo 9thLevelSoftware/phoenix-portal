@@ -34,9 +34,9 @@ import {
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Switch } from "@/app/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
-
 import { useAuth } from "@/app/hooks/useAuth";
 import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
+import { fadeUp } from "@/lib/animations";
 import { PHOENIX } from "@/lib/colors";
 import { FEATURE_MIN_TIER } from "@/lib/tierMatrix";
 import { repSummariesOptions, repTelemetryOptions } from "@/queries/telemetry";

@@ -6,6 +6,7 @@ import { BiomechanicsContent } from "@/app/components/Biomechanics";
 import { MuscleRadar } from "@/app/components/charts/MuscleRadar";
 import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
 import { Card } from "@/app/components/ui/card";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import type { BodyMuscleFocusModel } from "@/lib/body-muscle-analytics";
 import type { Recommendation } from "@/lib/recommendations";
 import type { MuscleRecovery } from "@/lib/sra-recovery";
