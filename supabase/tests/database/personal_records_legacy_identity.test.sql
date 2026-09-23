@@ -15,7 +15,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(13);
+SELECT plan(19);
 
 SELECT diag('database:pr-legacy-identity-catalog');
 
@@ -186,6 +186,65 @@ SELECT throws_ok(
     '23505',
     NULL,
     'NULL weight, reps and session compare equal'
+);
+
+SELECT diag('database:pr-legacy-identity-reassignment');
+
+-- Deleting a local profile sets local_profile_id to NULL ('default'). A legacy
+-- row that becomes identical to one already under 'default' is tombstoned
+-- instead of failing the profile deletion.
+INSERT INTO public.local_profiles (user_id, id, name)
+VALUES ('62626262-0000-4000-8000-000000000001'::uuid, 'phone-b', 'Phone B');
+INSERT INTO public.personal_records
+    (id, user_id, local_profile_id, exercise_name, muscle_group, record_type, value, unit,
+     achieved_at, weight_kg, reps)
+VALUES ('62626262-0000-4000-8000-0000000000f1'::uuid, '62626262-0000-4000-8000-000000000001'::uuid,
+        'phone-b', 'Bench', 'Chest', 'MAX_WEIGHT', 100, 'kg', '2026-01-01T10:00:00.123Z', 100, 5);
+SELECT lives_ok(
+    $sql$
+        DELETE FROM public.local_profiles
+        WHERE user_id = '62626262-0000-4000-8000-000000000001' AND id = 'phone-b'
+    $sql$,
+    'deleting a profile whose record duplicates a default-profile record succeeds'
+);
+SELECT ok(
+    (SELECT deleted_at IS NOT NULL AND local_profile_id IS NULL FROM public.personal_records
+     WHERE id = '62626262-0000-4000-8000-0000000000f1'),
+    'the reassigned duplicate is tombstoned'
+);
+SELECT ok(
+    (SELECT deleted_at IS NULL FROM public.personal_records
+     WHERE id = '62626262-0000-4000-8000-0000000000a1'),
+    'the record it duplicated stays live'
+);
+
+-- Deleting a session sets session_id to NULL, with the same outcome.
+INSERT INTO public.workout_sessions (id, user_id)
+VALUES ('62626262-0000-4000-8000-0000000005e1'::uuid, '62626262-0000-4000-8000-000000000001'::uuid);
+INSERT INTO public.personal_records
+    (id, user_id, exercise_name, muscle_group, record_type, value, unit, achieved_at, session_id)
+VALUES ('62626262-0000-4000-8000-0000000000f2'::uuid, '62626262-0000-4000-8000-000000000001'::uuid,
+        'Plank', 'Core', 'MAX_VOLUME', 60, 's', '2026-02-01T00:00:00Z',
+        '62626262-0000-4000-8000-0000000005e1'::uuid);
+SELECT lives_ok(
+    $sql$
+        DELETE FROM public.workout_sessions WHERE id = '62626262-0000-4000-8000-0000000005e1'
+    $sql$,
+    'deleting a session whose record then duplicates another succeeds'
+);
+SELECT ok(
+    (SELECT deleted_at IS NOT NULL FROM public.personal_records
+     WHERE id = '62626262-0000-4000-8000-0000000000f2'),
+    'the record left without its session is tombstoned as the duplicate'
+);
+
+-- An ordinary edit that creates no duplicate is untouched.
+UPDATE public.personal_records SET value = 111
+ WHERE id = '62626262-0000-4000-8000-0000000000e2';
+SELECT ok(
+    (SELECT deleted_at IS NULL AND value = 111 FROM public.personal_records
+     WHERE id = '62626262-0000-4000-8000-0000000000e2'),
+    'a non-colliding edit stays live'
 );
 
 SELECT * FROM finish();
