@@ -278,6 +278,36 @@ function claim(db: FakeDb, index: number, id: string): void {
   row.started_at = CLAIMED_AT;
 }
 
+Deno.test("liftosaur-sync: a failed queue completion is retried, never reported as a queued follow-up", async () => {
+  const db = new FakeDb(
+    tables([queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)]),
+    [syncQueueOneActiveIndex],
+  );
+  const from = db.from.bind(db);
+  db.from = (table: string) => {
+    const query = from(table);
+    if (table === "sync_queue") {
+      const update = query.update.bind(query);
+      query.update = (patch: Row) => {
+        if (patch.status !== "completed") return update(patch);
+        const failed = {
+          eq: () => failed,
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve({ data: null, error: { message: "write failed" } }).then(resolve),
+        };
+        // deno-lint-ignore no-explicit-any
+        return failed as any;
+      };
+    }
+    return query;
+  };
+  const res = await harness(db, descendingLiftosaur(4500).fetch)({ sync_type: "initial", queue_id: QUEUE_ID });
+  assertEquals(res.status, 502, await res.clone().text());
+  assertEquals((await res.json()).code, "queue_complete_failed");
+  assertEquals(db.rows("sync_queue").map((r) => r.status), ["processing"], "no follow-up, row still processing");
+  assertEquals(typeof db.rows("user_integrations")[0].backfill_before, "string", "the cursor is saved for the retry");
+});
+
 Deno.test("liftosaur-sync: a history larger than one run is imported over resumable runs (#204)", async () => {
   // PR 52's unique index is in force: a follow-up must never collide with the
   // row that is still running.

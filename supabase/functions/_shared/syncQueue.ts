@@ -51,11 +51,12 @@ export interface CompleteSyncQueueEntryOptions {
  * finished must not be overwritten by a late worker. Without a queue id
  * there is nothing this run owns, and nothing is completed.
  */
+/** Returns false when the completion write failed (true when there is no row). */
 export async function completeSyncQueueEntry(
   supabase: DbClient,
   options: CompleteSyncQueueEntryOptions,
-): Promise<void> {
-  if (!options.queueId) return;
+): Promise<boolean> {
+  if (!options.queueId) return true;
 
   const { error } = await supabase
     .from('sync_queue')
@@ -71,7 +72,9 @@ export async function completeSyncQueueEntry(
 
   if (error) {
     console.error(`Failed to complete ${options.provider} sync queue entry:`, error);
+    return false;
   }
+  return true;
 }
 
 export interface CreateSyncQueueEntryOptions {

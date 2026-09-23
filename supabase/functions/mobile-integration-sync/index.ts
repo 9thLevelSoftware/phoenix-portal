@@ -595,7 +595,8 @@ async function importLiftosaur(ctx: ImportContext): Promise<Response> {
 
   if (fetched.truncated) {
     const outcome = resolveLiftosaurTruncation(fetched, plan, syncType, rows.length);
-    await updateIntegration(ctx, outcome.columns);
+    const { error: cursorError } = await updateIntegration(ctx, outcome.columns);
+    if (cursorError) return continuationSaveFailed(ctx, cursorError);
     console.warn(outcome.message);
     if (outcome.kind === 'stuck') {
       return json(
@@ -626,8 +627,23 @@ async function importLiftosaur(ctx: ImportContext): Promise<Response> {
     );
   }
 
-  await updateIntegration(ctx, completedSyncColumns(plan));
+  const { error: watermarkError } = await updateIntegration(ctx, completedSyncColumns(plan));
+  if (watermarkError) return continuationSaveFailed(ctx, watermarkError);
   return json({ status: okStatus, activities }, 200, ctx.cors);
+}
+
+/**
+ * The rows are stored but the cursor or watermark is not, so the next sync
+ * would re-read this window while the phone was told progress was saved.
+ * Retryable: the writes are idempotent.
+ */
+function continuationSaveFailed(ctx: ImportContext, error: unknown): Response {
+  console.error('mobile-integration-sync sync state save failed:', error);
+  return json(
+    { status: 'error', error: 'Failed to save sync progress. Please retry shortly.' },
+    500,
+    ctx.cors,
+  );
 }
 
 /**

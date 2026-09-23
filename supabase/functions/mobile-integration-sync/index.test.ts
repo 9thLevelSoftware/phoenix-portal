@@ -269,6 +269,38 @@ Deno.test("mobile-integration-sync: a failed stored-date lookup fails the sync i
   assertEquals(integration.last_sync_at, null, "nothing advances");
 });
 
+for (const [label, count, column] of [
+  ["cursor", 2500, "backfill_before"],
+  ["watermark", 3, "last_sync_at"],
+] as const) {
+  Deno.test(`mobile-integration-sync: a failed Liftosaur ${label} save fails the sync`, async () => {
+    const db = importDb("liftosaur");
+    const from = db.from.bind(db);
+    db.from = (table: string) => {
+      const query = from(table);
+      if (table === "user_integrations") {
+        const update = query.update.bind(query);
+        query.update = (patch: Record<string, unknown>) => {
+          if (!(column in patch)) return update(patch);
+          const failed = {
+            eq: () => failed,
+            then: (resolve: (value: unknown) => unknown) =>
+              Promise.resolve({ data: null, error: { message: "write failed" } }).then(resolve),
+          };
+          // deno-lint-ignore no-explicit-any
+          return failed as any;
+        };
+      }
+      return query;
+    };
+    const newest = Date.parse("2026-09-01T00:00:00.000Z");
+    const api = liftosaurApi(Array.from({ length: count }, (_, i) => ({ id: i + 1, at: newest - i * 60_000 })));
+    const res = await silenced(() => importHandler(db, api)(post({ provider: "liftosaur", action: "sync" })));
+    assertEquals(res.status, 500, await res.clone().text());
+    assertEquals((await res.json()).status, "error");
+  });
+}
+
 Deno.test("mobile-integration-sync: a Hevy backfill past its page budget is stored, reported, and never advances the watermark", async () => {
   const db = importDb("hevy", "2026-09-01T00:00:00.000Z");
   const hevy = ((input: string | URL | Request) => {
