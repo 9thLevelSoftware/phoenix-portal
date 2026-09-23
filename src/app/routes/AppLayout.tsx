@@ -1,7 +1,7 @@
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
-import { useLocation, useOutlet } from "react-router";
+import { useLocation, useMatches, useOutlet } from "react-router";
 import { AppSidebar } from "@/app/components/AppSidebar";
 import { PageErrorFallback } from "@/app/components/ErrorFallback";
 import { MobileBottomNav } from "@/app/components/MobileBottomNav";
@@ -39,6 +39,8 @@ export function AppLayout() {
 	useStreakSync();
 	const outlet = useOutlet();
 	const location = useLocation();
+	const matches = useMatches();
+	const routeId = matches[matches.length - 1]?.id ?? location.pathname;
 	const {
 		needsOnboarding,
 		needsWhatsNew,
@@ -72,7 +74,7 @@ export function AppLayout() {
 							<Suspense fallback={<PageLoading />}>
 								<AnimatePresence mode="wait">
 									<motion.main
-										key={location.pathname}
+										key={routeId}
 										id="main-content"
 										{...pageTransition}
 									>
