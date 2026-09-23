@@ -212,7 +212,7 @@ SELECT results_eq(
         FROM public.gamification_stats
         WHERE user_id = 'e5e5e5e5-0000-4000-8000-000000000005'::uuid
     $sql$,
-    $values$ VALUES (317, 1000, 5000::numeric, 6000, 9, 30) $values$,
+    $values$ VALUES (317, 1000, 5000::numeric, 6000::bigint, 9, 30) $values$,
     'the recompute leaves the device-reported shadow columns alone'
 );
 

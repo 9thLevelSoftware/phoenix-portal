@@ -171,6 +171,22 @@ ALTER TABLE public.gamification_stats
   ADD COLUMN IF NOT EXISTS device_total_volume_kg numeric;
 ALTER TABLE public.gamification_stats
   ADD COLUMN IF NOT EXISTS device_total_time_seconds bigint;
+-- A database that ran the earlier version of this file has the column as
+-- integer; ADD COLUMN IF NOT EXISTS would leave it there, so widen it.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_attribute
+     WHERE attrelid = 'public.gamification_stats'::regclass
+       AND attname = 'device_total_time_seconds'
+       AND atttypid = 'integer'::regtype
+       AND NOT attisdropped
+  ) THEN
+    ALTER TABLE public.gamification_stats
+      ALTER COLUMN device_total_time_seconds TYPE bigint;
+  END IF;
+END
+$$;
 ALTER TABLE public.gamification_stats
   ADD COLUMN IF NOT EXISTS device_current_streak integer;
 ALTER TABLE public.gamification_stats
