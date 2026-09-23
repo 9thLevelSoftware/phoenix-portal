@@ -232,6 +232,22 @@ Deno.test("a catalog lookup that fails marks the transaction aborted", async () 
   assertEquals(tx.aborted, true);
 });
 
+Deno.test("an aborted transaction refuses to commit and sends no COMMIT", async () => {
+  const fake = fakeExecutor({
+    columns: { t: { id: "uuid" } },
+    results: [
+      { match: "INSERT INTO", error: Object.assign(new Error("gone"), { code: "25P04" }) },
+      { match: "ROLLBACK TO SAVEPOINT", error: new Error("connection ended") },
+    ],
+  });
+  const tx = await beginPushTransaction(fake.executor);
+  await tx.client.from("t").upsert([{ id: "1" }], { onConflict: "id" });
+  assertEquals(tx.aborted, true);
+  await assertRejects(() => tx.commit(), Error, "refusing to commit");
+  assertEquals(statements(fake.log).includes("COMMIT"), false);
+  assertEquals(fake.ended(), 1);
+});
+
 Deno.test("concurrent calls are serialized, so savepoints never interleave", async () => {
   const fake = fakeExecutor({ columns: { a: { id: "uuid" }, b: { id: "uuid" } } });
   const tx = await beginPushTransaction(fake.executor);
