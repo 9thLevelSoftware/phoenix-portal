@@ -101,6 +101,14 @@ describe("RoutineBuilder", () => {
 		expect(screen.getByDisplayValue("Untitled Routine")).toBeInTheDocument();
 	});
 
+	it("associates the routine name label with its input", () => {
+		renderWithProviders(<RoutineBuilder />);
+		expect(screen.getByLabelText("Routine name")).toHaveAttribute(
+			"id",
+			"routine-name",
+		);
+	});
+
 	// ---------------------------------------------------------------
 	// Default empty state
 	// ---------------------------------------------------------------

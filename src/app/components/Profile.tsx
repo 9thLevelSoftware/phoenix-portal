@@ -349,7 +349,11 @@ export function Profile() {
 										<Camera className="w-6 h-6 text-foreground" />
 									)}
 								</button>
+								<Label htmlFor="avatar-upload" className="sr-only">
+									Avatar image
+								</Label>
 								<input
+									id="avatar-upload"
 									ref={avatarInputRef}
 									type="file"
 									accept="image/*"
@@ -946,11 +950,15 @@ export function Profile() {
 							</h3>
 							<div className="space-y-4">
 								<div>
-									<Label className="text-foreground mb-2 block">
+									<Label
+										htmlFor="profile-display-name"
+										className="text-foreground mb-2 block"
+									>
 										Display Name
 									</Label>
 									<div className="flex gap-2">
 										<Input
+											id="profile-display-name"
 											type="text"
 											value={editDisplayName}
 											onChange={(e) => setEditDisplayName(e.target.value)}

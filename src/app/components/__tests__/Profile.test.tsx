@@ -1,3 +1,5 @@
+import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import { Profile } from "../Profile";
@@ -18,5 +20,15 @@ describe("Profile", () => {
 	it("renders without crashing", () => {
 		const { container } = renderWithProviders(<Profile />);
 		expect(container.firstChild).toBeTruthy();
+	});
+
+	it("associates the display name label with its input", async () => {
+		const user = userEvent.setup();
+		renderWithProviders(<Profile />);
+		await user.click(screen.getByRole("tab", { name: "Settings" }));
+		expect(screen.getByLabelText("Display Name")).toHaveAttribute(
+			"id",
+			"profile-display-name",
+		);
 	});
 });

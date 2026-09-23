@@ -83,6 +83,14 @@ describe("CycleBuilder", () => {
 		expect(screen.getByDisplayValue("Untitled Cycle")).toBeInTheDocument();
 	});
 
+	it("associates the cycle name label with its input", () => {
+		renderWithProviders(<CycleBuilder />);
+		expect(screen.getByLabelText("Cycle name")).toHaveAttribute(
+			"id",
+			"cycle-name",
+		);
+	});
+
 	// ---------------------------------------------------------------
 	// Default UI layout
 	// ---------------------------------------------------------------

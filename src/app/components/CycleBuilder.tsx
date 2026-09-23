@@ -375,7 +375,14 @@ export function CycleBuilder() {
 							Cancel
 						</Button>
 
+						<Label
+							htmlFor="cycle-name"
+							className="text-xs text-muted-foreground"
+						>
+							Cycle name
+						</Label>
 						<Input
+							id="cycle-name"
 							value={cycleName}
 							onChange={(e) => {
 								setCycleName(e.target.value);
@@ -436,11 +443,15 @@ export function CycleBuilder() {
 
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 							<div>
-								<Label className="text-secondary-foreground mb-2">
+								<Label
+									htmlFor="cycle-duration"
+									className="text-secondary-foreground mb-2"
+								>
 									Duration (Days)
 								</Label>
 								<div className="flex items-center gap-2">
 									<Input
+										id="cycle-duration"
 										type="number"
 										value={duration}
 										onChange={(e) => {
@@ -474,10 +485,14 @@ export function CycleBuilder() {
 							</div>
 
 							<div className="md:col-span-2">
-								<Label className="text-secondary-foreground mb-2">
+								<Label
+									htmlFor="cycle-description"
+									className="text-secondary-foreground mb-2"
+								>
 									Description
 								</Label>
 								<Textarea
+									id="cycle-description"
 									value={description}
 									onChange={(e) => {
 										setDescription(e.target.value);
@@ -489,10 +504,14 @@ export function CycleBuilder() {
 							</div>
 
 							<div>
-								<Label className="text-secondary-foreground mb-2">
+								<Label
+									htmlFor="cycle-start-date"
+									className="text-secondary-foreground mb-2"
+								>
 									Start Date (Optional)
 								</Label>
 								<Input
+									id="cycle-start-date"
 									type="date"
 									value={startDate}
 									onChange={(e) => {
@@ -917,7 +936,10 @@ function DayEditorPanel({
 
 						<div className="space-y-4">
 							<div>
-								<Label className="text-sm text-muted-foreground mb-2">
+								<Label
+									htmlFor={`day-${day.dayNumber}-weight-adjustment`}
+									className="text-sm text-muted-foreground mb-2"
+								>
 									Weight Adjustment (%)
 								</Label>
 								<div className="flex items-center gap-2">
@@ -934,6 +956,7 @@ function DayEditorPanel({
 										-
 									</Button>
 									<Input
+										id={`day-${day.dayNumber}-weight-adjustment`}
 										type="number"
 										value={day.weightAdjustment || 0}
 										onChange={(e) =>
@@ -959,7 +982,10 @@ function DayEditorPanel({
 							</div>
 
 							<div>
-								<Label className="text-sm text-muted-foreground mb-2">
+								<Label
+									htmlFor={`day-${day.dayNumber}-rep-modifier`}
+									className="text-sm text-muted-foreground mb-2"
+								>
 									Rep Modifier
 								</Label>
 								<div className="flex items-center gap-2">
@@ -974,6 +1000,7 @@ function DayEditorPanel({
 										-
 									</Button>
 									<Input
+										id={`day-${day.dayNumber}-rep-modifier`}
 										type="number"
 										value={day.repModifier || 0}
 										onChange={(e) =>
@@ -999,8 +1026,14 @@ function DayEditorPanel({
 					</div>
 
 					<div>
-						<Label className="text-secondary-foreground mb-2">Notes</Label>
+						<Label
+							htmlFor={`day-${day.dayNumber}-workout-notes`}
+							className="text-secondary-foreground mb-2"
+						>
+							Notes
+						</Label>
 						<Textarea
+							id={`day-${day.dayNumber}-workout-notes`}
 							value={day.notes || ""}
 							onChange={(e) => onUpdate({ notes: e.target.value })}
 							className="bg-background border-secondary"
@@ -1025,14 +1058,22 @@ function DayEditorPanel({
 					</div>
 
 					<div>
-						<Label className="text-secondary-foreground mb-2">Rest Type</Label>
+						<Label
+							htmlFor={`day-${day.dayNumber}-rest-type`}
+							className="text-secondary-foreground mb-2"
+						>
+							Rest Type
+						</Label>
 						<Select
 							value={day.restType || "complete"}
 							onValueChange={(value: "complete" | "active" | "mobility") =>
 								onUpdate({ restType: value })
 							}
 						>
-							<SelectTrigger className="bg-background border-secondary">
+							<SelectTrigger
+								id={`day-${day.dayNumber}-rest-type`}
+								className="bg-background border-secondary"
+							>
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -1044,8 +1085,14 @@ function DayEditorPanel({
 					</div>
 
 					<div>
-						<Label className="text-secondary-foreground mb-2">Notes</Label>
+						<Label
+							htmlFor={`day-${day.dayNumber}-rest-notes`}
+							className="text-secondary-foreground mb-2"
+						>
+							Notes
+						</Label>
 						<Textarea
+							id={`day-${day.dayNumber}-rest-notes`}
 							value={day.notes || ""}
 							onChange={(e) => onUpdate({ notes: e.target.value })}
 							className="bg-background border-secondary"
@@ -1123,7 +1170,10 @@ function ProgressionRules({
 				{/* Progression Type */}
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 					<div>
-						<Label className="text-secondary-foreground mb-2">
+						<Label
+							htmlFor="progression-type"
+							className="text-secondary-foreground mb-2"
+						>
 							Progression Type
 						</Label>
 						<Select
@@ -1132,7 +1182,10 @@ function ProgressionRules({
 								onProgressionTypeChange(v as "percentage" | "fixed" | "manual")
 							}
 						>
-							<SelectTrigger className="bg-background border-secondary">
+							<SelectTrigger
+								id="progression-type"
+								className="bg-background border-secondary"
+							>
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -1152,12 +1205,16 @@ function ProgressionRules({
 
 					{progressionType !== "manual" && (
 						<div>
-							<Label className="text-secondary-foreground mb-2">
+							<Label
+								htmlFor="progression-amount"
+								className="text-secondary-foreground mb-2"
+							>
 								{progressionType === "percentage"
 									? "Increase (%)"
 									: "Increase (kg)"}
 							</Label>
 							<Input
+								id="progression-amount"
 								type="number"
 								value={progressionAmount}
 								onChange={(e) =>
@@ -1174,10 +1231,14 @@ function ProgressionRules({
 				{/* Frequency and Trigger */}
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 					<div>
-						<Label className="text-secondary-foreground mb-2">
+						<Label
+							htmlFor="progression-frequency"
+							className="text-secondary-foreground mb-2"
+						>
 							Progression Frequency (weeks)
 						</Label>
 						<Input
+							id="progression-frequency"
 							type="number"
 							value={progressionFrequency}
 							onChange={(e) =>
@@ -1192,7 +1253,10 @@ function ProgressionRules({
 					</div>
 
 					<div>
-						<Label className="text-secondary-foreground mb-2">
+						<Label
+							htmlFor="progression-trigger"
+							className="text-secondary-foreground mb-2"
+						>
 							Progression Trigger
 						</Label>
 						<Select
@@ -1203,7 +1267,10 @@ function ProgressionRules({
 								)
 							}
 						>
-							<SelectTrigger className="bg-background border-secondary">
+							<SelectTrigger
+								id="progression-trigger"
+								className="bg-background border-secondary"
+							>
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -1221,10 +1288,14 @@ function ProgressionRules({
 				{/* Body-specific Increments */}
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 					<div>
-						<Label className="text-secondary-foreground mb-2">
+						<Label
+							htmlFor="upper-body-increment"
+							className="text-secondary-foreground mb-2"
+						>
 							Upper Body Increment (kg)
 						</Label>
 						<Input
+							id="upper-body-increment"
 							type="number"
 							value={upperBodyIncrement}
 							onChange={(e) =>
@@ -1236,10 +1307,14 @@ function ProgressionRules({
 						/>
 					</div>
 					<div>
-						<Label className="text-secondary-foreground mb-2">
+						<Label
+							htmlFor="lower-body-increment"
+							className="text-secondary-foreground mb-2"
+						>
 							Lower Body Increment (kg)
 						</Label>
 						<Input
+							id="lower-body-increment"
 							type="number"
 							value={lowerBodyIncrement}
 							onChange={(e) =>
@@ -1270,10 +1345,14 @@ function ProgressionRules({
 					{includeDeload && (
 						<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 							<div>
-								<Label className="text-secondary-foreground mb-2">
+								<Label
+									htmlFor="deload-frequency"
+									className="text-secondary-foreground mb-2"
+								>
 									Every N weeks
 								</Label>
 								<Input
+									id="deload-frequency"
 									type="number"
 									value={deloadFrequency}
 									onChange={(e) =>
@@ -1284,10 +1363,14 @@ function ProgressionRules({
 								/>
 							</div>
 							<div>
-								<Label className="text-secondary-foreground mb-2">
+								<Label
+									htmlFor="deload-intensity"
+									className="text-secondary-foreground mb-2"
+								>
 									Intensity (% of normal)
 								</Label>
 								<Input
+									id="deload-intensity"
 									type="number"
 									value={deloadIntensity}
 									onChange={(e) =>
@@ -1299,10 +1382,14 @@ function ProgressionRules({
 								/>
 							</div>
 							<div>
-								<Label className="text-secondary-foreground mb-2">
+								<Label
+									htmlFor="deload-volume"
+									className="text-secondary-foreground mb-2"
+								>
 									Volume (% of normal)
 								</Label>
 								<Input
+									id="deload-volume"
 									type="number"
 									value={deloadVolume}
 									onChange={(e) =>

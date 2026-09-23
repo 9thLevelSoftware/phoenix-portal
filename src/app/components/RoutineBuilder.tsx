@@ -447,7 +447,14 @@ export function RoutineBuilder() {
 									</span>
 								</div>
 							)}
+							<Label
+								htmlFor="routine-name"
+								className="text-xs text-muted-foreground"
+							>
+								Routine name
+							</Label>
 							<Input
+								id="routine-name"
 								value={routineName}
 								onChange={(e) => {
 									setRoutineName(e.target.value);
@@ -1075,7 +1082,10 @@ function ExerciseDetailPanel({
 									}`}
 								>
 									<div className="space-y-1">
-										<Label className="text-xs text-muted-foreground">
+										<Label
+											htmlFor={`exercise-${exercise.id}-set-${i}-reps`}
+											className="text-xs text-muted-foreground"
+										>
 											{isDurationBased
 												? "Duration (sec)"
 												: exercise.isAmrap
@@ -1088,6 +1098,7 @@ function ExerciseDetailPanel({
 											</div>
 										) : (
 											<Input
+												id={`exercise-${exercise.id}-set-${i}-reps`}
 												type="number"
 												value={
 													isDurationBased
@@ -1109,10 +1120,14 @@ function ExerciseDetailPanel({
 									</div>
 									{!exercise.isBodyweight && (
 										<div className="space-y-1">
-											<Label className="text-xs text-muted-foreground">
+											<Label
+												htmlFor={`exercise-${exercise.id}-set-${i}-weight`}
+												className="text-xs text-muted-foreground"
+											>
 												Weight ({getUnitLabel(unit)})
 											</Label>
 											<Input
+												id={`exercise-${exercise.id}-set-${i}-weight`}
 												type="number"
 												step={unit === "lbs" ? "0.5" : "1"}
 												value={getDisplayWeight(weightValues[i] ?? 0, unit)}
@@ -1123,10 +1138,14 @@ function ExerciseDetailPanel({
 										</div>
 									)}
 									<div className="space-y-1">
-										<Label className="text-xs text-muted-foreground">
+										<Label
+											htmlFor={`exercise-${exercise.id}-set-${i}-rest`}
+											className="text-xs text-muted-foreground"
+										>
 											Rest (sec)
 										</Label>
 										<Input
+											id={`exercise-${exercise.id}-set-${i}-rest`}
 											type="number"
 											value={restValues[i] ?? 0}
 											onChange={(e) => updatePerSetRest(i, e.target.value)}
@@ -1161,10 +1180,14 @@ function ExerciseDetailPanel({
 					</div>
 
 					<div>
-						<Label className="text-sm font-medium text-secondary-foreground mb-2 block">
+						<Label
+							htmlFor={`exercise-${exercise.id}-training-mode`}
+							className="text-sm font-medium text-secondary-foreground mb-2 block"
+						>
 							Training Mode
 						</Label>
 						<select
+							id={`exercise-${exercise.id}-training-mode`}
 							value={exercise.mode}
 							onChange={(e) => onUpdate({ mode: e.target.value })}
 							className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
@@ -1199,10 +1222,14 @@ function ExerciseDetailPanel({
 						<CollapsibleContent className="space-y-4 pt-4">
 							<div className="grid gap-4 sm:grid-cols-2">
 								<div className="space-y-1">
-									<Label className="text-xs text-muted-foreground">
+									<Label
+										htmlFor={`exercise-${exercise.id}-eccentric-load`}
+										className="text-xs text-muted-foreground"
+									>
 										Eccentric Load
 									</Label>
 									<select
+										id={`exercise-${exercise.id}-eccentric-load`}
 										value={exercise.eccentricLoad ?? ""}
 										onChange={(e) =>
 											onUpdate({
@@ -1218,10 +1245,14 @@ function ExerciseDetailPanel({
 									</select>
 								</div>
 								<div className="space-y-1">
-									<Label className="text-xs text-muted-foreground">
+									<Label
+										htmlFor={`exercise-${exercise.id}-echo-level`}
+										className="text-xs text-muted-foreground"
+									>
 										Echo Level
 									</Label>
 									<select
+										id={`exercise-${exercise.id}-echo-level`}
 										value={exercise.echoLevel ?? ""}
 										onChange={(e) =>
 											onUpdate({ echoLevel: e.target.value || null })
@@ -1235,10 +1266,14 @@ function ExerciseDetailPanel({
 									</select>
 								</div>
 								<div className="space-y-1">
-									<Label className="text-xs text-muted-foreground">
+									<Label
+										htmlFor={`exercise-${exercise.id}-rep-count-timing`}
+										className="text-xs text-muted-foreground"
+									>
 										Rep Count Timing
 									</Label>
 									<Input
+										id={`exercise-${exercise.id}-rep-count-timing`}
 										value={exercise.repCountTiming ?? ""}
 										onChange={(e) =>
 											onUpdate({
@@ -1250,10 +1285,14 @@ function ExerciseDetailPanel({
 									/>
 								</div>
 								<div className="space-y-1">
-									<Label className="text-xs text-muted-foreground">
+									<Label
+										htmlFor={`exercise-${exercise.id}-stop-at-position`}
+										className="text-xs text-muted-foreground"
+									>
 										Stop at Position
 									</Label>
 									<Input
+										id={`exercise-${exercise.id}-stop-at-position`}
 										value={exercise.stopAtPosition ?? ""}
 										onChange={(e) =>
 											onUpdate({
@@ -1379,7 +1418,14 @@ function ExercisePickerModal({
 					{/* Search */}
 					<div className="relative mb-3">
 						<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+						<Label
+							htmlFor="exercise-search"
+							className="mb-1 block text-sm text-muted-foreground"
+						>
+							Search exercises
+						</Label>
 						<Input
+							id="exercise-search"
 							placeholder="Search exercises..."
 							value={searchQuery}
 							onChange={(e) => setSearchQuery(e.target.value)}
