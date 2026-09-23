@@ -24,9 +24,12 @@ type SetRow = Database["public"]["Tables"]["sets"]["Row"];
 type SetInsert = Database["public"]["Tables"]["sets"]["Insert"];
 type RepSummaryRow = Database["public"]["Tables"]["rep_summaries"]["Row"];
 type RepSummaryInsert = Database["public"]["Tables"]["rep_summaries"]["Insert"];
-type RepTelemetryRow = Database["public"]["Tables"]["rep_telemetry"]["Row"];
+// rep_telemetry is a per-sample VIEW over set_telemetry since 20260925200000
+// (Row only, all nullable); the legacy table keeps the per-sample table shape.
+type RepTelemetryRow =
+	Database["public"]["Tables"]["rep_telemetry_legacy"]["Row"];
 type RepTelemetryInsert =
-	Database["public"]["Tables"]["rep_telemetry"]["Insert"];
+	Database["public"]["Tables"]["rep_telemetry_legacy"]["Insert"];
 
 // Workout mode enum values (must match mobile's ProgramMode.toSyncString())
 export const WORKOUT_MODES = [

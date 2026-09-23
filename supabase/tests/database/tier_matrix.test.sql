@@ -749,8 +749,11 @@ END
 $vis$;
 
 CREATE TEMP TABLE inferno_tables (table_name text PRIMARY KEY) ON COMMIT DROP;
+-- rep_telemetry is a security_invoker view since 20260925200000; the policy
+-- lives on its two backing tables.
 INSERT INTO inferno_tables VALUES
-    ('rep_telemetry'),
+    ('set_telemetry'),
+    ('rep_telemetry_legacy'),
     ('vbt_assessments'),
     ('session_phase_statistics'),
     ('exercise_signatures');
@@ -827,6 +830,15 @@ SELECT ok(
     ),
     'telemetry_points is security_invoker, so it inherits the rep_telemetry gate'
 );
+SELECT ok(
+    EXISTS (
+        SELECT 1 FROM pg_class c
+        WHERE c.oid = 'public.rep_telemetry'::regclass
+          AND c.relkind = 'v'
+          AND array_to_string(c.reloptions, ',') ~* 'security_invoker=(true|on)'
+    ),
+    'rep_telemetry is a security_invoker view, so it inherits the set_telemetry gate'
+);
 
 -- Fixtures: one owned row in every gated table for an EMBER, a FLAME and an
 -- INFERNO user, plus the session / exercise / set / rep_summary chain.
@@ -898,6 +910,7 @@ SELECT is(
 FROM (VALUES
     ('rep_telemetry'),
     ('telemetry_points'),
+    ('set_telemetry'),
     ('vbt_assessments'),
     ('session_phase_statistics'),
     ('exercise_signatures')
@@ -919,6 +932,7 @@ SELECT is(
 FROM (VALUES
     ('rep_telemetry'),
     ('telemetry_points'),
+    ('set_telemetry'),
     ('vbt_assessments'),
     ('session_phase_statistics'),
     ('exercise_signatures')
@@ -965,6 +979,7 @@ SELECT is(
 FROM (VALUES
     ('rep_telemetry'),
     ('telemetry_points'),
+    ('set_telemetry'),
     ('vbt_assessments'),
     ('session_phase_statistics'),
     ('exercise_signatures')

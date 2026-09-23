@@ -556,6 +556,7 @@ function permissiveQuery(
     "order",
     "limit",
     "range",
+    "overlaps",
     "insert",
     "upsert",
     "update",
@@ -8108,6 +8109,56 @@ Deno.test("Issue #99: three-batch epoch-zero Old School history is digested", as
 });
 
 
+
+// 20260925200000: rep_telemetry is a per-sample VIEW over set_telemetry (ids
+// in an array) plus legacy rows, so sample ids are probed on the two backing
+// tables, each on an index, never through the view.
+const TELEMETRY_SAMPLE_ID = "70000000-0000-4000-8000-000000000001";
+
+function telemetryPushBody(): Record<string, unknown> {
+  return {
+    ...validNestedRelationshipBody(),
+    telemetry: [{
+      id: TELEMETRY_SAMPLE_ID,
+      setId: SET_ID,
+      timestampMs: 10,
+      forceN: 400,
+      velocityMps: null,
+      positionMm: null,
+      cable: null,
+    }],
+  };
+}
+
+Deno.test("sample ids are probed on set_telemetry and rep_telemetry_legacy, never through the view", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(telemetryPushBody()));
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+
+  const probed = (table: string) =>
+    harness.ownershipProbeTables.filter((name) => name === table).length;
+  assertEquals(probed("set_telemetry"), 1);
+  assertEquals(probed("rep_telemetry_legacy"), 1);
+  assertEquals(probed("rep_telemetry"), 0);
+  const overlaps = harness.adminQueryCalls.filter((call) =>
+    call.table === "set_telemetry" && call.method === "overlaps"
+  );
+  assertEquals(overlaps.map((call) => call.args), [["ids", [TELEMETRY_SAMPLE_ID]]]);
+});
+
+for (const store of ["set_telemetry", "rep_telemetry_legacy"]) {
+  Deno.test(`a sample id held by another user in ${store} is the ownership 400`, async () => {
+    const harness = makeHarness(undefined, { foreignOwnedTables: [store] });
+    const response = await harness.handler(requestFromBody(telemetryPushBody()));
+    const body = await json(response);
+    assertEquals(response.status, 400, JSON.stringify(body));
+    assertEquals(body, { error: "Refused: existing rep_telemetry row belongs to another user" });
+    assertEquals(
+      harness.adminRpcCalls.filter((call) => call.name === "replace_session_children"),
+      [],
+    );
+  });
+}
 
 // PR 58 (F-073, F-039): each client-supplied primary key is probed for
 // ownership exactly once, in the up-front directOwnerChecks pass.

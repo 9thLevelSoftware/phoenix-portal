@@ -1510,7 +1510,7 @@ export type Database = {
 					},
 				];
 			};
-			rep_telemetry: {
+			rep_telemetry_legacy: {
 				Row: {
 					cable: string | null;
 					force_n: number | null;
@@ -1879,6 +1879,79 @@ export type Database = {
 						isOneToOne: true;
 						referencedRelation: "workout_sessions";
 						referencedColumns: ["id"];
+					},
+				];
+			};
+			set_telemetry: {
+				Row: {
+					cable: string[];
+					created_at: string;
+					force_n: number[];
+					ids: string[];
+					position_mm: number[];
+					sample_count: number;
+					set_id: string;
+					timestamp_ms: number[];
+					updated_at: string;
+					user_id: string;
+					velocity_mps: number[];
+				};
+				Insert: {
+					cable: string[];
+					created_at?: string;
+					force_n: number[];
+					ids: string[];
+					position_mm: number[];
+					sample_count: number;
+					set_id: string;
+					timestamp_ms: number[];
+					updated_at?: string;
+					user_id: string;
+					velocity_mps: number[];
+				};
+				Update: {
+					cable?: string[];
+					created_at?: string;
+					force_n?: number[];
+					ids?: string[];
+					position_mm?: number[];
+					sample_count?: number;
+					set_id?: string;
+					timestamp_ms?: number[];
+					updated_at?: string;
+					user_id?: string;
+					velocity_mps?: number[];
+				};
+				Relationships: [
+					{
+						foreignKeyName: "set_telemetry_set_id_fkey";
+						columns: ["set_id"];
+						isOneToOne: true;
+						referencedRelation: "sets";
+						referencedColumns: ["id"];
+					},
+				];
+			};
+			set_telemetry_sample_ids: {
+				Row: {
+					id: string;
+					set_id: string;
+				};
+				Insert: {
+					id: string;
+					set_id: string;
+				};
+				Update: {
+					id?: string;
+					set_id?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "set_telemetry_sample_ids_set_id_fkey";
+						columns: ["set_id"];
+						isOneToOne: false;
+						referencedRelation: "set_telemetry";
+						referencedColumns: ["set_id"];
 					},
 				];
 			};
@@ -2891,6 +2964,19 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			rep_telemetry: {
+				Row: {
+					cable: string | null;
+					force_n: number | null;
+					id: string | null;
+					position_mm: number | null;
+					set_id: string | null;
+					timestamp_ms: number | null;
+					user_id: string | null;
+					velocity_mps: number | null;
+				};
+				Relationships: [];
+			};
 			telemetry_points: {
 				Row: {
 					cable: string | null;
@@ -2902,35 +2988,7 @@ export type Database = {
 					user_id: string | null;
 					velocity_mps: number | null;
 				};
-				Insert: {
-					cable?: string | null;
-					force_n?: number | null;
-					id?: string | null;
-					position_mm?: number | null;
-					set_id?: string | null;
-					timestamp_ms?: number | null;
-					user_id?: string | null;
-					velocity_mps?: number | null;
-				};
-				Update: {
-					cable?: string | null;
-					force_n?: number | null;
-					id?: string | null;
-					position_mm?: number | null;
-					set_id?: string | null;
-					timestamp_ms?: number | null;
-					user_id?: string | null;
-					velocity_mps?: number | null;
-				};
-				Relationships: [
-					{
-						foreignKeyName: "rep_telemetry_set_id_fkey";
-						columns: ["set_id"];
-						isOneToOne: false;
-						referencedRelation: "sets";
-						referencedColumns: ["id"];
-					},
-				];
+				Relationships: [];
 			};
 		};
 		Functions: {
@@ -3132,6 +3190,14 @@ export type Database = {
 					p_exercises?: string[];
 					p_limit_per_exercise?: number;
 					p_profile_id?: string;
+				};
+				Returns: Json;
+			};
+			export_rep_telemetry_page: {
+				Args: {
+					p_after_set_id?: string;
+					p_target_rows?: number;
+					p_user_id: string;
 				};
 				Returns: Json;
 			};
@@ -3640,17 +3706,6 @@ export type Database = {
 				};
 				Returns: Json;
 			};
-			replace_session_components: {
-				Args: {
-					p_component_ids: string[];
-					p_exercises: Json;
-					p_rep_summaries: Json;
-					p_rep_telemetry: Json;
-					p_sets: Json;
-					p_user_id: string;
-				};
-				Returns: Json;
-			};
 			replace_user_insights: {
 				Args: { p_period: string; p_rows: Json; p_user_id: string };
 				Returns: number;
@@ -3803,23 +3858,6 @@ export type Database = {
 			};
 			upsert_workout_session_lww: {
 				Args: { p_rows: Json };
-				Returns: {
-					accepted: boolean;
-					id: string;
-					server_updated_at: string;
-				}[];
-			};
-			upsert_workout_sessions_with_components: {
-				Args: {
-					p_component_ids: string[];
-					p_enforce_lww: boolean;
-					p_exercises: Json;
-					p_rep_summaries: Json;
-					p_rep_telemetry: Json;
-					p_rows: Json;
-					p_sets: Json;
-					p_user_id: string;
-				};
 				Returns: {
 					accepted: boolean;
 					id: string;

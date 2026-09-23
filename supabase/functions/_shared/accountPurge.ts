@@ -108,6 +108,10 @@ export const EXPLICIT_PURGE_TARGETS: readonly ExplicitPurgeTarget[] = [
   { table: 'overload_suggestions', column: 'user_id', postOnly: true, mayBeAbsent: true },
   { table: 'telemetry_analysis', column: 'user_id', postOnly: true, mayBeAbsent: true },
   { table: 'wearable_daily_summaries', column: 'user_id', postOnly: true, mayBeAbsent: true },
+  // Pre-20260925200000 force-curve rows (manifest: purge "explicit"). Its FK
+  // to auth.users still cascades; this is the safety net, and the table is
+  // dropped once the set_telemetry backfill is verified.
+  { table: 'rep_telemetry_legacy', column: 'user_id', postOnly: true, mayBeAbsent: true },
 ];
 
 /**
