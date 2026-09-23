@@ -465,16 +465,16 @@ SELECT is(
         ) AS k
     ),
     (
-        -- pg_attribute, not information_schema.columns: the latter hides
-        -- columns the current role cannot read, and velocity_estimated_1rm_kg
-        -- is not client-readable (20260925900000). The key is still present.
-        SELECT array_agg(a.attname::text ORDER BY a.attname::text)
-        FROM pg_attribute a
-        WHERE a.attrelid = 'public.exercise_progress'::regclass
-          AND a.attnum > 0
-          AND NOT a.attisdropped
+        -- The RPC's fixed allow-list (20260925900000), not the table's
+        -- columns: a later column is deliberately not returned.
+        SELECT array_agg(c ORDER BY c)
+        FROM unnest(ARRAY[
+          'id', 'user_id', 'exercise_name', 'session_id', 'recorded_at', 'max_weight_kg',
+          'total_volume_kg', 'estimated_1rm_kg', 'max_reps', 'set_count',
+          'local_profile_id', 'exercise_id', 'velocity_estimated_1rm_kg'
+        ]) AS c
     ),
-    'series_many row objects carry exactly the exercise_progress columns (no rn)'
+    'series_many row objects carry exactly the allow-listed columns (no rn)'
 );
 
 SELECT results_eq(
