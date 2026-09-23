@@ -601,8 +601,11 @@ WHERE bucket_id = 'avatars'
 **Step 4: Delete dependent data (leaf tables first)**
 
 ```sql
--- Telemetry and rep data (deepest nesting)
-DELETE FROM rep_telemetry WHERE user_id = '<uuid>';
+-- Telemetry and rep data (deepest nesting). rep_telemetry is a read-only
+-- view since 20260925200000 (a DELETE on it raises 42501); delete its two
+-- backing tables. set_telemetry_sample_ids goes with set_telemetry.
+DELETE FROM set_telemetry WHERE user_id = '<uuid>';
+DELETE FROM rep_telemetry_legacy WHERE user_id = '<uuid>';
 DELETE FROM rep_summaries WHERE user_id = '<uuid>';
 DELETE FROM sets WHERE user_id = '<uuid>';
 
@@ -1431,7 +1434,7 @@ for `generate-insights` also preserves the batch cursor in
 ### 10.4 Manual periodic checks (nothing schedules these)
 | Check                                 | Cadence   | Query                                                                                  | Act when                                                                     |
 | ------------------------------------- | --------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Per-set telemetry storage growth      | Monthly   | `SELECT pg_size_pretty(pg_total_relation_size('public.rep_telemetry')), count(*) FROM public.rep_telemetry;` | Size exceeds 2 GB or the table exceeds 10M rows -- that is the trigger to revisit the telemetry storage redesign, which is deliberately not done now. |
+| Per-set telemetry storage growth      | Monthly   | `SELECT pg_size_pretty(pg_total_relation_size('public.set_telemetry') + pg_total_relation_size('public.set_telemetry_sample_ids') + pg_total_relation_size('public.rep_telemetry_legacy')), (SELECT count(*) FROM public.set_telemetry_sample_ids) + (SELECT count(*) FROM public.rep_telemetry_legacy l WHERE NOT EXISTS (SELECT 1 FROM public.set_telemetry t WHERE t.set_id = l.set_id));` (rep_telemetry is a view since 20260925200000 and has no storage of its own; the sum covers the backing tables during the backfill transition) | Size exceeds 2 GB or the table exceeds 10M rows -- that is the trigger to revisit the telemetry storage redesign, which is deliberately not done now. |
 | `personal_records` bloat              | After any dedupe/backfill | `SELECT pg_size_pretty(pg_total_relation_size('public.personal_records')), count(*) FROM public.personal_records;` | The size is out of proportion to the live row count (it was ~5.9k rows in 104 MB after the July 2026 duplicate cleanup) -- schedule `VACUUM FULL` or `pg_repack` in a low-traffic window. |
 ---
 ## 11. Backups and Point-in-Time Recovery
