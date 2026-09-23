@@ -20,7 +20,9 @@ import {
 import {
   broadcastSyncComplete,
   buildExternalActivityAcks,
+  clampSessionOutliers,
   createMobileSyncPushHandler,
+  PUSH_OUTLIER_LIMITS,
   localProfilesPushChangesRows,
 } from "./index.ts";
 import { partitionPersonalRecordRowsBySessionValidity } from "../_shared/personalRecordRow.ts";
@@ -5536,6 +5538,7 @@ Deno.test("present empty preference field is evaluated without an RPC", async ()
     acknowledgedWorkoutDeletionIds: [],
     acknowledgedOwnershipTransferIds: [],
     acknowledgedDeletedCycleIds: [],
+    clamped: [],
     rejections: {
       sessions: [],
       routines: [],
@@ -11539,4 +11542,85 @@ Deno.test(`profile guard (LWW=${SYNC_LWW_ENABLED}): rows already held by the pus
   assertEquals(rejections.routines, []);
   assertEquals(sessionWriteIds(harness), [SESSION_ID]);
   assertEquals(parentWriteIds(harness, "routines"), [ROUTINE_ID]);
+});
+
+// ---------------------------------------------------------------------------
+// NF-37: impossible session values are clamped and reported, never a 400.
+// ---------------------------------------------------------------------------
+
+Deno.test("clampSessionOutliers clamps only values past a limit and reports each", () => {
+  const receivedAt = "2026-09-20T12:00:00.000Z";
+  const sessions = [
+    {
+      id: "a",
+      startedAt: "2026-09-21T12:00:00.001Z",
+      durationSeconds: PUSH_OUTLIER_LIMITS.sessionDurationSeconds + 1,
+      totalVolume: 5_000_000,
+    },
+    {
+      // Exactly at every limit: untouched.
+      id: "b",
+      startedAt: "2026-09-21T12:00:00.000Z",
+      durationSeconds: PUSH_OUTLIER_LIMITS.sessionDurationSeconds,
+      totalVolume: PUSH_OUTLIER_LIMITS.sessionTotalVolumeKg,
+    },
+  ];
+  const clamped = clampSessionOutliers(sessions, receivedAt);
+
+  assertEquals(clamped, [
+    { entity: "session", id: "a", field: "totalVolume", original: 5_000_000, clamped: 1_000_000 },
+    {
+      entity: "session",
+      id: "a",
+      field: "durationSeconds",
+      original: 604_801,
+      clamped: 604_800,
+    },
+    {
+      entity: "session",
+      id: "a",
+      field: "startedAt",
+      original: "2026-09-21T12:00:00.001Z",
+      clamped: receivedAt,
+    },
+  ]);
+  assertEquals(sessions[0].totalVolume, 1_000_000);
+  assertEquals(sessions[0].durationSeconds, 604_800);
+  assertEquals(sessions[0].startedAt, receivedAt);
+  assertEquals(sessions[1].totalVolume, 1_000_000);
+  assertEquals(sessions[1].startedAt, "2026-09-21T12:00:00.000Z");
+});
+
+Deno.test(`NF-37 (LWW=${SYNC_LWW_ENABLED}): an outlier session is stored clamped with a 200 and reported`, async () => {
+  const harness = makeHarness();
+  const body = validNestedRelationshipBody();
+  const [session] = body.sessions as Array<Record<string, unknown>>;
+  body.sessions = [{ ...session, totalVolume: 9_999_999, durationSeconds: 2_000_000 }];
+  const response = await harness.handler(requestFromBody(body));
+  const result = await json(response);
+
+  assertEquals(response.status, 200, JSON.stringify(result));
+  assertEquals(
+    (result.clamped as Array<{ field: string }>).map((entry) => entry.field),
+    ["totalVolume", "durationSeconds"],
+  );
+  const written = [
+    ...harness.adminWriteArgs
+      .filter((call) => call.table === "workout_sessions" && call.method === "upsert")
+      .flatMap((call) => call.args[0] as Array<Record<string, unknown>>),
+    ...harness.adminRpcCalls
+      .filter((call) => call.name === "upsert_workout_session_lww")
+      .flatMap((call) => call.args.p_rows as Array<Record<string, unknown>>),
+  ];
+  assertEquals(written.length, 1);
+  assertEquals(written[0].total_volume, 1_000_000);
+  assertEquals(written[0].duration_seconds, 604_800);
+});
+
+Deno.test("NF-37: a push with nothing to clamp reports an empty list", async () => {
+  const harness = makeHarness();
+  const response = await harness.handler(requestFromBody(validNestedRelationshipBody()));
+  const result = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(result));
+  assertEquals(result.clamped, []);
 });

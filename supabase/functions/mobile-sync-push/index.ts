@@ -201,6 +201,83 @@ function chunked<T>(items: readonly T[], size: number): T[][] {
 }
 
 /**
+ * NF-37 push limits (docs/sync-reliability-contract.md, "Outlier limits").
+ * A value past one of these is not a workout a person can do; it is a
+ * corrupt or mis-scaled field. The push stores the limit instead and reports
+ * the change under `clamped`. It never answers 400: mobile treats a 400 as
+ * permanent and would strand the whole batch. Values under the limits but
+ * still implausible are winsorized at rank time by the leaderboard instead.
+ */
+export const PUSH_OUTLIER_LIMITS = {
+  /** Per cable (KD-8), for the whole session. */
+  sessionTotalVolumeKg: 1_000_000,
+  sessionDurationSeconds: 7 * 24 * 60 * 60,
+  /** How far past the request's receipt a session may start. */
+  sessionStartFutureMs: 24 * 60 * 60 * 1000,
+} as const;
+
+export type ClampedField = {
+  entity: 'session';
+  id: string;
+  field: 'totalVolume' | 'durationSeconds' | 'startedAt';
+  original: number | string;
+  clamped: number | string;
+};
+
+/** Clamps outlier session fields in place and returns what was changed. */
+export function clampSessionOutliers(
+  sessions: Array<{
+    id: string;
+    startedAt?: string | null;
+    durationSeconds?: number | null;
+    totalVolume?: number | null;
+  }>,
+  receivedAt: string,
+): ClampedField[] {
+  const clamped: ClampedField[] = [];
+  const receivedMs = Date.parse(receivedAt);
+  for (const session of sessions) {
+    const volume = session.totalVolume;
+    if (typeof volume === 'number' && volume > PUSH_OUTLIER_LIMITS.sessionTotalVolumeKg) {
+      session.totalVolume = PUSH_OUTLIER_LIMITS.sessionTotalVolumeKg;
+      clamped.push({
+        entity: 'session',
+        id: session.id,
+        field: 'totalVolume',
+        original: volume,
+        clamped: PUSH_OUTLIER_LIMITS.sessionTotalVolumeKg,
+      });
+    }
+    const duration = session.durationSeconds;
+    if (typeof duration === 'number' && duration > PUSH_OUTLIER_LIMITS.sessionDurationSeconds) {
+      session.durationSeconds = PUSH_OUTLIER_LIMITS.sessionDurationSeconds;
+      clamped.push({
+        entity: 'session',
+        id: session.id,
+        field: 'durationSeconds',
+        original: duration,
+        clamped: PUSH_OUTLIER_LIMITS.sessionDurationSeconds,
+      });
+    }
+    const startedAt = session.startedAt;
+    if (
+      typeof startedAt === 'string' &&
+      Date.parse(startedAt) > receivedMs + PUSH_OUTLIER_LIMITS.sessionStartFutureMs
+    ) {
+      session.startedAt = receivedAt;
+      clamped.push({
+        entity: 'session',
+        id: session.id,
+        field: 'startedAt',
+        original: startedAt,
+        clamped: receivedAt,
+      });
+    }
+  }
+  return clamped;
+}
+
+/**
  * Defense-in-depth: deduplicate rows by a key field before upserting.
  * PostgreSQL rejects an INSERT ... ON CONFLICT DO UPDATE when two rows in the
  * same statement hit the same conflict target. The pre-flight
@@ -2112,6 +2189,11 @@ async function mobileSyncPushHandler(
     // carries no `updatedAt`. Used under BOTH SYNC_LWW_ENABLED values so the
     // stored LWW key is identical whichever way the flag is set.
     const pushReceivedAt = new Date(dependencies.now()).toISOString();
+    // NF-37: clamp impossible session values before anything reads them.
+    const clamped = clampSessionOutliers(payload.sessions ?? [], pushReceivedAt);
+    if (clamped.length > 0) {
+      console.warn(`Clamped ${clamped.length} outlier session field(s)`);
+    }
     const reDeleteRacedTombstones = async (
       entity: 'routine' | 'cycle',
       table: 'routines' | 'training_cycles',
@@ -3949,6 +4031,9 @@ async function mobileSyncPushHandler(
         acknowledgedWorkoutDeletionIds,
         acknowledgedOwnershipTransferIds,
         acknowledgedDeletedCycleIds,
+        // NF-37: session fields stored at a push limit instead of the value
+        // sent. Additive; older builds ignore it.
+        clamped,
         ...(preferenceEnvelope.present ? { profilePreferencesAccepted: true } : {}),
         canonicalProfilePreferenceSections,
         profilePreferenceRejections,
