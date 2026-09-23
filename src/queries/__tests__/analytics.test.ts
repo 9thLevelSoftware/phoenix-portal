@@ -5,7 +5,19 @@ import { queryKeys } from "@/queries/keys";
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	const methods = ["select", "eq", "is", "order", "gte", "lt", "in", "limit"];
+	const methods = [
+		"select",
+		"eq",
+		"is",
+		"not",
+		"or",
+		"order",
+		"gte",
+		"lt",
+		"in",
+		"limit",
+		"range",
+	];
 	for (const m of methods) {
 		self[m] = vi.fn();
 	}
@@ -542,5 +554,146 @@ describe("volumeComparisonOptions", () => {
 		expect(result.previous).toHaveLength(1);
 		expect(result.current[0].total_volume).toBe(700);
 		expect(result.previous[0].total_volume).toBe(600);
+	});
+});
+
+describe("session trend readers page past the 1,000-row cap (F-012/F-034, NF-19)", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	/** A chain whose `limit` resolves to the next queued page. */
+	function pagedChain(pages: Array<Array<Record<string, unknown>>>) {
+		const self: Record<string, ReturnType<typeof vi.fn>> = {};
+		for (const m of ["select", "eq", "not", "or", "gte", "lt", "order"]) {
+			self[m] = vi.fn(() => self);
+		}
+		let call = 0;
+		self.limit = vi.fn(() =>
+			Promise.resolve({ data: pages[call++] ?? [], error: null }),
+		);
+		return self;
+	}
+
+	const session = (i: number) => ({
+		id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+		started_at: new Date(Date.UTC(2020, 0, 1) + i * 60_000).toISOString(),
+		form_score: 80,
+	});
+
+	it("formScoreTrendOptions('all') reads a second page and keeps the newest row", async () => {
+		const first = Array.from({ length: 1000 }, (_, i) => session(i));
+		const second = [session(1000)];
+		const chain = pagedChain([first, second]);
+		fromFn.mockImplementation(() => chain as never);
+
+		const { formScoreTrendOptions } = await import("../analytics");
+		const rows = await formScoreTrendOptions("user-1", "all").queryFn!(
+			{} as never,
+		);
+
+		expect(rows).toHaveLength(1001);
+		expect(rows.at(-1)?.id).toBe(session(1000).id);
+		expect(chain.limit).toHaveBeenCalledTimes(2);
+		// The second page starts strictly after the last row of the first.
+		const last = first[999];
+		expect(chain.or).toHaveBeenCalledWith(
+			`started_at.gt."${last.started_at}",and(started_at.eq."${last.started_at}",id.gt.${last.id})`,
+		);
+		expect(chain.order).toHaveBeenCalledWith("id", { ascending: true });
+	});
+
+	it("volumeComparisonOptions pages both windows instead of one capped select", async () => {
+		const first = Array.from({ length: 1000 }, (_, i) => ({
+			...session(i),
+			total_volume: 1,
+		}));
+		// The query is rebuilt per page and both windows are read concurrently,
+		// so route each page by window: only the previous window calls `.lt`.
+		const queues: Record<string, Array<Array<Record<string, unknown>>>> = {
+			current: [first, [{ ...session(1000), total_volume: 1 }]],
+			previous: [[]],
+		};
+		const limits: string[] = [];
+		fromFn.mockImplementation(() => {
+			let window = "current";
+			const self: Record<string, ReturnType<typeof vi.fn>> = {};
+			for (const m of ["select", "eq", "not", "or", "gte", "order"]) {
+				self[m] = vi.fn(() => self);
+			}
+			self.lt = vi.fn(() => {
+				window = "previous";
+				return self;
+			});
+			self.limit = vi.fn(() => {
+				limits.push(window);
+				return Promise.resolve({
+					data: queues[window].shift() ?? [],
+					error: null,
+				});
+			});
+			return self as never;
+		});
+
+		const { volumeComparisonOptions } = await import("../analytics");
+		const result = await volumeComparisonOptions("user-1", "all").queryFn!(
+			{} as never,
+		);
+
+		expect(result.current).toHaveLength(1001);
+		expect(result.previous).toEqual([]);
+		expect(limits.filter((w) => w === "current")).toHaveLength(2);
+	});
+});
+
+describe("session_volume_buckets time-zone fallback (NF-20)", () => {
+	beforeEach(() => {
+		vi.restoreAllMocks();
+		vi.clearAllMocks();
+	});
+
+	it("retries once in UTC when the server does not know the browser zone", async () => {
+		const tz = stubTimeZone("Mars/Olympus_Mons");
+		rpcFn
+			.mockResolvedValueOnce({
+				data: null,
+				error: {
+					code: "22023",
+					message:
+						"session_volume_buckets: unknown time zone Mars/Olympus_Mons",
+				},
+			})
+			.mockResolvedValueOnce({
+				data: [{ week_start: "2026-02-23" }],
+				error: null,
+			});
+
+		const { volumeTrendOptions } = await import("../analytics");
+		const result = await volumeTrendOptions("user-1", "4w").queryFn!(
+			{} as never,
+		);
+
+		expect(result).toEqual([{ week_start: "2026-02-23" }]);
+		expect(rpcFn).toHaveBeenCalledTimes(2);
+		expect(rpcFn.mock.calls[1][1]).toMatchObject({ p_tz: "UTC" });
+		tz.mockRestore();
+	});
+
+	it("does not retry an unknown period, which is also 22023", async () => {
+		const tz = stubTimeZone("Europe/Berlin");
+		rpcFn.mockResolvedValueOnce({
+			data: null,
+			error: {
+				code: "22023",
+				message: "session_volume_buckets: unknown period 9w",
+			},
+		});
+
+		const { volumeTrendOptions } = await import("../analytics");
+		await expect(
+			volumeTrendOptions("user-1", "9w").queryFn!({} as never),
+		).rejects.toMatchObject({ code: "22023" });
+		expect(rpcFn).toHaveBeenCalledTimes(1);
+		tz.mockRestore();
 	});
 });

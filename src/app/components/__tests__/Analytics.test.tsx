@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import {
 	Analytics,
+	buildLocalInsights,
 	selectInsightsFeed,
 	toWeeklyVolumeSeries,
 } from "../Analytics";
@@ -297,5 +298,52 @@ describe("Analytics insights precedence", () => {
 		expect(screen.getByText("Server Fresh")).toBeInTheDocument();
 		expect(screen.queryByText("Server Stale")).not.toBeInTheDocument();
 		expect(screen.queryByText("Local Volume Drop")).not.toBeInTheDocument();
+	});
+});
+
+// NF-38: the browser fallback runs the shared rule engine, so it fires at the
+// engine's thresholds (volume drop below -15%), not the old inline -20%.
+describe("buildLocalInsights uses the shared rule engine", () => {
+	const rows = (volumes: number[]) =>
+		volumes.map((total_volume) => ({ total_volume }));
+
+	it("flags a 17% volume drop that the old inline -20% rule missed", () => {
+		const insights = buildLocalInsights(
+			{ current: rows([83]), previous: rows([100]) },
+			28,
+			[],
+			"kg",
+		);
+		expect(insights.map((i) => i.title)).toContain("Volume Trending Down");
+		expect(insights.find((i) => i.title === "Volume Trending Down")?.type).toBe(
+			"warning",
+		);
+	});
+
+	it("reports the engine's per-group imbalance warning", () => {
+		const insights = buildLocalInsights(
+			{ current: rows([100, 100, 100]), previous: rows([100, 100, 100]) },
+			7,
+			[
+				{ name: "Chest", value: 70 },
+				{ name: "Legs", value: 10 },
+			],
+			"kg",
+		);
+		expect(insights.map((i) => i.title)).toContain("Legs Training Imbalance");
+	});
+
+	it("never renders an empty card", () => {
+		expect(buildLocalInsights(undefined, 28, [], "kg")).toEqual([
+			expect.objectContaining({ title: "Building Your Profile" }),
+		]);
+		expect(
+			buildLocalInsights(
+				{ current: rows([100, 100, 100]), previous: rows([100, 100, 100]) },
+				7,
+				[],
+				"kg",
+			).map((i) => i.title),
+		).toEqual(["Nothing Needs Attention"]);
 	});
 });

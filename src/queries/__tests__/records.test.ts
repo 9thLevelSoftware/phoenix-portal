@@ -6,7 +6,7 @@ import { queryKeys } from "@/queries/keys";
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	const methods = ["select", "eq", "in", "is", "order"];
+	const methods = ["select", "eq", "in", "is", "order", "range"];
 	for (const m of methods) {
 		self[m] = vi.fn();
 	}

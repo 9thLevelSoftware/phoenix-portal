@@ -49,6 +49,10 @@ import { PHOENIX } from "@/lib/colors";
 import { getExerciseProfile } from "@/lib/exercise-muscles";
 import { downloadCSV } from "@/lib/export/csv";
 import { buildFreshnessState } from "@/lib/freshness";
+import {
+	generateInsights as runInsightRules,
+	type TrainingInsight,
+} from "@/lib/insights";
 import { buildProgressionWorkbenchModel } from "@/lib/progression-workbench";
 import type { Recommendation } from "@/lib/recommendations";
 import {
@@ -75,6 +79,7 @@ import {
 import {
 	muscleGroupOptions,
 	phaseStatisticsTrendOptions,
+	periodToDays as queryPeriodDays,
 	strengthProgressOptions,
 	volumeComparisonOptions,
 	volumeTrendOptions,
@@ -381,110 +386,83 @@ interface Insight {
 	icon: typeof TrendingUp;
 }
 
-function generateInsights(
-	volumeData: Array<{ date: string; volume: number; workouts: number }>,
-	muscleGroupData: Array<{ name: string; value: number; color: string }>,
-	strengthExercises: string[],
-	totalWorkouts: number,
+const INSIGHT_ICONS: Record<TrainingInsight["type"], typeof TrendingUp> = {
+	success: TrendingUp,
+	achievement: Target,
+	warning: AlertCircle,
+	info: Activity,
+};
+
+/**
+ * The browser fallback shown while no fresh server batch exists. It runs the
+ * SAME rule engine as the scheduled `generate-insights` Edge Function
+ * (KD-14 / F-059, `@/lib/insights`), fed the same current-vs-previous period
+ * windows, so the two can never disagree on a threshold (NF-38). Inputs the
+ * browser does not have here (streaks, PR deltas, plateaus, training load)
+ * are left neutral, so those rules stay server-only rather than guessed.
+ */
+export function buildLocalInsights(
+	comparison:
+		| {
+				current: Array<{ total_volume: number | null }>;
+				previous: Array<{ total_volume: number | null }>;
+		  }
+		| undefined,
+	periodDays: number,
+	muscleGroupData: Array<{ name: string; value: number }>,
+	unit: WeightUnit,
 ): Insight[] {
-	const insights: Insight[] = [];
+	const sum = (rows: Array<{ total_volume: number | null }>) =>
+		rows.reduce((total, row) => total + (row.total_volume ?? 0), 0);
+	const current = comparison?.current ?? [];
+	const shared = runInsightRules(
+		{
+			currentVolume: sum(current),
+			previousVolume: sum(comparison?.previous ?? []),
+			muscleGroups: Object.fromEntries(
+				muscleGroupData.map((group) => [group.name, group.value]),
+			),
+			avgSessionsPerWeek:
+				periodDays > 0 ? (current.length / periodDays) * 7 : 0,
+			currentStreak: 0,
+			bestStreak: 0,
+			recentPRs: [],
+			plateauExercises: [],
+			trainingLoadScore: 0,
+		},
+		unit,
+	);
+	const insights: Insight[] = shared.map((insight) => ({
+		type:
+			insight.type === "warning"
+				? "warning"
+				: insight.type === "info"
+					? "neutral"
+					: "positive",
+		title: insight.title,
+		description: insight.description,
+		icon: INSIGHT_ICONS[insight.type],
+	}));
 
-	// 1. Volume Trend (requires >= 2 data points)
-	if (volumeData.length >= 2) {
-		const current = volumeData[volumeData.length - 1].volume;
-		const previous = volumeData[volumeData.length - 2].volume;
-		if (previous > 0) {
-			const changeRaw = ((current - previous) / previous) * 100;
-			const change = Math.abs(Math.round(changeRaw));
-			if (changeRaw > 0) {
-				insights.push({
-					type: "positive",
-					title: "Volume Trending Up",
-					description: `${change}% increase vs previous week`,
-					icon: TrendingUp,
-				});
-			} else if (changeRaw <= -20) {
-				insights.push({
-					type: "warning",
-					title: "Volume Drop Detected",
-					description: `${change}% decrease -- consider if this is an intentional deload or missed sessions`,
-					icon: TrendingDown,
-				});
-			} else {
-				insights.push({
-					type: "neutral",
-					title: "Volume Stable",
-					description: `Slight ${change}% decrease -- within normal variation`,
-					icon: Activity,
-				});
-			}
-		}
-	}
-
-	// 2. Muscle Balance (requires >= 2 muscle groups)
-	if (muscleGroupData.length >= 2) {
-		const sorted = [...muscleGroupData].sort((a, b) => b.value - a.value);
-		const dominant = sorted[0];
-		const weakest = sorted[sorted.length - 1];
-		if (weakest.value > 0 && dominant.value > 3 * weakest.value) {
-			insights.push({
-				type: "warning",
-				title: "Muscle Imbalance",
-				description: `${dominant.name} at ${dominant.value}% vs ${weakest.name} at ${weakest.value}% -- consider more ${weakest.name} work`,
-				icon: AlertCircle,
-			});
-		} else {
-			insights.push({
-				type: "positive",
-				title: "Balanced Training",
-				description: `Good distribution across ${muscleGroupData.length} muscle groups`,
-				icon: Target,
-			});
-		}
-	}
-
-	// 3. Consistency (requires workouts > 0)
-	if (totalWorkouts > 0) {
-		const avgPerWeek = Math.round(
-			totalWorkouts / Math.max(volumeData.length, 1),
-		);
-		if (avgPerWeek >= 3) {
-			insights.push({
-				type: "positive",
-				title: "Great Consistency",
-				description: `Averaging ${avgPerWeek} workouts per week`,
-				icon: Activity,
-			});
-		} else {
-			insights.push({
-				type: "neutral",
-				title: "Room to Grow",
-				description: `Averaging ${avgPerWeek} workouts per week -- 3+ is ideal for progress`,
-				icon: Activity,
-			});
-		}
-	}
-
-	// 4. Strength Tracking (requires exercises)
-	if (strengthExercises.length > 0) {
-		const displayNames = strengthExercises.slice(0, 3).join(", ");
-		insights.push({
-			type: "positive",
-			title: "Strength Tracking Active",
-			description: `Tracking progress on ${strengthExercises.length} exercises: ${displayNames}`,
-			icon: TrendingUp,
-		});
-	}
-
-	// 5. Fallback -- guaranteed at least one insight
+	// Presentation only, not a rule: never render an empty card.
 	if (insights.length === 0) {
-		insights.push({
-			type: "neutral",
-			title: "Building Your Profile",
-			description:
-				"Complete more workouts to unlock personalized training insights",
-			icon: Activity,
-		});
+		insights.push(
+			current.length > 0
+				? {
+						type: "neutral",
+						title: "Nothing Needs Attention",
+						description:
+							"No volume, balance or consistency flags for this period",
+						icon: Activity,
+					}
+				: {
+						type: "neutral",
+						title: "Building Your Profile",
+						description:
+							"Complete more workouts to unlock personalized training insights",
+						icon: Activity,
+					},
+		);
 	}
 
 	return insights;
@@ -850,11 +828,11 @@ export function Analytics() {
 	// Derive summary stats from real data
 	const totalVolume = volumeData.reduce((sum, d) => sum + d.volume, 0);
 	const totalWorkouts = volumeData.reduce((sum, d) => sum + d.workouts, 0);
-	const insights = generateInsights(
-		volumeData,
+	const insights = buildLocalInsights(
+		volumeComparison,
+		queryPeriodDays(queryPeriod),
 		muscleGroupData,
-		strengthExercises,
-		totalWorkouts,
+		unit,
 	);
 
 	// --- Hero stat deltas from volume comparison ---

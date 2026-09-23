@@ -14,9 +14,10 @@ export type SubscriptionTier = 'FREE' | 'EMBER' | 'FLAME' | 'INFERNO';
  * `now < current_period_end + ENTITLEMENT_GRACE_HOURS`, covering the gap
  * between the period rolling over and Paddle's renewal webhook landing.
  *
- * PARITY: the same predicate lives in src/lib/subscription-entitlement.ts and
- * in SQL `public.subscription_tier_for(uuid)`. All three are checked against
- * tests/fixtures/entitlement-cases.json; change them together.
+ * This is the only TypeScript implementation: the SPA re-exports it through
+ * src/lib/subscription-entitlement.ts. PARITY: SQL keeps its own copy in
+ * `public.subscription_tier_for(uuid)`; both are checked against
+ * tests/fixtures/entitlement-cases.json, so change them together.
  */
 export const ENTITLEMENT_GRACE_HOURS = 48;
 

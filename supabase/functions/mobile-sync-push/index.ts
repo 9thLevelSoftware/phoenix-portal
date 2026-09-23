@@ -38,6 +38,7 @@ import {
 import { buildExerciseProgressRows } from '../_shared/exerciseProgressRows.ts';
 import { fetchAllByParentIds } from '../_shared/pagedByParent.ts';
 import { syncBroadcastTopic } from '../_shared/syncBroadcast.ts';
+import { DEFAULT_WIRE_MODE } from '../_shared/workoutModes.ts';
 import {
   catalogLookupFromUnknown,
   resolveCatalogExerciseId,
@@ -2779,7 +2780,7 @@ async function mobileSyncPushHandler(
         reps: e.reps ?? 10,
         weight: e.weight ?? 0,
         rest_seconds: e.restSeconds ?? 90,
-        mode: e.mode ?? 'OLD_SCHOOL',
+        mode: e.mode ?? DEFAULT_WIRE_MODE,
         order_index: e.orderIndex ?? 0,
         superset_id: e.supersetId,
         superset_color: e.supersetColor,

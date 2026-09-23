@@ -30,6 +30,7 @@
 // alias to the node_modules "zod" package via vitest.config.ts.
 import { z } from "npm:zod@4.3.6";
 import { PERSONAL_RECORD_TYPES, resolvePersonalRecordType } from "./personalRecordRow.ts";
+import { DEFAULT_WIRE_MODE } from "./workoutModes.ts";
 
 // ─── Primitives ──────────────────────────────────────────────────────────
 
@@ -264,7 +265,7 @@ const routineExerciseSchema = z.object({
 	reps: nonNegIntDefault(10),
 	weight: nonNegNumberDefault(0),
 	restSeconds: nonNegIntDefault(90),
-	mode: z.string().nullish().transform((v) => v ?? "OLD_SCHOOL"),
+	mode: z.string().nullish().transform((v) => v ?? DEFAULT_WIRE_MODE),
 	orderIndex: nonNegIntDefault(0),
 	supersetId: nullableField(z.string()),
 	supersetColor: nullableField(z.string()),
