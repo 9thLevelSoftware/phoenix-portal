@@ -11787,6 +11787,13 @@ Deno.test("clampSessionOutliers clamps only values past a limit and reports each
   assertEquals(sessions[1].startedAt, "2026-09-21T12:00:00.000Z");
 });
 
+Deno.test("clampSessionOutliers: a far-future updatedAt is clamped with the start it came with", () => {
+  const receivedAt = "2026-09-20T12:00:00.000Z";
+  const sessions = [{ id: "a", startedAt: "2099-01-01T00:00:00.000Z", updatedAt: "2099-01-01T01:00:00.000Z" }];
+  clampSessionOutliers(sessions, receivedAt);
+  assertEquals([sessions[0].startedAt, sessions[0].updatedAt], [receivedAt, receivedAt]);
+});
+
 Deno.test(`NF-37 (LWW=${SYNC_LWW_ENABLED}): an outlier session is stored clamped with a 200 and reported`, async () => {
   const harness = makeHarness();
   const body = validNestedRelationshipBody();

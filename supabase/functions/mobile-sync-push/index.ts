@@ -231,6 +231,7 @@ export function clampSessionOutliers(
     startedAt?: string | null;
     durationSeconds?: number | null;
     totalVolume?: number | null;
+    updatedAt?: string | null;
   }>,
   receivedAt: string,
 ): ClampedField[] {
@@ -265,6 +266,15 @@ export function clampSessionOutliers(
       Date.parse(startedAt) > receivedMs + PUSH_OUTLIER_LIMITS.sessionStartFutureMs
     ) {
       session.startedAt = receivedAt;
+      // The same skewed clock usually dated updatedAt too, and it becomes the
+      // row's LWW key: a key parked in the future would beat every correctly
+      // clocked edit until then. Clamp it to the receipt time as well.
+      if (
+        typeof session.updatedAt === 'string' &&
+        Date.parse(session.updatedAt) > receivedMs + PUSH_OUTLIER_LIMITS.sessionStartFutureMs
+      ) {
+        session.updatedAt = receivedAt;
+      }
       clamped.push({
         entity: 'session',
         id: session.id,
