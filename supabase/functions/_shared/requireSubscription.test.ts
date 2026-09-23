@@ -5,9 +5,10 @@ import { requireSubscription, type SubscriptionTier } from "./requireSubscriptio
 // Pins the deny and fail-closed paths of the shared tier gate (F-047).
 //
 // past_due: the user decision (R-33) is that past_due KEEPS access during
-// Paddle's retry window. The entitlement predicate on this branch does not
-// implement that yet; PR 8 changes it. The `past_due -> allowed` assertion is
-// added with PR 8. Do not pin `past_due -> denied` here.
+// Paddle's retry window. That rule lives in the shared predicate and is pinned
+// by tests/fixtures/entitlement-cases.json (the `past-due-*` cases), which the
+// SQL, Edge and client suites all replay. This file pins how the gate uses the
+// predicate, not the predicate's table. Never pin `past_due -> denied` here.
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 const CORS = { "Access-Control-Allow-Origin": "https://portal.test" };

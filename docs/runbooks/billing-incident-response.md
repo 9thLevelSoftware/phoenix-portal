@@ -262,12 +262,13 @@ curl -X POST "https://api.paddle.com/notifications/{notification_id}/replay" \
 
 ### Important notes on replay
 
-- The webhook handler uses `last_event_id` for idempotency. If the original event was partially processed (idempotency check passed but upsert failed), a replay with the same `event_id` will be skipped.
-- **Workaround:** If a replay is being skipped due to idempotency, first clear the `last_event_id` in the database:
+- The webhook handler skips an event whose `event_id` equals the stored `last_event_id` (duplicate), and `apply_subscription_event` refuses an event whose `occurred_at` is not newer than the stored `last_event_occurred_at` (stale). Both return 200 and change nothing.
+- **Workaround:** If a replay is being skipped, clear **both** markers first. Clearing only `last_event_id` is not enough: the stored clock still rejects any replayed event older than it (see "Reset a stuck subscription row entirely" above).
   ```sql
-  -- Clear idempotency marker to allow reprocessing
+  -- Clear the idempotency and ordering markers to allow reprocessing
   UPDATE subscriptions
-  SET last_event_id = NULL
+  SET last_event_id = NULL,
+      last_event_occurred_at = NULL
   WHERE user_id = '<uuid>';
   ```
 - Then retry the webhook replay.
@@ -336,7 +337,8 @@ supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --li
 
 | Log message                                     | Meaning                                                          |
 | ----------------------------------------------- | ---------------------------------------------------------------- |
-| `Missing custom_data.user_id in Paddle event`   | Checkout was created without passing `user_id` in custom_data    |
+| `[Paddle] Ignoring event with missing custom_data.user_id:` | Event carries no `user_id` in custom_data; acknowledged with 200 and ignored (no retry) |
+| `[BILLING_ALERT] Malformed custom_data.user_id in Paddle event:` | `user_id` is present but not a UUID; answered 400 |
 | `Error applying subscription event for <event_type>` | Database write failed (constraint violation, connection error) |
 | `Paddle webhook handler error`                  | Unhandled exception (likely JSON parse failure or network issue) |
 | `Unhandled event type: <type>`                  | Received a non-subscription event (normal, returns 200)          |

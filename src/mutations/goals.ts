@@ -34,8 +34,10 @@ export function useCreateGoal() {
 					// KD-8: this client enters PR targets per cable. The column has
 					// no default, and a NULL basis is taken to mean a pre-PR-30
 					// client (its PR target is a doubled total and is halved by the
-					// user_goals_default_target_basis trigger). Say so explicitly so
-					// this insert is correct whichever order SPA and migration ship.
+					// user_goals_default_target_basis trigger). Say so explicitly. The
+					// supported deploy order is migration first: before
+					// 20260920003000 the column does not exist and PostgREST rejects
+					// this insert (PGRST204), so the SPA must not ship ahead of it.
 					target_basis: "per_cable",
 					exercise_name: args.exercise_name ?? null,
 					exercise_id: args.exercise_id ?? null,

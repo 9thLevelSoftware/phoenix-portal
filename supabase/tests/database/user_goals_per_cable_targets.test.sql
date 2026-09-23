@@ -34,8 +34,13 @@ ON CONFLICT (id) DO NOTHING;
 ALTER TABLE public.user_goals DISABLE TRIGGER enforce_goal_limit;
 
 -- ---------------------------------------------------------------------------
--- Deploy-order independence: the BEFORE INSERT trigger.
+-- Old clients after the migration: the BEFORE INSERT trigger.
 -- A NULL basis means a pre-PR-30 client, whose PR target is a doubled total.
+-- This is NOT deploy-order independence (the migration's own "Order-
+-- independence trigger" header overstates it and, being an applied migration,
+-- is left as is): the supported order is migration first. An SPA that ships
+-- ahead of 20260920003000 fails its goal inserts with PGRST204, because the
+-- target_basis column does not exist yet.
 -- ---------------------------------------------------------------------------
 
 -- New SPA: writes the basis explicitly. Nothing is halved.

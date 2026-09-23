@@ -20,16 +20,14 @@ auth, billing, sync, deletion/export or migrations.
 npm run dev        # Start Vite dev server at http://localhost:5173
 npm run build      # Production build to /dist
 npm test           # Vitest unit/integration suite (mock Edge by default)
-npm run typecheck  # See "Typecheck" below — read it before trusting a pass
+npm run typecheck  # tsc -p over every tsconfig project; fails on errors not in typecheck-baseline.json
+npm run typecheck:baseline  # Rewrite typecheck-baseline.json from the current state
 npm run test:e2e   # Playwright E2E (mocked REST; scripts/run-playwright-e2e.mjs)
 npm run test:sync       # tests/sync/ with MOCK_EDGE_FUNCTIONS=true
 npm run test:sync:live  # tests/sync/live/ against a preview project (dispatch-only)
 npm run check:edge-functions  # deno check over every Edge Function
 npm run test:edge             # Deno handler tests (in-process doubles, no stack)
 npm run test:edge:integration # Only the "integration: " tests, against a local stack
-npm test           # Run Vitest unit tests
-npm run typecheck  # tsc -p over every tsconfig project; fails on errors not in typecheck-baseline.json
-npm run test:e2e   # Run Playwright E2E tests
 npm run supabase -- <args>  # Pinned Supabase CLI (version in .supabase-cli-version)
 npm run test:db          # Full pgTAP suite against the local stack (CI: migrations.yml)
 npm run gen:types:local  # Regenerate src/lib/database.types.ts from the migrated local DB
@@ -38,8 +36,6 @@ npm run verify           # lint + typecheck + test + build + sourcemap/config as
 ```
 
 ### Generated types
-
-```
 
 Regenerating types after a migration change: `npm run supabase -- start`, then
 `npm run supabase -- db reset --no-seed`, then `npm run gen:types:local`, and
@@ -52,16 +48,16 @@ generator cannot express (nullable RPC args, PostgREST version) in
 
 The root `tsconfig.json` is a solution file (`"files": []` plus three project
 references), so **`tsc --noEmit` over it compiles an empty program and exits 0
-without checking anything.** On this branch `npm run typecheck` is exactly that
-command: a green `typecheck` is not evidence. Check for real with
-`npx tsc -b --force`, which compiles `tsconfig.app.json`,
-`tsconfig.node.json` and `tsconfig.test.json`. That currently reports a large
-pre-existing backlog (290 errors at the time of writing, `tests/` and `src/`
-alike). A separate PR is in flight to replace the script with a
-baseline-comparing checker so the gate fails on *new* errors only; if
-`npm run typecheck` ever takes noticeably longer than an instant, that landed
-and this paragraph is out of date. Until then, compare `npx tsc -b --force`
-before and after your change rather than assuming zero.
+without checking anything.** Never use it as a gate.
+
+`npm run typecheck` runs `scripts/typecheck.mjs`, which type-checks each
+project explicitly (`tsc -p tsconfig.app.json|tsconfig.node.json|tsconfig.test.json
+--noEmit`) and compares the errors against `typecheck-baseline.json`
+(counts per project, file and error code). It fails only on errors not in the
+baseline, so the pre-existing backlog does not block a PR. When you fix
+errors, shrink the baseline with `npm run typecheck:baseline` and commit it;
+never regenerate it to absorb a new error. The `test` project re-reports some
+`app` errors, so one fix can lower two counts.
 
 ### Edge Function tests
 
@@ -322,12 +318,6 @@ npm run test:edge          # Deno handler tests for the Edge Functions
 npm run test:edge:integration  # real-SQL "integration: " tests, local stack only
 ```
 
-**Test files:**
-- `tests/sync/transforms/weight-transform.test.ts` — Per-cable weights and the load display adapter
-- `tests/sync/mode-transform.test.ts` — Workout mode round-trips (43 tests)
-- `tests/sync/multi-device.test.ts` — Concurrent device scenarios (12 tests)
-- `tests/sync/hierarchy.test.ts` — Nested entity integrity (35 tests)
-- `tests/sync/helpers/mock-edge-functions.ts` — Mock implementation
 **Where things live** (`tests/sync/README.md` has the full tree):
 - `tests/sync/transforms/` — `weight-transform.test.ts` (per-cable loads and
   the display adapter), `mode-transform.test.ts`, `velocity-zones.test.ts`
@@ -369,7 +359,10 @@ total is shown beside it only when `exercises.cable_count` is exactly 1 or 2.
 
 ### Mobile Responsiveness
 - 768px breakpoint for mobile detection
-- Separate mobile component variants exist for Dashboard, Analytics, Challenges, Community
+- Mobile-specific components exist only for Analytics (`analytics/Mobile*Tab.tsx`,
+  `analytics/MobileChartCard.tsx`), the calendar (`CalendarWidgetMobile.tsx`) and
+  navigation (`MobileBottomNav.tsx`); Dashboard, Challenges and Community are
+  single responsive components
 - `MobileBottomNav` replaces desktop `AppSidebar` on small screens
 
 ## Key Files
@@ -417,6 +410,9 @@ Non-negotiable rules to prevent schema drift (as discovered 2026-04-20 when 5 mi
 - Push migrations with `supabase db push` (or `supabase migration up`). This is the only path that executes SQL *and* records it in `schema_migrations`.
 - Verify the artifact exists in prod after push (e.g. `SELECT 1 FROM information_schema.columns WHERE ...`).
 - If the `.github/workflows/migrations.yml` PR gate fails, fix the migration — do not bypass.
+- Timestamp a new migration **after the newest existing file** (`ls supabase/migrations | tail -1`). The older `202609200NNN00_<name>.sql` convention (NNN = PR number) sorts *before* `20260920120000` and `20260920190625`, so a new file named that way runs before functions those files create and a `CREATE OR REPLACE` of them is silently undone.
+- If a migration sets a `SET LOCAL` guard (`lock_timeout`, `statement_timeout`), wrap the whole file in an explicit `BEGIN;` … `COMMIT;`. Without it the setting only lives for the statement that sets it and the guard is inert (NF-40).
+- After any migration change, regenerate `src/lib/database.types.ts` (`npm run gen:types:local` against a freshly reset local stack) and commit it **in the same commit and at every level of a stacked PR** — `migrations.yml` runs `gen:types:check` at each commit it tests.
 
 ### DO NOT
 - **Never** run schema changes through the Supabase dashboard SQL editor. Dashboard runs bypass `supabase_migrations.schema_migrations`, and any subsequent `supabase db pull` will mark them applied without running them — the exact footgun that broke `routine_exercises.is_bodyweight`, `creator_stats`, and the benchmarks RLS policies.
@@ -432,27 +428,31 @@ Non-negotiable rules to prevent schema drift (as discovered 2026-04-20 when 5 mi
 5. Write a reconciliation migration that reapplies only the **missing** artifacts using idempotent DDL; leave already-present artifacts alone (especially views/tables of different `relkind` than the migration assumed — see the `creator_stats` materialized-view incident).
 
 ### CI coverage
-- `.github/workflows/migrations.yml` — clean-applies every migration into a fresh Supabase stack on any PR that touches `supabase/migrations/` (or the tests, types or tooling it depends on). Fails on file-vs-applied count mismatch, on any pgTAP failure (`supabase test db`, all files), and when `src/lib/database.types.ts` differs from the migrated schema.
-- `.github/workflows/prod-migration-drift.yml` — daily `supabase migration list --linked` drift detector against the prod Supabase project. Fails its own run (and emits a remediation recipe) when any local migration is not applied to prod. Required `production` environment secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROD_PROJECT_REF`, `SUPABASE_PROD_DB_PASSWORD`; protect that environment with main-only branch restrictions/reviewers. The workflow also has an in-repo `refs/heads/main` guard before any production secret-consuming step. **Detector only — does not gate `.github/workflows/deploy-edge-functions.yml` or any other deploy path.** The drift class this would surface is the one demonstrated by `9thLevelSoftware/Project-Phoenix-MP#602`, but pushing the missing migration and verifying the reporter path are separate operational steps owned by the human operator with prod DB credentials.
 
 Six workflows in `.github/workflows/`. Read the file rather than a step's
 `name:` when it matters — names go stale faster than `run:` lines.
 
 - **`ci.yml`** — on every push and PR to `main`. Jobs: `dependency-audit`
-  (`npm run audit:security`), `lint` (Biome), `typecheck` (`npm run typecheck`
-  — see the Typecheck caveat above; this job proves less than it looks),
+  (`npm run audit:security`), `lint` (Biome), `typecheck` (`npm run typecheck`,
+  the baseline-comparing checker described under "Typecheck"),
   `edge-functions` (`npm run check:edge-functions` then `npm run test:edge`,
   which runs **every** Edge handler suite, not just mobile-sync), `unit-test`
-  (`npm test`), `e2e` (Playwright, mocked REST), and `build` (production build
-  plus `assert:no-sourcemaps`).
+  (`npm test`), `e2e` (`npm run test:e2e`, Playwright against mocked REST, plus
+  `npm run test:e2e:pwa`), and `build` (production build plus
+  `assert:no-sourcemaps` and `assert:bundle-budget`). It never runs on stacked
+  PRs whose base is not `main`.
 - **`migrations.yml`** — on PRs and `main` pushes that touch
   `supabase/migrations/**`, `supabase/tests/**`, `supabase/config.toml`,
   `database.types.ts` or the CLI/type tooling. Clean-applies every migration
   into a fresh stack (`db reset --no-seed`, seed disabled), then fails on a
   file-vs-applied count mismatch, on any pgTAP failure (bare `supabase test db`
   over the whole suite), and when `npm run gen:types:check` shows
-  `database.types.ts` drifting from the migrated schema. It also runs the
-  sync-queue backlog triage after the pgTAP suite.
+  `database.types.ts` drifting from the migrated schema. Order: count check,
+  sync-queue backlog triage (which re-applies `20260920003100` and then
+  restores the production shape by re-applying `20260920005200` and
+  `20260922120000`), the pgTAP suite plus a test-count floor
+  (`PGTAP_TEST_FLOOR`), the types check, the definer-grant guard on its own,
+  and the `scripts/migration-gating/run.sh` checks for `20260920007600`.
 - **`edge-integration.yml`** — the real-SQL Deno tests. `pull_request` has no
   `paths:` filter (so it always reports and is safe as a required check); a
   `changes` job decides whether the heavy job runs. It starts a local stack,
@@ -490,8 +490,3 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
 
 The Supabase CLI version is pinned in `.supabase-cli-version` and reached
 through `npm run supabase -- <args>`; the workflows install that exact version.
-- `.github/workflows/migrations.yml` — clean-applies every migration into a fresh Supabase stack on any PR that touches `supabase/migrations/` (or the tests, types or tooling it depends on). Fails on file-vs-applied count mismatch, on any pgTAP failure (`supabase test db`, all files), and when `src/lib/database.types.ts` differs from the migrated schema.
-- `.github/workflows/prod-migration-drift.yml` — daily `supabase migration list --linked` drift detector against the prod Supabase project. Fails its own run (and emits a remediation recipe) when any local migration is not applied to prod. Required `production` environment secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROD_PROJECT_REF`, `SUPABASE_PROD_DB_PASSWORD`; protect that environment with main-only branch restrictions/reviewers. The workflow also has an in-repo `refs/heads/main` guard before any production secret-consuming step. **Detector only — does not itself gate any deploy path.** (`.github/workflows/deploy-edge-functions.yml` runs the same check as its own pre-deploy gate, plus `check:edge-functions` and `test:edge` in a `verify` job the deploy needs.) The drift class this would surface is the one demonstrated by `9thLevelSoftware/Project-Phoenix-MP#602`, but pushing the missing migration and verifying the reporter path are separate operational steps owned by the human operator with prod DB credentials.
-- `.github/workflows/prod-migration-drift.yml` — daily `supabase migration list --linked` drift detector against the prod Supabase project. Fails its own run (and emits a remediation recipe) when any local migration is not applied to prod. Required `production` environment secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROD_PROJECT_REF`, `SUPABASE_PROD_DB_PASSWORD`; protect that environment with main-only branch restrictions/reviewers. The workflow also has an in-repo `refs/heads/main` guard before any production secret-consuming step. **Detector only — does not gate `.github/workflows/deploy-edge-functions.yml` or any other deploy path.** The drift class this would surface is the one demonstrated by `9thLevelSoftware/Project-Phoenix-MP#602`, but pushing the missing migration and verifying the reporter path are separate operational steps owned by the human operator with prod DB credentials.
-- `.github/workflows/migrations.yml` — clean-applies every migration into a fresh Supabase stack on any PR that touches `supabase/migrations/`. Fails on file-vs-applied count mismatch.
-- `.github/workflows/prod-migration-drift.yml` — daily `supabase migration list --linked` drift detector against the prod Supabase project. Fails its own run (and emits a remediation recipe) when any local migration is not applied to prod. Required `production` environment secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROD_PROJECT_REF`, `SUPABASE_PROD_DB_PASSWORD`; protect that environment with main-only branch restrictions/reviewers. The workflow also has an in-repo `refs/heads/main` guard before any production secret-consuming step. **Detector only — does not itself gate any deploy path.** (`.github/workflows/deploy-edge-functions.yml` runs the same check as its own pre-deploy gate, plus `check:edge-functions` and `test:edge` in a `verify` job the deploy needs.) The drift class this would surface is the one demonstrated by `9thLevelSoftware/Project-Phoenix-MP#602`, but pushing the missing migration and verifying the reporter path are separate operational steps owned by the human operator with prod DB credentials.
