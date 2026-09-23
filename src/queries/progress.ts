@@ -121,8 +121,8 @@ export function weeklySummaryOptions(
 			const since = new Date();
 			since.setDate(since.getDate() - daysBack);
 
-			// Explicit columns: velocity_estimated_1rm_kg is INFERNO-only and will
-			// stop being client-readable (NF-36); a `*` select would then be refused.
+			// Explicit columns: velocity_estimated_1rm_kg is INFERNO-only and not
+			// client-readable (NF-36, 20260925900000); a `*` select is refused.
 			let query = supabase
 				.from("exercise_progress")
 				.select(
