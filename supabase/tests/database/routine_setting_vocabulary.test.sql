@@ -203,11 +203,11 @@ SELECT ok(
     'authenticated cannot execute the trigger function directly'
 );
 
--- A real SPA-shaped write: authenticated EMBER user through RLS.
+-- A real SPA-shaped write: authenticated FLAME user through RLS.
 INSERT INTO public.subscriptions (user_id, tier, status, current_period_end)
 VALUES (
     'a2a2a2a2-0000-4000-8000-000000000011'::uuid,
-    'EMBER',
+    'FLAME',
     'active',
     now() + INTERVAL '30 days'
 )
