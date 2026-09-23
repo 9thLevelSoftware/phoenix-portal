@@ -399,7 +399,7 @@ export function Dashboard() {
 						<div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
 							<Flame className="w-8 h-8 text-primary" fill={PHOENIX().ember} />
 						</div>
-						<h1 className="text-display-2 mb-3 text-foreground">
+						<h1 className="text-h1 mb-3 text-foreground">
 							Welcome to Phoenix Portal
 						</h1>
 						<p className="text-muted-foreground max-w-xs mx-auto">
@@ -420,7 +420,7 @@ export function Dashboard() {
 										<TrendingUp className="w-5 h-5 text-foreground" />
 									</div>
 									<div>
-										<h3 className="font-semibold text-foreground">
+										<h3 className="text-h3 font-semibold text-foreground">
 											Track your progress
 										</h3>
 										<p className="text-xs text-muted-foreground">
@@ -443,7 +443,7 @@ export function Dashboard() {
 											<Dumbbell className="w-5 h-5 text-foreground" />
 										</div>
 										<div>
-											<h3 className="font-semibold text-foreground">
+											<h3 className="text-h3 font-semibold text-foreground">
 												Build custom routines
 											</h3>
 											<p className="text-xs text-muted-foreground">
@@ -468,7 +468,7 @@ export function Dashboard() {
 											<Trophy className="w-5 h-5 text-foreground" />
 										</div>
 										<div>
-											<h3 className="font-semibold text-foreground">
+											<h3 className="text-h3 font-semibold text-foreground">
 												Join challenges
 											</h3>
 											<p className="text-xs text-muted-foreground">
@@ -493,7 +493,7 @@ export function Dashboard() {
 						<div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
 							<Flame className="w-10 h-10 text-primary" />
 						</div>
-						<h1 className="text-display-1 mb-4 text-foreground">
+						<h1 className="text-h1 mb-4 text-foreground">
 							Welcome to Phoenix Portal
 						</h1>
 						<p className="text-xl text-muted-foreground max-w-xl mx-auto">
@@ -513,7 +513,7 @@ export function Dashboard() {
 								<div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center mb-4">
 									<TrendingUp className="w-6 h-6 text-foreground" />
 								</div>
-								<h3 className="text-lg font-semibold text-foreground mb-2">
+								<h3 className="text-h3 font-semibold text-foreground mb-2">
 									Track your progress
 								</h3>
 								<p className="text-sm text-muted-foreground">
@@ -529,7 +529,7 @@ export function Dashboard() {
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
 										<Dumbbell className="w-6 h-6 text-foreground" />
 									</div>
-									<h3 className="text-lg font-semibold text-foreground mb-2">
+									<h3 className="text-h3 font-semibold text-foreground mb-2">
 										Build custom routines
 									</h3>
 									<p className="text-sm text-muted-foreground">
@@ -546,7 +546,7 @@ export function Dashboard() {
 									<div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center mb-4">
 										<Trophy className="w-6 h-6 text-foreground" />
 									</div>
-									<h3 className="text-lg font-semibold text-foreground mb-2">
+									<h3 className="text-h3 font-semibold text-foreground mb-2">
 										Join challenges
 									</h3>
 									<p className="text-sm text-muted-foreground">
@@ -570,7 +570,7 @@ export function Dashboard() {
 				<div className="sticky top-0 z-40 bg-surface-1 border-b border-secondary px-4 py-4">
 					<div className="flex items-center justify-between">
 						<div>
-							<h1 className="text-2xl font-bold text-foreground">
+							<h1 className="text-h1 font-bold text-foreground">
 								Welcome back!
 							</h1>
 							<p className="text-sm text-muted-foreground">Let's crush today</p>
@@ -640,7 +640,7 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.2 }}
 					>
-						<h2 className="text-lg font-semibold text-foreground mb-3">
+						<h2 className="text-h2 font-semibold text-foreground mb-3">
 							Today's Workout
 						</h2>
 						{activeCycle ? (
@@ -672,7 +672,7 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.3 }}
 					>
-						<h2 className="text-lg font-semibold text-foreground mb-3">
+						<h2 className="text-h2 font-semibold text-foreground mb-3">
 							Quick Stats
 						</h2>
 						{workoutsLoading ? (
@@ -739,7 +739,7 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.4 }}
 					>
-						<h2 className="text-lg font-semibold text-foreground mb-3">
+						<h2 className="text-h2 font-semibold text-foreground mb-3">
 							This Week
 						</h2>
 						{statsLoading ? (
@@ -821,7 +821,7 @@ export function Dashboard() {
 						transition={{ delay: 0.5 }}
 					>
 						<div className="flex items-center justify-between mb-3">
-							<h2 className="text-lg font-semibold text-foreground">
+							<h2 className="text-h2 font-semibold text-foreground">
 								Recent Activity
 							</h2>
 							<Link
@@ -879,7 +879,7 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						className="mb-8 pb-8 border-b border-border"
 					>
-						<h1 className="text-display-1 mb-2">
+						<h1 className="text-h1 mb-2">
 							Welcome back,{" "}
 							<span className="text-primary">
 								{profile?.display_name ??
@@ -929,7 +929,7 @@ export function Dashboard() {
 										/>
 									</motion.div>
 									<div>
-										<h3 className="text-3xl font-bold mb-1 text-foreground font-data">
+										<h3 className="text-h2 font-bold mb-1 text-foreground font-data">
 											<NumberFlow
 												value={streak ?? 0}
 												className="tabular-nums"
@@ -954,7 +954,7 @@ export function Dashboard() {
 							className="col-span-1 lg:col-span-7"
 						>
 							<div className="signal-panel p-6 h-full">
-								<h3 className="text-lg font-medium mb-6 text-foreground">
+								<h3 className="text-h2 font-medium mb-6 text-foreground">
 									Quick Stats
 								</h3>
 								{workoutsLoading ? (
@@ -1048,7 +1048,7 @@ export function Dashboard() {
 							) : (
 								<div className="signal-panel p-6 flex flex-col items-center justify-center text-center h-full">
 									<Calendar className="w-12 h-12 text-primary mb-4 opacity-80" />
-									<h3 className="text-xl font-medium text-foreground mb-6">
+									<h3 className="text-h2 font-medium text-foreground mb-6">
 										Scheduled
 										<br />
 										Workout
@@ -1074,7 +1074,7 @@ export function Dashboard() {
 								<ChartSkeleton />
 							) : (
 								<div className="signal-panel p-6 flex flex-col h-full">
-									<h3 className="text-lg font-medium mb-6 text-foreground">
+									<h3 className="text-h2 font-medium mb-6 text-foreground">
 										Weekly Volume
 									</h3>
 									{weeklyTotal === 0 ? (
@@ -1155,7 +1155,7 @@ export function Dashboard() {
 							>
 								<Card className="p-5 signal-panel">
 									<div className="flex items-center justify-between mb-4">
-										<h3 className="text-xl text-foreground">Recent Activity</h3>
+										<h3 className="text-h2 text-foreground">Recent Activity</h3>
 										<Button
 											variant="ghost"
 											className="text-primary hover:bg-primary/10"
@@ -1229,7 +1229,7 @@ export function Dashboard() {
 									transition={{ delay: 0.45 }}
 								>
 									<Card className="p-5 signal-panel">
-										<h3 className="text-xl text-foreground mb-6">
+										<h3 className="text-h2 text-foreground mb-6">
 											Volume Breakdown
 										</h3>
 										<ResponsiveContainer width="100%" height={200}>
@@ -1309,7 +1309,7 @@ export function Dashboard() {
 							{/* Recent PRs */}
 							<motion.div variants={fadeUp}>
 								<Card className="p-5 signal-panel">
-									<h3 className="text-xl text-foreground mb-4 flex items-center gap-2">
+									<h3 className="text-h2 text-foreground mb-4 flex items-center gap-2">
 										<Trophy className="w-5 h-5 text-accent" />
 										Recent PRs
 									</h3>
@@ -1370,7 +1370,7 @@ export function Dashboard() {
 							{/* Active Challenges */}
 							<motion.div variants={fadeUp}>
 								<Card className="p-5 signal-panel">
-									<h3 className="text-xl text-foreground mb-4">
+									<h3 className="text-h2 text-foreground mb-4">
 										Active Challenges
 									</h3>
 									<ActiveChallengesSection userId={user?.id ?? ""} />
@@ -1380,7 +1380,7 @@ export function Dashboard() {
 							{/* Badge Showcase */}
 							<motion.div variants={fadeUp}>
 								<Card className="p-5 signal-panel">
-									<h3 className="text-xl text-foreground mb-4">
+									<h3 className="text-h2 text-foreground mb-4">
 										Recent Badges
 									</h3>
 									{badgesLoading ? (

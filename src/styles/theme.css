@@ -103,6 +103,22 @@
   --semantic-info: #6ba3f7;
   --semantic-negative: #ff5252;
   --semantic-neutral: #4a4a56;
+
+  /* Typography scale */
+  --text-display: 2.25rem;
+  --text-display-lh: 2.5rem;
+  --text-h1: 1.875rem;
+  --text-h1-lh: 2.25rem;
+  --text-h2: 1.5rem;
+  --text-h2-lh: 2rem;
+  --text-h3: 1.25rem;
+  --text-h3-lh: 1.75rem;
+  --text-body: 1rem;
+  --text-body-lh: 1.5rem;
+  --text-small: 0.875rem;
+  --text-small-lh: 1.25rem;
+  --text-micro: 0.75rem;
+  --text-micro-lh: 1rem;
 }
 
 :root[data-theme='light'] {
@@ -196,6 +212,22 @@
   --semantic-negative: var(--destructive);
   --semantic-neutral: #6b7280;
 
+  /* Typography scale */
+  --text-display: 2.25rem;
+  --text-display-lh: 2.5rem;
+  --text-h1: 1.875rem;
+  --text-h1-lh: 2.25rem;
+  --text-h2: 1.5rem;
+  --text-h2-lh: 2rem;
+  --text-h3: 1.25rem;
+  --text-h3-lh: 1.75rem;
+  --text-body: 1rem;
+  --text-body-lh: 1.5rem;
+  --text-small: 0.875rem;
+  --text-small-lh: 1.25rem;
+  --text-micro: 0.75rem;
+  --text-micro-lh: 1rem;
+
   /* Data-viz colors must stay brandable but readable on white: */
   --cable-a: #d94e1f;
   --cable-b: #2563eb;
@@ -257,6 +289,20 @@
   --color-surface-3: var(--surface-3);
   --color-surface-overlay: var(--surface-overlay);
   --font-family-display: var(--font-display);
+  --font-size-display: var(--text-display);
+  --font-size-display--line-height: var(--text-display-lh);
+  --font-size-h1: var(--text-h1);
+  --font-size-h1--line-height: var(--text-h1-lh);
+  --font-size-h2: var(--text-h2);
+  --font-size-h2--line-height: var(--text-h2-lh);
+  --font-size-h3: var(--text-h3);
+  --font-size-h3--line-height: var(--text-h3-lh);
+  --font-size-body: var(--text-body);
+  --font-size-body--line-height: var(--text-body-lh);
+  --font-size-small: var(--text-small);
+  --font-size-small--line-height: var(--text-small-lh);
+  --font-size-micro: var(--text-micro);
+  --font-size-micro--line-height: var(--text-micro-lh);
   --color-semantic-positive: var(--semantic-positive);
   --color-semantic-caution: var(--semantic-caution);
   --color-semantic-info: var(--semantic-info);

@@ -1201,7 +1201,7 @@ export function Analytics() {
 				{/* Compact Header */}
 				<div className="sticky top-0 bg-surface-1 z-10 px-4 py-3 border-b border-secondary">
 					<div className="flex items-center justify-between">
-						<h1 className="text-xl font-bold text-foreground">Analytics Hub</h1>
+						<h1 className="text-h1 font-bold text-foreground">Analytics Hub</h1>
 						<div className="flex items-center gap-2">
 							<Select value={timePeriod} onValueChange={setTimePeriod}>
 								<SelectTrigger className="w-20 h-8 text-sm bg-surface-2 border-secondary">
@@ -1397,9 +1397,7 @@ export function Analytics() {
 					{/* Header */}
 					<div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 						<div>
-							<h1 className="text-display-2 mb-2 text-foreground">
-								Analytics Hub
-							</h1>
+							<h1 className="text-h1 mb-2 text-foreground">Analytics Hub</h1>
 							<p className="text-muted-foreground">
 								Comprehensive insights into your training
 							</p>

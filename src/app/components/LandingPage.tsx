@@ -368,7 +368,7 @@ export function LandingPage() {
 				{showForgotPassword ? (
 					<div className="space-y-4">
 						<div className="text-center mb-4">
-							<h3 className="text-lg font-semibold text-foreground mb-1">
+							<h3 className="text-h3 font-semibold text-foreground mb-1">
 								Reset your password
 							</h3>
 							<p className="text-sm text-muted-foreground">
@@ -768,7 +768,7 @@ export function LandingPage() {
 					className="text-center z-10 flex flex-col items-center max-w-4xl mx-auto"
 				>
 					<motion.h1
-						className="mt-8 text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight font-family-display"
+						className="mt-8 text-display tracking-tight font-family-display"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.2 }}
@@ -777,7 +777,7 @@ export function LandingPage() {
 					</motion.h1>
 
 					<motion.p
-						className="mt-6 text-xl sm:text-2xl md:text-3xl text-secondary-foreground"
+						className="mt-6 text-h2 text-secondary-foreground"
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.4 }}
@@ -842,7 +842,7 @@ export function LandingPage() {
 			<section className="relative py-24 px-4 sm:px-6 lg:px-8">
 				<div className="max-w-4xl mx-auto text-center">
 					<motion.h2
-						className="text-4xl sm:text-5xl md:text-6xl tracking-tight font-family-display text-foreground"
+						className="text-h1 tracking-tight font-family-display text-foreground"
 						initial={{ opacity: 0, y: 20 }}
 						whileInView={{ opacity: 1, y: 0 }}
 						viewport={{ once: true }}
@@ -894,7 +894,7 @@ export function LandingPage() {
 						className="text-center mb-16"
 					>
 						<p className="eyebrow text-primary mb-3">WHAT YOU GET</p>
-						<h2 className="text-3xl sm:text-4xl mb-4 text-foreground font-family-display">
+						<h2 className="text-h1 mb-4 text-foreground font-family-display">
 							What your machine captures — finally visible.
 						</h2>
 						<p className="text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -923,7 +923,7 @@ export function LandingPage() {
 											{feature.badge}
 										</span>
 									</div>
-									<h3 className="text-lg font-semibold mb-1.5 text-foreground">
+									<h3 className="text-h2 font-semibold mb-1.5 text-foreground">
 										{feature.title}
 									</h3>
 									<p className="text-sm text-muted-foreground leading-relaxed">
@@ -946,7 +946,7 @@ export function LandingPage() {
 						className="text-center mb-10"
 					>
 						<p className="eyebrow text-primary mb-3">TRY IT</p>
-						<h2 className="text-3xl sm:text-4xl mb-3 text-foreground font-family-display">
+						<h2 className="text-h1 mb-3 text-foreground font-family-display">
 							Explore a real force curve.
 						</h2>
 						<p className="text-lg text-muted-foreground max-w-xl mx-auto">
@@ -975,7 +975,7 @@ export function LandingPage() {
 						className="text-center mb-16"
 					>
 						<p className="eyebrow text-primary mb-3">PRICING</p>
-						<h2 className="text-3xl sm:text-4xl mb-4 text-foreground font-family-display">
+						<h2 className="text-h1 mb-4 text-foreground font-family-display">
 							Plans
 						</h2>
 						<p className="text-lg text-muted-foreground">
@@ -1010,7 +1010,7 @@ export function LandingPage() {
 											Coming Soon
 										</div>
 									)}
-									<h3 className="text-2xl mb-2 text-foreground text-center">
+									<h3 className="text-h2 mb-2 text-foreground text-center">
 										{tier.name}
 									</h3>
 									<div className="text-center mb-6">
@@ -1074,7 +1074,7 @@ export function LandingPage() {
 						whileInView={{ opacity: 1, y: 0 }}
 						viewport={{ once: true }}
 					>
-						<h2 className="text-3xl sm:text-4xl mb-4 text-foreground font-family-display">
+						<h2 className="text-h1 mb-4 text-foreground font-family-display">
 							Start syncing workouts.
 						</h2>
 						<p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto leading-relaxed">
