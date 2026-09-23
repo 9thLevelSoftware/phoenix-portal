@@ -130,8 +130,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_personal_records_legacy_identity
 
 COMMENT ON INDEX public.uq_personal_records_legacy_identity IS
   'F-062: live legacy (source IS NULL) personal_records are unique on derived '
-  'identity plus content (exercise_name, muscle_group, value, unit, previous_value, '
-  'weight_kg, reps, session_id), NULLs equal. '
+  'identity (profile, exercise, achieved_at to the ms, record_type, workout_phase) '
+  'plus content (exercise_name, muscle_group, value, unit, previous_value, weight_kg, '
+  'reps, session_id), NULLs equal; the free-text parts are keyed as md5() digests. '
   'set_derived rows use uq_personal_records_set_derived_identity; dedicated rows '
   'stay id-keyed (F335).';
 
