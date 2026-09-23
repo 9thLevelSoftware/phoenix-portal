@@ -228,7 +228,8 @@ async function readPagerPage(
     if (cursor && isInvalidInput(error as PgError)) return { ok: false, reason: 'invalid_cursor', error };
     return { ok: false, reason: 'query_failed', error };
   }
-  const rows = ((data ?? []) as Row[]).map((row) => {
+  // One jsonb array per call (never a row set PostgREST could cap).
+  const rows = ((Array.isArray(data) ? data : []) as Row[]).map((row) => {
     const out: Row = {};
     for (const column of entry.columns) out[column] = row[column];
     return out;
@@ -237,7 +238,7 @@ async function readPagerPage(
   const lastKey: ExportCursor = { [cursorColumn]: rows[rows.length - 1][cursorColumn] as CursorValue };
   const probe = await call(lastKey[cursorColumn], 1);
   if (probe.error) return { ok: false, reason: 'query_failed', error: probe.error };
-  const nextCursor = ((probe.data ?? []) as Row[]).length > 0 ? lastKey : null;
+  const nextCursor = Array.isArray(probe.data) && probe.data.length > 0 ? lastKey : null;
   return { ok: true, rows, nextCursor, tableMissing: false };
 }
 
