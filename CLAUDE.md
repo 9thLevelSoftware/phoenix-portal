@@ -450,8 +450,9 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
   over the whole suite), and when `npm run gen:types:check` shows
   `database.types.ts` drifting from the migrated schema. Order: count check,
   sync-queue backlog triage (which re-applies `20260920003100` and then
-  restores the production shape by re-applying `20260920005200` and
-  `20260922120000`), the pgTAP suite plus a test-count floor
+  restores the production shape with a second `db reset --no-seed`, because
+  re-applying individual migrations would clobber later definitions), the
+  pgTAP suite plus a test-count floor
   (`PGTAP_TEST_FLOOR`), the types check, the definer-grant guard on its own,
   and the `scripts/migration-gating/run.sh` checks for `20260920007600`.
 - **`edge-integration.yml`** — the real-SQL Deno tests. `pull_request` has no
