@@ -12234,6 +12234,7 @@ Deno.test("repairEpochZeroSessionStarts: a pre-2000 updatedAt is not used; the r
   ];
   repairEpochZeroSessionStarts(sessions, receivedAt);
   assertEquals(sessions[0].startedAt, receivedAt);
+  assertEquals(sessions[0].updatedAt, receivedAt, "the corrupt LWW key is replaced too");
 });
 
 Deno.test("repairEpochZeroSessionStarts: group C — pre-2000 with a plausible short duration keeps the duration", () => {
