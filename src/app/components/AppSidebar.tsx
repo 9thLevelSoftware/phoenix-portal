@@ -12,7 +12,7 @@ import {
 	Users,
 } from "lucide-react";
 import * as React from "react";
-import { NavLink, useLocation } from "react-router";
+import { Link, NavLink, useLocation } from "react-router";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -148,15 +148,27 @@ export function AppSidebar() {
 
 	const userId = user?.id ?? "";
 	const isNavItemActive = (item: NavItem) => {
+		const fullPath = `${location.pathname}${location.search}`;
+
+		// Exact match on path+search — most specific wins
 		if (item.path.includes("?")) {
-			return `${location.pathname}${location.search}` === item.path;
+			return fullPath === item.path;
 		}
 
-		return (
-			location.pathname === item.path ||
-			(item.path !== "/dashboard" &&
-				location.pathname.startsWith(`${item.path}/`))
-		);
+		if (location.pathname !== item.path) {
+			// Prefix-match for nested routes (not /dashboard itself)
+			return (
+				item.path !== "/dashboard" &&
+				location.pathname.startsWith(`${item.path}/`)
+			);
+		}
+
+		// The specific Settings link owns this profile query state.
+		if (item.path === "/profile" && location.search === "?tab=settings") {
+			return false;
+		}
+
+		return true;
 	};
 
 	const renderNavItems = (items: NavItem[]) =>
@@ -278,7 +290,7 @@ export function AppSidebar() {
 								tooltip="Profile"
 								size="lg"
 							>
-								<NavLink
+								<Link
 									to="/profile"
 									aria-label="Profile"
 									aria-current={
@@ -295,7 +307,7 @@ export function AppSidebar() {
 									<span className="group-data-[collapsible=icon]:hidden">
 										Profile
 									</span>
-								</NavLink>
+								</Link>
 							</SidebarMenuButton>
 						</SidebarMenuItem>
 						<SidebarMenuItem>

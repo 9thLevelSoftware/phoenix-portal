@@ -54,4 +54,24 @@ describe("AppSidebar", () => {
 			"aria-current",
 		);
 	});
+
+	it("marks only Settings current when viewing profile settings", () => {
+		render(
+			<QueryClientProvider client={new QueryClient()}>
+				<MemoryRouter initialEntries={["/profile?tab=settings"]}>
+					<SidebarProvider>
+						<AppSidebar />
+					</SidebarProvider>
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+
+		expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
+			"aria-current",
+			"page",
+		);
+		expect(screen.getByRole("link", { name: "Profile" })).not.toHaveAttribute(
+			"aria-current",
+		);
+	});
 });
