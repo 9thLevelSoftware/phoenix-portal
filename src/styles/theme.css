@@ -119,6 +119,7 @@
   --text-small-lh: 1.25rem;
   --text-micro: 0.75rem;
   --text-micro-lh: 1rem;
+  --page-stack-gap: 1.5rem;
 }
 
 :root[data-theme='light'] {
@@ -227,6 +228,7 @@
   --text-small-lh: 1.25rem;
   --text-micro: 0.75rem;
   --text-micro-lh: 1rem;
+  --page-stack-gap: 1.5rem;
 
   /* Data-viz colors must stay brandable but readable on white: */
   --cable-a: #d94e1f;
@@ -314,6 +316,11 @@
   --color-signal-warn: var(--signal-warn);
   --color-signal-danger: var(--signal-danger);
   --font-family-data: var(--font-data);
+}
+
+.page-stack {
+  display: grid;
+  gap: var(--page-stack-gap);
 }
 
 /* Wire shadow values to Tailwind shadow-sm/md/lg utility classes */
