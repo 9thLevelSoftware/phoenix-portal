@@ -129,5 +129,71 @@ SELECT results_eq(
     'the gate removes only the tombstone the newer edit beat'
 );
 
+SELECT diag('database:sync-tombstone-race-and-partial-write');
+
+-- A delete at clock 10 raced an edit at clock 09: the push's cleanup deletes
+-- the re-created row without a clock. The tombstone keeps clock 10, so an
+-- edit at clock 11 still wins.
+INSERT INTO public.sync_tombstones (user_id, entity, entity_id, deleted_at, client_deleted_at)
+VALUES ('24242424-0000-4000-8000-000000000001', 'cycle', '24242424-0000-4000-8000-0000000000d1',
+        now() - interval '1 second', '2026-09-20T10:00:00Z');
+INSERT INTO public.training_cycles (id, user_id, name, updated_at, client_updated_at)
+VALUES ('24242424-0000-4000-8000-0000000000d1', '24242424-0000-4000-8000-000000000001',
+        'Raced edit', now() + interval '1 day', '2026-09-20T09:00:00Z');
+DELETE FROM public.training_cycles WHERE id = '24242424-0000-4000-8000-0000000000d1';
+SELECT is(
+    (SELECT client_deleted_at FROM public.sync_tombstones
+      WHERE entity_id = '24242424-0000-4000-8000-0000000000d1'),
+    '2026-09-20T10:00:00Z'::timestamptz,
+    'a clockless re-delete of a resurrection keeps the original delete clock'
+);
+SELECT results_eq(
+    $sql$ SELECT skipped FROM public.apply_sync_tombstone_gate('24242424-0000-4000-8000-000000000001',
+            '[{"entity":"cycle","id":"24242424-0000-4000-8000-0000000000d1","clock":"2026-09-20T11:00:00Z"}]') $sql$,
+    $values$ VALUES (false) $values$,
+    'an edit strictly newer than the original delete still wins'
+);
+
+-- Partial write: a stale row (key 09) is live alongside its tombstone (10).
+INSERT INTO public.sync_tombstones (user_id, entity, entity_id, deleted_at, client_deleted_at)
+VALUES ('24242424-0000-4000-8000-000000000001', 'routine', '24242424-0000-4000-8000-0000000000d2',
+        now() - interval '1 second', '2026-09-20T10:00:00Z');
+INSERT INTO public.routines (id, user_id, name, client_updated_at)
+VALUES ('24242424-0000-4000-8000-0000000000d2', '24242424-0000-4000-8000-000000000001',
+        'Resurrected', '2026-09-20T09:00:00Z');
+SELECT results_eq(
+    $sql$ SELECT skipped FROM public.apply_sync_tombstone_gate('24242424-0000-4000-8000-000000000001',
+            '[{"entity":"routine","id":"24242424-0000-4000-8000-0000000000d2","clock":"2026-09-20T09:30:00Z"}]') $sql$,
+    $values$ VALUES (true) $values$,
+    'a stale edit of a live resurrected row is skipped'
+);
+SELECT ok(
+    NOT EXISTS (SELECT 1 FROM public.routines WHERE id = '24242424-0000-4000-8000-0000000000d2')
+    AND (SELECT client_deleted_at FROM public.sync_tombstones
+          WHERE entity_id = '24242424-0000-4000-8000-0000000000d2') = '2026-09-20T10:00:00Z'::timestamptz,
+    'the resurrected row is deleted again and the tombstone keeps its clock'
+);
+
+-- Partial write the other way: the live row (key 11) had won; only the
+-- tombstone clear was lost.
+INSERT INTO public.sync_tombstones (user_id, entity, entity_id, deleted_at, client_deleted_at)
+VALUES ('24242424-0000-4000-8000-000000000001', 'routine', '24242424-0000-4000-8000-0000000000d3',
+        now() - interval '1 second', '2026-09-20T10:00:00Z');
+INSERT INTO public.routines (id, user_id, name, client_updated_at)
+VALUES ('24242424-0000-4000-8000-0000000000d3', '24242424-0000-4000-8000-000000000001',
+        'Winning edit', '2026-09-20T11:00:00Z');
+SELECT is(
+    (SELECT count(*)::int FROM public.apply_sync_tombstone_gate('24242424-0000-4000-8000-000000000001',
+        '[{"entity":"routine","id":"24242424-0000-4000-8000-0000000000d3","clock":"2026-09-20T09:30:00Z"}]')),
+    0,
+    'a live row newer than its tombstone is not skipped'
+);
+SELECT ok(
+    EXISTS (SELECT 1 FROM public.routines WHERE id = '24242424-0000-4000-8000-0000000000d3')
+    AND NOT EXISTS (SELECT 1 FROM public.sync_tombstones
+                     WHERE entity_id = '24242424-0000-4000-8000-0000000000d3'),
+    'its stale tombstone is removed and the row stays'
+);
+
 SELECT * FROM finish();
 ROLLBACK;

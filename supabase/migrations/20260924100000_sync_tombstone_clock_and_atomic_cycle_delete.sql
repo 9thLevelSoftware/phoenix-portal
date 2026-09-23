@@ -58,6 +58,7 @@ AS $$
 DECLARE
   v_clock_text TEXT;
   v_clock TIMESTAMPTZ;
+  v_has_clock BOOLEAN;
 BEGIN
   -- Account deletion: auth.users is already gone while its cascade deletes
   -- routines/cycles. Record nothing for a deleted user.
@@ -68,17 +69,26 @@ BEGIN
   -- delete_cycles_clocked sets this around its own DELETE; every other
   -- delete path records now().
   v_clock_text := pg_catalog.current_setting('phoenix.sync_delete_clock', true);
-  v_clock := CASE
-    WHEN v_clock_text IS NULL OR v_clock_text = '' THEN now()
-    ELSE v_clock_text::TIMESTAMPTZ
-  END;
+  v_has_clock := v_clock_text IS NOT NULL AND v_clock_text <> '';
+  v_clock := CASE WHEN v_has_clock THEN v_clock_text::TIMESTAMPTZ ELSE now() END;
 
+  -- A clockless delete of a row whose tombstone already exists and is not
+  -- older than the row's own LWW key is a re-delete of a resurrection (the
+  -- push's race cleanup, the gate): it keeps the original delete's clock, so
+  -- an edit strictly newer than that delete can still win. A row newer than
+  -- the tombstone was a real re-creation, and its delete is dated now().
   INSERT INTO public.sync_tombstones (user_id, entity, entity_id, deleted_at, client_deleted_at)
   VALUES (OLD.user_id, TG_ARGV[0], OLD.id, now(), v_clock)
   ON CONFLICT (user_id, entity, entity_id)
   DO UPDATE SET
     deleted_at = now(),
-    client_deleted_at = GREATEST(public.sync_tombstones.client_deleted_at, EXCLUDED.client_deleted_at);
+    client_deleted_at = CASE
+      WHEN v_has_clock
+        OR (OLD.client_updated_at IS NOT NULL
+            AND OLD.client_updated_at > public.sync_tombstones.client_deleted_at)
+      THEN GREATEST(public.sync_tombstones.client_deleted_at, EXCLUDED.client_deleted_at)
+      ELSE public.sync_tombstones.client_deleted_at
+    END;
 
   RETURN OLD;
 END;
@@ -201,6 +211,7 @@ DECLARE
   v_clock TIMESTAMPTZ;
   v_tombstone_clock TIMESTAMPTZ;
   v_live BOOLEAN;
+  v_stored TIMESTAMPTZ;
 BEGIN
   IF p_user_id IS NULL THEN
     RAISE EXCEPTION 'apply_sync_tombstone_gate: p_user_id is required' USING ERRCODE = '22023';
@@ -226,15 +237,23 @@ BEGIN
       CONTINUE;
     END IF;
 
-    -- Lock in the order every cycle writer uses: the cycle row, then the
-    -- per-cycle advisory lock, then the tombstone (delete_cycles_clocked
-    -- writes its tombstone last too). Locking the tombstone first deadlocked
-    -- against a concurrent clocked delete once SYNC_PUSH_TRANSACTION held the
-    -- gate's lock until the push's own cycle insert took the advisory lock.
-    IF v_entity = 'cycle' THEN
-      PERFORM 1 FROM public.training_cycles c
-        WHERE c.id = v_id AND c.user_id = p_user_id
-        FOR UPDATE;
+    -- Lock in the order every writer uses: the row, then (cycles) the
+    -- per-cycle advisory lock, then the tombstone. A delete holds the row
+    -- before its tombstone trigger writes, and delete_cycles_clocked writes
+    -- its tombstone last, so locking the tombstone first deadlocked against
+    -- them once SYNC_PUSH_TRANSACTION kept the gate's locks to COMMIT.
+    IF v_entity = 'routine' THEN
+      SELECT r.client_updated_at INTO v_stored
+        FROM public.routines r
+       WHERE r.id = v_id AND r.user_id = p_user_id
+         FOR UPDATE;
+      v_live := FOUND;
+    ELSE
+      SELECT c.client_updated_at INTO v_stored
+        FROM public.training_cycles c
+       WHERE c.id = v_id AND c.user_id = p_user_id
+         FOR UPDATE;
+      v_live := FOUND;
       PERFORM pg_catalog.pg_advisory_xact_lock(
         pg_catalog.hashtextextended('training-cycle:' || v_id::TEXT, 0)
       );
@@ -248,19 +267,24 @@ BEGIN
       CONTINUE;
     END IF;
 
-    -- A row that is live again for the same user makes the tombstone stale
-    -- (get_sync_tombstones hides it for the same reason).
-    IF v_entity = 'routine' THEN
-      v_live := EXISTS (
-        SELECT 1 FROM public.routines r WHERE r.id = v_id AND r.user_id = p_user_id
-      );
-    ELSE
-      v_live := EXISTS (
-        SELECT 1 FROM public.training_cycles c WHERE c.id = v_id AND c.user_id = p_user_id
-      );
-    END IF;
+    -- A live row alongside its tombstone is a partial write (a push that
+    -- re-created the row and stopped before its race check). Decide it by the
+    -- two clocks rather than by presence: a stored key strictly newer than the
+    -- delete means the edit had won and only the tombstone clear was lost, so
+    -- the tombstone goes; otherwise the row is a resurrection and is deleted
+    -- again (its tombstone keeps the delete's clock, see
+    -- record_sync_tombstone), and the pushed row is judged below as usual.
     IF v_live THEN
-      CONTINUE;
+      IF v_stored IS NOT NULL AND v_stored > v_tombstone_clock THEN
+        DELETE FROM public.sync_tombstones t
+         WHERE t.user_id = p_user_id AND t.entity = v_entity AND t.entity_id = v_id;
+        CONTINUE;
+      END IF;
+      IF v_entity = 'routine' THEN
+        DELETE FROM public.routines r WHERE r.id = v_id AND r.user_id = p_user_id;
+      ELSE
+        DELETE FROM public.training_cycles c WHERE c.id = v_id AND c.user_id = p_user_id;
+      END IF;
     END IF;
 
     -- A missing clock (older builds send none) never beats a delete.
