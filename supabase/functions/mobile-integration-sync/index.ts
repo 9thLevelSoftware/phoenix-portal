@@ -583,6 +583,15 @@ async function importLiftosaur(ctx: ImportContext): Promise<Response> {
   }
 
   const activities = await liftosaurDtos(ctx, rows.map((r) => r.row), rows.filter((r) => r.undated));
+  if (activities === null) {
+    // The rows are stored, but the phone would get a wrong date for an
+    // undated one. Nothing advances; the writes are idempotent on retry.
+    return json(
+      { status: 'error', error: 'Failed to read stored activity dates. Please retry shortly.' },
+      500,
+      ctx.cors,
+    );
+  }
 
   if (fetched.truncated) {
     const outcome = resolveLiftosaurTruncation(fetched, plan, syncType, rows.length);
@@ -624,22 +633,27 @@ async function importLiftosaur(ctx: ImportContext): Promise<Response> {
 /**
  * Mobile DTOs for the Liftosaur rows just written. An undated row reports the
  * date actually STORED (its first import time), not this run's sentinel, so
- * the phone and the server never disagree about it.
+ * the phone and the server never disagree about it. null when that stored
+ * date cannot be read.
  */
 async function liftosaurDtos(
   ctx: ImportContext,
   rows: Array<Record<string, unknown>>,
   undated: Array<{ row: Record<string, unknown> }>,
-): Promise<ActivityDto[]> {
+): Promise<ActivityDto[] | null> {
   const storedStart = new Map<string, string>();
   const undatedIds = undated.map((r) => r.row.external_id as string);
   for (let i = 0; i < undatedIds.length; i += 100) {
-    const { data } = await ctx.supabase
+    const { data, error } = await ctx.supabase
       .from('external_activities')
       .select('external_id, started_at')
       .eq('user_id', ctx.userId)
       .eq('provider', 'liftosaur')
       .in('external_id', undatedIds.slice(i, i + 100));
+    if (error) {
+      console.error('mobile-integration-sync stored-date lookup failed:', error);
+      return null;
+    }
     for (const stored of (data ?? []) as Array<{ external_id: string; started_at: string }>) {
       storedStart.set(stored.external_id, stored.started_at);
     }

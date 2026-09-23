@@ -237,6 +237,38 @@ Deno.test("mobile-integration-sync: an undated Liftosaur record keeps and report
   assertEquals(db.rows("external_activities")[0].started_at, firstStart);
 });
 
+Deno.test("mobile-integration-sync: a failed stored-date lookup fails the sync instead of reporting a new date", async () => {
+  const db = importDb("liftosaur");
+  // Every read of stored dates fails: the batched refresh falls back to
+  // per-row updates, and the DTO lookup cannot report the stored date.
+  const from = db.from.bind(db);
+  db.from = (table: string) => {
+    const query = from(table);
+    if (table === "external_activities") {
+      const select = query.select.bind(query);
+      query.select = (columns?: string) => {
+        if (columns !== "external_id, started_at") return select(columns);
+        const failed = {
+          eq: () => failed,
+          in: () => failed,
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve({ data: null, error: { message: "read failed" } }).then(resolve),
+        };
+        // deno-lint-ignore no-explicit-any
+        return failed as any;
+      };
+    }
+    return query;
+  };
+  const handler = importHandler(db, liftosaurApi([{ id: 7, at: null }]));
+
+  const res = await silenced(() => handler(post({ provider: "liftosaur", action: "sync" })));
+  assertEquals(res.status, 500, await res.clone().text());
+  assertEquals(db.rows("external_activities").length, 1, "the row itself is stored");
+  const [integration] = db.rows("user_integrations");
+  assertEquals(integration.last_sync_at, null, "nothing advances");
+});
+
 Deno.test("mobile-integration-sync: a Hevy backfill past its page budget is stored, reported, and never advances the watermark", async () => {
   const db = importDb("hevy", "2026-09-01T00:00:00.000Z");
   const hevy = ((input: string | URL | Request) => {

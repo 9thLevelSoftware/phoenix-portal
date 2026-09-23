@@ -450,6 +450,9 @@ Deno.test("liftosaur-sync: a new API key starts a fresh full read, not the old k
 
   const res = await call({ api_key: "new-account-key" });
   assertEquals(res.status, 200, await res.clone().text());
+  // Its own queue row is initial too, so a process-sync-queue retry of it
+  // (which sends the row's sync_type and no key) is still a full read.
+  assertEquals(db.rows("sync_queue").map((r) => r.sync_type), ["initial"]);
   assertEquals(upstream.requests[0].searchParams.has("endDate"), false);
   assertEquals(upstream.requests[0].searchParams.has("startDate"), false);
   assertEquals(db.rows("external_activities").length, 5);

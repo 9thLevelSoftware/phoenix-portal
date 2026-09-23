@@ -282,3 +282,31 @@ Deno.test('writeLiftosaurRows: a refused chunk is retried row by row and counts 
   assertEquals(result, { written: 4, failed: 1 });
   assertEquals(upserts, [5, 1, 1, 1, 1, 1]);
 });
+
+Deno.test('writeLiftosaurRows: undated rows are refreshed per chunk with their stored dates, with heartbeats', async () => {
+  const db = new FakeDb({ external_activities: [] });
+  const client = fakeClient(db, null, () => NOW);
+  const undated = (id: number, program: string) => ({ id, text: `program: "${program}" / duration: 60s` });
+  const first = Array.from({ length: 150 }, (_, i) => toLiftosaurActivityRow('u1', undated(i + 1, 'P'), 'first-run'));
+  assertEquals(await writeLiftosaurRows(client, 'u1', first), { written: 150, failed: 0 });
+
+  // Count requests on the re-sync.
+  let requests = 0;
+  const from = db.from.bind(db);
+  db.from = (table: string) => {
+    requests++;
+    return from(table);
+  };
+  const progress: number[] = [];
+  const later = Array.from({ length: 150 }, (_, i) => toLiftosaurActivityRow('u1', undated(i + 1, 'Renamed'), 'later-run'));
+  const result = await writeLiftosaurRows(client, 'u1', later, {}, (n) => {
+    progress.push(n);
+  });
+  assertEquals(result, { written: 150, failed: 0 });
+  // Two chunks x (insert-if-absent + read stored dates + refresh), not 150 updates.
+  assertEquals(requests, 6);
+  assertEquals(progress, [100, 150]);
+  const rows = db.rows('external_activities');
+  assertEquals(rows.every((row) => row.started_at === 'first-run'), true, 'never re-dated');
+  assertEquals(rows.every((row) => row.name === 'Renamed'), true, 'other columns are refreshed');
+});

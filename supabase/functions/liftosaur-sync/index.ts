@@ -266,7 +266,9 @@ async function runLiftosaurSync(
 			const created = await createSyncQueueEntry(supabase, {
 				userId,
 				provider: "liftosaur",
-				syncType: typeof sync_type === "string" ? sync_type : "manual",
+				// A key-bearing call is a (re)connect: its row, and so every
+				// process-sync-queue retry of it, runs as a fresh initial read.
+				syncType: api_key ? "initial" : typeof sync_type === "string" ? sync_type : "manual",
 				now: deps.now(),
 			});
 			if (created.conflict) return syncAlreadyQueuedResponse(cors);

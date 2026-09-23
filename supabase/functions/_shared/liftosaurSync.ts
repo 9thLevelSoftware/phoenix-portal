@@ -518,8 +518,8 @@ type Db = { from(table: string): any };
 
 /**
  * Persist Liftosaur rows. Dated rows are upserted. Undated rows are inserted
- * only when absent (ON CONFLICT DO NOTHING) and then refreshed with a plain
- * UPDATE that leaves started_at alone: an upsert that omits started_at is
+ * only when absent (ON CONFLICT DO NOTHING) and then refreshed with their
+ * STORED started_at, read back per chunk: an upsert that omits started_at is
  * rejected, because Postgres checks NOT NULL on the proposed INSERT row
  * before ON CONFLICT. Returns the failure count; callers must not advance the
  * watermark when it is non-zero.
@@ -541,22 +541,69 @@ export async function writeLiftosaurRows(
   let written = 0;
   let failed = 0;
   let handled = 0;
-  const undated: Array<Record<string, unknown>> = [];
   const upsert = (payload: Record<string, unknown> | Array<Record<string, unknown>>, isUndated: boolean) =>
     supabase.from('external_activities').upsert(payload, {
       onConflict: 'user_id,provider,external_id',
       ignoreDuplicates: isUndated,
     });
+  // Row-by-row refresh of undated rows that leaves started_at alone; the
+  // fallback when the batched refresh below is refused. Returns failures.
+  const refreshEach = async (batch: Array<Record<string, unknown>>): Promise<number> => {
+    let refreshFailed = 0;
+    for (const row of batch) {
+      const { user_id: _u, provider: _p, external_id: externalId, started_at: _s, ...changes } = row;
+      const { error } = await supabase
+        .from('external_activities')
+        .update(changes)
+        .eq('user_id', userId)
+        .eq('provider', 'liftosaur')
+        .eq('external_id', externalId as string);
+      if (error) {
+        refreshFailed++;
+        console.error(`Failed to refresh Liftosaur record ${String(externalId)}:`, error);
+      }
+    }
+    return refreshFailed;
+  };
+  // Batched refresh: read each row's stored started_at, then upsert the
+  // chunk with it, so the refresh is two requests per chunk and a re-sync
+  // still never moves a stored date.
+  const refreshUndated = async (batch: Array<Record<string, unknown>>): Promise<number> => {
+    if (batch.length === 0) return 0;
+    const { data, error } = await supabase
+      .from('external_activities')
+      .select('external_id, started_at')
+      .eq('user_id', userId)
+      .eq('provider', 'liftosaur')
+      .in('external_id', batch.map((row) => row.external_id as string));
+    if (error) return await refreshEach(batch);
+    const stored = new Map<string, unknown>();
+    for (const row of (data ?? []) as Array<{ external_id: string; started_at: unknown }>) {
+      stored.set(row.external_id, row.started_at);
+    }
+    const missing = batch.filter((row) => !stored.has(row.external_id as string));
+    const refreshed = batch
+      .filter((row) => stored.has(row.external_id as string))
+      .map((row) => ({ ...row, started_at: stored.get(row.external_id as string) }));
+    if (refreshed.length > 0) {
+      const { error: upsertError } = await upsert(refreshed, false);
+      if (upsertError) return missing.length + await refreshEach(refreshed);
+    }
+    for (const row of missing) {
+      console.error(`Liftosaur record ${String(row.external_id)} vanished before its refresh`);
+    }
+    return missing.length;
+  };
   for (const isUndated of [false, true]) {
     const group = rows
       .filter((r) => r.undated === isUndated)
       .map((r) => ({ ...r.row, ...extraColumns }));
     for (let i = 0; i < group.length; i += LIFTOSAUR_WRITE_CHUNK) {
       const chunk = group.slice(i, i + LIFTOSAUR_WRITE_CHUNK);
+      const inserted: Array<Record<string, unknown>> = [];
       const { error } = await upsert(chunk, isUndated);
       if (!error) {
-        written += chunk.length;
-        if (isUndated) undated.push(...chunk);
+        inserted.push(...chunk);
       } else {
         for (const full of chunk) {
           const { error: rowError } = await upsert(full, isUndated);
@@ -564,27 +611,15 @@ export async function writeLiftosaurRows(
             failed++;
             console.error(`Failed to persist Liftosaur record ${String(full.external_id)}:`, rowError);
           } else {
-            written++;
-            if (isUndated) undated.push(full);
+            inserted.push(full);
           }
         }
       }
+      const refreshFailed = isUndated ? await refreshUndated(inserted) : 0;
+      written += inserted.length - refreshFailed;
+      failed += refreshFailed;
       handled += chunk.length;
       await onRow?.(handled);
-    }
-  }
-  for (const row of undated) {
-    const { user_id: _u, provider: _p, external_id: externalId, started_at: _s, ...changes } = row;
-    const { error } = await supabase
-      .from('external_activities')
-      .update(changes)
-      .eq('user_id', userId)
-      .eq('provider', 'liftosaur')
-      .eq('external_id', externalId as string);
-    if (error) {
-      failed++;
-      written--;
-      console.error(`Failed to refresh Liftosaur record ${String(externalId)}:`, error);
     }
   }
   return { written, failed };
