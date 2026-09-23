@@ -64,10 +64,12 @@ export function useCommentRealtime(itemId: string) {
 					if (typeof deletedId !== "string") return;
 					const cached =
 						queryClient.getQueryData<Array<{ id: string }>>(commentsKey);
-					// No data yet: the first fetch may already have read the
-					// deleted row, so refetch rather than drop the event.
+					// A fetch in flight (the first load, or a refetch after an
+					// insert) may already have read the deleted row, and the
+					// cache cannot show it yet: refetch rather than drop the event.
 					if (
 						cached === undefined ||
+						queryClient.isFetching({ queryKey: commentsKey }) > 0 ||
 						cached.some((comment) => comment.id === deletedId)
 					) {
 						scheduleInvalidate();

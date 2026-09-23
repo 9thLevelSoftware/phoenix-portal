@@ -201,7 +201,7 @@ export function useSubscription(): SubscriptionData {
 	const [, forceBoundaryRender] = useState(0);
 	const nextChangeAt = data
 		? nextEntitlementChangeAt(data.status, data.currentPeriodEnd, {
-				updatedAt: "updatedAt" in data ? data.updatedAt : null,
+				updatedAt: data.updatedAt ?? null,
 			})
 		: null;
 	useEffect(() => {
