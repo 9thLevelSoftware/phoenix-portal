@@ -1033,6 +1033,13 @@ export const EXCLUDED: readonly ExcludedUserDataTable[] = [
 		purgeMatch: { column: "user_id" },
 	},
 	{
+		table: "set_telemetry_sample_ids",
+		reason: "Trigger-maintained unique index of the sample ids stored in set_telemetry (20260925200000): ids and set ids only, no content of its own. Every sample id is already exported through the rep_telemetry view.",
+		// set_id -> set_telemetry ON DELETE CASCADE, which cascades from auth.users.
+		purge: "cascade",
+		purgeMatch: { column: "set_id" },
+	},
+	{
 		table: "rep_telemetry_legacy",
 		reason: "Per-sample rows written before 20260925200000, kept until the set_telemetry backfill is verified. The rep_telemetry view serves them until then, so they are exported through it and never twice.",
 		// The renamed table keeps its FK to auth.users ON DELETE CASCADE, but

@@ -8,7 +8,10 @@
 --   * replace_session_children stores sorted per-set arrays and moves a
 --     payload id held by another set;
 --   * private.backfill_set_telemetry folds legacy sets in chunks, is
---     idempotent and never deletes legacy rows.
+--     idempotent and never deletes legacy rows;
+--   * sample ids stay globally unique (set_telemetry_sample_ids): a duplicate
+--     across sets, inside one set, or against another set's legacy row
+--     raises 23505, and every writer above keeps the index exact.
 BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
@@ -59,6 +62,18 @@ SELECT ok(
         WHERE has_function_privilege(r.rolname, 'private.backfill_set_telemetry(uuid, integer)', 'EXECUTE')
     ),
     'the backfill is owner-only'
+);
+SELECT has_table('public', 'set_telemetry_sample_ids', 'the sample-id index table exists');
+SELECT col_is_pk('public', 'set_telemetry_sample_ids', 'id', 'a sample id is its primary key');
+SELECT ok(
+    (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.set_telemetry_sample_ids'::regclass)
+    AND NOT EXISTS (
+        SELECT 1
+        FROM (VALUES ('anon'), ('authenticated'), ('service_role')) AS r(rolname)
+        CROSS JOIN (VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE')) AS p(priv)
+        WHERE has_table_privilege(r.rolname, 'public.set_telemetry_sample_ids', p.priv)
+    ),
+    'the sample-id index is owner-only: RLS on, no client or service-role privilege'
 );
 
 -- ---------------------------------------------------------------------------
@@ -203,6 +218,67 @@ SELECT is(
     'the moved sample now belongs to the payload set'
 );
 
+SELECT diag('database:set-telemetry-sample-id-uniqueness');
+
+CREATE FUNCTION pg_temp.sample_index_matches() RETURNS boolean LANGUAGE sql AS $$
+    SELECT NOT EXISTS (
+        (SELECT x, t.set_id FROM public.set_telemetry t CROSS JOIN LATERAL unnest(t.ids) AS x
+         EXCEPT ALL
+         SELECT id, set_id FROM public.set_telemetry_sample_ids)
+        UNION ALL
+        (SELECT id, set_id FROM public.set_telemetry_sample_ids
+         EXCEPT ALL
+         SELECT x, t.set_id FROM public.set_telemetry t CROSS JOIN LATERAL unnest(t.ids) AS x)
+    )
+$$;
+
+SELECT ok(
+    pg_temp.sample_index_matches(),
+    'after view inserts and replace_session_children (including a move), the index holds exactly the stored ids'
+);
+SELECT throws_ok(
+    $sql$ INSERT INTO public.set_telemetry (set_id, user_id, sample_count, ids, timestamp_ms, force_n, velocity_mps, position_mm, cable)
+          VALUES (pg_temp.s(4), '25250000-0000-4000-8000-000000000001', 1, ARRAY[pg_temp.sample(31)], ARRAY[1::bigint], '{NULL}', '{NULL}', '{NULL}', '{NULL}') $sql$,
+    '23505', 'duplicate key value violates unique constraint "set_telemetry_sample_ids_pkey"',
+    'a sample id stored for one set cannot be stored for a second set (the race two pushes could win)'
+);
+SELECT throws_ok(
+    $sql$ UPDATE public.set_telemetry
+             SET sample_count = sample_count + 1,
+                 ids = ids || pg_temp.sample(31),
+                 timestamp_ms = timestamp_ms || 99::bigint,
+                 force_n = force_n || NULL::numeric,
+                 velocity_mps = velocity_mps || NULL::numeric,
+                 position_mm = position_mm || NULL::numeric,
+                 cable = cable || NULL::text
+           WHERE set_id = pg_temp.s(1) $sql$,
+    '23505', 'duplicate key value violates unique constraint "set_telemetry_sample_ids_pkey"',
+    'appending another set''s sample id to a set is refused'
+);
+SELECT throws_ok(
+    $sql$ INSERT INTO public.set_telemetry (set_id, user_id, sample_count, ids, timestamp_ms, force_n, velocity_mps, position_mm, cable)
+          VALUES (pg_temp.s(4), '25250000-0000-4000-8000-000000000001', 2, ARRAY[pg_temp.sample(77), pg_temp.sample(77)], ARRAY[1, 2]::bigint[], '{NULL,NULL}', '{NULL,NULL}', '{NULL,NULL}', '{NULL,NULL}') $sql$,
+    '23505', 'duplicate key value violates unique constraint "set_telemetry_sample_ids_pkey"',
+    'one set cannot hold the same sample id twice'
+);
+SELECT throws_ok(
+    $sql$ UPDATE public.set_telemetry
+             SET sample_count = sample_count + 1,
+                 ids = ids || ids[1],
+                 timestamp_ms = timestamp_ms || 99::bigint,
+                 force_n = force_n || NULL::numeric,
+                 velocity_mps = velocity_mps || NULL::numeric,
+                 position_mm = position_mm || NULL::numeric,
+                 cable = cable || NULL::text
+           WHERE set_id = pg_temp.s(1) $sql$,
+    '23505', 'duplicate key value violates unique constraint "set_telemetry_sample_ids_pkey"',
+    'an update cannot repeat a set''s own sample id'
+);
+SELECT ok(
+    pg_temp.sample_index_matches(),
+    'refused writes leave the index unchanged'
+);
+
 SELECT diag('database:set-telemetry-backfill');
 
 -- Fresh legacy sets for the backfill (s4 has none yet); s2 lost its only
@@ -211,6 +287,13 @@ INSERT INTO public.rep_telemetry_legacy (id, set_id, user_id, timestamp_ms, forc
     (pg_temp.sample(42), pg_temp.s(4), '25250000-0000-4000-8000-000000000001', 20, 2),
     (pg_temp.sample(41), pg_temp.s(4), '25250000-0000-4000-8000-000000000001', 10, 1),
     (pg_temp.sample(91), '25250000-0003-4000-8000-000000000009', '25250000-0000-4000-8000-000000000002', 10, 1);
+
+SELECT throws_ok(
+    $sql$ INSERT INTO public.set_telemetry (set_id, user_id, sample_count, ids, timestamp_ms, force_n, velocity_mps, position_mm, cable)
+          VALUES (pg_temp.s(2), '25250000-0000-4000-8000-000000000001', 1, ARRAY[pg_temp.sample(41)], ARRAY[1::bigint], '{NULL}', '{NULL}', '{NULL}', '{NULL}') $sql$,
+    '23505', 'duplicate key value violates unique constraint "set_telemetry_sample_ids_pkey"',
+    'a sample id still held by another set''s unfolded legacy rows is refused'
+);
 
 CREATE TEMP TABLE before_backfill AS
 SELECT id, set_id, timestamp_ms, force_n FROM public.rep_telemetry;
@@ -257,10 +340,33 @@ SELECT is(
     0,
     're-running the backfill folds nothing'
 );
+SELECT ok(
+    pg_temp.sample_index_matches(),
+    'the backfill''s folds are indexed too'
+);
+SELECT is(
+    (SELECT count(*)::int FROM public.set_telemetry_sample_ids WHERE set_id = pg_temp.s(4)),
+    2,
+    'a folded legacy set indexes its own legacy ids'
+);
 SELECT is(
     (SELECT count(*)::int FROM public.rep_telemetry_legacy),
     5,
     'the backfill never deletes legacy rows'
+);
+
+-- Deleting a set's storage drops its index rows (the account-deletion path:
+-- auth.users -> set_telemetry -> set_telemetry_sample_ids, all CASCADE).
+DELETE FROM public.set_telemetry WHERE set_id = pg_temp.s(4);
+SELECT is(
+    (SELECT count(*)::int FROM public.set_telemetry_sample_ids WHERE set_id = pg_temp.s(4)),
+    0,
+    'deleting a set''s telemetry cascades to its index rows'
+);
+SELECT lives_ok(
+    $sql$ INSERT INTO public.set_telemetry (set_id, user_id, sample_count, ids, timestamp_ms, force_n, velocity_mps, position_mm, cable)
+          VALUES (pg_temp.s(4), '25250000-0000-4000-8000-000000000001', 1, ARRAY[pg_temp.sample(42)], ARRAY[20::bigint], '{2}', '{NULL}', '{NULL}', '{NULL}') $sql$,
+    'a freed id can be stored again; its own set''s legacy row does not block it'
 );
 
 SELECT diag('database:set-telemetry-read-gate');
