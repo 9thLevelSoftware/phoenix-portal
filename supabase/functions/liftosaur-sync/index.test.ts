@@ -430,6 +430,37 @@ Deno.test("liftosaur-sync: a browser sync is capped at 3 per 15 minutes", async 
   assertEquals(limited.headers.get("Retry-After"), "900");
 });
 
+Deno.test("liftosaur-sync: a new API key starts a fresh full read, not the old key's backfill window", async () => {
+  // Disconnected mid-backfill, then connected a different account: the stale
+  // cursor and watermark belong to the old account.
+  const db = new FakeDb({
+    ...tables([]),
+    user_integrations: [{
+      user_id: USER_ID,
+      provider: "liftosaur",
+      status: "connected",
+      last_sync_at: "2025-06-01T00:00:00.000Z",
+      backfill_before: "2025-01-01T00:00:00.000Z",
+      backfill_after: null,
+      backfill_started_at: "2025-01-01T00:00:00.000Z",
+    }],
+  });
+  const upstream = descendingLiftosaur(5);
+  const call = harness(db, upstream.fetch, USER_ID);
+
+  const res = await call({ api_key: "new-account-key" });
+  assertEquals(res.status, 200, await res.clone().text());
+  assertEquals(upstream.requests[0].searchParams.has("endDate"), false);
+  assertEquals(upstream.requests[0].searchParams.has("startDate"), false);
+  assertEquals(db.rows("external_activities").length, 5);
+  const [integration] = db.rows("user_integrations");
+  assertEquals(
+    [integration.backfill_before, integration.backfill_after, integration.backfill_started_at],
+    [null, null, null],
+  );
+  assertEquals(integration.last_sync_at, new Date(NOW).toISOString());
+});
+
 Deno.test("liftosaur-sync: API-key saves spend only the credential budget, so a fourth key still saves (NF-27)", async () => {
   const db = new FakeDb(tables([]));
   const call = harness(db, 1, USER_ID);

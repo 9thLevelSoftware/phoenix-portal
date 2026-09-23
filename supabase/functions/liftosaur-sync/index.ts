@@ -350,9 +350,14 @@ async function runLiftosaurSync(
 			.eq("provider", "liftosaur")
 			.maybeSingle();
 
+		// A call carrying `api_key` is a (re)connect, possibly to another
+		// Liftosaur account: read the full history as a fresh chain, like
+		// mobile-integration-sync's connect, instead of resuming a backfill
+		// window or incremental watermark left by the previous key.
+		const effectiveSyncType = api_key ? "initial" : sync_type;
 		const plan = planLiftosaurSync(
 			(integration ?? null) as LiftosaurIntegrationState | null,
-			sync_type,
+			effectiveSyncType,
 			deps.now(),
 		);
 
@@ -495,7 +500,7 @@ async function runLiftosaurSync(
 		// watermark past them. Continue the import where it is safe to, and fail
 		// with an explicit, non-retryable error where it is not.
 		if (fetched.truncated) {
-			const outcome = resolveLiftosaurTruncation(fetched, plan, sync_type, importedCount);
+			const outcome = resolveLiftosaurTruncation(fetched, plan, effectiveSyncType, importedCount);
 			const { error: cursorError } = await updateIntegration(outcome.columns);
 			if (cursorError) return await saveFailed("cursor_save_failed", cursorError);
 			console.warn(outcome.message);
