@@ -226,7 +226,8 @@ SELECT l.id, l.set_id, l.timestamp_ms, l.force_n, l.velocity_mps,
        l.position_mm, l.cable, l.user_id
 FROM public.rep_telemetry_legacy l
 WHERE NOT EXISTS (
-  SELECT 1 FROM public.set_telemetry t2 WHERE t2.set_id = l.set_id
+  SELECT 1 FROM public.set_telemetry t2
+   WHERE t2.set_id = l.set_id AND t2.user_id = l.user_id
 );
 
 COMMENT ON VIEW public.rep_telemetry IS
@@ -288,7 +289,7 @@ BEGIN
          array_agg(l.position_mm ORDER BY l.timestamp_ms, l.id),
          array_agg(l.cable ORDER BY l.timestamp_ms, l.id)
   FROM public.rep_telemetry_legacy l
-  WHERE l.set_id = NEW.set_id
+  WHERE l.set_id = NEW.set_id AND l.user_id = NEW.user_id
   GROUP BY l.set_id, l.user_id
   ON CONFLICT (set_id) DO NOTHING;
 
@@ -536,7 +537,8 @@ BEGIN
     JOIN public.rep_telemetry_legacy l
       ON l.set_id = m.old_set_id AND l.user_id = p_user_id
     WHERE NOT EXISTS (
-      SELECT 1 FROM public.set_telemetry t2 WHERE t2.set_id = l.set_id
+      SELECT 1 FROM public.set_telemetry t2
+   WHERE t2.set_id = l.set_id AND t2.user_id = l.user_id
     );
 
     -- Per-session bound (see header): stash + payload telemetry for the
@@ -774,9 +776,13 @@ BEGIN
   SELECT l.id, l.set_id, l.user_id, l.timestamp_ms, l.force_n, l.velocity_mps,
          l.position_mm, l.cable, FALSE
   FROM public.rep_telemetry_legacy l
-  WHERE l.set_id IN (SELECT DISTINCT w.set_id FROM pg_temp.rsc_telemetry_write w)
+  WHERE EXISTS (
+      SELECT 1 FROM pg_temp.rsc_telemetry_write w
+       WHERE w.set_id = l.set_id AND w.user_id = l.user_id
+    )
     AND NOT EXISTS (
-      SELECT 1 FROM public.set_telemetry t WHERE t.set_id = l.set_id
+      SELECT 1 FROM public.set_telemetry t
+       WHERE t.set_id = l.set_id AND t.user_id = l.user_id
     )
   ON CONFLICT (id) DO NOTHING;
 
@@ -885,7 +891,8 @@ BEGIN
     FROM public.rep_telemetry_legacy l
     WHERE (p_after_set_id IS NULL OR l.set_id > p_after_set_id)
       AND NOT EXISTS (
-        SELECT 1 FROM public.set_telemetry t WHERE t.set_id = l.set_id
+        SELECT 1 FROM public.set_telemetry t
+       WHERE t.set_id = l.set_id AND t.user_id = l.user_id
       )
     ORDER BY l.set_id
     LIMIT GREATEST(p_max_sets, 1)
@@ -908,8 +915,16 @@ BEGIN
          array_agg(l.cable ORDER BY l.timestamp_ms, l.id)
   FROM public.rep_telemetry_legacy l
   WHERE l.set_id = ANY(v_sets)
+    -- Only the set owner's rows fold. The old client INSERT policy checked
+    -- only rep_telemetry.user_id, so a set can hold another account's rows;
+    -- those stay in the legacy table, still visible through the owner-aware
+    -- view, for the operator to review (never silently hidden).
+    AND EXISTS (
+      SELECT 1 FROM public.sets s WHERE s.id = l.set_id AND s.user_id = l.user_id
+    )
     AND NOT EXISTS (
-      SELECT 1 FROM public.set_telemetry t WHERE t.set_id = l.set_id
+      SELECT 1 FROM public.set_telemetry t
+       WHERE t.set_id = l.set_id AND t.user_id = l.user_id
     )
   GROUP BY l.set_id, l.user_id
   ON CONFLICT (set_id) DO NOTHING;

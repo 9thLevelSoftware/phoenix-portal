@@ -286,7 +286,10 @@ SELECT diag('database:set-telemetry-backfill');
 INSERT INTO public.rep_telemetry_legacy (id, set_id, user_id, timestamp_ms, force_n) VALUES
     (pg_temp.sample(42), pg_temp.s(4), '25250000-0000-4000-8000-000000000001', 20, 2),
     (pg_temp.sample(41), pg_temp.s(4), '25250000-0000-4000-8000-000000000001', 10, 1),
-    (pg_temp.sample(91), '25250000-0003-4000-8000-000000000009', '25250000-0000-4000-8000-000000000002', 10, 1);
+    (pg_temp.sample(91), '25250000-0003-4000-8000-000000000009', '25250000-0000-4000-8000-000000000002', 10, 1),
+    -- A foreign row in the owner's set s4 (the old client INSERT policy
+    -- checked only rep_telemetry.user_id). It must never fold or be hidden.
+    (pg_temp.sample(49), pg_temp.s(4), '25250000-0000-4000-8000-000000000002', 30, 9);
 
 SELECT throws_ok(
     $sql$ INSERT INTO public.set_telemetry (set_id, user_id, sample_count, ids, timestamp_ms, force_n, velocity_mps, position_mm, cable)
@@ -325,10 +328,17 @@ BEGIN
 END
 $$;
 
-SELECT is_empty(
-    $sql$ SELECT l.set_id FROM public.rep_telemetry_legacy l
-          WHERE NOT EXISTS (SELECT 1 FROM public.set_telemetry t WHERE t.set_id = l.set_id) $sql$,
-    'after the drain every legacy set is folded'
+SELECT results_eq(
+    $sql$ SELECT l.id FROM public.rep_telemetry_legacy l
+          WHERE NOT EXISTS (SELECT 1 FROM public.set_telemetry t
+                             WHERE t.set_id = l.set_id AND t.user_id = l.user_id) $sql$,
+    $values$ VALUES (pg_temp.sample(49)) $values$,
+    'after the drain only the foreign row in a mixed-owner set is left unfolded'
+);
+SELECT is(
+    (SELECT user_id FROM public.set_telemetry WHERE set_id = pg_temp.s(4)),
+    '25250000-0000-4000-8000-000000000001'::uuid,
+    'a mixed-owner set folds under its owner, never an arbitrary one'
 );
 SELECT set_eq(
     $sql$ SELECT id, set_id, timestamp_ms, force_n FROM public.rep_telemetry $sql$,
@@ -351,7 +361,7 @@ SELECT is(
 );
 SELECT is(
     (SELECT count(*)::int FROM public.rep_telemetry_legacy),
-    5,
+    6,
     'the backfill never deletes legacy rows'
 );
 
@@ -389,8 +399,8 @@ SELECT is(
 SELECT set_config('request.jwt.claims', '{"sub":"25250000-0000-4000-8000-000000000002","role":"authenticated"}', true);
 SELECT results_eq(
     $sql$ SELECT id FROM public.telemetry_points ORDER BY timestamp_ms, id $sql$,
-    $sql$ VALUES (pg_temp.sample(91)) $sql$,
-    'an INFERNO user reads its own samples, and only its own, through telemetry_points'
+    $sql$ VALUES (pg_temp.sample(91)), (pg_temp.sample(49)) $sql$,
+    'an INFERNO user reads its own samples (including its row in another account''s set), and only its own, through telemetry_points'
 );
 RESET ROLE;
 SELECT set_config('request.jwt.claims', '', true);
