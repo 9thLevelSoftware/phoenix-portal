@@ -307,13 +307,20 @@ async function runLiftosaurSync(
 				);
 			}
 
-			// Update user_integrations with non-sensitive status only
+			// Update user_integrations with non-sensitive status only. A new key
+			// may be another account: drop the previous key's backfill cursor and
+			// watermark now, so a later keyless sync cannot resume them even if
+			// this run fails before saving any state of its own.
 			await supabase.from("user_integrations").upsert(
 				{
 					user_id: userId,
 					provider: "liftosaur",
 					status: "connected",
 					connected_at: new Date().toISOString(),
+					last_sync_at: null,
+					backfill_before: null,
+					backfill_after: null,
+					backfill_started_at: null,
 				},
 				{ onConflict: "user_id,provider" }
 			);
