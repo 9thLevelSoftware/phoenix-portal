@@ -16,6 +16,7 @@ import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { convertWeight, formatVolume, type WeightUnit } from "@/lib/units";
 import { formatLoad } from "@/lib/units/loadDisplay";
 import { weeklySummaryOptions } from "@/queries/progress";
@@ -252,6 +253,8 @@ function percentChange(current: number, previous: number): number {
 }
 
 function ConsistencyRing({ score }: { score: number }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const radius = 28;
 	const circumference = 2 * Math.PI * radius;
 	const offset = circumference - (score / 100) * circumference;
@@ -321,6 +324,8 @@ function SkeletonCards() {
 }
 
 export function SummaryReport({ userId, unit = "kg" }: SummaryReportProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const [period, setPeriod] = useState<"week" | "month">("week");
 	const { activeProfileId } = useProfileFilterStore();
 

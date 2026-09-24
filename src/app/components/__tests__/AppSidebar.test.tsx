@@ -35,6 +35,42 @@ describe("AppSidebar", () => {
 		});
 	});
 
+	it("does not overwrite the saved open preference when it mounts on a narrow screen", () => {
+		localStorage.setItem("phoenix-sidebar-preferred-open", "true");
+		const originalMatchMedia = window.matchMedia;
+		window.matchMedia = ((query: string) => ({
+			matches: query === "(max-width: 1279px)",
+			media: query,
+			onchange: null,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			addListener: () => {},
+			removeListener: () => {},
+			dispatchEvent: () => false,
+		})) as typeof window.matchMedia;
+		try {
+			render(
+				<QueryClientProvider client={new QueryClient()}>
+					<MemoryRouter initialEntries={["/dashboard"]}>
+						<SidebarProvider>
+							<AppSidebar />
+						</SidebarProvider>
+					</MemoryRouter>
+				</QueryClientProvider>,
+			);
+			// Auto-collapsed for the narrow viewport...
+			expect(
+				document.querySelector('[data-slot="sidebar"][data-state]'),
+			).toHaveAttribute("data-state", "collapsed");
+			// ...but the user's own choice is still "open" for wide screens.
+			expect(localStorage.getItem("phoenix-sidebar-preferred-open")).toBe(
+				"true",
+			);
+		} finally {
+			window.matchMedia = originalMatchMedia;
+		}
+	});
+
 	it("marks the current page and leaves other links without aria-current", () => {
 		render(
 			<QueryClientProvider client={new QueryClient()}>

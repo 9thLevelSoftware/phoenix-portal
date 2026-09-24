@@ -19,10 +19,9 @@ vi.mock("@/app/hooks/usePreferredWeightUnit", () => ({
 	usePreferredWeightUnit: () => "kg",
 }));
 
-function renderLeaderboard() {
-	const client = new QueryClient({
-		defaultOptions: { queries: { retry: false } },
-	});
+function renderLeaderboard(
+	client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
 	return render(
 		<QueryClientProvider client={client}>
 			<MemoryRouter>
@@ -49,6 +48,40 @@ describe("Leaderboard", () => {
 		expect(invoke).toHaveBeenCalledWith("compute-rankings", {
 			body: { type: "global" },
 		});
+	});
+
+	it("keeps showing the last good board when a background refresh fails", async () => {
+		const entry = {
+			userId: "user-2",
+			displayName: "Ada",
+			avatarUrl: null,
+			rank: 1,
+			value: 12,
+			percentile: 99,
+		};
+		const board = {
+			totalVolume: [entry],
+			workoutCount: [entry],
+			longestStreak: [entry],
+			currentStreak: [entry],
+			prCount: [entry],
+			exerciseMastery: [entry],
+		};
+		invoke.mockResolvedValue({ data: board, error: null });
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		renderLeaderboard(client);
+		expect(await screen.findByText("Most Workouts")).toBeInTheDocument();
+
+		// e.g. a window-focus refetch that hits a 429
+		invoke.mockResolvedValue({ data: null, error: new Error("429") });
+		await client.refetchQueries();
+
+		expect(screen.getByText("Most Workouts")).toBeInTheDocument();
+		expect(
+			screen.queryByRole("heading", { name: "Rankings unavailable" }),
+		).not.toBeInTheDocument();
 	});
 
 	it("keeps the empty personal ranking copy for a user with no rankings", async () => {

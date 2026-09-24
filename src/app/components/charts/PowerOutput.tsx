@@ -5,6 +5,7 @@ import { scaleBand, scaleLinear } from "@visx/scale";
 import { Bar } from "@visx/shape";
 import { useMemo } from "react";
 import { calculatePower } from "@/lib/biomechanics";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import type { RepSummary } from "@/schemas/telemetry";
 import { CHART_COLORS, CHART_MARGINS, FONT_SIZES } from "./shared/ChartTheme";
 import { ChartTooltipContent, useChartTooltip } from "./shared/ChartTooltip";
@@ -28,6 +29,8 @@ function PowerOutputInner({
 	highlightPeak = true,
 	width,
 }: PowerOutputProps & { width: number }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const {
 		showTooltip,
 		hideTooltip,

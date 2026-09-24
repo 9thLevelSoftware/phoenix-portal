@@ -9,7 +9,7 @@ import { TooltipWithBounds, useTooltip } from "@visx/tooltip";
 import { useMemo } from "react";
 import { ASYMMETRY_THRESHOLD, calculateAsymmetry } from "@/lib/biomechanics";
 import { PHOENIX } from "@/lib/colors";
-import { withAlpha } from "@/lib/theme-tokens";
+import { useRerenderOnThemeChange, withAlpha } from "@/lib/theme-tokens";
 import type { RepSummary } from "@/schemas/telemetry";
 
 function getAsymmetryColors() {
@@ -69,6 +69,8 @@ function PerRepChart({
 	width: number;
 	height: number;
 }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const {
 		tooltipOpen,
 		tooltipData,
@@ -296,6 +298,8 @@ function PerRepChart({
 
 // -- Summary Mode --
 function SummaryDisplay({ repSummaries }: { repSummaries: RepSummary[] }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const avgAsymmetry = useMemo(() => {
 		const total = repSummaries.reduce((sum, rep) => sum + getAsymmetry(rep), 0);
 		return Math.round((total / repSummaries.length) * 10) / 10;
@@ -376,6 +380,8 @@ export function AsymmetryGauge({
 	height = 300,
 	mode = "per-rep",
 }: AsymmetryGaugeProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	if (!repSummaries || repSummaries.length === 0) {
 		return (
 			<div

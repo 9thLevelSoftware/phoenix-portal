@@ -38,6 +38,7 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { fadeUp } from "@/lib/animations";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { FEATURE_MIN_TIER } from "@/lib/tierMatrix";
 import { repSummariesOptions, repTelemetryOptions } from "@/queries/telemetry";
 import { sessionDetailOptions, workoutListOptions } from "@/queries/workouts";
@@ -110,6 +111,8 @@ interface BiomechanicsContentProps {
 export function BiomechanicsContent({
 	view = "all",
 }: BiomechanicsContentProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
 	const unit = usePreferredWeightUnit();

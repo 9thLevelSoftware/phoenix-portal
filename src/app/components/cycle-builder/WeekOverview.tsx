@@ -1,6 +1,7 @@
 import { BarChart3 } from "lucide-react";
 import { Card } from "@/app/components/ui/card";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import type { CycleDay } from "./types";
 
 interface WeekOverviewProps {
@@ -8,6 +9,8 @@ interface WeekOverviewProps {
 }
 
 export function WeekOverview({ days }: WeekOverviewProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const workoutDays = days.filter((d) => d.type === "workout").length;
 	const restDays = days.filter((d) => d.type === "rest").length;
 

@@ -523,11 +523,11 @@
       background 150ms ease,
       color 150ms ease;
   }
-  [data-sidebar="menu-button"]:not([data-active="true"]):hover {
+  [data-sidebar="menu-button"]:not([data-active="true"]):not(.text-destructive):hover {
     background: color-mix(in srgb, var(--primary) 12%, transparent) !important;
     color: var(--sidebar-accent-foreground) !important;
   }
-  [data-sidebar="menu-button"]:not([data-active="true"]):hover svg {
+  [data-sidebar="menu-button"]:not([data-active="true"]):not(.text-destructive):hover svg {
     color: var(--sidebar-accent-foreground) !important;
   }
 

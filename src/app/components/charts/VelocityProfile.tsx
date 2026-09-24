@@ -5,6 +5,7 @@ import { scaleBand, scaleLinear } from "@visx/scale";
 import { Bar } from "@visx/shape";
 import { useMemo } from "react";
 import { ZoneBadge, ZoneIndicator } from "@/app/components/ui/ZoneBadge";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import {
 	classifyMannZone,
 	classifyVbtZone,
@@ -42,6 +43,8 @@ function VelocityProfileInner({
 	showDominantZone = true,
 	width,
 }: VelocityProfileProps & { width: number }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const {
 		showTooltip,
 		hideTooltip,

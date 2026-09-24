@@ -68,10 +68,9 @@ test.describe("Keyboard navigation", () => {
 		await page.waitForTimeout(500);
 		await expect(sidebar).toHaveAttribute("data-state", "collapsed");
 		await expect(page.locator("#main-content")).toBeVisible();
-		await expect(page.getByRole("link", { name: "Workouts" })).toHaveAttribute(
-			"title",
-			"Workouts",
-		);
+		await expect(
+			page.getByRole("link", { name: "Workouts", exact: true }),
+		).toHaveAttribute("title", "Workouts");
 
 		await page.keyboard.press("ControlOrMeta+b");
 		await expect(sidebar).toHaveAttribute("data-state", "expanded");

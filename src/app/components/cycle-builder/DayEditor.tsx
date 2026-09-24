@@ -330,7 +330,7 @@ export function DayEditor({
 								<Button
 									onClick={onRemoveFromSchedule}
 									variant="outline"
-									className="w-full border-destructive text-destructive hover:bg-destructive hover:text-foreground"
+									className="w-full border-destructive text-destructive hover:bg-destructive hover:text-on-danger"
 								>
 									<Trash2 className="w-4 h-4 mr-2" />
 									Remove from Schedule
@@ -432,7 +432,7 @@ export function DayEditor({
 								<Button
 									onClick={onRemoveFromSchedule}
 									variant="outline"
-									className="w-full border-destructive text-destructive hover:bg-destructive hover:text-foreground"
+									className="w-full border-destructive text-destructive hover:bg-destructive hover:text-on-danger"
 								>
 									<Trash2 className="w-4 h-4 mr-2" />
 									Remove from Schedule

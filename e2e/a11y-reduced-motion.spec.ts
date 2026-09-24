@@ -40,21 +40,26 @@ async function timedCssMotion(page: Page) {
 /**
  * Elements whose transform changes while nothing is interacting with the
  * page: catches JS-driven (Framer Motion) movement that CSS rules cannot.
+ * Compared per element (not by index), and only for elements present in both
+ * samples, so data arriving between the samples is not mistaken for motion.
  */
 async function movingElements(page: Page) {
-	const snapshot = () =>
-		page.evaluate(() =>
-			[...document.querySelectorAll("*")].map(
-				(element) => window.getComputedStyle(element).transform,
-			),
-		);
-	const before = await snapshot();
-	await page.waitForTimeout(250);
-	const after = await snapshot();
-	return before.filter(
-		(transform, index) =>
-			after[index] !== undefined && after[index] !== transform,
-	).length;
+	return page.evaluate(async () => {
+		const before = new Map<Element, string>();
+		for (const element of document.querySelectorAll("*")) {
+			before.set(element, window.getComputedStyle(element).transform);
+		}
+		await new Promise((resolve) => setTimeout(resolve, 250));
+		const moved: string[] = [];
+		for (const [element, transform] of before) {
+			if (!element.isConnected) continue;
+			if (window.getComputedStyle(element).transform !== transform) {
+				const cls = (element as HTMLElement).className?.toString() ?? "";
+				moved.push(`${element.tagName.toLowerCase()}.${cls.slice(0, 50)}`);
+			}
+		}
+		return moved;
+	});
 }
 
 test.describe("Reduced motion", () => {
@@ -67,7 +72,7 @@ test.describe("Reduced motion", () => {
 			await page.waitForLoadState("networkidle");
 
 			expect(await timedCssMotion(page)).toEqual([]);
-			expect(await movingElements(page)).toBe(0);
+			expect(await movingElements(page)).toEqual([]);
 		});
 	}
 

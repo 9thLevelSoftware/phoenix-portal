@@ -56,6 +56,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { PHOENIX } from "@/lib/colors";
 import { cancelSuccessMessage } from "@/lib/paddle";
 import { supabase } from "@/lib/supabase";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { formatVolume, type WeightUnit } from "@/lib/units";
 import { useUpdateProfile } from "@/mutations/profile";
 import { integrationsOptions } from "@/queries/integrations";
@@ -117,6 +118,8 @@ function isProfileTab(value: string | null): value is ProfileTab {
 }
 
 export function Profile() {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const { user, signOut } = useAuth();
 	// The sidebar's Settings link is /profile?tab=settings, so the active tab
 	// follows the query string (and writes back to it) instead of always

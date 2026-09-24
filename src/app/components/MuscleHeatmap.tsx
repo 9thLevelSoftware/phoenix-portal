@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { formatVolume, type WeightUnit } from "@/lib/units";
 
 export interface MuscleHeatmapProps {
@@ -195,6 +196,8 @@ export function MuscleHeatmap({
 	muscleVolumes,
 	unit = "kg",
 }: MuscleHeatmapProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
 	const [hoveredDataKey, setHoveredDataKey] = useState<string | null>(null);
 	const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });

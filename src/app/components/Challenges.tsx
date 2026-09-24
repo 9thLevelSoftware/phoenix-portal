@@ -48,13 +48,13 @@ import {
 function getDifficultyColor(difficulty: string) {
 	switch (difficulty) {
 		case "easy":
-			return "bg-success";
+			return "bg-success text-background";
 		case "medium":
-			return "bg-accent";
+			return "bg-accent text-background";
 		case "hard":
-			return "bg-primary";
+			return "bg-primary text-background";
 		case "extreme":
-			return "bg-chart-2";
+			return "bg-chart-2 text-background";
 		default:
 			return "from-muted to-muted";
 	}
@@ -181,7 +181,7 @@ function ChallengeCard({
 									<div
 										className={`w-12 h-12 rounded-lg bg-gradient-to-br ${getDifficultyColor(challenge.difficulty)} flex items-center justify-center`}
 									>
-										<Flame className="w-6 h-6 text-foreground" />
+										<Flame className="w-6 h-6" />
 									</div>
 									<div>
 										<h3 className="text-xl text-foreground">
@@ -193,7 +193,7 @@ function ChallengeCard({
 									</div>
 								</div>
 								<Badge
-									className={`${getDifficultyColor(challenge.difficulty)} text-foreground border-0`}
+									className={`${getDifficultyColor(challenge.difficulty)} border-0`}
 								>
 									{challenge.difficulty.toUpperCase()}
 								</Badge>
@@ -770,7 +770,13 @@ export function Challenges() {
 						</p>
 					</div>
 
-					<Tabs value={tab} onValueChange={setTab} className="space-y-6">
+					{/* Desktop has no separate Discover tab: its Active tab lists
+					    every active challenge, so "discover" shows Active here. */}
+					<Tabs
+						value={tab === "discover" ? "active" : tab}
+						onValueChange={setTab}
+						className="space-y-6"
+					>
 						<TabsList variant="panel">
 							<TabsTrigger value="active">Active Challenges</TabsTrigger>
 							<TabsTrigger value="past">Past Challenges</TabsTrigger>

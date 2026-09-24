@@ -19,10 +19,16 @@ let loading: Promise<void> | null = null;
 export function enableErrorReporting(
 	load: () => Promise<SentryModule> = () => import("./sentry"),
 ): Promise<void> {
-	loading ??= load().then((module) => {
-		module.initSentry();
-		sentryModule = module;
-	});
+	loading ??= load()
+		.then((module) => {
+			module.initSentry();
+			sentryModule = module;
+		})
+		.catch((error: unknown) => {
+			// Chunk failed to load (offline, deploy skew): allow a later retry.
+			loading = null;
+			console.warn("[error reporting] Sentry could not be loaded", error);
+		});
 	return loading;
 }
 

@@ -10,6 +10,7 @@ import { motion } from "motion/react";
 import { Badge } from "@/app/components/ui/badge";
 import { Card } from "@/app/components/ui/card";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import type { CommunityFeedItem, SharedRoutine } from "@/schemas/community";
 import { ContentActionMenu } from "./ContentActionMenu";
 
@@ -36,6 +37,8 @@ export function CommunityFeedCard({
 	currentUserId,
 	contentType = "routine",
 }: CommunityFeedCardProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const isDeletedUser = item.user_id === null;
 	const authorName = isDeletedUser
 		? "[Deleted User]"

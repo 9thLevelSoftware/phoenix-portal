@@ -33,6 +33,7 @@ for (const path of ["/dashboard", "/history", "/routines"]) {
 					// visually hidden (sr-only until focused, e.g. the skip link).
 					.filter(
 						(element) =>
+							element.getAttribute("tabindex") !== "-1" &&
 							!element.closest('[aria-hidden="true"], [inert]') &&
 							element.getBoundingClientRect().width > 1,
 					)

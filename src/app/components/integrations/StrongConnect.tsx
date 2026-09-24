@@ -278,7 +278,7 @@ export function StrongConnect({
 						onClick={() => onChange("kg")}
 						className={
 							value === "kg"
-								? "bg-[var(--chart-5)] hover:bg-[var(--chart-5)]/90 text-white border-0"
+								? "bg-chart-5 hover:bg-chart-5/90 text-background border-0"
 								: ""
 						}
 					>
@@ -291,7 +291,7 @@ export function StrongConnect({
 						onClick={() => onChange("lbs")}
 						className={
 							value === "lbs"
-								? "bg-[var(--chart-5)] hover:bg-[var(--chart-5)]/90 text-white border-0"
+								? "bg-chart-5 hover:bg-chart-5/90 text-background border-0"
 								: ""
 						}
 					>
@@ -366,7 +366,7 @@ export function StrongConnect({
 							onClick={handleExport}
 							disabled={isExporting}
 							size="sm"
-							className="bg-[var(--chart-5)] hover:bg-[var(--chart-5)]/90 text-white"
+							className="bg-chart-5 hover:bg-chart-5/90 text-background"
 						>
 							{isExporting ? (
 								"Exporting..."
@@ -482,7 +482,7 @@ export function StrongConnect({
 										onClick={handleImport}
 										disabled={isImporting}
 										size="sm"
-										className="bg-[var(--chart-5)] hover:bg-[var(--chart-5)]/90 text-white"
+										className="bg-chart-5 hover:bg-chart-5/90 text-background"
 									>
 										{isImporting
 											? "Importing..."

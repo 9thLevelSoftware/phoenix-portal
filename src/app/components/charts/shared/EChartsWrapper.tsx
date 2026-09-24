@@ -65,6 +65,9 @@ const CSS_VARIABLES: Record<string, string> = {
 	"--chart-3": "chart3",
 	"--chart-4": "chart4",
 	"--chart-5": "chart5",
+	"--chart-6": "chart6",
+	"--chart-7": "chart7",
+	"--chart-8": "chart8",
 };
 
 function resolveCssValue(value: string, tokens: ThemeTokens): string {

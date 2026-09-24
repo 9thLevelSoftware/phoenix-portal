@@ -85,7 +85,10 @@ export function PageErrorFallback({
 		if (sentryId) {
 			setReportedId(sentryId);
 		} else {
-			console.error(`[error id ${localId}]`, error);
+			// forwardReactError already logged the error itself.
+			console.error(
+				`[error id ${localId}] ${error instanceof Error ? error.message : String(error)}`,
+			);
 		}
 	}, [error, localId]);
 

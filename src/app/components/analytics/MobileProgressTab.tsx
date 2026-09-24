@@ -14,6 +14,7 @@ import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip"
 import { Button } from "@/app/components/ui/button";
 import { PHOENIX } from "@/lib/colors";
 import type { ProgressionWorkbenchModel } from "@/lib/progression-workbench";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import type { WeightUnit } from "@/lib/units";
 import { perCableUnitLabel } from "@/lib/units/loadDisplay";
 import {
@@ -56,6 +57,8 @@ export default function MobileProgressTab({
 	progressionModel,
 	onSelectProgressionExercise,
 }: MobileProgressTabProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const titlePhase =
 		phaseFilter === "all" ? "PHASE" : phaseFilter.toUpperCase();
 

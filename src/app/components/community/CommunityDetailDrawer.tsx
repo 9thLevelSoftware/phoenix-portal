@@ -31,6 +31,7 @@ import {
 import { useIsMobile } from "@/app/hooks/useIsMobile";
 import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { useSaveItem, useVote } from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
 import {
@@ -73,6 +74,8 @@ function DetailContent({
 	detailLoading: boolean;
 	detailError: boolean;
 }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const { user } = useAuth();
 	const unit = usePreferredWeightUnit();
 	const displayItem = detail ?? item;

@@ -258,8 +258,10 @@ function GlobalRankings({
 		);
 	}
 
-	if (isError || data == null) {
-		return <RankingsUnavailable onRetry={onRetry} />;
+	// A failed background refetch keeps the last good data (TanStack Query
+	// sets isError but keeps data), so only a missing board is an outage.
+	if (data == null) {
+		return isError ? <RankingsUnavailable onRetry={onRetry} /> : null;
 	}
 
 	function findUserEntry(
@@ -367,7 +369,7 @@ function WeeklyChallengeTab({
 		);
 	}
 
-	if (isError) {
+	if (isError && data == null) {
 		return <RankingsUnavailable onRetry={onRetry} />;
 	}
 
@@ -527,8 +529,10 @@ function MyRankingsTab({
 		);
 	}
 
-	if (isError || data == null) {
-		return <RankingsUnavailable onRetry={onRetry} />;
+	// A failed background refetch keeps the last good data (TanStack Query
+	// sets isError but keeps data), so only a missing board is an outage.
+	if (data == null) {
+		return isError ? <RankingsUnavailable onRetry={onRetry} /> : null;
 	}
 
 	if (data.length === 0) {

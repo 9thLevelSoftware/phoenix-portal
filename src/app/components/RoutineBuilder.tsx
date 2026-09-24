@@ -938,13 +938,13 @@ function SortableExerciseItem({
 
 	const getMuscleGroupColor = (group: string) => {
 		const colors: Record<string, string> = {
-			Chest: "bg-primary",
-			Back: "bg-success",
-			Shoulders: "bg-accent",
-			Legs: "bg-chart-2",
-			Arms: "bg-warning",
+			Chest: "bg-primary text-background",
+			Back: "bg-success text-background",
+			Shoulders: "bg-accent text-background",
+			Legs: "bg-chart-2 text-background",
+			Arms: "bg-warning text-background",
 		};
-		return colors[group] || "bg-muted";
+		return colors[group] || "bg-secondary text-secondary-foreground";
 	};
 
 	return (
@@ -980,7 +980,7 @@ function SortableExerciseItem({
 						<div className="flex items-center gap-2 mb-1">
 							<h3 className="font-semibold text-foreground">{exercise.name}</h3>
 							<Badge
-								className={`${getMuscleGroupColor(exercise.muscleGroup)} text-foreground border-0 text-xs`}
+								className={`${getMuscleGroupColor(exercise.muscleGroup)} border-0 text-xs`}
 							>
 								{exercise.muscleGroup}
 							</Badge>

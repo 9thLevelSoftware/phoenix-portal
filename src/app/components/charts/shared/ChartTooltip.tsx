@@ -1,4 +1,5 @@
 import { defaultStyles, TooltipWithBounds, useTooltip } from "@visx/tooltip";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { CHART_COLORS } from "./ChartTheme";
 
 export interface ChartTooltipData {
@@ -31,6 +32,8 @@ export function ChartTooltipContent({
 	top,
 	left,
 }: ChartTooltipContentProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	return (
 		<TooltipWithBounds
 			top={top}

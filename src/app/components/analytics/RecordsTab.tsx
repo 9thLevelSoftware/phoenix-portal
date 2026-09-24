@@ -75,14 +75,14 @@ function formatRecordMeasurement(
 
 function getMuscleGroupColor(muscleGroup: string): string {
 	const colors: Record<string, string> = {
-		Chest: "bg-primary",
-		Shoulders: "bg-accent",
-		Back: "bg-success",
-		Legs: "bg-chart-2",
-		Arms: "bg-warning",
-		Core: "bg-[var(--chart-5)]",
+		Chest: "bg-primary text-background",
+		Shoulders: "bg-accent text-background",
+		Back: "bg-success text-background",
+		Legs: "bg-chart-2 text-background",
+		Arms: "bg-warning text-background",
+		Core: "bg-chart-5 text-background",
 	};
-	return colors[muscleGroup] ?? "bg-muted";
+	return colors[muscleGroup] ?? "bg-secondary text-secondary-foreground";
 }
 
 interface ExercisePR {
@@ -426,7 +426,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 													</h3>
 													<div className="flex items-center gap-2 mt-1">
 														<Badge
-															className={`${getMuscleGroupColor(exercise.muscleGroup)} text-foreground border-0 text-xs`}
+															className={`${getMuscleGroupColor(exercise.muscleGroup)} border-0 text-xs`}
 														>
 															{exercise.muscleGroup}
 														</Badge>
@@ -680,7 +680,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 															{pr.exercise_name}
 														</h3>
 														<Badge
-															className={`${getMuscleGroupColor(pr.muscle_group)} text-foreground border-0 text-xs flex-shrink-0`}
+															className={`${getMuscleGroupColor(pr.muscle_group)} border-0 text-xs flex-shrink-0`}
 														>
 															{pr.muscle_group}
 														</Badge>

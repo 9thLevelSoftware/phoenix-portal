@@ -1077,7 +1077,8 @@ export function Analytics() {
 						formatter: sorted[0]?.name ?? "",
 						fontSize: 14,
 						fontWeight: 600,
-						color: "var(--primary-foreground)",
+						// Drawn in the donut hole, on the card: normal text colour.
+						color: "var(--foreground)",
 					},
 					emphasis: {
 						label: {

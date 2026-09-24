@@ -9,6 +9,7 @@ import { AreaClosed, Line, LinePath } from "@visx/shape";
 import { Text } from "@visx/text";
 import { TooltipWithBounds, useTooltip } from "@visx/tooltip";
 import { useMemo } from "react";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import type { RepSummary } from "@/schemas/telemetry";
 import { CHART_COLORS, CHART_MARGINS } from "./shared/ChartTheme";
 
@@ -46,6 +47,8 @@ function RomChart({
 	width: number;
 	height: number;
 }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const colors = CHART_COLORS();
 	const {
 		tooltipOpen,
@@ -267,6 +270,8 @@ export function RomTrend({
 	height = 250,
 	showAverage = true,
 }: RomTrendProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	if (!repSummaries || repSummaries.length === 0) {
 		return (
 			<div

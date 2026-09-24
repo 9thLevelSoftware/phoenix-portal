@@ -158,7 +158,16 @@ function useAutoCollapse() {
 		return () => mql.removeEventListener("change", handleChange);
 	}, []);
 
+	// Persist only changes the user made. The first run is the mount, not a
+	// change; skipping it also keeps it from consuming the flag of an auto
+	// collapse scheduled in the same commit (narrow mount), which would have
+	// saved `false` over the user's real preference.
+	const hasMountedRef = React.useRef(false);
 	React.useEffect(() => {
+		if (!hasMountedRef.current) {
+			hasMountedRef.current = true;
+			return;
+		}
 		if (autoChangeRef.current) {
 			autoChangeRef.current = false;
 			return;

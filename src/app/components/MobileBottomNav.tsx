@@ -124,7 +124,12 @@ export function MobileBottomNav() {
 	// The browser back button closes the drawer instead of leaving the page.
 	const handleDrawerChange = useCallback((open: boolean) => {
 		if (open) {
-			window.history.pushState({ moreDrawer: true }, "");
+			// Keep React Router's state (its idx) on the extra entry, or the
+			// next navigation is recorded with idx NaN.
+			window.history.pushState(
+				{ ...window.history.state, moreDrawer: true },
+				"",
+			);
 		} else if (window.history.state?.moreDrawer) {
 			window.history.back();
 		}
@@ -228,6 +233,10 @@ export function MobileBottomNav() {
 											<Link
 												key={item.path}
 												to={item.path}
+												// Replace the entry pushed for the open drawer, so Back
+												// from the destination returns to the page, not to a
+												// dead copy of it.
+												replace
 												onClick={closeDrawer}
 												aria-current={isActive ? "page" : undefined}
 												className={`flex min-h-11 items-center gap-3 px-4 py-3 transition-colors ${

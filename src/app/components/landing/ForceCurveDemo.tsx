@@ -11,6 +11,7 @@ import { bisector } from "@visx/vendor/d3-array";
 import { useCallback } from "react";
 
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { classifyVbtZone, type SimplifiedZoneInfo } from "@/lib/vbt";
 
 // ---------------------------------------------------------------------------
@@ -81,6 +82,8 @@ const LABEL_FONT_SIZE = 11;
 // ---------------------------------------------------------------------------
 
 export function Chart({ width, height }: { width: number; height: number }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const {
 		showTooltip,
 		hideTooltip,
@@ -270,7 +273,7 @@ export function Chart({ width, height }: { width: number; height: number }) {
 							padding: "6px 10px",
 							fontSize: 12,
 							lineHeight: 1.4,
-							color: "var(--primary-foreground)",
+							color: "var(--foreground)",
 							pointerEvents: "none",
 							boxShadow: "var(--elevation-md)",
 							whiteSpace: "nowrap",

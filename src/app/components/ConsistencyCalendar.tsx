@@ -8,7 +8,7 @@ import {
 import { Flame } from "lucide-react";
 import { useMemo, useState } from "react";
 import { PHOENIX } from "@/lib/colors";
-import { withAlpha } from "@/lib/theme-tokens";
+import { useRerenderOnThemeChange, withAlpha } from "@/lib/theme-tokens";
 
 export interface ConsistencyCalendarProps {
 	workoutDates: Date[];
@@ -100,6 +100,8 @@ export function ConsistencyCalendar({
 	workoutDates,
 	weeks = 52,
 }: ConsistencyCalendarProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const phoenix = PHOENIX();
 	const [hoveredCell, setHoveredCell] = useState<{
 		date: Date;

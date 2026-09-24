@@ -76,14 +76,14 @@ export function SessionDetail() {
 
 	const getMuscleGroupColor = (muscleGroup: string) => {
 		const colors: Record<string, string> = {
-			Chest: "bg-primary",
-			Shoulders: "bg-accent",
-			Back: "bg-success",
-			Legs: "bg-chart-2",
-			Arms: "bg-warning",
-			Core: "bg-[var(--chart-5)]",
+			Chest: "bg-primary text-background",
+			Shoulders: "bg-accent text-background",
+			Back: "bg-success text-background",
+			Legs: "bg-chart-2 text-background",
+			Arms: "bg-warning text-background",
+			Core: "bg-chart-5 text-background",
 		};
-		return colors[muscleGroup] || "bg-muted";
+		return colors[muscleGroup] || "bg-secondary text-secondary-foreground";
 	};
 
 	// Loading state
@@ -633,7 +633,7 @@ export function SessionDetail() {
 												<Badge
 													className={`${getMuscleGroupColor(
 														exercise.muscle_group,
-													)} text-foreground border-0 mt-1`}
+													)} border-0 mt-1`}
 												>
 													{exercise.muscle_group}
 												</Badge>

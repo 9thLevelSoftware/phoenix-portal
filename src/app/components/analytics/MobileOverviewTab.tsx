@@ -12,6 +12,7 @@ import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip"
 import { TrainingLoadGauge } from "@/app/components/charts/TrainingLoadGauge";
 import { type InsightItem, InsightsFeed } from "@/app/components/InsightsFeed";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 
 interface ConsistencyData {
 	weeklyData: {
@@ -45,6 +46,8 @@ export default function MobileOverviewTab({
 	insightsError = false,
 	insightsSource = "server",
 }: MobileOverviewTabProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	return (
 		<>
 			<MobileChartCard title="VOLUME OVER TIME">

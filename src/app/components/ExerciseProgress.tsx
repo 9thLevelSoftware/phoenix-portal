@@ -29,6 +29,7 @@ import {
 	Tooltip as UiTooltip,
 } from "@/app/components/ui/tooltip";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { convertWeight } from "@/lib/units";
 import { perCableUnitLabel } from "@/lib/units/loadDisplay";
 import { profileOptions } from "@/queries/profile";
@@ -209,6 +210,8 @@ export function ExerciseProgress({
 	userId,
 	initialExercise,
 }: ExerciseProgressProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const [selectedExercise, setSelectedExercise] = useState<string>(
 		initialExercise ?? "",
 	);

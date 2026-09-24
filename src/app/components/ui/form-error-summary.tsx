@@ -45,15 +45,22 @@ function ErrorSummary({
 	const containerRef = useRef<HTMLDivElement>(null);
 	if (messages.length === 0) return null;
 
-	// Jump to the first invalid field of *this* form (the nearest <form>, else
-	// the summary's parent section), not the first one anywhere on the page.
+	// Jump to the invalid field nearest this summary: search its enclosing
+	// <form> if there is one, otherwise widen ancestor by ancestor. The builders
+	// render the summary in its own wrapper beside the header that holds the
+	// field, so neither the summary's own box nor its parent alone contains it.
 	const scrollToFirstError = () => {
 		const container = containerRef.current;
-		const scope =
-			container?.closest("form") ?? container?.parentElement ?? document;
-		const firstInvalid = scope.querySelector<HTMLElement>(
-			'[aria-invalid="true"]',
-		);
+		const selector = '[aria-invalid="true"]';
+		let firstInvalid =
+			container?.closest("form")?.querySelector<HTMLElement>(selector) ?? null;
+		for (
+			let scope = container?.parentElement ?? null;
+			!firstInvalid && scope;
+			scope = scope.parentElement
+		) {
+			firstInvalid = scope.querySelector<HTMLElement>(selector);
+		}
 		if (firstInvalid) {
 			firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
 			firstInvalid.focus();

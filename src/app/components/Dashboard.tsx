@@ -40,6 +40,7 @@ import { useStreak } from "@/hooks/useStreak";
 import { fadeUpVariants, hover, staggerContainer } from "@/lib/animations";
 import { formatChallengeValue } from "@/lib/challenges";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { convertWeight, formatVolume, type WeightUnit } from "@/lib/units";
 import { formatLoad } from "@/lib/units/loadDisplay";
 import {
@@ -347,6 +348,8 @@ function ActiveChallengesSection({
 }
 
 export function Dashboard() {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
 	const { activeProfileId } = useProfileFilterStore();

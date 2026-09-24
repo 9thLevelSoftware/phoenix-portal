@@ -49,6 +49,18 @@ describe("error reporting", () => {
 		expect(lastReportedErrorId()).toBe("sentry-event-1");
 	});
 
+	it("retries a Sentry load that failed instead of caching the failure", async () => {
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+		const failing = vi.fn(() => Promise.reject(new Error("chunk failed")));
+		await expect(enableErrorReporting(failing)).resolves.toBeUndefined();
+		expect(lastReportedErrorId()).toBeUndefined();
+
+		const { module, initSentry } = fakeSentry();
+		await enableErrorReporting(() => Promise.resolve(module));
+		expect(initSentry).toHaveBeenCalledTimes(1);
+		expect(lastReportedErrorId()).toBe("sentry-event-1");
+	});
+
 	it("loads and initialises Sentry once however often consent is given", async () => {
 		const { module, initSentry } = fakeSentry();
 		const load = vi.fn(() => Promise.resolve(module));
