@@ -51,7 +51,7 @@ export function GoalProgressRing({
 				y={size / 2}
 				textAnchor="middle"
 				dominantBaseline="central"
-				className="fill-white text-sm font-semibold transform rotate-90"
+				className="fill-foreground text-sm font-semibold transform rotate-90"
 				style={{ transformOrigin: "center" }}
 			>
 				{Math.round(clamped)}%

@@ -994,7 +994,7 @@ export function LandingPage() {
 									className={`p-8 h-full flex flex-col ${
 										tier.highlight
 											? "bg-surface-2 border-primary border ring-1 ring-primary/20"
-											: "bg-surface-1 border-white/[0.06]"
+											: "bg-surface-1 border-foreground/[0.06]"
 									}`}
 								>
 									{tier.highlight && (

@@ -58,7 +58,7 @@ export function FeatureHint({
 				<Button
 					variant="ghost"
 					size="sm"
-					className="h-6 px-2 text-xs text-[var(--primary)] hover:text-[var(--primary)]/80 hover:bg-white/5"
+					className="h-6 px-2 text-xs text-[var(--primary)] hover:text-[var(--primary)]/80 hover:bg-foreground/5"
 					onClick={() => dismissHint.mutate({ hintId })}
 				>
 					Got it

@@ -205,7 +205,7 @@ export function VolumeLandmarks({
 										].map(({ value, label }) => (
 											<div
 												key={label}
-												className="absolute top-0 bottom-0 w-px bg-white/20"
+												className="absolute top-0 bottom-0 w-px bg-foreground/20"
 												style={{ left: `${pct(value)}%` }}
 												aria-hidden="true"
 												title={`${label}: ${value}`}

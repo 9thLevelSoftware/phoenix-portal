@@ -306,7 +306,7 @@ const CHART_HEIGHT = 220;
 
 export function ForceCurveDemo() {
 	return (
-		<div className="rounded-lg border border-white/[0.06] bg-surface-2 p-3">
+		<div className="rounded-lg border border-foreground/[0.06] bg-surface-2 p-3">
 			{/* Header */}
 			<div className="mb-2">
 				<span className="eyebrow text-primary">LIVE DEMO</span>

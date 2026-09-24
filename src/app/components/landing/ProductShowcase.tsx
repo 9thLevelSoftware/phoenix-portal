@@ -20,7 +20,7 @@ function Panel({ label, index, children }: PanelProps) {
 			initial={{ opacity: 0, y: 12 }}
 			animate={{ opacity: 1, y: 0 }}
 			transition={{ duration: 0.4, delay: index * 0.08, ease: "easeOut" }}
-			className="rounded-lg border border-white/[0.06] bg-surface-2 p-4 flex flex-col gap-3"
+			className="rounded-lg border border-foreground/[0.06] bg-surface-2 p-4 flex flex-col gap-3"
 		>
 			<span className="eyebrow text-muted-foreground">{label}</span>
 			{children}
@@ -117,7 +117,7 @@ function RecoveryPanel() {
 						y="24"
 						dominantBaseline="middle"
 						textAnchor="middle"
-						fill="white"
+						fill="var(--foreground)"
 						fontSize="11"
 						fontWeight="600"
 					>
@@ -183,7 +183,7 @@ function VolumePanel() {
 						<span className="text-xs text-muted-foreground">This wk</span>
 						<span className="text-xs font-medium text-foreground">18,400</span>
 					</div>
-					<div className="h-1.5 w-full rounded-full bg-white/[0.06] overflow-hidden">
+					<div className="h-1.5 w-full rounded-full bg-foreground/[0.06] overflow-hidden">
 						<div
 							className="h-full rounded-full bg-primary"
 							style={{ width: "78%" }}
@@ -196,9 +196,9 @@ function VolumePanel() {
 						<span className="text-xs text-muted-foreground">Last wk</span>
 						<span className="text-xs font-medium text-foreground">14,950</span>
 					</div>
-					<div className="h-1.5 w-full rounded-full bg-white/[0.06] overflow-hidden">
+					<div className="h-1.5 w-full rounded-full bg-foreground/[0.06] overflow-hidden">
 						<div
-							className="h-full rounded-full bg-white/20"
+							className="h-full rounded-full bg-foreground/20"
 							style={{ width: "62%" }}
 						/>
 					</div>

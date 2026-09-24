@@ -160,7 +160,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 								{step.features.map((feature) => (
 									<div
 										key={feature.label}
-										className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3"
+										className="flex items-start gap-3 rounded-lg border border-foreground/10 bg-foreground/5 p-3"
 									>
 										<feature.icon className="size-5 shrink-0 text-primary mt-0.5" />
 										<div>
@@ -196,7 +196,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 										? "bg-primary"
 										: i < currentStep
 											? "bg-primary/50"
-											: "bg-white/20"
+											: "bg-foreground/20"
 								}`}
 							/>
 						))}

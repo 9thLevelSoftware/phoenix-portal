@@ -1029,7 +1029,7 @@ export function Dashboard() {
 								) : (
 									<div className="grid grid-cols-2 gap-y-6 gap-x-4">
 										<div className="flex items-center gap-4">
-											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-white/5">
+											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-foreground/5">
 												<Dumbbell className="w-5 h-5" />
 											</div>
 											<div>
@@ -1045,7 +1045,7 @@ export function Dashboard() {
 											</div>
 										</div>
 										<div className="flex items-center gap-4">
-											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-white/5">
+											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-foreground/5">
 												<Trophy className="w-5 h-5" />
 											</div>
 											<div>
@@ -1061,7 +1061,7 @@ export function Dashboard() {
 											</div>
 										</div>
 										<div className="flex items-center gap-4">
-											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-white/5">
+											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-foreground/5">
 												<Award className="w-5 h-5" />
 											</div>
 											<div>
@@ -1074,7 +1074,7 @@ export function Dashboard() {
 											</div>
 										</div>
 										<div className="flex items-center gap-4">
-											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-white/5">
+											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-foreground/5">
 												<TrendingUp className="w-5 h-5" />
 											</div>
 											<div>
@@ -1112,7 +1112,7 @@ export function Dashboard() {
 									</h3>
 									<Button
 										variant="outline"
-										className="w-full border-white/10 hover:bg-surface-3"
+										className="w-full border-foreground/10 hover:bg-surface-3"
 										asChild
 									>
 										<Link to="/cycles">Browse Training Cycles</Link>
@@ -1245,7 +1245,7 @@ export function Dashboard() {
 											{recentWorkouts.map((workout: WorkoutSession) => (
 												<div
 													key={workout.id}
-													className="flex items-center justify-between p-3 bg-background rounded-lg border border-white/5 hover:border-primary/50 transition-all cursor-pointer"
+													className="flex items-center justify-between p-3 bg-background rounded-lg border border-foreground/5 hover:border-primary/50 transition-all cursor-pointer"
 												>
 													<div className="flex-1">
 														<div className="flex items-center gap-2 mb-1">
@@ -1389,7 +1389,7 @@ export function Dashboard() {
 											{["sk-a", "sk-b", "sk-c"].map((k) => (
 												<div
 													key={k}
-													className="p-3 rounded-lg border border-white/5"
+													className="p-3 rounded-lg border border-foreground/5"
 												>
 													<Skeleton className="h-4 w-24 mb-2" />
 													<Skeleton className="h-4 w-32" />
@@ -1462,7 +1462,7 @@ export function Dashboard() {
 											{["sk-a", "sk-b", "sk-c"].map((k) => (
 												<div
 													key={k}
-													className="p-3 rounded-lg border border-white/5"
+													className="p-3 rounded-lg border border-foreground/5"
 												>
 													<Skeleton className="h-4 w-24 mb-2" />
 													<Skeleton className="h-3 w-32" />

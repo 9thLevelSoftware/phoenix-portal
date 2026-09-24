@@ -17,7 +17,7 @@ export function RechartsTooltip({
 	if (!active || !payload?.length) return null;
 
 	return (
-		<div className="rounded-lg border border-white/10 bg-[var(--surface-2)] px-3 py-2 shadow-lg">
+		<div className="rounded-lg border border-foreground/10 bg-[var(--surface-2)] px-3 py-2 shadow-lg">
 			<p className="mb-1 text-xs text-muted-foreground font-medium">{label}</p>
 			{payload.map((entry) => (
 				<div key={entry.name} className="flex items-center gap-2 text-sm">
