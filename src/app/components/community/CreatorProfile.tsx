@@ -207,7 +207,7 @@ export function CreatorProfile({
 											className={
 												isBlocked
 													? "border-secondary text-muted-foreground hover:text-foreground gap-1.5 h-8 text-xs"
-													: "border-red-500/30 text-red-400 hover:bg-red-500/10 gap-1.5 h-8 text-xs"
+													: "border-destructive/30 text-destructive hover:bg-destructive/10 gap-1.5 h-8 text-xs"
 											}
 											onClick={() =>
 												isBlocked

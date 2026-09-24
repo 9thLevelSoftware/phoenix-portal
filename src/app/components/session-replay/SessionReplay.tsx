@@ -314,7 +314,7 @@ export function SessionReplay() {
 											<p
 												className={`text-sm font-medium ${
 													currentRepQuality.isLowQuality
-														? "text-amber-500"
+														? "text-warning"
 														: "text-primary"
 												}`}
 											>

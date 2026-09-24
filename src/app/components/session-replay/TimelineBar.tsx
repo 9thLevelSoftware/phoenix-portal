@@ -89,7 +89,9 @@ export function TimelineBar({
 				{fatigueStartPercent !== null && (
 					<div
 						className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-r ${
-							fatigue.severity === "high" ? "bg-red-500/20" : "bg-amber-500/20"
+							fatigue.severity === "high"
+								? "bg-destructive/20"
+								: "bg-warning/20"
 						}`}
 						style={{
 							left: `${fatigueStartPercent}%`,

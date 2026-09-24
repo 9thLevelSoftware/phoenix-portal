@@ -37,12 +37,7 @@ import {
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
-import {
-	fadeUp,
-	fadeUpVariants,
-	hover,
-	staggerContainer,
-} from "@/lib/animations";
+import { fadeUpVariants, hover, staggerContainer } from "@/lib/animations";
 import { formatChallengeValue } from "@/lib/challenges";
 import { PHOENIX } from "@/lib/colors";
 import { convertWeight, formatVolume, type WeightUnit } from "@/lib/units";
@@ -580,7 +575,7 @@ export function Dashboard() {
 							</Card>
 						</motion.div>
 
-						<motion.div variants={fadeUp}>
+						<motion.div variants={fadeUpVariants}>
 							<Link to="/goals" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
@@ -597,7 +592,7 @@ export function Dashboard() {
 							</Link>
 						</motion.div>
 
-						<motion.div variants={fadeUp}>
+						<motion.div variants={fadeUpVariants}>
 							<Link to="/recovery" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center mb-4">
@@ -1441,7 +1436,7 @@ export function Dashboard() {
 							</motion.div>
 
 							{/* Active Challenges */}
-							<motion.div variants={fadeUp}>
+							<motion.div variants={fadeUpVariants}>
 								<Card className="p-5 signal-panel">
 									<h3 className="text-xl text-foreground mb-4">
 										Active Challenges
@@ -1454,7 +1449,7 @@ export function Dashboard() {
 							</motion.div>
 
 							{/* Badge Showcase */}
-							<motion.div variants={fadeUp}>
+							<motion.div variants={fadeUpVariants}>
 								<Card className="p-5 signal-panel">
 									<h3 className="text-xl text-foreground mb-4">
 										Recent Badges

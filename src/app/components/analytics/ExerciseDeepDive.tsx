@@ -428,9 +428,9 @@ export function ExerciseDeepDive({
 										className={[
 											"shrink-0 text-[11px] font-semibold px-2 py-1 rounded-md mt-2",
 											delta > 0
-												? "bg-emerald-500/15 text-emerald-400"
+												? "bg-success/15 text-success"
 												: delta < 0
-													? "bg-red-500/15 text-red-400"
+													? "bg-destructive/15 text-destructive"
 													: "bg-secondary/20 text-muted-foreground",
 										].join(" ")}
 										data-testid="delta-badge"
@@ -472,9 +472,9 @@ export function ExerciseDeepDive({
 							value={delta !== null ? `${delta > 0 ? "+" : ""}${delta}%` : "—"}
 							valueClass={
 								delta !== null && delta > 0
-									? "text-emerald-400"
+									? "text-success"
 									: delta !== null && delta < 0
-										? "text-red-400"
+										? "text-destructive"
 										: "text-foreground"
 							}
 						/>

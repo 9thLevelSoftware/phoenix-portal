@@ -112,13 +112,13 @@ export function DangerZone() {
 	// buttons that cannot do anything.
 	if (deletionRequest?.status === "executing") {
 		return (
-			<Card className="border-red-900/50 bg-surface-2">
+			<Card className="border-destructive/40 bg-surface-2">
 				<CardHeader>
-					<CardTitle className="flex items-center gap-2 text-red-400">
+					<CardTitle className="flex items-center gap-2 text-destructive">
 						<Loader2 className="h-5 w-5 animate-spin" />
 						Deletion In Progress
 					</CardTitle>
-					<CardDescription className="text-red-300/80">
+					<CardDescription className="text-destructive/80">
 						Your account is being deleted right now. This can no longer be
 						cancelled. You will be signed out when it completes.
 					</CardDescription>
@@ -145,13 +145,13 @@ export function DangerZone() {
 	// =========================================================================
 	if (deletionRequest?.needs_support_reason) {
 		return (
-			<Card className="border-amber-900/50 bg-surface-2">
+			<Card className="border-warning/40 bg-surface-2">
 				<CardHeader>
-					<CardTitle className="flex items-center gap-2 text-amber-400">
+					<CardTitle className="flex items-center gap-2 text-warning">
 						<AlertTriangle className="h-5 w-5" />
 						Deletion Needs Support
 					</CardTitle>
-					<CardDescription className="text-amber-300/80">
+					<CardDescription className="text-warning/80">
 						We could not finish deleting your account on {scheduledDateStr}{" "}
 						because{" "}
 						{supportReasonSentence(deletionRequest.needs_support_reason)}
@@ -167,7 +167,7 @@ export function DangerZone() {
 						variant="outline"
 						onClick={() => cancelDeletion.mutate()}
 						disabled={cancelDeletion.isPending}
-						className="w-full border-amber-600/50 text-amber-400 hover:bg-amber-600/10"
+						className="w-full border-warning/40 text-warning hover:bg-warning/10"
 					>
 						{cancelDeletion.isPending ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -203,13 +203,13 @@ export function DangerZone() {
 	if (hasPendingRequest && gracePeriodExpired) {
 		return (
 			<>
-				<Card className="border-red-900/50 bg-surface-2">
+				<Card className="border-destructive/40 bg-surface-2">
 					<CardHeader>
-						<CardTitle className="flex items-center gap-2 text-red-400">
+						<CardTitle className="flex items-center gap-2 text-destructive">
 							<AlertTriangle className="h-5 w-5" />
 							Account Deletion Ready
 						</CardTitle>
-						<CardDescription className="text-red-300/80">
+						<CardDescription className="text-destructive/80">
 							Your 30-day grace period ended on {scheduledDateStr}. Your account
 							and all personal data are deleted automatically within the hour,
 							and your subscription is cancelled then. Delete Now only runs it
@@ -258,9 +258,9 @@ export function DangerZone() {
 					open={showExecuteDialog}
 					onOpenChange={setShowExecuteDialog}
 				>
-					<AlertDialogContent className="border-red-900/50">
+					<AlertDialogContent className="border-destructive/40">
 						<AlertDialogHeader>
-							<AlertDialogTitle className="text-red-400">
+							<AlertDialogTitle className="text-destructive">
 								Permanent Deletion
 							</AlertDialogTitle>
 							<AlertDialogDescription>
@@ -298,17 +298,15 @@ export function DangerZone() {
 	// =========================================================================
 	if (hasPendingRequest && !gracePeriodExpired) {
 		return (
-			<Card className="border-amber-900/50 bg-surface-2">
+			<Card className="border-warning/40 bg-surface-2">
 				<CardHeader>
-					<CardTitle className="flex items-center gap-2 text-amber-400">
+					<CardTitle className="flex items-center gap-2 text-warning">
 						<AlertTriangle className="h-5 w-5" />
 						Deletion Scheduled
 					</CardTitle>
-					<CardDescription className="text-amber-300/80">
+					<CardDescription className="text-warning/80">
 						Your account is scheduled for deletion on{" "}
-						<span className="font-medium text-amber-300">
-							{scheduledDateStr}
-						</span>{" "}
+						<span className="font-medium text-warning">{scheduledDateStr}</span>{" "}
 						({daysRemaining} {daysRemaining === 1 ? "day" : "days"} remaining)
 					</CardDescription>
 				</CardHeader>
@@ -320,7 +318,7 @@ export function DangerZone() {
 						variant="outline"
 						onClick={() => cancelDeletion.mutate()}
 						disabled={cancelDeletion.isPending}
-						className="w-full border-amber-600/50 text-amber-400 hover:bg-amber-600/10"
+						className="w-full border-warning/40 text-warning hover:bg-warning/10"
 					>
 						{cancelDeletion.isPending ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -339,9 +337,9 @@ export function DangerZone() {
 	// =========================================================================
 	return (
 		<>
-			<Card className="border-red-900/50 bg-surface-2">
+			<Card className="border-destructive/40 bg-surface-2">
 				<CardHeader>
-					<CardTitle className="flex items-center gap-2 text-red-400">
+					<CardTitle className="flex items-center gap-2 text-destructive">
 						<AlertTriangle className="h-5 w-5" />
 						Danger Zone
 					</CardTitle>
@@ -368,9 +366,9 @@ export function DangerZone() {
 
 			{/* Confirmation dialog */}
 			<AlertDialog open={showRequestDialog} onOpenChange={setShowRequestDialog}>
-				<AlertDialogContent className="border-red-900/50">
+				<AlertDialogContent className="border-destructive/40">
 					<AlertDialogHeader>
-						<AlertDialogTitle className="text-red-400">
+						<AlertDialogTitle className="text-destructive">
 							Are you sure?
 						</AlertDialogTitle>
 						<AlertDialogDescription>

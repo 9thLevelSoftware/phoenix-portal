@@ -282,7 +282,7 @@ export function HevyConnect({
 					</div>
 					{isConnected && (
 						<div className="flex items-center gap-2">
-							<span className="text-xs text-[var(--color-forge-green)] flex items-center gap-1">
+							<span className="text-xs text-success flex items-center gap-1">
 								<CheckCircle className="size-3" />
 								Connected
 							</span>
@@ -359,7 +359,7 @@ export function HevyConnect({
 						{parsedActivities && parsedActivities.length > 0 && (
 							<div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-3">
 								<div className="flex items-center gap-2 text-sm font-medium">
-									<FileText className="size-4 text-[var(--color-phoenix-primary)]" />
+									<FileText className="size-4 text-primary" />
 									Import Preview
 									{csvFileName && (
 										<span className="text-muted-foreground font-normal">
@@ -413,11 +413,11 @@ export function HevyConnect({
 
 					{/* API Tab */}
 					<TabsContent value="api" className="space-y-4 mt-4">
-						<div className="flex items-start gap-2 rounded-md bg-amber-500/10 p-3 text-sm">
-							<AlertCircle className="size-4 text-amber-500 shrink-0 mt-0.5" />
+						<div className="flex items-start gap-2 rounded-md bg-warning/10 p-3 text-sm">
+							<AlertCircle className="size-4 text-warning shrink-0 mt-0.5" />
 							<p className="text-muted-foreground">
 								Requires{" "}
-								<span className="font-medium text-amber-500">Hevy PRO</span>{" "}
+								<span className="font-medium text-warning">Hevy PRO</span>{" "}
 								subscription. Generate an API key in Hevy Settings &rarr; API.
 							</p>
 						</div>

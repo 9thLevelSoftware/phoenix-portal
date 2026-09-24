@@ -322,7 +322,7 @@ export function StrongConnect({
 					</div>
 					{isConnected && (
 						<div className="flex items-center gap-2">
-							<span className="text-xs text-[var(--color-forge-green)] flex items-center gap-1">
+							<span className="text-xs text-success flex items-center gap-1">
 								<CheckCircle className="size-3" />
 								Connected
 							</span>
@@ -449,7 +449,7 @@ export function StrongConnect({
 						{parsedActivities && parsedActivities.length > 0 && (
 							<div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-3">
 								<div className="flex items-center gap-2 text-sm font-medium">
-									<FileText className="size-4 text-[var(--color-phoenix-primary)]" />
+									<FileText className="size-4 text-primary" />
 									Import Preview
 									{csvFileName && (
 										<span className="text-muted-foreground font-normal">

@@ -15,10 +15,11 @@ interface SyncStatusProps {
 }
 
 const STATUS_BADGE_CLASS: Record<string, string> = {
-	completed: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-	failed: "bg-red-500/20 text-red-400 border-red-500/30",
-	processing: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-	pending: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
+	completed: "bg-success/20 text-success border-success/30",
+	failed: "bg-destructive/20 text-destructive border-destructive/30",
+	processing: "bg-warning/20 text-warning border-warning/30",
+	pending:
+		"bg-muted-foreground/20 text-muted-foreground border-muted-foreground/30",
 };
 
 export function SyncStatus({ userId }: SyncStatusProps) {
@@ -57,7 +58,7 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 			<CardContent>
 				<div className="space-y-4">
 					{isError && (
-						<div className="flex items-center gap-2 text-sm text-red-400">
+						<div className="flex items-center gap-2 text-sm text-destructive">
 							<AlertCircle className="h-4 w-4" />
 							<span>Couldn't load sync status. Please try again.</span>
 						</div>
@@ -65,7 +66,7 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 
 					{!isError && processing && (
 						<div className="flex items-center gap-2 text-sm">
-							<Loader2 className="h-4 w-4 animate-spin text-amber-400" />
+							<Loader2 className="h-4 w-4 animate-spin text-warning" />
 							<span className="capitalize">
 								Syncing {processing.provider}...
 							</span>
@@ -80,7 +81,7 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 					)}
 
 					{!isError && !processing && pending === 0 && (
-						<div className="flex items-center gap-2 text-sm text-emerald-400">
+						<div className="flex items-center gap-2 text-sm text-success">
 							<CheckCircle className="h-4 w-4" />
 							<span>All synced</span>
 						</div>

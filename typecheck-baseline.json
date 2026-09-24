@@ -66,9 +66,6 @@
       "src/lib/community-atlas.ts": {
         "TS2538": 1
       },
-      "src/main.tsx": {
-        "TS2322": 1
-      },
       "src/queries/community.ts": {
         "TS2590": 2
       },
@@ -158,9 +155,6 @@
       },
       "src/lib/export/csv.test.ts": {
         "TS2741": 1
-      },
-      "src/main.tsx": {
-        "TS2322": 1
       },
       "src/mutations/__tests__/cycles.test.tsx": {
         "TS2339": 2

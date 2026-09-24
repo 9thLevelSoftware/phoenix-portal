@@ -127,16 +127,16 @@ interface RefreshSubscriptionResponse {
 const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 	FREE: {
 		icon: Flame,
-		accentBorder: "border-zinc-700",
-		accentBg: "from-zinc-800/50 to-zinc-900/50",
-		accentText: "text-zinc-400",
+		accentBorder: "border-border",
+		accentBg: "from-secondary/50 to-secondary/20",
+		accentText: "text-muted-foreground",
 		buttonClass: "",
 	},
 	EMBER: {
 		icon: Sparkles,
-		accentBorder: "border-[var(--color-forge-green)]",
-		accentBg: "from-[var(--color-forge-green)]/10 to-emerald-900/10",
-		accentText: "text-[var(--color-forge-green)]",
+		accentBorder: "border-success",
+		accentBg: "from-success/10 to-success/5",
+		accentText: "text-success",
 		buttonClass:
 			"bg-success hover:bg-success/90 text-success-foreground border-0",
 	},
@@ -154,7 +154,7 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 		accentBorder: "border-accent",
 		accentBg: "from-accent/10 to-[var(--warning)]/10",
 		accentText: "text-accent",
-		buttonClass: "bg-accent hover:bg-accent/90 text-black border-0",
+		buttonClass: "bg-accent hover:bg-accent/90 text-accent-foreground border-0",
 	},
 };
 

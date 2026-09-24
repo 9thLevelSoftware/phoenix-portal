@@ -192,7 +192,7 @@ export function ReplayPhaseAnalyticsPanel({
 				)}
 			</div>
 			{analytics.partialReason && (
-				<p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+				<p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
 					{analytics.partialReason}
 				</p>
 			)}

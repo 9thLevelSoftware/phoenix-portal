@@ -75,14 +75,14 @@ export function ProviderCard({
 		<Card className="border-border/50">
 			<CardHeader>
 				<div className="flex items-center gap-3">
-					<div className="flex items-center justify-center size-10 rounded-lg bg-[var(--color-phoenix-primary)]/10">
-						<Icon className="size-5 text-[var(--color-phoenix-primary)]" />
+					<div className="flex items-center justify-center size-10 rounded-lg bg-primary/10">
+						<Icon className="size-5 text-primary" />
 					</div>
 					<div className="flex-1">
 						<div className="flex items-center gap-2">
 							<CardTitle className="text-base">{meta.name}</CardTitle>
 							{comingSoon && (
-								<Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+								<Badge className="bg-warning/20 text-warning border-warning/30">
 									Coming Soon
 								</Badge>
 							)}
@@ -94,7 +94,7 @@ export function ProviderCard({
 			<CardContent>
 				{integration?.status === "connected" ? (
 					<div className="space-y-4">
-						<Badge className="bg-[var(--color-forge-green)]/20 text-[var(--color-forge-green)] border-transparent">
+						<Badge className="bg-success/20 text-success border-transparent">
 							Connected
 						</Badge>
 						<p className="text-sm text-muted-foreground">
@@ -131,7 +131,7 @@ export function ProviderCard({
 						<Badge
 							className={
 								isTokenExpired
-									? "bg-amber-500/20 text-amber-400 border-amber-500/30"
+									? "bg-warning/20 text-warning border-warning/30"
 									: "bg-destructive/20 text-destructive border-destructive/30"
 							}
 						>

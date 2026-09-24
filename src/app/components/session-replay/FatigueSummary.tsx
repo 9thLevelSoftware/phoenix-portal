@@ -60,17 +60,17 @@ function getSeverityStyles(severity: FatigueAnalysis["severity"]) {
 	switch (severity) {
 		case "high":
 			return {
-				background: "bg-red-500/10 border border-red-500/20",
-				icon: "text-red-500",
-				title: "text-red-400",
-				text: "text-red-300/80",
+				background: "bg-destructive/10 border border-destructive/20",
+				icon: "text-destructive",
+				title: "text-destructive",
+				text: "text-destructive/80",
 			};
 		case "moderate":
 			return {
-				background: "bg-amber-500/10 border border-amber-500/20",
-				icon: "text-amber-500",
-				title: "text-amber-400",
-				text: "text-amber-300/80",
+				background: "bg-warning/10 border border-warning/20",
+				icon: "text-warning",
+				title: "text-warning",
+				text: "text-warning/80",
 			};
 		default:
 			return {

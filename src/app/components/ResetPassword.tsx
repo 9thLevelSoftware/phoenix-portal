@@ -102,7 +102,7 @@ export function ResetPassword() {
 						/>
 					</div>
 
-					{error && <p className="text-sm text-red-400">{error}</p>}
+					{error && <p className="text-sm text-destructive">{error}</p>}
 
 					<Button type="submit" disabled={loading} className="w-full">
 						{loading ? (

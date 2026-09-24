@@ -176,8 +176,8 @@ function StatCard({
 						<span
 							className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium ${
 								stat.changePercent > 0
-									? "bg-emerald-500/15 text-emerald-400"
-									: "bg-red-500/15 text-red-400"
+									? "bg-success/15 text-success"
+									: "bg-destructive/15 text-destructive"
 							}`}
 						>
 							{stat.changePercent > 0 ? "\u2191" : "\u2193"}{" "}

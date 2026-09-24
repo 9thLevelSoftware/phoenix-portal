@@ -57,7 +57,7 @@ export function MobileOnlyProvider({
 				<div className="space-y-4">
 					{integration?.status === "connected" ? (
 						<>
-							<Badge className="bg-[var(--color-forge-green)]/20 text-[var(--color-forge-green)] border-transparent">
+							<Badge className="bg-success/20 text-success border-transparent">
 								Synced from mobile
 							</Badge>
 							<p className="text-sm text-muted-foreground">

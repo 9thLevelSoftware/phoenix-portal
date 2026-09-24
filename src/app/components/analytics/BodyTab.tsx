@@ -457,7 +457,7 @@ function SelectedMuscleContribution({
 								)}
 							</span>
 							{exercise.estimated && (
-								<span className="text-amber-300">estimated mapping</span>
+								<span className="text-warning">estimated mapping</span>
 							)}
 						</div>
 					</div>

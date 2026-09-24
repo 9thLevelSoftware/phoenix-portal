@@ -33,9 +33,11 @@ export function DeleteConfirmDialog({
 }: DeleteConfirmDialogProps) {
 	return (
 		<AlertDialog open={open} onOpenChange={onOpenChange}>
-			<AlertDialogContent className="border-red-900/50">
+			<AlertDialogContent className="border-destructive/40">
 				<AlertDialogHeader>
-					<AlertDialogTitle className="text-red-400">{title}</AlertDialogTitle>
+					<AlertDialogTitle className="text-destructive">
+						{title}
+					</AlertDialogTitle>
 					<AlertDialogDescription asChild>
 						<div className="space-y-2 text-sm text-muted-foreground">
 							<p>
@@ -46,7 +48,7 @@ export function DeleteConfirmDialog({
 								and remove it from your mobile app on the next sync.
 							</p>
 							{isActive && itemType === "cycle" && (
-								<p className="text-amber-400">
+								<p className="text-warning">
 									This cycle is currently active on your mobile app. It will be
 									deactivated.
 								</p>

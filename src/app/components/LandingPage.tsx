@@ -77,8 +77,8 @@ type SocialAuthAvailabilityStatus = "pending" | "loaded" | "failed";
 
 const TIER_BADGE_STYLES: Record<string, string> = {
 	EMBER: "bg-primary/20 text-primary border-primary/30",
-	FLAME: "bg-red-500/20 text-red-400 border-red-500/30",
-	INFERNO: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+	FLAME: "bg-destructive/20 text-destructive border-destructive/30",
+	INFERNO: "bg-warning/20 text-warning border-warning/30",
 };
 
 export function LandingPage() {
@@ -436,7 +436,7 @@ export function LandingPage() {
 						{authAlertMessage ? (
 							<div
 								role="alert"
-								className="mb-4 rounded border border-red-500/30 bg-red-950/40 p-3 text-sm text-red-300"
+								className="mb-4 rounded border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
 							>
 								{authAlertMessage}
 							</div>
@@ -463,7 +463,7 @@ export function LandingPage() {
 										{...signInForm.register("email")}
 									/>
 									{signInForm.formState.errors.email && (
-										<p className="text-sm text-red-400" role="alert">
+										<p className="text-sm text-destructive" role="alert">
 											{signInForm.formState.errors.email.message}
 										</p>
 									)}
@@ -483,7 +483,7 @@ export function LandingPage() {
 										{...signInForm.register("password")}
 									/>
 									{signInForm.formState.errors.password && (
-										<p className="text-sm text-red-400" role="alert">
+										<p className="text-sm text-destructive" role="alert">
 											{signInForm.formState.errors.password.message}
 										</p>
 									)}
@@ -529,7 +529,7 @@ export function LandingPage() {
 										{...signUpForm.register("email")}
 									/>
 									{signUpForm.formState.errors.email && (
-										<p className="text-sm text-red-400" role="alert">
+										<p className="text-sm text-destructive" role="alert">
 											{signUpForm.formState.errors.email.message}
 										</p>
 									)}
@@ -549,7 +549,7 @@ export function LandingPage() {
 										{...signUpForm.register("password")}
 									/>
 									{signUpForm.formState.errors.password && (
-										<p className="text-sm text-red-400" role="alert">
+										<p className="text-sm text-destructive" role="alert">
 											{signUpForm.formState.errors.password.message}
 										</p>
 									)}
@@ -569,7 +569,7 @@ export function LandingPage() {
 										{...signUpForm.register("confirmPassword")}
 									/>
 									{signUpForm.formState.errors.confirmPassword && (
-										<p className="text-sm text-red-400" role="alert">
+										<p className="text-sm text-destructive" role="alert">
 											{signUpForm.formState.errors.confirmPassword.message}
 										</p>
 									)}
@@ -602,12 +602,12 @@ export function LandingPage() {
 								{inAppBrowser.isInAppBrowser ? (
 									<div
 										role="alert"
-										className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-200"
+										className="mb-4 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
 									>
 										<p className="font-medium">
 											Google and Apple block sign-in from in-app browsers.
 										</p>
-										<p className="mt-1 text-amber-200/90">
+										<p className="mt-1 text-warning/90">
 											{inAppBrowser.platform === "ios"
 												? "Tap the ••• menu above and choose \u201COpen in Safari\u201D, then try again. Or use email and password below."
 												: inAppBrowser.platform === "android"
@@ -620,7 +620,7 @@ export function LandingPage() {
 													buildAndroidChromeIntentUrl() ??
 													"https://phoenix-portal.com"
 												}
-												className="mt-2 inline-flex items-center text-amber-100 underline underline-offset-2 hover:text-foreground"
+												className="mt-2 inline-flex items-center text-warning underline underline-offset-2 hover:text-foreground"
 											>
 												Open in Chrome
 											</a>

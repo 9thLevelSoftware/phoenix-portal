@@ -620,7 +620,7 @@ export function Profile() {
 												: formatProfileVolume(stats?.totalVolume, weightUnit)}
 										</div>
 									</div>
-									<div className="p-4 bg-gradient-to-br from-success/10 to-emerald-600/10 border border-success/30 rounded-lg">
+									<div className="p-4 bg-gradient-to-br from-success/10 to-success/5 border border-success/30 rounded-lg">
 										<div className="text-sm text-muted-foreground mb-1">
 											Best Streak
 										</div>
@@ -932,7 +932,7 @@ export function Profile() {
 								<Bell className="w-5 h-5" />
 								Notification Settings
 							</h3>
-							<p className="text-sm text-muted-foreground mb-4 p-3 rounded-md bg-amber-500/10 border border-amber-500/20">
+							<p className="text-sm text-muted-foreground mb-4 p-3 rounded-md bg-warning/10 border border-warning/20">
 								Notification delivery is not yet active. These preferences are
 								saved and will take effect once the notification system is live.
 							</p>

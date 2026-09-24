@@ -102,7 +102,7 @@ function PowerOutputInner({
 	if (repSummaries.length === 0) {
 		return (
 			<div
-				className="flex items-center justify-center text-gray-500"
+				className="flex items-center justify-center text-muted-foreground"
 				style={{ height }}
 			>
 				No power data available

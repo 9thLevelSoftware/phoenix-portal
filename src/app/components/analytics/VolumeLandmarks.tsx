@@ -106,7 +106,7 @@ export function VolumeLandmarks({
 			<div className="flex items-center justify-between mb-5">
 				<h3 className="text-xl text-foreground">Weekly Volume Landmarks</h3>
 				{typeof totalSessions === "number" && totalSessions < 3 && (
-					<span className="text-xs text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded px-2 py-1">
+					<span className="text-xs text-warning bg-warning/10 border border-warning/20 rounded px-2 py-1">
 						Accuracy improves with more training history
 					</span>
 				)}

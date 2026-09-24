@@ -130,7 +130,7 @@ function CommentItem({
 						/>
 						<div className="flex items-center justify-between">
 							<span
-								className={`text-xs ${editBody.length >= 480 ? "text-destructive font-medium" : editBody.length >= 400 ? "text-amber-400" : "text-muted-foreground"}`}
+								className={`text-xs ${editBody.length >= 480 ? "text-destructive font-medium" : editBody.length >= 400 ? "text-warning" : "text-muted-foreground"}`}
 							>
 								{editBody.length}/500
 							</span>
@@ -298,7 +298,7 @@ export function CommentThread({ itemId, itemType }: CommentThreadProps) {
 					/>
 					<div className="flex items-center justify-between">
 						<span
-							className={`text-xs ${newComment.length >= 480 ? "text-destructive font-medium" : newComment.length >= 400 ? "text-amber-400" : "text-muted-foreground"}`}
+							className={`text-xs ${newComment.length >= 480 ? "text-destructive font-medium" : newComment.length >= 400 ? "text-warning" : "text-muted-foreground"}`}
 						>
 							{newComment.length}/500
 						</span>

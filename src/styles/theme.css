@@ -62,7 +62,9 @@
   --chart-2: #6ba3f7;
   --chart-3: #f59e0b;
   --chart-4: #00e676;
-  --chart-5: #7c4dff;
+  /* Lighter than the original #7c4dff so it also works as text (5.7:1 on
+     its own 10% tint); still distinct from chart-2 blue. */
+  --chart-5: #9575ff;
   --chart-6: #f472b6;
   --chart-7: #22d3ee;
   --chart-8: #a3e635;
@@ -200,7 +202,8 @@
   --destructive-foreground: #ffffff;
   --success: #047857;
   --success-foreground: #ffffff;
-  --warning: #b45309;
+  /* amber-800: warning text must stay >= 4.5:1 on its own 20% tint. */
+  --warning: #92400e;
   --warning-foreground: #ffffff;
   --text-on-primary: #ffffff;
   --text-on-success: #ffffff;
@@ -215,7 +218,9 @@
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: rgba(217, 78, 31, 0.08);
-  --sidebar-accent-foreground: var(--primary);
+  /* Darker than --primary: the active/hover item sits on a 12% primary tint,
+     where #c2410c only reaches 4.34:1. #9a3412 is 6.1:1 there. */
+  --sidebar-accent-foreground: #9a3412;
   --sidebar-border: #e2e2ea;
   --sidebar-ring: var(--primary);
   --sidebar-group-label: #6b7280;
@@ -520,10 +525,10 @@
   }
   [data-sidebar="menu-button"]:not([data-active="true"]):hover {
     background: color-mix(in srgb, var(--primary) 12%, transparent) !important;
-    color: var(--primary) !important;
+    color: var(--sidebar-accent-foreground) !important;
   }
   [data-sidebar="menu-button"]:not([data-active="true"]):hover svg {
-    color: var(--primary) !important;
+    color: var(--sidebar-accent-foreground) !important;
   }
 
   /* Keep filled primary controls above WCAG AA contrast thresholds. */

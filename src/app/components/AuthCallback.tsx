@@ -163,7 +163,7 @@ export function AuthCallback() {
 				<h1 className="text-2xl font-semibold text-foreground mb-2">
 					{providerLabel} sign-in failed
 				</h1>
-				<p className="text-sm text-red-300 mb-6">{errorMessage}</p>
+				<p className="text-sm text-destructive mb-6">{errorMessage}</p>
 
 				<Button
 					type="button"

@@ -109,7 +109,7 @@ function VelocityProfileInner({
 	if (repSummaries.length === 0) {
 		return (
 			<div
-				className="flex items-center justify-center text-gray-500"
+				className="flex items-center justify-center text-muted-foreground"
 				style={{ height }}
 			>
 				No velocity data available
@@ -280,7 +280,7 @@ function VelocityProfileInner({
 								className="inline-block h-2.5 w-2.5 rounded-sm"
 								style={{ backgroundColor: z.color }}
 							/>
-							<span className="text-gray-400">{z.label}</span>
+							<span className="text-muted-foreground">{z.label}</span>
 						</div>
 					),
 				)}

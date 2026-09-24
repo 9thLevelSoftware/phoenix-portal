@@ -36,88 +36,104 @@ const authedPages = [
 	{ name: "Recovery", path: "/recovery" },
 	{ name: "Goals", path: "/goals" },
 	{ name: "Compare", path: "/compare" },
+	{ name: "Leaderboard", path: "/leaderboard" },
+	{ name: "Challenges", path: "/challenges" },
+	{ name: "Integrations", path: "/integrations" },
+	{ name: "Subscription", path: "/pricing" },
 ];
 
-test.describe("WCAG Accessibility Audit - Public Pages", () => {
-	test.beforeEach(async ({ page }) => {
-		// The app's MotionConfig respects prefers-reduced-motion; emulating that
-		// media query drops entrance transforms before axe samples contrast.
-		await page.emulateMedia({ reducedMotion: "reduce" });
+// Both themes ship, so both are audited. The theme is seeded the way the app
+// persists it (public/theme-boot.js reads it before first paint).
+const THEMES = ["dark", "light"] as const;
+
+for (const theme of THEMES) {
+	test.describe(`WCAG Accessibility Audit - Public Pages (${theme})`, () => {
+		test.beforeEach(async ({ page }) => {
+			// The app's MotionConfig respects prefers-reduced-motion; emulating that
+			// media query drops entrance transforms before axe samples contrast.
+			await page.emulateMedia({ reducedMotion: "reduce" });
+			await page.addInitScript((value) => {
+				localStorage.setItem("phoenix-theme", value);
+			}, theme);
+		});
+
+		for (const { name, path } of publicPages) {
+			test(`${name} has no critical WCAG violations`, async ({ page }) => {
+				await page.goto(path);
+				await page.waitForLoadState("networkidle");
+				await waitForAnimationsToSettle(page);
+
+				const results = await new AxeBuilder({ page })
+					.withTags(WCAG_TAGS)
+					.analyze();
+
+				// Log violations for debugging
+				if (results.violations.length > 0) {
+					console.log(
+						`[${name}] a11y violations:`,
+						results.violations.map((v) => ({
+							id: v.id,
+							impact: v.impact,
+							description: v.description,
+							nodes: v.nodes.length,
+						})),
+					);
+				}
+
+				// Filter to critical/serious only for the pass/fail gate
+				const critical = results.violations.filter(
+					(v) => v.impact === "critical" || v.impact === "serious",
+				);
+				expect(
+					critical,
+					`${name} has ${critical.length} critical/serious a11y violations`,
+				).toHaveLength(0);
+			});
+		}
 	});
 
-	for (const { name, path } of publicPages) {
-		test(`${name} has no critical WCAG violations`, async ({ page }) => {
-			await page.goto(path);
-			await page.waitForLoadState("networkidle");
-			await waitForAnimationsToSettle(page);
-
-			const results = await new AxeBuilder({ page })
-				.withTags(WCAG_TAGS)
-				.analyze();
-
-			// Log violations for debugging
-			if (results.violations.length > 0) {
-				console.log(
-					`[${name}] a11y violations:`,
-					results.violations.map((v) => ({
-						id: v.id,
-						impact: v.impact,
-						description: v.description,
-						nodes: v.nodes.length,
-					})),
-				);
-			}
-
-			// Filter to critical/serious only for the pass/fail gate
-			const critical = results.violations.filter(
-				(v) => v.impact === "critical" || v.impact === "serious",
-			);
-			expect(
-				critical,
-				`${name} has ${critical.length} critical/serious a11y violations`,
-			).toHaveLength(0);
+	test.describe(`WCAG Accessibility Audit - Authenticated Pages (${theme})`, () => {
+		test.beforeEach(async ({ page }) => {
+			// Keep the audit from sampling Sonner's opacity transition while a toast
+			// is being removed. The reduced-motion stylesheet preserves the final
+			// colors, so axe still evaluates their real contrast.
+			await page.emulateMedia({ reducedMotion: "reduce" });
+			await page.addInitScript((value) => {
+				localStorage.setItem("phoenix-theme", value);
+			}, theme);
+			await mockAuthenticatedApp(page, { tier: "FLAME" });
 		});
-	}
-});
 
-test.describe("WCAG Accessibility Audit - Authenticated Pages", () => {
-	test.beforeEach(async ({ page }) => {
-		// Keep the audit from sampling Sonner's opacity transition while a toast
-		// is being removed. The reduced-motion stylesheet preserves the final
-		// colors, so axe still evaluates their real contrast.
-		await page.emulateMedia({ reducedMotion: "reduce" });
-		await mockAuthenticatedApp(page, { tier: "FLAME" });
+		for (const { name, path } of authedPages) {
+			test(`${name} has no critical WCAG violations`, async ({ page }) => {
+				await page.goto(path);
+				await page.waitForLoadState("networkidle");
+				await waitForAnimationsToSettle(page);
+
+				const results = await new AxeBuilder({ page })
+					.withTags(WCAG_TAGS)
+					.analyze();
+
+				if (results.violations.length > 0) {
+					console.log(
+						`[${name}] a11y violations:`,
+						results.violations.map((v) => ({
+							id: v.id,
+							impact: v.impact,
+							description: v.description,
+							nodes: v.nodes.length,
+						})),
+					);
+				}
+
+				const critical = results.violations.filter(
+					(v) => v.impact === "critical" || v.impact === "serious",
+				);
+				expect(
+					critical,
+					`${name} has ${critical.length} critical/serious a11y violations`,
+				).toHaveLength(0);
+			});
+		}
 	});
-
-	for (const { name, path } of authedPages) {
-		test(`${name} has no critical WCAG violations`, async ({ page }) => {
-			await page.goto(path);
-			await page.waitForLoadState("networkidle");
-			await waitForAnimationsToSettle(page);
-
-			const results = await new AxeBuilder({ page })
-				.withTags(WCAG_TAGS)
-				.analyze();
-
-			if (results.violations.length > 0) {
-				console.log(
-					`[${name}] a11y violations:`,
-					results.violations.map((v) => ({
-						id: v.id,
-						impact: v.impact,
-						description: v.description,
-						nodes: v.nodes.length,
-					})),
-				);
-			}
-
-			const critical = results.violations.filter(
-				(v) => v.impact === "critical" || v.impact === "serious",
-			);
-			expect(
-				critical,
-				`${name} has ${critical.length} critical/serious a11y violations`,
-			).toHaveLength(0);
-		});
-	}
-});
+}

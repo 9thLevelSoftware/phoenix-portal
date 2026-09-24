@@ -319,7 +319,7 @@ export function TrainingCycles() {
 														Share to Community
 													</DropdownMenuItem>
 													<DropdownMenuItem
-														className="text-red-400 hover:bg-red-900/20 cursor-pointer"
+														className="text-destructive hover:bg-destructive/10 cursor-pointer"
 														onClick={() =>
 															handleDeleteClick({
 																id: cycle.id,
