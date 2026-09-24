@@ -40,7 +40,6 @@ import {
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
-import { FormErrorSummary } from "@/app/components/ui/form-error-summary";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import { Skeleton } from "@/app/components/ui/skeleton";
@@ -236,14 +235,9 @@ export function Profile() {
 	});
 
 	const streak = useStreak(workouts);
+	// Save failures are reported by useUpdateProfile as a generic toast; the
+	// raw database error stays in the logs, never on screen.
 	const updateProfile = useUpdateProfile(userId || undefined);
-	const profileFormErrors = updateProfile.isError
-		? [
-				updateProfile.error instanceof Error
-					? updateProfile.error.message
-					: "We couldn't save your profile changes. Please try again.",
-			]
-		: [];
 
 	// Avatar upload state
 	const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -358,7 +352,6 @@ export function Profile() {
 	return (
 		<div className="min-h-screen pb-20 md:pb-8">
 			<PageShell>
-				<FormErrorSummary messages={profileFormErrors} />
 				{/* Profile Header */}
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
@@ -376,7 +369,7 @@ export function Profile() {
 									{profile?.avatar_url ? (
 										<AvatarImage src={profile.avatar_url} alt={displayName} />
 									) : null}
-									<AvatarFallback className="bg-primary text-foreground text-3xl">
+									<AvatarFallback className="bg-primary text-primary-foreground text-3xl">
 										{profileLoading ? "..." : initials}
 									</AvatarFallback>
 								</Avatar>
@@ -474,7 +467,7 @@ export function Profile() {
 							<div className="flex items-center gap-3">
 								<TierBadge />
 								<div>
-									<div className="text-white font-medium">
+									<div className="text-foreground font-medium">
 										{PLAN_LABELS[subscriptionDisplayTier]}
 									</div>
 									{/*
@@ -1054,7 +1047,7 @@ export function Profile() {
 										/>
 										<Button
 											variant="outline"
-											className="border-secondary text-foreground hover:bg-primary hover:border-primary"
+											className="border-secondary text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary"
 											disabled={
 												updateProfile.isPending ||
 												!editDisplayName.trim() ||
@@ -1177,7 +1170,7 @@ export function Profile() {
 									Sign out of your account on this device
 								</p>
 								<Button
-									className="w-full bg-chart-2 hover:bg-chart-2/80 text-white border-0"
+									className="w-full bg-chart-2 hover:bg-chart-2/80 text-background border-0"
 									onClick={async () => {
 										await signOut();
 									}}

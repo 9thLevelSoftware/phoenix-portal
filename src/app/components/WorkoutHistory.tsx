@@ -118,20 +118,20 @@ function WorkoutCard({
 				<div className="flex-1 grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-4 sm:gap-6">
 					<div className="text-center">
 						<div className="text-sm text-muted-foreground mb-1">Volume</div>
-						<div className="text-lg font-semibold text-white font-data">
+						<div className="text-lg font-semibold text-foreground font-data">
 							{formatVolume(workout.total_volume, unit)}
 						</div>
 					</div>
 					<div className="text-center">
 						<div className="text-sm text-muted-foreground mb-1">Duration</div>
-						<div className="text-lg font-semibold text-white flex items-center justify-center gap-1 font-data">
+						<div className="text-lg font-semibold text-foreground flex items-center justify-center gap-1 font-data">
 							<Clock className="w-4 h-4" />
 							{Math.round(workout.duration_seconds / 60)}m
 						</div>
 					</div>
 					{workout.pr_count > 0 && (
 						<div className="text-center col-span-2 sm:col-span-1">
-							<Badge className="bg-accent text-white border-0">
+							<Badge className="bg-accent text-accent-foreground border-0">
 								<Award className="w-3 h-3 mr-1" />
 								{workout.pr_count} PR{workout.pr_count > 1 ? "s" : ""}
 							</Badge>
@@ -302,7 +302,7 @@ export function WorkoutHistory() {
 				</div>
 				<PageShell>
 					<div className="text-center py-16">
-						<p className="text-lg text-white mb-2">
+						<p className="text-lg text-foreground mb-2">
 							Couldn't load your workout history
 						</p>
 						<p className="text-sm text-muted-foreground mb-6">
@@ -354,9 +354,9 @@ export function WorkoutHistory() {
 				<PageShell>
 					<EmptyState
 						icon={Dumbbell}
-						title="Start tracking your workouts"
-						description="Create a routine and complete your first session to build your training history."
-						actionLabel="Create a routine"
+						title="No workouts yet"
+						description="Complete your first workout in the Phoenix mobile app and it will appear here. Plan one now and it syncs to your phone."
+						actionLabel="Plan a routine"
 						actionHref="/routines/new"
 					/>
 				</PageShell>
@@ -398,7 +398,7 @@ export function WorkoutHistory() {
 									}}
 									className={`min-h-11 ${
 										compareMode
-											? "bg-primary border-0 text-foreground"
+											? "bg-primary border-0 text-primary-foreground"
 											: "border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 									}`}
 								>
@@ -633,7 +633,7 @@ export function WorkoutHistory() {
 											{workout.pr_count > 0 && (
 												<div className="flex items-center justify-between">
 													<span className="text-muted-foreground">PRs</span>
-													<Badge className="bg-accent text-foreground border-0">
+													<Badge className="bg-accent text-accent-foreground border-0">
 														{workout.pr_count}
 													</Badge>
 												</div>

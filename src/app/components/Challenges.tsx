@@ -217,7 +217,7 @@ function ChallengeCard({
 						<div className="grid grid-cols-2 md:grid-cols-3 gap-4">
 							<div>
 								<div className="text-xs text-muted-foreground mb-1">Target</div>
-								<div className="text-xl text-white font-data">
+								<div className="text-xl text-foreground font-data">
 									{formatChallengeValue(
 										challenge.target_value,
 										challenge.challenge_type,
@@ -478,6 +478,10 @@ export function Challenges() {
 
 	// Desktop state
 	const [expandedId, setExpandedId] = useState<string | null>(null);
+	// Controlled so the empty-state CTAs can switch to Discover; linking to
+	// /challenges would land back on the same tab.
+	const [tab, setTab] = useState("active");
+	const showDiscover = () => setTab("discover");
 
 	// Mobile state
 	const [mobileExpandedId, setMobileExpandedId] = useState<string | null>(null);
@@ -553,7 +557,7 @@ export function Challenges() {
 				</header>
 
 				{/* Mobile Tabs */}
-				<Tabs defaultValue="active">
+				<Tabs value={tab} onValueChange={setTab}>
 					<div className="overflow-x-auto scrollbar-hide">
 						<TabsList variant="underline" className="px-4">
 							<TabsTrigger variant="underline" value="active">
@@ -577,7 +581,7 @@ export function Challenges() {
 								title="Join an active challenge"
 								description="Open Discover to choose a challenge and start tracking progress."
 								actionLabel="Discover challenges"
-								actionHref="/challenges"
+								onAction={showDiscover}
 							/>
 						) : (
 							<>
@@ -738,7 +742,7 @@ export function Challenges() {
 												type="button"
 												onClick={() => joinMutation.mutate(challenge.id)}
 												disabled={joinMutation.isPending}
-												className="px-4 py-1.5 text-sm font-medium rounded-lg bg-primary text-foreground"
+												className="px-4 py-1.5 text-sm font-medium rounded-lg bg-primary text-primary-foreground"
 											>
 												{joinMutation.isPending ? (
 													<Loader2 className="w-4 h-4 animate-spin" />
@@ -766,7 +770,7 @@ export function Challenges() {
 						</p>
 					</div>
 
-					<Tabs defaultValue="active" className="space-y-6">
+					<Tabs value={tab} onValueChange={setTab} className="space-y-6">
 						<TabsList variant="panel">
 							<TabsTrigger value="active">Active Challenges</TabsTrigger>
 							<TabsTrigger value="past">Past Challenges</TabsTrigger>
@@ -777,7 +781,7 @@ export function Challenges() {
 							{activeChallenges.length === 0 ? (
 								<div className="text-center py-16">
 									<Trophy className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-									<h3 className="text-xl font-semibold text-white mb-2">
+									<h3 className="text-xl font-semibold text-foreground mb-2">
 										No active challenges right now
 									</h3>
 									<p className="text-muted-foreground">
@@ -854,7 +858,7 @@ export function Challenges() {
 									title="Complete your first challenge"
 									description="Join an active challenge to build a result worth celebrating here."
 									actionLabel="Discover challenges"
-									actionHref="/challenges"
+									onAction={showDiscover}
 								/>
 							) : (
 								<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -870,7 +874,7 @@ export function Challenges() {
 													<h3 className="text-lg text-foreground mb-2">
 														{challenge.name}
 													</h3>
-													<Badge className="bg-success text-foreground border-0">
+													<Badge className="bg-success text-success-foreground border-0">
 														Completed
 													</Badge>
 												</div>

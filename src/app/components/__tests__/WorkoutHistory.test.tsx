@@ -112,7 +112,7 @@ describe("WorkoutHistory", () => {
 		};
 		renderWithProviders(<WorkoutHistory />);
 		expect(
-			screen.getByText(/start tracking your workouts/i),
+			screen.getByText(/no workouts yet/i),
 		).toBeInTheDocument();
 		expect(
 			screen.queryByText(/couldn't load your workout history/i),

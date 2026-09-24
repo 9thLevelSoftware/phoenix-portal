@@ -1,5 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { Award, Crown, Medal, Shield, TrendingUp, Trophy } from "lucide-react";
+import {
+	AlertTriangle,
+	Award,
+	Crown,
+	Medal,
+	Shield,
+	TrendingUp,
+	Trophy,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
@@ -35,20 +43,11 @@ import {
 
 function getRankIcon(rank: number) {
 	if (rank === 1)
-		return (
-			<Crown className="size-5 text-[var(--accent)]" aria-label="1st place" />
-		);
+		return <Crown className="size-5 text-rank-gold" aria-label="1st place" />;
 	if (rank === 2)
-		return (
-			<Medal
-				className="size-5 text-[var(--muted-foreground)]"
-				aria-label="2nd place"
-			/>
-		);
+		return <Medal className="size-5 text-rank-silver" aria-label="2nd place" />;
 	if (rank === 3)
-		return (
-			<Award className="size-5 text-[var(--accent)]" aria-label="3rd place" />
-		);
+		return <Award className="size-5 text-rank-bronze" aria-label="3rd place" />;
 	return (
 		<span className="flex size-5 items-center justify-center text-xs font-bold text-muted-foreground">
 			{rank}
@@ -57,10 +56,9 @@ function getRankIcon(rank: number) {
 }
 
 function getRankBg(rank: number): string {
-	if (rank === 1) return "bg-[var(--accent)]/10 border-[var(--accent)]/30";
-	if (rank === 2)
-		return "bg-[var(--muted-foreground)]/10 border-[var(--muted-foreground)]/30";
-	if (rank === 3) return "bg-[var(--accent)]/10 border-[var(--accent)]/30";
+	if (rank === 1) return "bg-rank-gold/10 border-rank-gold/30";
+	if (rank === 2) return "bg-rank-silver/10 border-rank-silver/30";
+	if (rank === 3) return "bg-rank-bronze/10 border-rank-bronze/30";
 	return "bg-card border-border";
 }
 
@@ -214,11 +212,29 @@ function RankingCardSkeleton() {
 	);
 }
 
+// ---- Load failure ----
+
+// compute-rankings throws on failure (it never resolves to null), so a failed
+// query is an outage, not an empty board: say so and offer a retry.
+function RankingsUnavailable({ onRetry }: { onRetry: () => void }) {
+	return (
+		<EmptyState
+			icon={AlertTriangle}
+			title="Rankings unavailable"
+			description="We couldn't load the rankings right now. Try again in a moment."
+			actionLabel="Try again"
+			onAction={onRetry}
+		/>
+	);
+}
+
 // ---- Global Rankings Tab ----
 
 interface GlobalRankingsProps {
 	data: GlobalLeaderboard | undefined;
 	isLoading: boolean;
+	isError: boolean;
+	onRetry: () => void;
 	unit: WeightUnit;
 	currentUserId: string | undefined;
 }
@@ -226,6 +242,8 @@ interface GlobalRankingsProps {
 function GlobalRankings({
 	data,
 	isLoading,
+	isError,
+	onRetry,
 	unit,
 	currentUserId,
 }: GlobalRankingsProps) {
@@ -240,16 +258,8 @@ function GlobalRankings({
 		);
 	}
 
-	if (data == null) {
-		return (
-			<EmptyState
-				icon={Trophy}
-				title="Start climbing the leaderboard"
-				description="Complete workouts to add your results to the community rankings."
-				actionLabel="Start a workout"
-				actionHref="/routines"
-			/>
-		);
+	if (isError || data == null) {
+		return <RankingsUnavailable onRetry={onRetry} />;
 	}
 
 	function findUserEntry(
@@ -327,6 +337,8 @@ function GlobalRankings({
 interface WeeklyChallengeProps {
 	data: WeeklyCompetition | undefined;
 	isLoading: boolean;
+	isError: boolean;
+	onRetry: () => void;
 	unit: WeightUnit;
 	currentUserId: string | undefined;
 }
@@ -334,6 +346,8 @@ interface WeeklyChallengeProps {
 function WeeklyChallengeTab({
 	data,
 	isLoading,
+	isError,
+	onRetry,
 	unit,
 	currentUserId,
 }: WeeklyChallengeProps) {
@@ -351,6 +365,10 @@ function WeeklyChallengeTab({
 				</Card>
 			</div>
 		);
+	}
+
+	if (isError) {
+		return <RankingsUnavailable onRetry={onRetry} />;
 	}
 
 	if (data == null) {
@@ -440,6 +458,8 @@ function WeeklyChallengeTab({
 interface MyRankingsProps {
 	data: UserRanking[] | undefined;
 	isLoading: boolean;
+	isError: boolean;
+	onRetry: () => void;
 	isLoggedIn: boolean;
 	unit: WeightUnit;
 }
@@ -480,7 +500,14 @@ const METRIC_META: Record<
 	},
 };
 
-function MyRankingsTab({ data, isLoading, isLoggedIn, unit }: MyRankingsProps) {
+function MyRankingsTab({
+	data,
+	isLoading,
+	isError,
+	onRetry,
+	isLoggedIn,
+	unit,
+}: MyRankingsProps) {
 	if (!isLoggedIn) {
 		return (
 			<Card className="border-border p-8 text-center text-sm text-muted-foreground">
@@ -500,13 +527,19 @@ function MyRankingsTab({ data, isLoading, isLoggedIn, unit }: MyRankingsProps) {
 		);
 	}
 
-	if (data == null || data.length === 0) {
+	if (isError || data == null) {
+		return <RankingsUnavailable onRetry={onRetry} />;
+	}
+
+	if (data.length === 0) {
+		// Workouts are recorded on the Phoenix mobile app; the portal only
+		// plans routines, so the CTA points at planning, not "start a workout".
 		return (
 			<EmptyState
 				icon={Award}
 				title="Build your ranking"
-				description="Complete workouts to see your position across Phoenix performance metrics."
-				actionLabel="Start a workout"
+				description="Rankings update after you sync workouts from the Phoenix mobile app."
+				actionLabel="Plan a routine"
 				actionHref="/routines"
 			/>
 		);
@@ -570,17 +603,9 @@ export function Leaderboard() {
 	const { user } = useAuth();
 	const unit = usePreferredWeightUnit();
 
-	const { data: globalData, isLoading: globalLoading } = useQuery(
-		globalLeaderboardOptions(),
-	);
-
-	const { data: weeklyData, isLoading: weeklyLoading } = useQuery(
-		weeklyCompetitionOptions(),
-	);
-
-	const { data: userRankings, isLoading: userRankingsLoading } = useQuery(
-		userRankingOptions(user?.id ?? ""),
-	);
+	const globalQuery = useQuery(globalLeaderboardOptions());
+	const weeklyQuery = useQuery(weeklyCompetitionOptions());
+	const myRankingsQuery = useQuery(userRankingOptions(user?.id ?? ""));
 
 	return (
 		<PageShell>
@@ -617,8 +642,10 @@ export function Leaderboard() {
 
 					<TabsContent value="global">
 						<GlobalRankings
-							data={globalData}
-							isLoading={globalLoading}
+							data={globalQuery.data}
+							isLoading={globalQuery.isLoading}
+							isError={globalQuery.isError}
+							onRetry={() => void globalQuery.refetch()}
 							unit={unit}
 							currentUserId={user?.id}
 						/>
@@ -626,8 +653,10 @@ export function Leaderboard() {
 
 					<TabsContent value="weekly">
 						<WeeklyChallengeTab
-							data={weeklyData}
-							isLoading={weeklyLoading}
+							data={weeklyQuery.data}
+							isLoading={weeklyQuery.isLoading}
+							isError={weeklyQuery.isError}
+							onRetry={() => void weeklyQuery.refetch()}
 							unit={unit}
 							currentUserId={user?.id}
 						/>
@@ -635,8 +664,10 @@ export function Leaderboard() {
 
 					<TabsContent value="mine">
 						<MyRankingsTab
-							data={userRankings}
-							isLoading={userRankingsLoading}
+							data={myRankingsQuery.data}
+							isLoading={myRankingsQuery.isLoading}
+							isError={myRankingsQuery.isError}
+							onRetry={() => void myRankingsQuery.refetch()}
 							isLoggedIn={user != null}
 							unit={unit}
 						/>
