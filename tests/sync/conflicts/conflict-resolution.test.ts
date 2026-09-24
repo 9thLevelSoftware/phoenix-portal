@@ -9,12 +9,15 @@
  *    fixtures and the push/pull harness round-trip a multi-device shaped
  *    payload — nothing about the server's conflict semantics.
  *
- * 2. The "Conflict Resolution Integration Tests" scenarios are older cases
- *    whose assertions describe mock behaviour or assert only `success`. PR 185
- *    (515570ae) retired them on those grounds; they are present here only
- *    because a union merge had already interleaved them into this file and no
- *    test may be deleted to make a repair pass. Do not treat a green run of
- *    them as evidence about the server.
+ * 2. The "Conflict Resolution Integration Tests" scenarios are older cases.
+ *    PR 185 (515570ae) retired them because their assertions describe mock
+ *    behaviour; a union merge re-interleaved them. The two that asserted the
+ *    mock's arrival order as if it were LWW ("concurrent routine edits with
+ *    LWW", "identical timestamps (last sync wins)") are removed (F-050): LWW
+ *    by clock is proven for real in the mobile-sync-push integration cases
+ *    "lww clock … an older write loses only under LWW" and "lww clock … a
+ *    portal routine edit … survives an earlier-stamped push under LWW". Do
+ *    not treat a green run of the rest as evidence about the server.
  *
  * Server conflict semantics live in the real-handler suites:
  * - LWW accept/reject: `supabase/functions/mobile-sync-push/index.test.ts`
@@ -54,117 +57,6 @@ describe("Conflict Resolution Integration Tests", () => {
 	beforeEach(async () => {
 		resetMockStore();
 		testUser = await createTestUser();
-	});
-
-	describe("Scenario 1: Multi-Device Concurrent Routine Edit", () => {
-		/**
-		 * Per CONFLICT-RESOLUTION-DESIGN.md:
-		 * Device A and B both edit the same routine while offline.
-		 * Device A syncs first, then Device B syncs.
-		 * Result: Device B's version wins (TIMESTAMP-BASED LWW).
-		 *
-		 * NOTE: The mock edge function doesn't fully implement LWW,
-		 * so this test validates the expected behavior pattern.
-		 */
-		it("should handle concurrent routine edits with LWW", async () => {
-			// SETUP: Create a routine that both devices have
-			const routineId = generateTestId();
-			const baseRoutine: RoutineDto = {
-				id: routineId,
-				userId: testUser.id,
-				name: "Push Day",
-				description: "Original description",
-				exerciseCount: 1,
-				estimatedDuration: 30,
-				timesCompleted: 0,
-				isFavorite: false,
-				exercises: [
-					{
-						id: generateTestId(),
-						routineId,
-						name: "Bench Press",
-						muscleGroup: "Chest",
-						sets: 3,
-						reps: 10,
-						weight: 50,
-						restSeconds: 90,
-						mode: "OLD_SCHOOL",
-						orderIndex: 0,
-					},
-				],
-			};
-
-			// Initial push
-			const initialPayload = createMinimalPushPayload(testUser.id, {
-				routines: [baseRoutine],
-			});
-			await callPushEndpoint(initialPayload, testUser.accessToken);
-
-			// DEVICE A: Edits routine (adds an exercise)
-			const deviceARoutine: RoutineDto = {
-				...baseRoutine,
-				name: "Push Day - Device A Edit",
-				description: "Device A modified this",
-				exerciseCount: 2,
-				exercises: [
-					...baseRoutine.exercises,
-					{
-						id: generateTestId(),
-						routineId,
-						name: "Incline Press",
-						muscleGroup: "Chest",
-						sets: 3,
-						reps: 10,
-						weight: 45,
-						restSeconds: 90,
-						mode: "OLD_SCHOOL",
-						orderIndex: 1,
-					},
-				],
-			};
-
-			const deviceAPayload = createMinimalPushPayload(testUser.id, {
-				routines: [deviceARoutine],
-			});
-			const deviceAResult = await callPushEndpoint(
-				deviceAPayload,
-				testUser.accessToken,
-			);
-			expect(deviceAResult.success).toBe(true);
-
-			// DEVICE B: Edits routine (changes weight) - happens after Device A
-			const deviceBRoutine: RoutineDto = {
-				...baseRoutine,
-				name: "Push Day - Device B Edit",
-				description: "Device B modified this",
-				exercises: [
-					{
-						...baseRoutine.exercises[0],
-						weight: 55, // Changed weight
-					},
-				],
-			};
-
-			const deviceBPayload = createMinimalPushPayload(testUser.id, {
-				routines: [deviceBRoutine],
-			});
-			const deviceBResult = await callPushEndpoint(
-				deviceBPayload,
-				testUser.accessToken,
-			);
-			expect(deviceBResult.success).toBe(true);
-
-			// VERIFY: Pull should return the latest version (Device B's edit)
-			const pullResult = await callPullEndpoint(0, testUser.accessToken);
-			expect(pullResult.success).toBe(true);
-
-			const pulledRoutine = pullResult.data!.routines.find(
-				(r) => r.id === routineId,
-			);
-			expect(pulledRoutine).toBeDefined();
-			// The last push wins in the mock - this validates the expected pattern
-			expect(pulledRoutine!.name).toBe("Push Day - Device B Edit");
-		});
 	});
 
 	describe("Scenario 2: Offline Device Long-Duration Sync", () => {
@@ -216,45 +108,6 @@ describe("Conflict Resolution Integration Tests", () => {
 	});
 
 	describe("Scenario 3: Timestamp Edge Cases", () => {
-		it("should handle identical timestamps (last sync wins)", async () => {
-			// Two routines with the same updatedAt timestamp
-			const routineId = generateTestId();
-			const routine1: RoutineDto = {
-				id: routineId,
-				userId: testUser.id,
-				name: "Routine Version 1",
-				description: null,
-				exerciseCount: 0,
-				estimatedDuration: 30,
-				timesCompleted: 0,
-				isFavorite: false,
-				exercises: [],
-			};
-
-			// First push
-			const payload1 = createMinimalPushPayload(testUser.id, {
-				routines: [routine1],
-			});
-			await callPushEndpoint(payload1, testUser.accessToken);
-
-			// Second push with same routine ID but different name
-			const routine2: RoutineDto = {
-				...routine1,
-				name: "Routine Version 2",
-			};
-
-			const payload2 = createMinimalPushPayload(testUser.id, {
-				routines: [routine2],
-			});
-			await callPushEndpoint(payload2, testUser.accessToken);
-
-			// Pull should return the last pushed version
-			const pullResult = await callPullEndpoint(0, testUser.accessToken);
-			const routine = pullResult.data!.routines.find((r) => r.id === routineId);
-			expect(routine).toBeDefined();
-			expect(routine!.name).toBe("Routine Version 2");
-		});
-
 		it("should correctly apply delta sync based on lastSync timestamp", async () => {
 			const routineId1 = generateTestId();
 			const routineId2 = generateTestId();

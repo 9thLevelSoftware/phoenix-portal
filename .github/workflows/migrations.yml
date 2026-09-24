@@ -150,11 +150,11 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260920003100_scheduler_and_sync_queue_cron.sql
           psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$dir/check.sql"
           # seed.sql drops sync_queue unique indexes to load duplicate fixtures,
-          # and re-applying 003100 overwrites the PR-52 client-insert guard and
-          # the 20260922120000 scheduler fix. Restore the production shape
-          # before pgTAP.
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260920005200_sync_queue_pending_unique.sql
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20260922120000_restore_regressed_functions_and_definer_grants.sql
+          # and re-applying 003100 overwrites every later definition of the
+          # functions it creates. Re-applying individual later migrations to
+          # patch that back also overwrites whatever came after THEM, so the
+          # production shape is restored by re-migrating from scratch.
+          supabase db reset --no-seed
 
       # Full pgTAP suite (every file in supabase/tests/database/): definer
       # grant guard, dashboard capture, cross-user RLS isolation, trust plane,
@@ -176,7 +176,9 @@ jobs:
       # an equality check, so adding tests never fails the gate.
       - name: pgTAP test-count floor
         env:
-          PGTAP_TEST_FLOOR: "763"
+          # C10 added supabase/tests/database/epoch_zero_session_repair.test.sql
+          # with plan(27): 763 + 27 = 790.
+          PGTAP_TEST_FLOOR: "2058"
         run: |
           set -euo pipefail
           summary="$(supabase test db 2>&1 | tee /dev/stderr | grep -oE 'Tests=[0-9]+' | tail -1 || true)"

@@ -4,8 +4,21 @@ import { redactTokenShapedJson } from '../_shared/garminIdentity.ts';
 import {
   createHevyPageFetcher,
   fetchHevyBackfill,
+  HEVY_MAX_PAGES,
   HevyAuthError,
 } from '../_shared/hevySync.ts';
+import {
+  completedSyncColumns,
+  createLiftosaurPageFetcher,
+  fetchLiftosaurHistory,
+  LiftosaurAuthError,
+  type LiftosaurFetchResult,
+  type LiftosaurIntegrationState,
+  planLiftosaurSync,
+  resolveLiftosaurTruncation,
+  toLiftosaurActivityRow,
+  writeLiftosaurRows,
+} from '../_shared/liftosaurSync.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
@@ -32,20 +45,17 @@ type DbClient = SupabaseClient<any, any, any>;
  * Apple Health/Google Health Connect (device-local APIs, no server round-trip),
  * or OAuth providers (Strava, Fitbit, Garmin — handled by portal OAuth functions).
  *
- * Subscription gating: FREE users receive an empty activities array and
- * `requiresUpgrade: true`. Paid users (EMBER+) get full activity data and
- * Supabase persistence.
+ * Imports never truncate silently (F-020). Liftosaur shares its fetcher,
+ * resumable backfill (user_integrations.backfill_*) and undated-record rule
+ * with liftosaur-sync (_shared/liftosaurSync.ts): a `connect` starts a
+ * full-history chain, each `sync` continues it, and last_sync_at moves only
+ * once the whole window has been read. A Hevy backfill that hits its page
+ * budget is reported and never advances the watermark, as in hevy-sync.
  *
  * POST /functions/v1/mobile-integration-sync
  * Authorization: Bearer <GoTrue JWT>
  * Body: { provider: "hevy" | "liftosaur", action: "connect" | "sync" | "disconnect", apiKey?: string }
  */
-
-// =============================================================================
-// Provider API configuration
-// =============================================================================
-
-const LIFTOSAUR_API_BASE = 'https://www.liftosaur.com/api/v1';
 
 const ALLOWED_PROVIDERS = new Set(['hevy', 'liftosaur']);
 const ALLOWED_ACTIONS = new Set(['connect', 'sync', 'disconnect']);
@@ -90,23 +100,6 @@ interface HevyWorkout {
 }
 
 // =============================================================================
-// Liftosaur types
-// =============================================================================
-
-interface LiftosaurRecord {
-  id: number;
-  text: string;
-}
-
-interface LiftosaurHistoryResponse {
-  data: {
-    records: LiftosaurRecord[];
-    hasMore: boolean;
-    nextCursor: number | null;
-  };
-}
-
-// =============================================================================
 // Request body
 // =============================================================================
 
@@ -114,33 +107,6 @@ interface MobileIntegrationRequest {
   provider: string;
   action: string;
   apiKey?: string;
-}
-
-// =============================================================================
-// Liftosaur text parser (mirrors liftosaur-sync)
-// =============================================================================
-
-function parseLiftoscriptMetadata(text: string): {
-  timestamp: string | null;
-  program: string | null;
-  dayName: string | null;
-  durationSeconds: number | null;
-} {
-  const tsMatch = text.match(
-    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)/
-  );
-  const timestamp = tsMatch?.[1] ?? null;
-
-  const programMatch = text.match(/program:\s*"([^"]+)"/);
-  const program = programMatch?.[1] ?? null;
-
-  const dayNameMatch = text.match(/dayName:\s*"([^"]+)"/);
-  const dayName = dayNameMatch?.[1] ?? null;
-
-  const durationMatch = text.match(/duration:\s*(\d+)s/);
-  const durationSeconds = durationMatch ? parseInt(durationMatch[1], 10) : null;
-
-  return { timestamp, program, dayName, durationSeconds };
 }
 
 // =============================================================================
@@ -152,12 +118,16 @@ function parseLiftoscriptMetadata(text: string): {
  * and portal import paths cannot drift on page size or termination logic.
  * Only the returned DTO shape differs — mobile takes camelCase.
  */
-async function fetchHevyActivities(apiKey: string): Promise<ActivityDto[]> {
+async function fetchHevyActivities(
+  apiKey: string,
+  fetchImpl: typeof fetch,
+): Promise<{ activities: ActivityDto[]; truncated: boolean }> {
   let allWorkouts: HevyWorkout[];
+  let truncated: boolean;
   try {
-    const fetchPage = createHevyPageFetcher(apiKey);
-    const result = await fetchHevyBackfill(fetchPage);
+    const result = await fetchHevyBackfill(createHevyPageFetcher(apiKey, fetchImpl));
     allWorkouts = result.workouts as HevyWorkout[];
+    truncated = result.truncated;
   } catch (err) {
     if (err instanceof HevyAuthError) {
       throw new ApiKeyError(err.message);
@@ -165,7 +135,7 @@ async function fetchHevyActivities(apiKey: string): Promise<ActivityDto[]> {
     throw err;
   }
 
-  return allWorkouts.map((w) => {
+  const activities = allWorkouts.map((w) => {
     const startTime = new Date(w.start_time);
     const endTime = new Date(w.end_time);
     const durationSeconds = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
@@ -179,67 +149,7 @@ async function fetchHevyActivities(apiKey: string): Promise<ActivityDto[]> {
       rawData: JSON.stringify(w),
     };
   });
-}
-
-async function fetchLiftosaurActivities(apiKey: string): Promise<ActivityDto[]> {
-  const allRecords: LiftosaurRecord[] = [];
-  let cursor: number | null = null;
-  let hasMore = true;
-  const MAX_PAGES = 10;
-  let page = 0;
-
-  while (hasMore && page < MAX_PAGES) {
-    const params = new URLSearchParams({ limit: '200' });
-    if (cursor !== null) {
-      params.set('cursor', cursor.toString());
-    }
-
-    const response = await fetch(
-      `${LIFTOSAUR_API_BASE}/history?${params.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (response.status === 401 || response.status === 403) {
-      throw new ApiKeyError('Liftosaur API access denied. Verify your API key and Premium subscription.');
-    }
-    if (!response.ok) {
-      throw new Error(`Liftosaur API returned ${response.status}`);
-    }
-
-    const result: LiftosaurHistoryResponse = await response.json();
-    allRecords.push(...result.data.records);
-    hasMore = result.data.hasMore;
-    cursor = result.data.nextCursor;
-    page++;
-  }
-
-  return allRecords.map((record) => {
-    const meta = parseLiftoscriptMetadata(record.text);
-    const name = meta.dayName
-      ? meta.program
-        ? `${meta.program} — ${meta.dayName}`
-        : meta.dayName
-      : meta.program ?? `Workout #${record.id}`;
-
-    const startedAt = meta.timestamp
-      ? new Date(meta.timestamp).toISOString()
-      : new Date().toISOString();
-
-    return {
-      externalId: `liftosaur-${record.id}`,
-      provider: 'liftosaur',
-      name,
-      activityType: 'strength',
-      startedAt,
-      durationSeconds: meta.durationSeconds ?? 0,
-      rawData: JSON.stringify({ id: record.id, text: record.text }),
-    };
-  });
+  return { activities, truncated };
 }
 
 // Custom error for API key issues (distinguishes from other errors)
@@ -267,6 +177,10 @@ export interface MobileIntegrationSyncDependencies {
   createAdminClient(): DbClient;
   /** Provider revoke HTTP + credentials; injected so tests never hit a provider. */
   revoke: ProviderRevokeDependencies;
+  /** Provider API fetch; defaults to global fetch. */
+  fetch?: typeof fetch;
+  /** Wall clock; defaults to `new Date()`. */
+  now?: () => Date;
 }
 
 function defaultMobileIntegrationSyncDependencies(): MobileIntegrationSyncDependencies {
@@ -417,6 +331,25 @@ async function mobileIntegrationSyncHandler(
         );
       }
 
+      // A new Liftosaur key may be another account: clear the previous key's
+      // cursor and watermark BEFORE the key is replaced, so no later sync can
+      // read the new account against them (a failed key write below then only
+      // costs the old key a full, idempotent re-read).
+      if (provider === 'liftosaur') {
+        const { error: resetError } = await supabase
+          .from('user_integrations')
+          .update({ last_sync_at: null, backfill_before: null, backfill_after: null, backfill_started_at: null })
+          .eq('user_id', userId)
+          .eq('provider', provider);
+        if (resetError) {
+          console.error('Failed to reset liftosaur sync state:', resetError);
+          return new Response(
+            JSON.stringify({ status: 'error', error: 'Failed to save connection state. Please retry.' }),
+            { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+
       // Store API key in oauth_tokens (server-only table, same as hevy-sync/liftosaur-sync)
       const { error: tokenUpsertError } = await supabase
         .from('oauth_tokens')
@@ -439,7 +372,7 @@ async function mobileIntegrationSyncHandler(
       }
 
       // Update user_integrations status
-      await supabase
+      const { error: stateError } = await supabase
         .from('user_integrations')
         .upsert(
           {
@@ -451,46 +384,19 @@ async function mobileIntegrationSyncHandler(
           },
           { onConflict: 'user_id,provider' }
         );
-
-      // Fetch activities from the provider
-      let activities: ActivityDto[];
-      try {
-        activities = provider === 'hevy'
-          ? await fetchHevyActivities(apiKey)
-          : await fetchLiftosaurActivities(apiKey);
-      } catch (fetchErr) {
-        return await providerFetchFailureResponse(
-          supabase, userId, provider, fetchErr, cors,
+      if (stateError) {
+        // A Liftosaur key whose previous cursor was not cleared must not be
+        // read against it; retryable.
+        console.error(`Failed to save ${provider} connection state:`, stateError);
+        return new Response(
+          JSON.stringify({ status: 'error', error: 'Failed to save connection state. Please retry.' }),
+          { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
         );
       }
 
-      if (activities.length > 0) {
-        const failedCount = await persistActivities(supabase, userId, provider, activities);
-        if (failedCount > 0) {
-          return await partialPersistFailureResponse(
-            supabase, userId, provider, failedCount, activities.length, cors,
-          );
-        }
-      }
-
-      // Update last sync timestamp
-      await supabase
-        .from('user_integrations')
-        .update({
-          last_sync_at: new Date().toISOString(),
-          status: 'connected',
-          error_message: null,
-        })
-        .eq('user_id', userId)
-        .eq('provider', provider);
-
-      return new Response(
-        JSON.stringify({
-          status: 'connected',
-          activities,
-        }),
-        { headers: { ...cors, 'Content-Type': 'application/json' } }
-      );
+      return await importActivities({
+        supabase, userId, provider, apiKey, action: 'connect', cors, deps,
+      });
     }
 
     // =========================================================================
@@ -531,45 +437,9 @@ async function mobileIntegrationSyncHandler(
       );
     }
 
-    // Fetch activities from the provider
-    let activities: ActivityDto[];
-    try {
-      activities = provider === 'hevy'
-        ? await fetchHevyActivities(storedApiKey)
-        : await fetchLiftosaurActivities(storedApiKey);
-    } catch (fetchErr) {
-      return await providerFetchFailureResponse(
-        supabase, userId, provider, fetchErr, cors,
-      );
-    }
-
-    if (activities.length > 0) {
-      const failedCount = await persistActivities(supabase, userId, provider, activities);
-      if (failedCount > 0) {
-        return await partialPersistFailureResponse(
-          supabase, userId, provider, failedCount, activities.length, cors,
-        );
-      }
-    }
-
-    // Update last sync timestamp
-    await supabase
-      .from('user_integrations')
-      .update({
-        last_sync_at: new Date().toISOString(),
-        status: 'connected',
-        error_message: null,
-      })
-      .eq('user_id', userId)
-      .eq('provider', provider);
-
-    return new Response(
-      JSON.stringify({
-        status: 'synced',
-        activities,
-      }),
-      { headers: { ...cors, 'Content-Type': 'application/json' } }
-    );
+    return await importActivities({
+      supabase, userId, provider, apiKey: storedApiKey, action: 'sync', cors, deps,
+    });
   } catch (err) {
     // The thrown message can carry DB internals or provider text; it is
     // logged here and summarised to the caller as a stable code.
@@ -590,6 +460,260 @@ if (import.meta.main) {
 }
 
 // =============================================================================
+// Import
+// =============================================================================
+
+interface ImportContext {
+  supabase: DbClient;
+  userId: string;
+  provider: string;
+  apiKey: string;
+  action: 'connect' | 'sync';
+  cors: Record<string, string>;
+  deps: MobileIntegrationSyncDependencies;
+}
+
+/** Fetch, persist and report one provider import (connect or sync). */
+function importActivities(ctx: ImportContext): Promise<Response> {
+  return ctx.provider === 'hevy' ? importHevy(ctx) : importLiftosaur(ctx);
+}
+
+function json(body: unknown, status: number, cors: Record<string, string>): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...cors, 'Content-Type': 'application/json' },
+  });
+}
+
+function updateIntegration(ctx: ImportContext, values: Record<string, unknown>) {
+  return ctx.supabase
+    .from('user_integrations')
+    .update(values)
+    .eq('user_id', ctx.userId)
+    .eq('provider', ctx.provider);
+}
+
+async function importHevy(ctx: ImportContext): Promise<Response> {
+  const now = ctx.deps.now ?? (() => new Date());
+  const okStatus = ctx.action === 'connect' ? 'connected' : 'synced';
+  // Captured before fetching so workouts written meanwhile land in the next window.
+  const syncStartedAt = now().toISOString();
+
+  let fetched: { activities: ActivityDto[]; truncated: boolean };
+  try {
+    fetched = await fetchHevyActivities(ctx.apiKey, ctx.deps.fetch ?? fetch);
+  } catch (fetchErr) {
+    return await providerFetchFailureResponse(
+      ctx.supabase, ctx.userId, ctx.provider, fetchErr, ctx.cors,
+    );
+  }
+  const { activities, truncated } = fetched;
+
+  if (activities.length > 0) {
+    const failedCount = await persistActivities(
+      ctx.supabase, ctx.userId, ctx.provider, activities, now,
+    );
+    if (failedCount > 0) {
+      return await partialPersistFailureResponse(
+        ctx.supabase, ctx.userId, ctx.provider, failedCount, activities.length, ctx.cors,
+      );
+    }
+  }
+
+  // /v1/workouts has no date filter and no resumable cursor, so a backfill
+  // past the page budget cannot resume: store what was read, never advance
+  // the watermark, and say so (the same rule as hevy-sync). Never silent.
+  if (truncated) {
+    const message =
+      `Hevy history exceeds the ${HEVY_MAX_PAGES}-page budget (${activities.length} ` +
+      'workouts stored). Older workouts were not imported.';
+    await updateIntegration(ctx, { status: 'error', error_message: message });
+    console.warn(message);
+    return json(
+      { status: 'error', error: message, code: 'history_truncated', truncated: true, imported: activities.length },
+      500,
+      ctx.cors,
+    );
+  }
+
+  await updateIntegration(ctx, {
+    last_sync_at: syncStartedAt,
+    status: 'connected',
+    error_message: null,
+  });
+  return json({ status: okStatus, activities }, 200, ctx.cors);
+}
+
+async function importLiftosaur(ctx: ImportContext): Promise<Response> {
+  const now = ctx.deps.now ?? (() => new Date());
+  const okStatus = ctx.action === 'connect' ? 'connected' : 'synced';
+  // A connect (a new or re-entered key) reads the full history as a fresh
+  // chain; a sync continues any chain in progress, else reads incrementally.
+  const syncType = ctx.action === 'connect' ? 'initial' : 'manual';
+
+  const { data: integration, error: integrationError } = await ctx.supabase
+    .from('user_integrations')
+    .select('last_sync_at, backfill_before, backfill_after, backfill_started_at')
+    .eq('user_id', ctx.userId)
+    .eq('provider', 'liftosaur')
+    .maybeSingle();
+  if (integrationError) {
+    console.error('mobile-integration-sync integration lookup failed:', integrationError);
+    return json(
+      { status: 'error', error: 'Failed to read integration state. Please retry shortly.' },
+      500,
+      ctx.cors,
+    );
+  }
+  const plan = planLiftosaurSync(
+    (integration ?? null) as LiftosaurIntegrationState | null,
+    syncType,
+    now(),
+  );
+
+  let fetched: LiftosaurFetchResult;
+  try {
+    fetched = await fetchLiftosaurHistory(
+      createLiftosaurPageFetcher(ctx.apiKey, ctx.deps.fetch ?? fetch),
+      { startDate: plan.startDate, endDate: plan.endDate },
+    );
+  } catch (fetchErr) {
+    return await providerFetchFailureResponse(
+      ctx.supabase,
+      ctx.userId,
+      ctx.provider,
+      fetchErr instanceof LiftosaurAuthError ? new ApiKeyError(fetchErr.message) : fetchErr,
+      ctx.cors,
+    );
+  }
+
+  // An undated record gets ONE per-run import time on first insert and is
+  // never re-dated afterwards (writeLiftosaurRows). No per-row wall clock.
+  const importedAt = now().toISOString();
+  const rows = fetched.records.map((record) => {
+    const built = toLiftosaurActivityRow(ctx.userId, record, importedAt);
+    return {
+      ...built,
+      row: { ...built.row, raw_data: redactTokenShapedJson(built.row.raw_data) },
+    };
+  });
+  const { failed } = await writeLiftosaurRows(
+    ctx.supabase,
+    ctx.userId,
+    rows,
+    // external_activities.synced_at is the server's pull cursor (NF-10).
+    { synced_at: importedAt },
+  );
+  if (failed > 0) {
+    return await partialPersistFailureResponse(
+      ctx.supabase, ctx.userId, ctx.provider, failed, rows.length, ctx.cors,
+    );
+  }
+
+  const activities = await liftosaurDtos(ctx, rows.map((r) => r.row), rows.filter((r) => r.undated));
+  if (activities === null) {
+    // The rows are stored, but the phone would get a wrong date for an
+    // undated one. Nothing advances; the writes are idempotent on retry.
+    return json(
+      { status: 'error', error: 'Failed to read stored activity dates. Please retry shortly.' },
+      500,
+      ctx.cors,
+    );
+  }
+
+  if (fetched.truncated) {
+    const outcome = resolveLiftosaurTruncation(fetched, plan, syncType, rows.length);
+    const { error: cursorError } = await updateIntegration(ctx, outcome.columns);
+    if (cursorError) return continuationSaveFailed(ctx, cursorError);
+    console.warn(outcome.message);
+    if (outcome.kind === 'stuck') {
+      return json(
+        {
+          status: 'error',
+          error: outcome.message,
+          code: 'history_cannot_resume',
+          truncated: true,
+          imported: rows.length,
+        },
+        500,
+        ctx.cors,
+      );
+    }
+    // The stored cursor (continue) or watermark (resume) lets the next sync
+    // pick up where this one stopped.
+    return json(
+      {
+        status: okStatus,
+        activities,
+        truncated: true,
+        continuing: outcome.kind === 'continue',
+        message: outcome.message,
+        ...(outcome.kind === 'resume' ? { resumeAt: outcome.resumeAt } : {}),
+      },
+      200,
+      ctx.cors,
+    );
+  }
+
+  const { error: watermarkError } = await updateIntegration(ctx, completedSyncColumns(plan));
+  if (watermarkError) return continuationSaveFailed(ctx, watermarkError);
+  return json({ status: okStatus, activities }, 200, ctx.cors);
+}
+
+/**
+ * The rows are stored but the cursor or watermark is not, so the next sync
+ * would re-read this window while the phone was told progress was saved.
+ * Retryable: the writes are idempotent.
+ */
+function continuationSaveFailed(ctx: ImportContext, error: unknown): Response {
+  console.error('mobile-integration-sync sync state save failed:', error);
+  return json(
+    { status: 'error', error: 'Failed to save sync progress. Please retry shortly.' },
+    500,
+    ctx.cors,
+  );
+}
+
+/**
+ * Mobile DTOs for the Liftosaur rows just written. An undated row reports the
+ * date actually STORED (its first import time), not this run's sentinel, so
+ * the phone and the server never disagree about it. null when that stored
+ * date cannot be read.
+ */
+async function liftosaurDtos(
+  ctx: ImportContext,
+  rows: Array<Record<string, unknown>>,
+  undated: Array<{ row: Record<string, unknown> }>,
+): Promise<ActivityDto[] | null> {
+  const storedStart = new Map<string, string>();
+  const undatedIds = undated.map((r) => r.row.external_id as string);
+  for (let i = 0; i < undatedIds.length; i += 100) {
+    const { data, error } = await ctx.supabase
+      .from('external_activities')
+      .select('external_id, started_at')
+      .eq('user_id', ctx.userId)
+      .eq('provider', 'liftosaur')
+      .in('external_id', undatedIds.slice(i, i + 100));
+    if (error) {
+      console.error('mobile-integration-sync stored-date lookup failed:', error);
+      return null;
+    }
+    for (const stored of (data ?? []) as Array<{ external_id: string; started_at: string }>) {
+      storedStart.set(stored.external_id, stored.started_at);
+    }
+  }
+  return rows.map((row) => ({
+    externalId: row.external_id as string,
+    provider: 'liftosaur',
+    name: row.name as string,
+    activityType: 'strength',
+    startedAt: storedStart.get(row.external_id as string) ?? (row.started_at as string),
+    durationSeconds: (row.duration_seconds as number | null) ?? 0,
+    rawData: JSON.stringify(row.raw_data),
+  }));
+}
+
+// =============================================================================
 // Helpers
 // =============================================================================
 
@@ -605,7 +729,8 @@ async function persistActivities(
   supabase: DbClient,
   userId: string,
   provider: string,
-  activities: ActivityDto[]
+  activities: ActivityDto[],
+  now: () => Date,
 ): Promise<number> {
   let failedCount = 0;
   for (const activity of activities) {
@@ -628,7 +753,7 @@ async function persistActivities(
           raw_data: activity.rawData
             ? redactTokenShapedJson(JSON.parse(activity.rawData))
             : null,
-          synced_at: new Date().toISOString(),
+          synced_at: now().toISOString(),
         },
         { onConflict: 'user_id,provider,external_id' }
       );
@@ -642,11 +767,7 @@ async function persistActivities(
 }
 
 /**
- * Mark the integration as a partial-persistence failure and build the 502 the
- * caller should return. Does NOT advance `last_sync_at` so the next sync retries.
- */
-/**
- * Shared failure path for `fetchHevyActivities` / `fetchLiftosaurActivities`.
+ * Shared failure path for the provider fetches.
  *
  * The thrown message is NOT returned and NOT stored. Our own throws are fixed
  * sentences, but the fetch+parse is wrapped as a whole: an unguarded
@@ -690,6 +811,10 @@ async function providerFetchFailureResponse(
   );
 }
 
+/**
+ * Mark the integration as a partial-persistence failure and build the 502 the
+ * caller should return. Does NOT advance `last_sync_at` so the next sync retries.
+ */
 async function partialPersistFailureResponse(
   supabase: DbClient,
   userId: string,

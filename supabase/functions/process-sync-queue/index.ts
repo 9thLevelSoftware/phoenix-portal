@@ -406,7 +406,7 @@ async function processSyncQueue(
         .update({ status: 'processing', started_at: new Date().toISOString() })
         .eq('id', task.id)
         .eq('status', 'pending')
-        .select('id')
+        .select('id, retry_count')
         .maybeSingle();
 
       if (!claimed) {
@@ -433,15 +433,32 @@ async function processSyncQueue(
         continue;
       }
 
+      // retry_count is the claim generation (nullable in the schema; a NULL
+      // is normalised to 0 once, so every later check can compare exactly).
+      const claimedRetry = (claimed as { retry_count?: number | null }).retry_count;
+      if (claimedRetry === null || claimedRetry === undefined) {
+        await supabase
+          .from('sync_queue')
+          .update({ retry_count: 0 })
+          .eq('id', task.id)
+          .eq('status', 'processing')
+          .is('retry_count', null);
+      }
+      const claimGeneration = Number(claimedRetry ?? 0);
+
       try {
         // Call provider-specific sync function with exponential backoff on transient errors
-        await backOff(
+        const outcome = await backOff(
           () => callSyncFunction(
             deps,
             task.provider,
             task.user_id,
             task.sync_type ?? 'incremental',
             task.id,
+            // The claim generation this invocation won: a stale-lease reclaim
+            // bumps retry_count before re-claiming the same id, so the worker
+            // checks its writes against this, never a value it reads later.
+            claimGeneration,
           ),
           {
             numOfAttempts: 3,
@@ -454,14 +471,21 @@ async function processSyncQueue(
         );
 
         // Mark completed. Only while the row is still the one this pass
-        // claimed (PR 54 R-7): a row reclaimed after a lease expiry, or
-        // cancelled meanwhile (a disconnect), must not be overwritten by an
-        // in-flight worker.
-        await supabase
-          .from('sync_queue')
-          .update({ status: 'completed', completed_at: new Date().toISOString() })
-          .eq('id', task.id)
-          .eq('status', 'processing');
+        // claimed (PR 54 R-7), in the generation it claimed: a row reclaimed
+        // after a lease expiry, or cancelled meanwhile (a disconnect), must not
+        // be overwritten by an in-flight worker. A worker that handed its row
+        // back as its own follow-up (pending again, possibly already claimed
+        // by another pass) owns that transition: this pass must not complete it.
+        const handedOff = typeof outcome === 'object' && outcome !== null &&
+          (outcome as { queue_row_handed_off?: unknown }).queue_row_handed_off === true;
+        if (!handedOff) {
+          await supabase
+            .from('sync_queue')
+            .update({ status: 'completed', completed_at: new Date().toISOString() })
+            .eq('id', task.id)
+            .eq('status', 'processing')
+            .eq('retry_count', claimGeneration);
+        }
 
         // Increment rate limit counter
         // Charge the request against the same bucket the dispatch check reads.
@@ -474,7 +498,7 @@ async function processSyncQueue(
         results.processed++;
       } catch (error) {
         const err = error as SyncFunctionError;
-        const nextRetryCount = (task.retry_count ?? 0) + 1;
+        const nextRetryCount = claimGeneration + 1;
 
         // SQ-03: Re-queue on retryable statuses (429, 502, 503, 504), mark failed otherwise
         // SQ-04: If retries exhausted, mark permanently_failed regardless of status code
@@ -517,8 +541,10 @@ async function processSyncQueue(
             ...(nextStatus !== 'pending' && { completed_at: new Date().toISOString() }),
           })
           .eq('id', task.id)
-          // Same rule as the success path (PR 54 R-7).
-          .eq('status', 'processing');
+          // Same rule as the success path (PR 54 R-7): only this pass's own
+          // claim generation, never a successor that reclaimed the row.
+          .eq('status', 'processing')
+          .eq('retry_count', claimGeneration);
 
         results.failed++;
       }
@@ -539,6 +565,7 @@ async function callSyncFunction(
   userId: string,
   syncType: string,
   queueId: string,
+  claimGeneration: number,
 ) {
   if (provider === 'garmin') {
     // A local refusal, not a provider response: carry an explicit code so the
@@ -560,7 +587,12 @@ async function callSyncFunction(
         'Authorization': `Bearer ${deps.env('SUPABASE_SERVICE_ROLE_KEY')}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ user_id: userId, sync_type: syncType, queue_id: queueId }),
+      body: JSON.stringify({
+        user_id: userId,
+        sync_type: syncType,
+        queue_id: queueId,
+        claim_generation: claimGeneration,
+      }),
     }
   );
 

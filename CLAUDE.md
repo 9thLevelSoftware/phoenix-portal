@@ -88,6 +88,7 @@ Edge Function secrets (Supabase Dashboard → Edge Functions → Secrets; read w
 - `PADDLE_API_KEY` (server API calls from `delete-account` and the three `paddle-*-subscription` functions), `PADDLE_WEBHOOK_SECRET`, `PADDLE_CUSTOM_DATA_SECRET`, `PADDLE_ENVIRONMENT`, `PADDLE_EMBER_PRICE_IDS` / `PADDLE_FLAME_PRICE_IDS` / `PADDLE_INFERNO_PRICE_IDS`
 - `CRON_SECRET` — the shared secret for pg_cron-invoked functions, compared in constant time against the `x-cron-secret` header by `_shared/cronSecret.ts`. `process-sync-queue` still accepts the legacy names `PROCESS_SYNC_QUEUE_SECRET` and `CRON_SYNC_QUEUE_SECRET`, but only when `CRON_SECRET` is unset; nothing else does. The DB half is the Vault secret `edge_cron_secret` used by `private.invoke_edge_function` (KD-10).
 - `SYNC_LWW_ENABLED` — cold-start flag in `supabase/functions/_shared/flags.ts`, `"false"` unless the secret is exactly `true`. Flipping it requires a redeploy; there is no runtime refresh. Its production value is not recorded in this repo — ask the operator rather than assuming.
+- `SYNC_PUSH_TRANSACTION` — cold-start flag in the same file, `"false"` unless exactly `true`. When on, `mobile-sync-push` runs its whole write sequence in one Postgres transaction (F-014, `_shared/pushTransaction.ts`): a failure part-way commits nothing, and the `sync_complete` broadcast happens only after COMMIT. It connects with `SUPABASE_DB_URL` (provided by Supabase to Edge Functions); if that connection cannot be opened the push falls back to per-call writes and logs `PushTransactionUnavailable`. The response contract is identical either way.
 - `OAUTH_TOKEN_ENCRYPTION_KEY`, `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET`, `FITBIT_CLIENT_ID` / `FITBIT_CLIENT_SECRET`, `GARMIN_CONSUMER_KEY` / `GARMIN_CONSUMER_SECRET`, `GARMIN_WEBHOOK_SECRET` (the webhook 503s without it). The Fitbit client secrets are still read by `complete-oauth`, `fitbit-sync` and `_shared/providerRevoke.ts`, the Garmin consumer secrets only by `_shared/providerRevoke.ts`; the disabled `fitbit-oauth` / `garmin-oauth` callbacks read none.
 
 Tooling only: `SUPABASE_PROJECT_REF` and the `SUPABASE_AUTH_*` values used by
@@ -403,12 +404,13 @@ trigger normalises writes, but do not rely on it in new code.
 
 Non-negotiable rules to prevent schema drift (as discovered 2026-04-20 when 5 migrations were recorded in `schema_migrations` but their DDL was absent from prod):
 
-**Single migration owner** (release-plan decision, Operator Action 3): the human operator applies production migrations with `supabase db push`. The Supabase GitHub App's migration step is not relied on (its `main` record has shown `MIGRATIONS_FAILED` since 2026-03-16, and prod migrations have been applied out-of-band). If this decision changes, update this line, `AGENTS.md`, and the `deploy-edge-functions.yml` header together. For the order of migrations, Edge Functions, SPA, and mobile releases, follow `AGENTS.md` -> "Release order"; the Edge deploy workflow refuses to deploy while any local migration is unapplied in prod.
+**Single migration owner** (release-plan decision, Operator Action 3, reaffirmed 2026-09-23): the human operator applies production migrations with `supabase db push`, after a rolled-back rehearsal against prod (below). The Supabase GitHub App's production migration step must stay **disabled** (Dashboard → Project Settings → Integrations → GitHub). Its `main` record showed `MIGRATIONS_FAILED` from 2026-03-16 because prod's history held one migration under the wrong version. Repairing that on 2026-09-23 made the step work again, and it then applied every migration in a merge to `main` straight to prod with no rehearsal. With the step on, a merge to `main` is a prod migration. If this decision changes, update this line, `AGENTS.md`, and the `deploy-edge-functions.yml` header together. For the order of migrations, Edge Functions, SPA, and mobile releases, follow `AGENTS.md` -> "Release order"; the Edge deploy workflow refuses to deploy while any local migration is unapplied in prod.
 
 ### DO
 - Write every schema change as a migration file in `supabase/migrations/`.
 - Keep every DDL statement **idempotent** (`IF NOT EXISTS`, `CREATE OR REPLACE`, `DO $$ ... IF NOT EXISTS ... $$`). A migration must be safe to re-run.
 - Push migrations with `supabase db push` (or `supabase migration up`). This is the only path that executes SQL *and* records it in `schema_migrations`.
+- Rehearse before every prod push: run all pending files against prod inside one `BEGIN; … ROLLBACK;`, with each file's bare `BEGIN;`/`COMMIT;` lines stripped (`supabase db query --linked -f rehearsal.sql`). Some failures only show on prod's data: on 2026-09-23 `20260920002501` overflowed an `integer` on a real user's rows, and #219 fixed it before anything was applied. CI's clean apply runs on an empty database, so it cannot catch that class of failure. Preview branches cannot stand in, because prod's recorded history does not replay.
 - Verify the artifact exists in prod after push (e.g. `SELECT 1 FROM information_schema.columns WHERE ...`).
 - If the `.github/workflows/migrations.yml` PR gate fails, fix the migration — do not bypass.
 - Timestamp a new migration **after the newest existing file** (`ls supabase/migrations | tail -1`). The older `202609200NNN00_<name>.sql` convention (NNN = PR number) sorts *before* `20260920120000` and `20260920190625`, so a new file named that way runs before functions those files create and a `CREATE OR REPLACE` of them is silently undone.
@@ -450,17 +452,20 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
   over the whole suite), and when `npm run gen:types:check` shows
   `database.types.ts` drifting from the migrated schema. Order: count check,
   sync-queue backlog triage (which re-applies `20260920003100` and then
-  restores the production shape by re-applying `20260920005200` and
-  `20260922120000`), the pgTAP suite plus a test-count floor
+  restores the production shape with a second `db reset --no-seed`, because
+  re-applying individual migrations would clobber later definitions), the
+  pgTAP suite plus a test-count floor
   (`PGTAP_TEST_FLOOR`), the types check, the definer-grant guard on its own,
   and the `scripts/migration-gating/run.sh` checks for `20260920007600`.
 - **`edge-integration.yml`** — the real-SQL Deno tests. `pull_request` has no
   `paths:` filter (so it always reports and is safe as a required check); a
   `changes` job decides whether the heavy job runs. It starts a local stack,
-  applies every migration, and runs `npm run test:edge:integration` **twice**,
-  once per `SYNC_LWW_ENABLED` value, because the push handler has a separate
-  write path for each and the production value is unknown. Only the local
-  stack's demo keys are used.
+  applies every migration, and runs `npm run test:edge:integration` **three
+  times**: once per `SYNC_LWW_ENABLED` value, because the push handler has a
+  separate write path for each and the production value is unknown, and once
+  more with `SYNC_PUSH_TRANSACTION=true` so every push test also runs through
+  the single-transaction path. Only the local stack's demo keys and its own
+  `SUPABASE_DB_URL` are used.
 - **`sync-tests.yml`** — `npm run test:sync` in mock mode on PRs and `main`
   pushes touching the sync surface. Live mode (`npm run test:sync:live`) is
   `workflow_dispatch`-only against an isolated preview project.

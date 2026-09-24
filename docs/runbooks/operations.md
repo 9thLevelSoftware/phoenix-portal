@@ -601,8 +601,11 @@ WHERE bucket_id = 'avatars'
 **Step 4: Delete dependent data (leaf tables first)**
 
 ```sql
--- Telemetry and rep data (deepest nesting)
-DELETE FROM rep_telemetry WHERE user_id = '<uuid>';
+-- Telemetry and rep data (deepest nesting). rep_telemetry is a read-only
+-- view since 20260925200000 (a DELETE on it raises 42501); delete its two
+-- backing tables. set_telemetry_sample_ids goes with set_telemetry.
+DELETE FROM set_telemetry WHERE user_id = '<uuid>';
+DELETE FROM rep_telemetry_legacy WHERE user_id = '<uuid>';
 DELETE FROM rep_summaries WHERE user_id = '<uuid>';
 DELETE FROM sets WHERE user_id = '<uuid>';
 
@@ -1431,7 +1434,7 @@ for `generate-insights` also preserves the batch cursor in
 ### 10.4 Manual periodic checks (nothing schedules these)
 | Check                                 | Cadence   | Query                                                                                  | Act when                                                                     |
 | ------------------------------------- | --------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Per-set telemetry storage growth      | Monthly   | `SELECT pg_size_pretty(pg_total_relation_size('public.rep_telemetry')), count(*) FROM public.rep_telemetry;` | Size exceeds 2 GB or the table exceeds 10M rows -- that is the trigger to revisit the telemetry storage redesign, which is deliberately not done now. |
+| Per-set telemetry storage growth      | Monthly   | `SELECT pg_size_pretty(pg_total_relation_size('public.set_telemetry') + pg_total_relation_size('public.set_telemetry_sample_ids') + pg_total_relation_size('public.rep_telemetry_legacy')), (SELECT count(*) FROM public.set_telemetry_sample_ids) + (SELECT count(*) FROM public.rep_telemetry_legacy l WHERE NOT EXISTS (SELECT 1 FROM public.set_telemetry t WHERE t.set_id = l.set_id AND t.user_id = l.user_id));` (rep_telemetry is a view since 20260925200000 and has no storage of its own; the sum covers the backing tables during the backfill transition) | Size exceeds 2 GB or the table exceeds 10M rows -- that is the trigger to revisit the telemetry storage redesign, which is deliberately not done now. |
 | `personal_records` bloat              | After any dedupe/backfill | `SELECT pg_size_pretty(pg_total_relation_size('public.personal_records')), count(*) FROM public.personal_records;` | The size is out of proportion to the live row count (it was ~5.9k rows in 104 MB after the July 2026 duplicate cleanup) -- schedule `VACUUM FULL` or `pg_repack` in a low-traffic window. |
 ---
 ## 11. Backups and Point-in-Time Recovery
@@ -1661,6 +1664,7 @@ audit to run afterwards. Running these before opening a push window is the point
 | `20260920004400_apply_subscription_event_subscription_guard.sql` (PR 44) | **This migration aborts by design** if production already binds one Paddle subscription to more than one portal user; its pre-check RAISEs and names every offender. That is intended -- silently picking a winner would assign someone's paid subscription to the wrong account. Run the "OPERATOR PREVIEW" query from the migration header read-only first (zero rows means it applies cleanly), decide the true owner of each named subscription, and clear `paddle_subscription_id` on the losing row(s) before pushing. |
 | `20260920003000_user_goals_per_cable_targets.sql` (PR 30)  | Apply **before** the PR 30 SPA deploy, then run the post-deploy audit in the migration header -- and read the three divergences below before acting on its output.                                        |
 | `20260920003500_due_deletion_cron.sql` (PR 35)             | Apply, deploy `delete-account`, then review the overdue preview before activating the job -- [§10.2](#102-activating-delete-due-accounts-irreversible).                                                    |
+| `20260925200000_set_telemetry_storage.sql` (F-015 / F-037) | DDL only: `rep_telemetry` is renamed `rep_telemetry_legacy` and a per-sample view takes its name, so readers see the same rows immediately. **After** applying, fold the legacy rows as the owner, one chunk at a time: `SELECT * FROM private.backfill_set_telemetry(NULL, 500);` then repeat with the returned `last_set_id` until `folded_sets = 0` and `last_set_id` is NULL. Each call is short and idempotent; stop and resume at any time. Verify with `SELECT count(*) FROM public.rep_telemetry_legacy l WHERE NOT EXISTS (SELECT 1 FROM public.set_telemetry t WHERE t.set_id = l.set_id AND t.user_id = l.user_id);` (expect 0). Rows whose `user_id` is not their set's owner (possible under the old client INSERT policy) are never folded and stay visible through the owner-aware view; if that count is not 0, list them with `SELECT l.* FROM public.rep_telemetry_legacy l JOIN public.sets s ON s.id = l.set_id WHERE s.user_id <> l.user_id;` and decide on them before any migration drops the legacy table. Legacy rows are never deleted by this migration or the backfill; dropping `rep_telemetry_legacy` is a later, separate migration once that count is 0 and spot checks of `rep_telemetry` match. Sample ids stay globally unique through `set_telemetry_sample_ids`, a trigger-maintained index that every writer (the backfill included) fills automatically; a duplicate id is a 23505, never two copies. |
 ### The PR 30 goals audit has three known divergences from the app
 After deploying PR 30, the audit query in the migration header finds PR goals
 marked completed against an inflated target. It mirrors the app's

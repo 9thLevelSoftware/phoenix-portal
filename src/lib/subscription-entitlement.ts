@@ -9,6 +9,7 @@
  * tests/fixtures/entitlement-cases.json, so change them together.
  */
 import {
+	ENTITLEMENT_GRACE_HOURS as ENTITLEMENT_GRACE_HOURS_VALUE,
 	type EntitlementOptions,
 	effectiveSubscriptionTier,
 	isSubscriptionEntitled,
@@ -99,4 +100,44 @@ export function isStaleActiveSubscription(
 
 	const periodEndMs = Date.parse(currentPeriodEnd);
 	return !Number.isFinite(periodEndMs) || periodEndMs <= nowMs;
+}
+
+/**
+ * The next instant at which the row's derived state can change with no write
+ * to the row: the effective tier, the billing action or `isStale`. A lapse by
+ * time sends no Realtime event, so the gate schedules a re-render for this
+ * instant instead of showing paid copy until the next refetch (NF-35).
+ *
+ * - active / trialing: the period end (stale, trial and scheduled-cancel
+ *   entitlement, billing action) and the period end plus the renewal grace
+ *   (active entitlement).
+ * - past_due: the refresh threshold of `isStaleActiveSubscription`.
+ *
+ * Returns epoch ms, or null when no future boundary exists.
+ */
+export function nextEntitlementChangeAt(
+	status: SubscriptionStatus,
+	currentPeriodEnd: string | null | undefined,
+	options: { now?: Date; updatedAt?: string | null } = {},
+): number | null {
+	const nowMs = (options.now ?? new Date()).getTime();
+	const candidates: number[] = [];
+
+	if (status === "past_due") {
+		const referenceMs = Date.parse(currentPeriodEnd ?? options.updatedAt ?? "");
+		if (Number.isFinite(referenceMs)) {
+			candidates.push(referenceMs + PAST_DUE_REFRESH_AFTER_MS);
+		}
+	} else if (isActiveSubscriptionStatus(status) && currentPeriodEnd) {
+		const periodEndMs = Date.parse(currentPeriodEnd);
+		if (Number.isFinite(periodEndMs)) {
+			candidates.push(
+				periodEndMs,
+				periodEndMs + ENTITLEMENT_GRACE_HOURS_VALUE * HOUR_MS,
+			);
+		}
+	}
+
+	const future = candidates.filter((ms) => ms > nowMs);
+	return future.length > 0 ? Math.min(...future) : null;
 }

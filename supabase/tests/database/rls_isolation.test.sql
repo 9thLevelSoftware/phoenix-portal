@@ -236,6 +236,17 @@ VALUES (
     'a1a1a1a1-0000-4000-8000-00000000000a'
 );
 
+-- rep_telemetry is a view since 20260925200000: the insert above lands in
+-- set_telemetry. A legacy per-sample row (served by the view only for a set
+-- the backfill has not folded) gets its own fixture so its table is probed.
+INSERT INTO public.rep_telemetry_legacy (id, set_id, timestamp_ms, user_id)
+VALUES (
+    'a1a1a1a1-0041-4000-8000-00000000000a',
+    'a1a1a1a1-0003-4000-8000-00000000000a',
+    2000,
+    'a1a1a1a1-0000-4000-8000-00000000000a'
+);
+
 INSERT INTO public.routines (id, user_id, name)
 VALUES (
     'a1a1a1a1-0006-4000-8000-00000000000a',
@@ -540,6 +551,8 @@ INSERT INTO rls_cases VALUES
     ('rep_summaries',             'id', 'a1a1a1a1-0004-4000-8000-00000000000a', 1, NULL, NULL, $s$rep_number = 99$s$),
     ('rep_telemetry',             'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 0, NULL, NULL, $s$timestamp_ms = 99$s$),
     ('telemetry_points',          'id', 'a1a1a1a1-0005-4000-8000-00000000000a', 0, NULL, NULL, $s$timestamp_ms = 99$s$),
+    ('set_telemetry',             'set_id', 'a1a1a1a1-0003-4000-8000-00000000000a', 0, NULL, NULL, $s$updated_at = '2000-01-01T00:00:00Z'$s$),
+    ('rep_telemetry_legacy',      'id', 'a1a1a1a1-0041-4000-8000-00000000000a', 0, NULL, NULL, $s$timestamp_ms = 99$s$),
     ('routines',                  'id', 'a1a1a1a1-0006-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
     ('routine_exercises',         'id', 'a1a1a1a1-0007-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
     ('training_cycles',           'id', 'a1a1a1a1-0008-4000-8000-00000000000a', 1, 1,    1,    $s$name = 'rls-probe'$s$),
@@ -595,6 +608,8 @@ ON COMMIT DROP;
 INSERT INTO rls_inferno_gated VALUES
     ('rep_telemetry'),
     ('telemetry_points'),
+    ('set_telemetry'),
+    ('rep_telemetry_legacy'),
     ('vbt_assessments'),
     ('session_phase_statistics'),
     ('exercise_signatures');

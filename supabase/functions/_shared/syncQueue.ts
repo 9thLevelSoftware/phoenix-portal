@@ -41,6 +41,11 @@ export interface CompleteSyncQueueEntryOptions {
   provider: string;
   /** The row this run owns (dispatched or self-created), if any. */
   queueId: string | null;
+  /**
+   * The row's claim generation (retry_count) when this run was claimed. When
+   * given, a row reclaimed by another worker since is not completed.
+   */
+  claimGeneration?: number | null;
 }
 
 /**
@@ -51,13 +56,19 @@ export interface CompleteSyncQueueEntryOptions {
  * finished must not be overwritten by a late worker. Without a queue id
  * there is nothing this run owns, and nothing is completed.
  */
+/**
+ * Returns true only when this worker's `processing` row became `completed`
+ * (or there is no row). False on a write error, and also when the update
+ * matched nothing: the row was cancelled by a disconnect or reclaimed, so the
+ * caller no longer owns it.
+ */
 export async function completeSyncQueueEntry(
   supabase: DbClient,
   options: CompleteSyncQueueEntryOptions,
-): Promise<void> {
-  if (!options.queueId) return;
+): Promise<boolean> {
+  if (!options.queueId) return true;
 
-  const { error } = await supabase
+  let query = supabase
     .from('sync_queue')
     .update({
       status: 'completed',
@@ -68,10 +79,20 @@ export async function completeSyncQueueEntry(
     .eq('user_id', options.userId)
     .eq('provider', options.provider)
     .eq('status', 'processing');
+  if (options.claimGeneration !== undefined && options.claimGeneration !== null) {
+    query = query.eq('retry_count', options.claimGeneration);
+  }
+  const { data, error } = await query.select('id');
 
   if (error) {
     console.error(`Failed to complete ${options.provider} sync queue entry:`, error);
+    return false;
   }
+  if (!Array.isArray(data) || data.length === 0) {
+    console.warn(`${options.provider} sync queue entry was no longer processing; not completed`);
+    return false;
+  }
+  return true;
 }
 
 export interface CreateSyncQueueEntryOptions {

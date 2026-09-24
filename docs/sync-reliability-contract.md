@@ -92,6 +92,20 @@ type PushResponseAdditions = {
   acknowledgedWorkoutDeletionIds: string[];
   acknowledgedOwnershipTransferIds: string[];
   acknowledgedDeletedCycleIds: string[];
+  clamped: Array<{
+    entity: 'session';
+    id: string;
+    field: 'totalVolume' | 'durationSeconds' | 'startedAt';
+    original: number | string;
+    clamped: number | string;
+  }>;
+  repaired: Array<{
+    entity: 'session';
+    id: string;
+    field: 'startedAt' | 'durationSeconds';
+    original: number | string;
+    repaired: number | string;
+  }>;
 };
 ```
 
@@ -139,8 +153,7 @@ deletion timestamp.
 - `transfer_profile_ownership(p_user_id uuid, p_transfers jsonb)`
 - `verify_profile_recovery_source(p_source_profile_id text, p_workout_session_ids uuid[], p_routine_ids uuid[], p_cycle_ids uuid[], p_personal_record_ids uuid[], p_proof_workout_session_ids uuid[], p_proof_routine_ids uuid[], p_proof_cycle_ids uuid[], p_proof_personal_record_ids uuid[])`
 - `apply_workout_deletions(p_user_id uuid, p_request_profile_id text, p_deletions jsonb)`
-- `replace_session_components(p_user_id uuid, p_component_ids uuid[], p_exercises jsonb, p_sets jsonb, p_rep_summaries jsonb, p_rep_telemetry jsonb)`
-- `upsert_workout_sessions_with_components(p_user_id uuid, p_enforce_lww boolean, p_rows jsonb, p_component_ids uuid[], p_exercises jsonb, p_sets jsonb, p_rep_summaries jsonb, p_rep_telemetry jsonb)`
+- (`replace_session_components` and `upsert_workout_sessions_with_components` were dropped by 20260925200000: retired, uncalled, and incompatible with the `rep_telemetry` view.)
 - `delete_workout_with_tombstone(p_mutation_id uuid, p_portal_session_id uuid, p_component_session_id uuid, p_scope text, p_profile_id text, p_deleted_at timestamptz)`
 - `delete_training_cycles_lww(p_user_id uuid, p_rows jsonb)`
 - `upsert_training_cycles_with_days_lww(p_user_id uuid, p_rows jsonb, p_days jsonb)`
@@ -228,3 +241,122 @@ older active upload from recreating a deleted cycle. A strictly newer active
 edit may win and clears that tombstone. Legacy `deletedCycleIds` values have no
 usable clock: absent ids are harmless no-ops, while existing ids are returned
 as structured cycle rejections and are never hard-deleted.
+
+The clocked delete is one database call, `delete_cycles_clocked`, which
+compares the delete's clock with the stored LWW key (`client_updated_at`) and
+deletes under the same per-cycle advisory lock every cycle write takes, so no
+write can land between the comparison and the delete. A delete whose clock is
+at least the stored key wins; a strictly newer stored key rejects it with that
+key in `rejections.cycles[].serverUpdatedAt`. An id with no server row is
+tombstoned and acknowledged.
+
+### Tombstone clocks
+
+`sync_tombstones` carries two clocks, mirroring the entities (two clocks,
+never interchangeable):
+
+- `client_deleted_at` is the delete's own clock: the device's `updatedAt` for
+  a clocked cycle delete, `now()` for a portal delete or a legacy routine
+  delete. It is what a later push is compared against.
+- `deleted_at` is server-owned and stays the pull cursor for
+  `deletedRoutineIds` / `deletedCycleIds`.
+
+On push, `apply_sync_tombstone_gate` compares each pushed routine and cycle
+with its tombstone, if any. The row is skipped (listed in `skippedDeleted`)
+when its DTO `updatedAt` is missing or not strictly later than
+`client_deleted_at`; a strictly later edit wins, is written normally and the
+tombstone is removed in the same call. Receipt time never stands in for a
+missing `updatedAt` here, so an undated push keeps losing to a delete. The
+comparison is by instant, not by string.
+
+The gate removes the tombstone in its own call, before the row is written. If
+that push then fails (a retryable 503) before the write commits, the id is
+neither tombstoned nor stored until the device retries. In that window a
+stale push from another device is not stopped by the gate. The retry of the
+newer edit still converges under LWW. Clearing the tombstone from an insert
+trigger instead would close the window, but it would also erase the tombstone
+of a delete that races the push, which is the one the R-4 re-delete check
+looks for.
+
+### Local profile ownership
+
+A push that names a session or routine another local profile holds (stored
+`local_profile_id` differs, with `NULL` meaning `"default"`) and carries no
+`ownershipTransfers` entry for it gets a structured rejection in
+`rejections.sessions` / `rejections.routines` with the stored LWW key, and
+nothing of that row (children included) is written. Cycles get the same
+rejection from `merge_training_cycles_from_push`. The push answers 200; the
+transfer contract above is how a row moves between profiles.
+
+### Outlier limits
+
+A pushed session field past one of these limits is stored at the limit and
+reported under `clamped`; the push still answers 200 (a 400 would be permanent
+for mobile and strand the batch).
+
+| Field | Limit |
+| --- | --- |
+| `totalVolume` | 1,000,000 kg (per cable, KD-8) |
+| `durationSeconds` | 604,800 (7 days) |
+| `startedAt` | at most 24 hours after the request is received; later values become the receipt time |
+
+Values under those limits are stored as sent. The leaderboard refresh
+(`refresh_leaderboard_snapshots`) then winsorizes at rank time: it ignores
+sessions and PRs dated more than a day in the future, caps each session's
+volume contribution at 100,000 kg, and recomputes streaks and workout counts
+from non-future sessions only. Stored workout history is never rewritten by
+ranking.
+
+A session's `durationSeconds` is the one field this schema lets go negative at
+ingress (`sessionDurationSecondsField`, `pushPayloadSchema.ts`): a phone-side
+Int sum that wraps negative would otherwise 400 the whole batch permanently.
+`normalizeNegativeSessionDurations` stores 0 instead and reports it under
+`clamped` like every other outlier. Every other `durationSeconds` field
+(routines, cycles, external activities) keeps the strict non-negative rule.
+
+### Epoch-zero session repair (C10, NF-37 follow-up)
+
+Root cause: a mobile save raced a reset that set the workout start time to
+`0L`, so the phone pushed `startedAt` = epoch and `durationSeconds` = `now -
+0` (the save time, as Unix seconds). `repairEpochZeroSessionStarts`
+(`mobile-sync-push/index.ts`) runs on every push, after
+`normalizeNegativeSessionDurations` and before the outlier clamp above (order
+is load-bearing: the outlier clamp would otherwise destroy the Unix-seconds
+evidence this repair looks for). For any pushed session whose `startedAt` is
+before 2000-01-01:
+
+| Condition | Repair |
+| --- | --- |
+| `durationSeconds` is a plausible Unix-seconds timestamp (946,684,800 .. receipt time + 1 day) | `startedAt := durationSeconds` reinterpreted as a timestamp; `durationSeconds := 0` |
+| otherwise | `startedAt :=` the DTO's own `updatedAt` (its client clock), or receipt time when absent; `durationSeconds := 0` only if it exceeds 86,400s |
+
+Each change is reported under the new `repaired` response array (same shape
+and same "committed sessions only" rule as `clamped`) and logged the same
+way. The same rules, applied to already-stored rows, are the production
+repair in `supabase/migrations/20260926100000_repair_epoch_zero_sessions.sql`
+— see that migration's header for the one deliberate difference (its first
+group requires an EXACT epoch-zero `started_at`, not merely "before 2000").
+
+### Single-transaction push (SYNC_PUSH_TRANSACTION)
+
+When the operator enables `SYNC_PUSH_TRANSACTION`, `mobile-sync-push` runs the
+same writes, in the same order and with the same per-entity outcomes, inside one
+Postgres transaction. Nothing in the request or response changes shape. What
+changes is what a failure leaves behind:
+
+- A push that ran inside the transaction and answers `503 partial_write_retry`
+  has committed **nothing**. With the flag off, earlier writes of that push may
+  already be committed; the retry converges either way, so clients need no
+  change.
+- Exception: when the transaction cannot be opened (no `SUPABASE_DB_URL`, the
+  database unreachable), that push falls back to the per-call writes and logs
+  the fallback, so for that push the flag-off rule applies: a `503` may leave
+  earlier writes committed. The fallback is chosen so an unreachable direct
+  connection never blocks syncing; the retry still converges.
+- A `400` that depends on server state (ownership, parent existence) after the
+  transaction opened also commits nothing.
+- `sync_complete` is broadcast only after COMMIT.
+- A write that the handler tolerates today (an optional table, a reported
+  `failed` list) is still rolled back on its own and reported the same way; it
+  never aborts the rest of the push.
+

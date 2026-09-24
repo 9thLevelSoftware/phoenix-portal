@@ -325,8 +325,8 @@ describe("weeklySummaryOptions", () => {
 		vi.clearAllMocks();
 	});
 
-	// NF-36: velocity_estimated_1rm_kg is INFERNO-only and will stop being
-	// client-readable, so a `*` select would then be refused for every user.
+	// NF-36: velocity_estimated_1rm_kg is INFERNO-only and not client-readable
+	// (20260925900000), so a `*` select would be refused for every user.
 	it("selects explicit columns without the INFERNO-only VBT 1RM", async () => {
 		chain = buildChain({
 			data: [

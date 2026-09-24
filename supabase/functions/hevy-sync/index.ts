@@ -174,24 +174,18 @@ async function runHevySync(
     // id, so nobody can spend another user's budget; the queue path (service
     // role) is exempt and has its own budget under the `hevy` key.
     //
-    // A call carrying `api_key` is both a credential write and a full sync. It
-    // spends the roomier connect bucket first, then the ordinary sync bucket;
-    // otherwise resending a valid key would bypass the provider-read limit.
+    // A call carrying `api_key` spends ONLY the credential bucket (NF-27).
+    // Charging it to the 3-per-15-minute sync bucket too meant three mistyped
+    // keys locked the user out of saving the corrected one. The credential
+    // bucket (10 per 15 minutes) still bounds the provider reads that key
+    // saves trigger, so resending a key cannot bypass the read limit.
     if (jwtUser) {
-      if (api_key) {
-        const credentialRateCheck = await checkManualSyncRateLimit(
-          supabase,
-          { provider: 'hevy', userId, credentialWrite: true },
-          cors,
-        );
-        if (!credentialRateCheck.allowed) return credentialRateCheck.response!;
-      }
-      const syncRateCheck = await checkManualSyncRateLimit(
+      const rateCheck = await checkManualSyncRateLimit(
         supabase,
-        { provider: 'hevy', userId },
+        { provider: 'hevy', userId, credentialWrite: Boolean(api_key) },
         cors,
       );
-      if (!syncRateCheck.allowed) return syncRateCheck.response!;
+      if (!rateCheck.allowed) return rateCheck.response!;
     }
 
     // Renew the lease immediately: the processor claimed this row before it

@@ -4,7 +4,11 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { redactTokenShapedJson } from '../_shared/garminIdentity.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
-import { SYNC_LWW_ENABLED } from '../_shared/flags.ts';
+import { SYNC_LWW_ENABLED, SYNC_PUSH_TRANSACTION } from '../_shared/flags.ts';
+import {
+  openPgPushTransaction,
+  type PushTransaction,
+} from '../_shared/pushTransaction.ts';
 import { describeSyncPlatformInput } from '../_shared/syncPlatform.ts';
 import {
   buildLocalProfileRepairRowsForDedicatedRecords,
@@ -101,6 +105,357 @@ const TOMBSTONE_RACE_MARGIN_MS = 5_000;
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** PostgreSQL serializes UUID columns in lowercase; mobile UUID casing varies. */
+const normalizeUuid = (id: string): string => id.toLowerCase();
+
+/** Normalize a TEXT identity only when it is actually a UUID. */
+const normalizeUuidShapedText = (id: string): string =>
+  UUID_REGEX.test(id) ? normalizeUuid(id) : id;
+
+/**
+ * A set of UUIDs compared case-insensitively. iOS sends uppercase UUIDs while
+ * every id read back from PostgreSQL is lowercase, so a plain Set lets the
+ * same row look like two. Members are stored lowercase.
+ */
+class UuidSet extends Set<string> {
+  constructor(ids?: Iterable<string>) {
+    super();
+    if (ids) for (const id of ids) this.add(id);
+  }
+  override add(id: string): this {
+    return super.add(normalizeUuid(id));
+  }
+  override has(id: string): boolean {
+    return super.has(normalizeUuid(id));
+  }
+  override delete(id: string): boolean {
+    return super.delete(normalizeUuid(id));
+  }
+}
+
+/** Parallel ownership probes per push, and per table's id chunks (F-039). */
+const OWNERSHIP_PROBE_CONCURRENCY = 4;
+
+/**
+ * Run `fn` over `items` with at most `limit` calls in flight. Settles every
+ * call and returns the outcomes in input order, so callers can apply the same
+ * first-in-order precedence the serial loop had.
+ */
+async function settleBounded<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results = new Array<PromiseSettledResult<R>>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      try {
+        results[index] = { status: 'fulfilled', value: await fn(items[index]) };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return results;
+}
+
+/** First non-null result in input order; a rejection earlier in order wins. */
+function firstInOrder<R>(
+  results: PromiseSettledResult<R | null>[],
+): R | null {
+  for (const result of results) {
+    if (result.status === 'rejected') throw result.reason;
+    if (result.value !== null) return result.value;
+  }
+  return null;
+}
+
+/** Start a promise now and observe its outcome later without an unhandled rejection. */
+function settleLater<T>(promise: Promise<T>): Promise<PromiseSettledResult<T>> {
+  return promise.then(
+    (value) => ({ status: 'fulfilled', value }) as const,
+    (reason) => ({ status: 'rejected', reason }) as const,
+  );
+}
+
+function unwrapSettled<T>(result: PromiseSettledResult<T>): T {
+  if (result.status === 'rejected') throw result.reason;
+  return result.value;
+}
+
+/** Deduplicate UUIDs case-insensitively, keeping the first caller-supplied form. */
+function uniqueUuidValues(ids: Iterable<string>): string[] {
+  const byNormalizedId = new Map<string, string>();
+  for (const id of ids) {
+    const key = normalizeUuid(id);
+    if (!byNormalizedId.has(key)) byNormalizedId.set(key, id);
+  }
+  return [...byNormalizedId.values()];
+}
+
+function chunked<T>(items: readonly T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+/**
+ * C10 (1970 session repair). `pushPayloadSchema` accepts a negative session
+ * `durationSeconds` (see `sessionDurationSecondsField`) instead of 400ing the
+ * whole batch: a phone-side Int sum that wraps negative is not something the
+ * device can retry its way out of. This normalizes it to 0 in place and
+ * reports the change under `clamped`, using the same shape as
+ * `clampSessionOutliers` below.
+ *
+ * MUST run before `repairEpochZeroSessionStarts`: that repair reads
+ * `durationSeconds` to decide whether it is a plausible Unix-seconds
+ * timestamp, and a negative number is never plausible, but leaving it
+ * negative would still be wrong to store.
+ */
+export function normalizeNegativeSessionDurations(
+  sessions: Array<{ id: string; durationSeconds?: number | null }>,
+): ClampedField[] {
+  const clamped: ClampedField[] = [];
+  for (const session of sessions) {
+    const duration = session.durationSeconds;
+    if (typeof duration === 'number' && duration < 0) {
+      session.durationSeconds = 0;
+      clamped.push({
+        entity: 'session',
+        id: session.id,
+        field: 'durationSeconds',
+        original: duration,
+        clamped: 0,
+      });
+    }
+  }
+  return clamped;
+}
+
+/**
+ * C10 (1970 session repair, docs/sync-reliability-contract.md "Epoch-zero
+ * session repair"). Root cause: a mobile save raced a reset that set the
+ * workout start time to 0L, so the phone pushed `startedAt` = epoch and
+ * `durationSeconds` = `now - 0` (i.e. the save time as Unix seconds).
+ *
+ * MUST run after `normalizeNegativeSessionDurations` (needs a non-negative
+ * `durationSeconds`) and MUST run before `clampSessionOutliers` (which caps
+ * `durationSeconds` at `PUSH_OUTLIER_LIMITS.sessionDurationSeconds`; clamping
+ * first would destroy the Unix-seconds evidence this repair looks for).
+ *
+ * Mirrors the production repair rules approved for
+ * `20260926100000_repair_epoch_zero_sessions.sql` (see that migration's
+ * header), except the ingest threshold is "before 2000-01-01" (matching the
+ * migration's WHERE clause) while the migration's first group additionally
+ * requires an EXACT epoch-zero `started_at` — a pushed `startedAt` just
+ * before 2000 with no plausible duration cannot be distinguished from a
+ * genuinely bad clock, so it always falls to the client-clock fallback here.
+ */
+export const EPOCH_ZERO_SESSION_REPAIR = {
+  /** 2000-01-01T00:00:00Z. Below this, startedAt cannot be real device wall-clock time. */
+  minPlausibleStartedAtMs: Date.parse('2000-01-01T00:00:00Z'),
+  /** Same floor, in Unix seconds, for reading durationSeconds as a timestamp. */
+  minPlausibleUnixSeconds: 946_684_800,
+  /** A session run this long without evidence is not treated as plausible. */
+  maxPlausibleDurationSeconds: 86_400,
+} as const;
+
+export type RepairedField = {
+  entity: 'session';
+  id: string;
+  field: 'startedAt' | 'durationSeconds';
+  original: number | string;
+  repaired: number | string;
+};
+
+/** Repairs epoch-zero/pre-2000 session `startedAt` values in place. */
+export function repairEpochZeroSessionStarts(
+  sessions: Array<{
+    id: string;
+    startedAt?: string | null;
+    durationSeconds?: number | null;
+    updatedAt?: string | null;
+  }>,
+  receivedAt: string,
+): RepairedField[] {
+  const repaired: RepairedField[] = [];
+  const receivedMs = Date.parse(receivedAt);
+  const maxPlausibleUnixSeconds = Math.floor(receivedMs / 1000) + 86_400;
+  for (const session of sessions) {
+    const startedAt = session.startedAt;
+    if (typeof startedAt !== 'string') continue;
+    const startedMs = Date.parse(startedAt);
+    if (
+      Number.isNaN(startedMs) ||
+      startedMs >= EPOCH_ZERO_SESSION_REPAIR.minPlausibleStartedAtMs
+    ) {
+      continue;
+    }
+    const duration = session.durationSeconds;
+    const isDurationPlausibleUnixSeconds =
+      typeof duration === 'number' &&
+      duration >= EPOCH_ZERO_SESSION_REPAIR.minPlausibleUnixSeconds &&
+      duration <= maxPlausibleUnixSeconds;
+    // A pre-2000 updatedAt is as corrupt as the start, and it becomes the
+    // row's LWW key (client_updated_at): replace it with the receipt time on
+    // every repair path, so no 1970-era edit can beat the repaired row.
+    const updatedMs = typeof session.updatedAt === 'string' ? Date.parse(session.updatedAt) : Number.NaN;
+    const updatedAtPlausible = Number.isFinite(updatedMs) &&
+      updatedMs >= EPOCH_ZERO_SESSION_REPAIR.minPlausibleUnixSeconds * 1000;
+    if (isDurationPlausibleUnixSeconds) {
+      const repairedStartedAt = new Date(duration * 1000).toISOString();
+      session.startedAt = repairedStartedAt;
+      session.durationSeconds = 0;
+      if (typeof session.updatedAt === 'string' && !updatedAtPlausible) session.updatedAt = receivedAt;
+      repaired.push({
+        entity: 'session',
+        id: session.id,
+        field: 'startedAt',
+        original: startedAt,
+        repaired: repairedStartedAt,
+      });
+      repaired.push({
+        entity: 'session',
+        id: session.id,
+        field: 'durationSeconds',
+        original: duration as number,
+        repaired: 0,
+      });
+      continue;
+    }
+    // No plausible duration to recover the date from: fall back to the
+    // pushing device's own clock (its updatedAt), or receipt time when the
+    // DTO carries none — identical to the undated-push rule (KD-5) applied
+    // to client_updated_at below.
+    // An updatedAt that is itself before the plausibility threshold is as
+    // corrupt as the start it would replace: use the receipt time then.
+    const fallbackStartedAt = updatedAtPlausible ? (session.updatedAt as string) : receivedAt;
+    session.startedAt = fallbackStartedAt;
+    // The rejected updatedAt is also this row's LWW key (client_updated_at):
+    // replace it too, or any other device's 1970-era edit could beat the
+    // repaired row.
+    if (fallbackStartedAt === receivedAt && session.updatedAt !== undefined && session.updatedAt !== null) {
+      session.updatedAt = receivedAt;
+    }
+    repaired.push({
+      entity: 'session',
+      id: session.id,
+      field: 'startedAt',
+      original: startedAt,
+      repaired: fallbackStartedAt,
+    });
+    if (
+      typeof duration === 'number' &&
+      duration > EPOCH_ZERO_SESSION_REPAIR.maxPlausibleDurationSeconds
+    ) {
+      session.durationSeconds = 0;
+      repaired.push({
+        entity: 'session',
+        id: session.id,
+        field: 'durationSeconds',
+        original: duration,
+        repaired: 0,
+      });
+    }
+  }
+  return repaired;
+}
+
+/**
+ * NF-37 push limits (docs/sync-reliability-contract.md, "Outlier limits").
+ * A value past one of these is not a workout a person can do; it is a
+ * corrupt or mis-scaled field. The push stores the limit instead and reports
+ * the change under `clamped`. It never answers 400: mobile treats a 400 as
+ * permanent and would strand the whole batch. Values under the limits but
+ * still implausible are winsorized at rank time by the leaderboard instead.
+ * MUST run after `normalizeNegativeSessionDurations` and
+ * `repairEpochZeroSessionStarts` (see those functions' docs for why order
+ * matters).
+ */
+export const PUSH_OUTLIER_LIMITS = {
+  /** Per cable (KD-8), for the whole session. */
+  sessionTotalVolumeKg: 1_000_000,
+  sessionDurationSeconds: 7 * 24 * 60 * 60,
+  /** How far past the request's receipt a session may start. */
+  sessionStartFutureMs: 24 * 60 * 60 * 1000,
+} as const;
+
+export type ClampedField = {
+  entity: 'session';
+  id: string;
+  field: 'totalVolume' | 'durationSeconds' | 'startedAt';
+  original: number | string;
+  clamped: number | string;
+};
+
+/** Clamps outlier session fields in place and returns what was changed. */
+export function clampSessionOutliers(
+  sessions: Array<{
+    id: string;
+    startedAt?: string | null;
+    durationSeconds?: number | null;
+    totalVolume?: number | null;
+    updatedAt?: string | null;
+  }>,
+  receivedAt: string,
+): ClampedField[] {
+  const clamped: ClampedField[] = [];
+  const receivedMs = Date.parse(receivedAt);
+  for (const session of sessions) {
+    const volume = session.totalVolume;
+    if (typeof volume === 'number' && volume > PUSH_OUTLIER_LIMITS.sessionTotalVolumeKg) {
+      session.totalVolume = PUSH_OUTLIER_LIMITS.sessionTotalVolumeKg;
+      clamped.push({
+        entity: 'session',
+        id: session.id,
+        field: 'totalVolume',
+        original: volume,
+        clamped: PUSH_OUTLIER_LIMITS.sessionTotalVolumeKg,
+      });
+    }
+    const duration = session.durationSeconds;
+    if (typeof duration === 'number' && duration > PUSH_OUTLIER_LIMITS.sessionDurationSeconds) {
+      session.durationSeconds = PUSH_OUTLIER_LIMITS.sessionDurationSeconds;
+      clamped.push({
+        entity: 'session',
+        id: session.id,
+        field: 'durationSeconds',
+        original: duration,
+        clamped: PUSH_OUTLIER_LIMITS.sessionDurationSeconds,
+      });
+    }
+    const startedAt = session.startedAt;
+    if (
+      typeof startedAt === 'string' &&
+      Date.parse(startedAt) > receivedMs + PUSH_OUTLIER_LIMITS.sessionStartFutureMs
+    ) {
+      session.startedAt = receivedAt;
+      // The same skewed clock usually dated updatedAt too, and it becomes the
+      // row's LWW key: a key parked in the future would beat every correctly
+      // clocked edit until then. Clamp it to the receipt time as well.
+      if (
+        typeof session.updatedAt === 'string' &&
+        Date.parse(session.updatedAt) > receivedMs + PUSH_OUTLIER_LIMITS.sessionStartFutureMs
+      ) {
+        session.updatedAt = receivedAt;
+      }
+      clamped.push({
+        entity: 'session',
+        id: session.id,
+        field: 'startedAt',
+        original: startedAt,
+        clamped: receivedAt,
+      });
+    }
+  }
+  return clamped;
+}
+
 /**
  * Defense-in-depth: deduplicate rows by a key field before upserting.
  * PostgreSQL rejects an INSERT ... ON CONFLICT DO UPDATE when two rows in the
@@ -140,6 +495,16 @@ class PartialWriteRetryError extends Error {
 }
 
 /**
+ * guard_profile_ownership_update (P204D): a transfer to another local
+ * profile landed between the push's unlocked profile probe and its write. A
+ * retry re-probes and returns the row as a structured rejection (204-D), so
+ * this is a retryable 503, never a 500.
+ */
+function isProfileTransferRace(error: { code?: string } | null | undefined): boolean {
+  return error?.code === 'P204D';
+}
+
+/**
  * reject_user_id_change (20260920002102) refused a write that would move a
  * workout_sessions / routines / training_cycles row to another owner. It
  * raises SQLSTATE 42501; retrying can never succeed, so this is the same 400
@@ -172,6 +537,17 @@ function isOwnerRefusal(
  * retry and wedge sync behind a permanent 503. Deletes are idempotent, so a
  * failure after some chunks committed is still safe to retry.
  */
+/**
+ * Unique ids in one stable order. Delete chunks run in this order so two
+ * pushes deleting the same rows in opposite payload orders (inside
+ * SYNC_PUSH_TRANSACTION, which holds each chunk's locks to COMMIT) take the
+ * row locks in the same order and cannot deadlock.
+ */
+export function sortedUniqueIds(ids: readonly string[]): string[] {
+  return [...new UuidSet(ids.filter(Boolean))]
+    .sort((a, b) => (normalizeUuid(a) < normalizeUuid(b) ? -1 : normalizeUuid(a) > normalizeUuid(b) ? 1 : 0));
+}
+
 async function deleteOwnedRowsInChunks(
   supabase: SupabaseClient,
   table: string,
@@ -179,7 +555,7 @@ async function deleteOwnedRowsInChunks(
   userId: string,
   step: string,
 ): Promise<void> {
-  const unique = [...new Set(ids)].filter(Boolean);
+  const unique = sortedUniqueIds(ids);
   const chunkSize = 100;
   for (let i = 0; i < unique.length; i += chunkSize) {
     const chunk = unique.slice(i, i + chunkSize);
@@ -206,29 +582,81 @@ async function assertRowsOwnedByUser(
   userId: string,
   cors: Record<string, string>,
 ): Promise<Response | null> {
-  const unique = [...new Set(ids)].filter(Boolean);
-  const chunkSize = 100;
-  for (let i = 0; i < unique.length; i += chunkSize) {
-    const chunk = unique.slice(i, i + chunkSize);
-    const { data: rows, error } = await supabase
-      .from(table)
-      .select('id')
-      .in('id', chunk)
-      .neq('user_id', userId);
-    if (error) {
-      // Fail closed — if the ownership probe itself errors (e.g. missing
-      // column), we must not proceed with an upsert that could overwrite a
-      // victim row. Surface as 500 so the caller retries / we notice.
-      throw new Error(`Ownership check on ${table} failed: ${error.message}`);
-    }
-    if (rows && rows.length > 0) {
-      return new Response(
-        JSON.stringify({ error: `Refused: existing ${table} row belongs to another user` }),
-        { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
-      );
-    }
-  }
-  return null;
+  const unique = [...new UuidSet(ids.filter(Boolean))];
+  const outcomes = await settleBounded(
+    chunked(unique, 100),
+    OWNERSHIP_PROBE_CONCURRENCY,
+    async (chunk): Promise<Response | null> => {
+      const { data: rows, error } = await supabase
+        .from(table)
+        .select('id')
+        .in('id', chunk)
+        .neq('user_id', userId);
+      if (error) {
+        // Fail closed — if the ownership probe itself errors (e.g. missing
+        // column), we must not proceed with an upsert that could overwrite a
+        // victim row. Surface as 500 so the caller retries / we notice.
+        throw new Error(`Ownership check on ${table} failed: ${error.message}`);
+      }
+      if (rows && rows.length > 0) {
+        return new Response(
+          JSON.stringify({ error: `Refused: existing ${table} row belongs to another user` }),
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      return null;
+    },
+  );
+  return firstInOrder(outcomes);
+}
+
+/**
+ * `assertRowsOwnedByUser` for sample ids. Since 20260925200000 `rep_telemetry`
+ * is a per-sample VIEW over `set_telemetry` (one row per set, ids in an array)
+ * plus not-yet-folded legacy rows; an `id IN (...)` filter on the view would
+ * unnest every set. So the probe asks the two stores directly, each on an
+ * index: the GIN index on `set_telemetry.ids` and the legacy primary key. The
+ * refusal names `rep_telemetry`, as before.
+ */
+async function assertTelemetryIdsOwnedByUser(
+  supabase: SupabaseClient,
+  ids: string[],
+  userId: string,
+  cors: Record<string, string>,
+): Promise<Response | null> {
+  const unique = [...new UuidSet(ids.filter(Boolean))];
+  const outcomes = await settleBounded(
+    chunked(unique, 100),
+    OWNERSHIP_PROBE_CONCURRENCY,
+    async (chunk): Promise<Response | null> => {
+      const [perSet, legacy] = await Promise.all([
+        supabase
+          .from('set_telemetry')
+          .select('set_id')
+          .overlaps('ids', chunk)
+          .neq('user_id', userId),
+        supabase
+          .from('rep_telemetry_legacy')
+          .select('id')
+          .in('id', chunk)
+          .neq('user_id', userId),
+      ]);
+      for (const { error } of [perSet, legacy]) {
+        if (error) {
+          // Fail closed, exactly like assertRowsOwnedByUser.
+          throw new Error(`Ownership check on rep_telemetry failed: ${error.message}`);
+        }
+      }
+      if ((perSet.data?.length ?? 0) > 0 || (legacy.data?.length ?? 0) > 0) {
+        return new Response(
+          JSON.stringify({ error: 'Refused: existing rep_telemetry row belongs to another user' }),
+          { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      return null;
+    },
+  );
+  return firstInOrder(outcomes);
 }
 
 /**
@@ -249,21 +677,31 @@ async function assertParentRowsExistAndOwnedByUser(
   cors: Record<string, string>,
   options: { allowMissing?: boolean } = {},
 ): Promise<{ response: Response | null; validIds: Set<string> }> {
-  const unique = [...new Set(ids)].filter(Boolean);
-  const validIds = new Set<string>();
+  const unique = [...new UuidSet(ids.filter(Boolean))];
+  const validIds = new UuidSet();
   if (unique.length === 0) return { response: null, validIds };
-  const chunkSize = 100;
-  for (let i = 0; i < unique.length; i += chunkSize) {
-    const chunk = unique.slice(i, i + chunkSize);
-    const { data: rows, error } = await supabase
-      .from(table)
-      .select('id, user_id')
-      .in('id', chunk);
-    if (error) {
-      throw new Error(`Parent reference check on ${table} failed: ${error.message}`);
-    }
-    const seen = new Set<string>();
-    for (const row of rows ?? []) {
+  const chunks = chunked(unique, 100);
+  const fetched = await settleBounded(
+    chunks,
+    OWNERSHIP_PROBE_CONCURRENCY,
+    async (chunk) => {
+      const { data: rows, error } = await supabase
+        .from(table)
+        .select('id, user_id')
+        .in('id', chunk);
+      if (error) {
+        throw new Error(`Parent reference check on ${table} failed: ${error.message}`);
+      }
+      return rows ?? [];
+    },
+  );
+  for (let c = 0; c < chunks.length; c++) {
+    const chunk = chunks[c];
+    const outcome = fetched[c];
+    if (outcome.status === 'rejected') throw outcome.reason;
+    const rows = outcome.value;
+    const seen = new UuidSet();
+    for (const row of rows) {
       const id = (row as { id?: unknown }).id;
       if (typeof id !== 'string' || seen.has(id)) continue;
       seen.add(id);
@@ -314,11 +752,34 @@ async function assertChildRowsOwnedViaParent(
   userId: string,
   cors: Record<string, string>,
 ): Promise<Response | null> {
-  const unique = [...new Set(ids)].filter(Boolean);
+  const unique = [...new UuidSet(ids.filter(Boolean))];
   if (unique.length === 0) return null;
-  const chunkSize = 100;
-  for (let i = 0; i < unique.length; i += chunkSize) {
-    const chunk = unique.slice(i, i + chunkSize);
+  const outcomes = await settleBounded(
+    chunked(unique, 100),
+    OWNERSHIP_PROBE_CONCURRENCY,
+    (chunk) => assertChildChunkOwnedViaParent(
+      supabase,
+      childTable,
+      childFkColumn,
+      parentTable,
+      chunk,
+      userId,
+      cors,
+    ),
+  );
+  return firstInOrder(outcomes);
+}
+
+async function assertChildChunkOwnedViaParent(
+  supabase: SupabaseClient,
+  childTable: string,
+  childFkColumn: string,
+  parentTable: string,
+  chunk: string[],
+  userId: string,
+  cors: Record<string, string>,
+): Promise<Response | null> {
+  {
     const { data: childRows, error: childErr } = await supabase
       .from(childTable)
       .select(`id, ${childFkColumn}`)
@@ -327,7 +788,7 @@ async function assertChildRowsOwnedViaParent(
     if (childErr) {
       throw new Error(`Ownership check on ${childTable} failed: ${childErr.message}`);
     }
-    if (!childRows || childRows.length === 0) continue;
+    if (!childRows || childRows.length === 0) return null;
     const parentIds = [
       ...new Set(
         childRows
@@ -335,7 +796,7 @@ async function assertChildRowsOwnedViaParent(
           .filter((v): v is string => typeof v === 'string' && v.length > 0),
       ),
     ];
-    if (parentIds.length === 0) continue;
+    if (parentIds.length === 0) return null;
     const { data: foreignParents, error: parentErr } = await supabase
       .from(parentTable)
       .select('id')
@@ -465,6 +926,29 @@ interface PersonalRecordIdentityCandidate {
 
 /** Keyset page size for the PR probe; must stay <= PostgREST max_rows (1000). */
 const PERSONAL_RECORD_PROBE_PAGE_SIZE = 500;
+
+export function buildExternalActivityAcks(
+  activityRows: ReadonlyArray<{ id: string; external_id: string; provider: string }>,
+  acceptedRows: ReadonlyArray<{ id: string; accepted: boolean; server_updated_at: string | null }>,
+  fallbackUpdatedAt: string,
+): ExternalActivityAckDto[] {
+  const byId = new Map<string, { externalId: string; provider: string }>();
+  for (const row of activityRows) {
+    byId.set(normalizeUuid(row.id), { externalId: row.external_id, provider: row.provider });
+  }
+  return acceptedRows
+    .filter((row) => row.accepted)
+    .map((row) => {
+      const metadata = byId.get(normalizeUuid(row.id)) ?? { externalId: '', provider: '' };
+      return {
+        localId: row.id,
+        serverId: row.id,
+        externalId: metadata.externalId,
+        provider: metadata.provider,
+        updatedAt: row.server_updated_at ?? fallbackUpdatedAt,
+      };
+    });
+}
 
 interface PersonalRecordDto {
   id?: string | null;
@@ -804,6 +1288,23 @@ export interface MobileSyncPushHandlerDependencies {
    * SYNC_LWW_ENABLED cold-start flag applies.
    */
   syncLwwEnabled?: boolean;
+  /**
+   * Test seam for the single-transaction push (F-014). Omitted in
+   * production, where the SYNC_PUSH_TRANSACTION cold-start flag applies.
+   */
+  pushTransactionEnabled?: boolean;
+  /**
+   * Opens the push transaction. Defaults to a SUPABASE_DB_URL connection;
+   * tests pass a double.
+   */
+  openPushTransaction?(): Promise<PushTransaction>;
+}
+
+/** The default transaction opener: a dedicated SUPABASE_DB_URL connection. */
+async function openDefaultPushTransaction(): Promise<PushTransaction> {
+  const dbUrl = Deno.env.get('SUPABASE_DB_URL');
+  if (!dbUrl) throw new Error('SUPABASE_DB_URL is not set');
+  return await openPgPushTransaction(dbUrl);
 }
 
 function defaultMobileSyncPushDependencies(): MobileSyncPushHandlerDependencies {
@@ -965,6 +1466,10 @@ async function mobileSyncPushHandler(
 ): Promise<Response> {
   const cors = getCorsHeaders(req);
   const syncLwwEnabled = dependencies.syncLwwEnabled ?? SYNC_LWW_ENABLED;
+  const pushTransactionEnabled =
+    dependencies.pushTransactionEnabled ?? SYNC_PUSH_TRANSACTION;
+  // Declared outside the try so the finally can roll back on every exit.
+  let pushTx: PushTransaction | null = null;
 
   // CORS preflight
   if (req.method === 'OPTIONS') {
@@ -1227,9 +1732,9 @@ async function mobileSyncPushHandler(
     const allPersonalRecordIds = (payload.personalRecords ?? [])
       .map((pr) => pr.id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0);
-    const sessionIdSet = new Set(allSessionIds);
-    const setIdSet = new Set(allSetIds);
-    const routineIdSet = new Set(allRoutineIds);
+    const sessionIdSet = new UuidSet(allSessionIds);
+    const setIdSet = new UuidSet(allSetIds);
+    const routineIdSet = new UuidSet(allRoutineIds);
 
     const fkMismatchResponse = (msg: string): Response =>
       new Response(
@@ -1239,15 +1744,15 @@ async function mobileSyncPushHandler(
 
     for (const s of payload.sessions ?? []) {
       for (const e of s.exercises) {
-        if (e.sessionId !== s.id) {
+        if (normalizeUuid(e.sessionId) !== normalizeUuid(s.id)) {
           return fkMismatchResponse(`exercise ${e.id} sessionId must equal parent session ${s.id}`);
         }
         for (const st of e.sets) {
-          if (st.exerciseId !== e.id) {
+          if (normalizeUuid(st.exerciseId) !== normalizeUuid(e.id)) {
             return fkMismatchResponse(`set ${st.id} exerciseId must equal parent exercise ${e.id}`);
           }
           for (const r of st.repSummaries) {
-            if (r.setId !== st.id) {
+            if (normalizeUuid(r.setId) !== normalizeUuid(st.id)) {
               return fkMismatchResponse(`rep_summary ${r.id} setId must equal parent set ${st.id}`);
             }
           }
@@ -1256,7 +1761,7 @@ async function mobileSyncPushHandler(
     }
     for (const r of payload.routines ?? []) {
       for (const e of r.exercises) {
-        if (e.routineId !== r.id) {
+        if (normalizeUuid(e.routineId) !== normalizeUuid(r.id)) {
           return fkMismatchResponse(
             `routine_exercise ${e.id} routineId must equal parent routine ${r.id}`,
           );
@@ -1265,7 +1770,7 @@ async function mobileSyncPushHandler(
     }
     for (const c of payload.cycles ?? []) {
       for (const d of c.days) {
-        if (d.cycleId !== c.id) {
+        if (normalizeUuid(d.cycleId) !== normalizeUuid(c.id)) {
           return fkMismatchResponse(
             `cycle_day ${d.id} cycleId must equal parent cycle ${c.id}`,
           );
@@ -1309,6 +1814,25 @@ async function mobileSyncPushHandler(
     const gate = await requireSubscription(supabase, userId, 'EMBER', cors);
     if (!gate.allowed) return gate.response;
 
+    // F-014: with SYNC_PUSH_TRANSACTION every read and write below runs on one
+    // connection inside one transaction (see _shared/pushTransaction.ts), so a
+    // failure part-way through commits nothing. The rate limit and the
+    // entitlement gate above stay on the ordinary client: a refused push still
+    // spends its budget. If the transaction cannot be opened the push falls
+    // back to per-call writes rather than failing every device.
+    if (pushTransactionEnabled) {
+      try {
+        pushTx = await (dependencies.openPushTransaction ?? openDefaultPushTransaction)();
+      } catch (openErr) {
+        console.warn(
+          'mobile-sync-push transaction unavailable, writing per call:',
+          safeErrorName(openErr, 'PushTransactionOpenFailure'),
+        );
+        dependencies.logOperationalFailure({ name: 'PushTransactionUnavailable' });
+      }
+    }
+    const db = pushTx ? (pushTx.client as unknown as SupabaseClient) : supabase;
+
     // Upsert custom catalog rows before any session/routine child rows that may
     // reference those catalog IDs through FK columns.
     if (payload.customExercises.length > 0) {
@@ -1333,7 +1857,7 @@ async function mobileSyncPushHandler(
       });
 
       const catalogIds = catalogRows.map((row) => row.id);
-      const { data: existingCatalogRows, error: existingCatalogError } = await supabase
+      const { data: existingCatalogRows, error: existingCatalogError } = await db
         .from('exercise_catalog')
         .select('id, is_custom, user_id')
         .in('id', catalogIds);
@@ -1352,7 +1876,7 @@ async function mobileSyncPushHandler(
         );
       }
 
-      const { error: catalogError } = await supabase
+      const { error: catalogError } = await db
         .from('exercise_catalog')
         .upsert(catalogRows, { onConflict: 'id' });
 
@@ -1368,7 +1892,7 @@ async function mobileSyncPushHandler(
       [
         ...(await getPublicCatalogRows(supabase, publicCatalogCache, dependencies.now())),
         ...(await fetchCatalogLookupPages((from, to) =>
-          supabase
+          db
             .from('exercise_catalog')
             .select(CATALOG_LOOKUP_COLUMNS)
             .eq('is_custom', true)
@@ -1453,7 +1977,7 @@ async function mobileSyncPushHandler(
     // a change so the portal is still told to refresh.
     let localProfilesChanged = false;
     const storedLocalProfiles = async (): Promise<StoredLocalProfile[] | null> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('local_profiles')
         .select('id, name, color_index, device_id')
         .eq('user_id', userId)
@@ -1482,7 +2006,7 @@ async function mobileSyncPushHandler(
       localProfilesChanged = storedProfiles === null ||
         localProfilesPushChangesRows(storedProfiles, profileRows, payload.deviceId);
 
-      const { error: upsertError } = await supabase
+      const { error: upsertError } = await db
         .from('local_profiles')
         .upsert(profileRows, { onConflict: 'user_id,id' });
 
@@ -1520,7 +2044,7 @@ async function mobileSyncPushHandler(
         storedActive === undefined ||
         storedActive.name !== profileName ||
         storedActive.device_id !== payload.deviceId;
-      const { error: profileError } = await supabase
+      const { error: profileError } = await db
         .from('local_profiles')
         .upsert(
           {
@@ -1551,7 +2075,7 @@ async function mobileSyncPushHandler(
 
       if (candidateIds.length > 0) {
         for (const chunk of chunkLocalProfileIdsForRepair(candidateIds)) {
-          const { data: existingProfiles, error: lookupError } = await supabase
+          const { data: existingProfiles, error: lookupError } = await db
             .from('local_profiles')
             .select('id')
             .eq('user_id', userId)
@@ -1590,7 +2114,7 @@ async function mobileSyncPushHandler(
             payload.deviceId,
             repairUpdatedAt,
           );
-          const { data: repairedProfiles, error: repairError } = await supabase
+          const { data: repairedProfiles, error: repairError } = await db
             .from('local_profiles')
             .upsert(repairRows, { onConflict: 'user_id,id' })
             .select('id')
@@ -1617,7 +2141,7 @@ async function mobileSyncPushHandler(
     // after commit, so their exact mutation ids are safe acknowledgements.
     let acknowledgedOwnershipTransferIds: string[] = [];
     if (payload.ownershipTransfers.length > 0) {
-      const { data, error } = await supabase.rpc('transfer_profile_ownership', {
+      const { data, error } = await db.rpc('transfer_profile_ownership', {
         p_user_id: userId,
         p_transfers: payload.ownershipTransfers,
       });
@@ -1629,7 +2153,7 @@ async function mobileSyncPushHandler(
 
     let acknowledgedWorkoutDeletionIds: string[] = [];
     if (payload.workoutDeletions.length > 0) {
-      const { data, error } = await supabase.rpc('apply_workout_deletions', {
+      const { data, error } = await db.rpc('apply_workout_deletions', {
         p_user_id: userId,
         // Deletion routing is immutable operation metadata. Profile sync above
         // may clear localProfileId when the original profile was deleted and
@@ -1653,7 +2177,7 @@ async function mobileSyncPushHandler(
       // recovering device never knew about. Never cascade-delete an omitted
       // registration while it still owns cloud preference sections. Profile
       // preference transfer/merge is intentionally outside this contract.
-      const { data: preferenceOwners, error: preferenceOwnerError } = await supabase
+      const { data: preferenceOwners, error: preferenceOwnerError } = await db
         .from('local_profile_preferences')
         .select('local_profile_id')
         .eq('user_id', userId)
@@ -1665,7 +2189,7 @@ async function mobileSyncPushHandler(
       } else {
         const retainedProfileIds = new Set(profileIdsForDeferredCleanup);
         for (const row of preferenceOwners ?? []) retainedProfileIds.add(row.local_profile_id);
-        const { error: deleteError } = await supabase
+        const { error: deleteError } = await db
           .from('local_profiles')
           .delete()
           .eq('user_id', userId)
@@ -1683,10 +2207,10 @@ async function mobileSyncPushHandler(
     // A portal session is the grouped workout parent; a mobile component is its
     // stable exercises.id child. They are gated separately so deleting one
     // component never suppresses or erases its siblings.
-    let blockedWorkoutSessionIds = new Set<string>();
-    let blockedWorkoutComponentIds = new Set<string>();
+    let blockedWorkoutSessionIds = new UuidSet();
+    let blockedWorkoutComponentIds = new UuidSet();
     if (payload.sessions.length > 0) {
-      const { data, error } = await supabase.rpc('get_blocked_workout_session_ids', {
+      const { data, error } = await db.rpc('get_blocked_workout_session_ids', {
         p_user_id: userId,
         p_sessions: payload.sessions.map((session) => ({
           id: session.id,
@@ -1694,7 +2218,7 @@ async function mobileSyncPushHandler(
         })),
       });
       if (error) throw new Error(`workout tombstone lookup failed: ${error.message}`);
-      blockedWorkoutSessionIds = new Set(
+      blockedWorkoutSessionIds = new UuidSet(
         ((data ?? []) as Array<{ session_id?: unknown }>)
           .map((row) => row.session_id)
           .filter((id): id is string => typeof id === 'string'),
@@ -1707,14 +2231,14 @@ async function mobileSyncPushHandler(
         }))
       );
       if (components.length > 0) {
-        const { data: componentData, error: componentError } = await supabase.rpc(
+        const { data: componentData, error: componentError } = await db.rpc(
           'get_blocked_workout_component_ids',
           { p_user_id: userId, p_components: components },
         );
         if (componentError) {
           throw new Error(`workout component tombstone lookup failed: ${componentError.message}`);
         }
-        blockedWorkoutComponentIds = new Set(
+        blockedWorkoutComponentIds = new UuidSet(
           ((componentData ?? []) as Array<{ component_id?: unknown }>)
             .map((row) => row.component_id)
             .filter((id): id is string => typeof id === 'string'),
@@ -1763,14 +2287,24 @@ async function mobileSyncPushHandler(
       ['training_cycles', allCycleIds],
       ['personal_records', allPersonalRecordIds],
     ];
-    for (const [table, ids] of directOwnerChecks) {
-      const blocked = await assertRowsOwnedByUser(supabase, table, ids, userId, cors);
-      if (blocked) return blocked;
-    }
+    // F-039: the probes are independent reads, so they run concurrently
+    // (bounded) instead of one table at a time. Outcomes are still applied in
+    // this list order, so the same 400 (or probe failure) wins as before.
+    const directOutcome = firstInOrder(
+      await settleBounded(
+        directOwnerChecks,
+        OWNERSHIP_PROBE_CONCURRENCY,
+        ([table, ids]) =>
+          table === 'rep_telemetry'
+            ? assertTelemetryIdsOwnedByUser(db, ids, userId, cors)
+            : assertRowsOwnedByUser(db, table, ids, userId, cors),
+      ),
+    );
+    if (directOutcome) return directOutcome;
 
     // Parent-FK ownership checks for tables without a user_id column
     const reBlocked = await assertChildRowsOwnedViaParent(
-      supabase,
+      db,
       'routine_exercises',
       'routine_id',
       'routines',
@@ -1794,26 +2328,25 @@ async function mobileSyncPushHandler(
     const telemetrySetIdsToVerify = (payload.telemetry ?? [])
       .map((t) => t.setId)
       .filter((sid) => !setIdSet.has(sid));
-    const telParentProbe = await assertParentRowsExistAndOwnedByUser(
-      supabase,
+    // Started together, applied in this order (F-039).
+    const telParentProbeSettled = settleLater(assertParentRowsExistAndOwnedByUser(
+      db,
       'sets',
       telemetrySetIdsToVerify,
       userId,
       cors,
-    );
-    if (telParentProbe.response) return telParentProbe.response;
+    ));
 
     const phaseSessionIdsToVerify = (payload.phaseStatistics ?? [])
       .map((p) => p.sessionId)
       .filter((sid) => !sessionIdSet.has(sid));
-    const phaseParentProbe = await assertParentRowsExistAndOwnedByUser(
-      supabase,
+    const phaseParentProbeSettled = settleLater(assertParentRowsExistAndOwnedByUser(
+      db,
       'workout_sessions',
       phaseSessionIdsToVerify,
       userId,
       cors,
-    );
-    if (phaseParentProbe.response) return phaseParentProbe.response;
+    ));
 
     // exercise_signatures.exercise_id and vbt_assessments.exercise_id are
     // domain identifiers stored as TEXT/unique-by-user, not FKs to workout
@@ -1829,15 +2362,14 @@ async function mobileSyncPushHandler(
     // deleted routine. Rejecting that with 400 would stall its sync forever;
     // the reference is written as NULL instead (the FK's ON DELETE SET NULL
     // semantics), see step 7c. Another user's routine is still refused.
-    const dayRoutineProbe = await assertParentRowsExistAndOwnedByUser(
-      supabase,
+    const dayRoutineProbeSettled = settleLater(assertParentRowsExistAndOwnedByUser(
+      db,
       'routines',
       dayRoutineIdsToVerify,
       userId,
       cors,
       { allowMissing: true },
-    );
-    if (dayRoutineProbe.response) return dayRoutineProbe.response;
+    ));
 
     // workout_sessions.routine_session_id is an informational TEXT field from
     // the mobile DTO, not a routines FK. Do not strict-probe it against
@@ -1851,25 +2383,32 @@ async function mobileSyncPushHandler(
     // out of the valid set so the personal_records FK retry below can null
     // stale session_id references instead of throwing the FK error (Issue #532).
     const personalRecordSessionIdsToVerify = [
-      ...new Set(
+      ...new UuidSet(
         (payload.personalRecords ?? [])
           .map((pr) => pr.sessionId)
           .filter((sid): sid is string => typeof sid === 'string' && sid.length > 0 && !sessionIdSet.has(sid)),
       ),
     ];
-    const personalRecordSessionProbe = await assertParentRowsExistAndOwnedByUser(
-      supabase,
+    const personalRecordSessionProbeSettled = settleLater(assertParentRowsExistAndOwnedByUser(
+      db,
       'workout_sessions',
       personalRecordSessionIdsToVerify,
       userId,
       cors,
       { allowMissing: true },
-    );
+    ));
+    const telParentProbe = unwrapSettled(await telParentProbeSettled);
+    if (telParentProbe.response) return telParentProbe.response;
+    const phaseParentProbe = unwrapSettled(await phaseParentProbeSettled);
+    if (phaseParentProbe.response) return phaseParentProbe.response;
+    const dayRoutineProbe = unwrapSettled(await dayRoutineProbeSettled);
+    if (dayRoutineProbe.response) return dayRoutineProbe.response;
+    const personalRecordSessionProbe = unwrapSettled(await personalRecordSessionProbeSettled);
     if (personalRecordSessionProbe.response) return personalRecordSessionProbe.response;
     // Sessions present in the current payload are also "valid" — they get
     // upserted just above, before the personal_records write, so by the time
     // the FK retry runs they exist on the server.
-    const validPersonalRecordSessionIds = new Set<string>(
+    const validPersonalRecordSessionIds = new UuidSet(
       [...sessionIdSet].filter((id) => !blockedWorkoutSessionIds.has(id)),
     );
     for (const id of personalRecordSessionProbe.validIds) {
@@ -1906,7 +2445,7 @@ async function mobileSyncPushHandler(
     // null = flag OFF (accept-all semantics). Set = flag ON (only listed IDs
     // cleared the LWW gate).
     let acceptedSessionIds: Set<string> | null = null;
-    let acceptedCycleIds = new Set<string>();
+    let acceptedCycleIds = new UuidSet();
     let acceptedRoutineIds: Set<string> | null = null;
     // Cycles: the merge RPC applies the LWW gate to cycle_days itself (KD-6).
 
@@ -1942,68 +2481,252 @@ async function mobileSyncPushHandler(
     // carries no `updatedAt`. Used under BOTH SYNC_LWW_ENABLED values so the
     // stored LWW key is identical whichever way the flag is set.
     const pushReceivedAt = new Date(dependencies.now()).toISOString();
+    // C10: negative durationSeconds -> 0, then the epoch-zero/pre-2000
+    // startedAt repair, then NF-37's outlier clamp. Order is load-bearing —
+    // see the three functions' docs.
+    const negativeDurationRepairs = normalizeNegativeSessionDurations(payload.sessions ?? []);
+    const epochRepaired = repairEpochZeroSessionStarts(payload.sessions ?? [], pushReceivedAt);
+    if (epochRepaired.length > 0) {
+      console.warn(`Repaired ${epochRepaired.length} epoch-zero/pre-2000 session field(s)`);
+    }
+    // NF-37: clamp impossible session values before anything reads them.
+    const clamped = [
+      ...negativeDurationRepairs,
+      ...clampSessionOutliers(payload.sessions ?? [], pushReceivedAt),
+    ];
+    if (clamped.length > 0) {
+      console.warn(`Clamped ${clamped.length} outlier session field(s)`);
+    }
+    // A delete that committed after the tombstone gate ran is decided here by
+    // the gate's rule (204-E): the edit survives only when its own clock is
+    // strictly newer than the delete's client clock AND the row this push
+    // wrote is still there; then the tombstone goes. Otherwise the row is
+    // deleted again (or already gone) and the id is reported as deleted.
     const reDeleteRacedTombstones = async (
       entity: 'routine' | 'cycle',
       table: 'routines' | 'training_cycles',
-      ids: string[],
+      rows: Array<{ id: string; updatedAt?: string | null }>,
     ): Promise<string[]> => {
-      const unique = [...new Set(ids)];
+      const editClock = new Map<string, number>();
+      for (const row of rows) {
+        editClock.set(normalizeUuid(row.id), row.updatedAt ? Date.parse(row.updatedAt) : Number.NaN);
+      }
+      const unique = [...new Set(rows.map((row) => row.id))];
       const raced = new Set<string>();
+      // id -> the tombstone's deleted_at as read, so the clear below removes
+      // exactly that tombstone and never one a later delete wrote.
+      const survived = new Map<string, string>();
       const chunkSize = 100;
       for (let i = 0; i < unique.length; i += chunkSize) {
         const chunk = unique.slice(i, i + chunkSize);
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('sync_tombstones')
-          .select('entity_id')
+          .select('entity_id, client_deleted_at, deleted_at')
           .eq('user_id', userId)
           .eq('entity', entity)
           .gte('deleted_at', tombstoneRaceSince)
           .in('entity_id', chunk);
         if (error) throw new Error(`sync tombstone race check failed: ${error.message}`);
-        for (const row of (data ?? []) as Array<{ entity_id?: unknown }>) {
-          if (typeof row.entity_id === 'string') raced.add(row.entity_id);
+        for (const row of (data ?? []) as Array<{
+          entity_id?: unknown;
+          client_deleted_at?: unknown;
+          deleted_at?: unknown;
+        }>) {
+          if (typeof row.entity_id !== 'string') continue;
+          const edit = editClock.get(normalizeUuid(row.entity_id)) ?? Number.NaN;
+          const deleted =
+            typeof row.client_deleted_at === 'string'
+              ? Date.parse(row.client_deleted_at)
+              : Number.NaN;
+          // A missing or unreadable clock never beats a delete.
+          if (edit > deleted && typeof row.deleted_at === 'string') {
+            survived.set(row.entity_id, row.deleted_at);
+          } else {
+            raced.add(row.entity_id);
+          }
         }
       }
-      if (raced.size === 0) return [];
-      const racedIds = [...raced];
-      const { error: delErr } = await supabase
-        .from(table)
-        .delete()
-        .eq('user_id', userId)
-        .in('id', racedIds);
-      if (delErr) throw new Error(`${table} race re-delete failed: ${delErr.message}`);
-      console.warn(
-        `Re-deleted ${racedIds.length} ${table} row(s) deleted concurrently with this push`,
+      const gone: string[] = [];
+      if (survived.size > 0) {
+        // The delete may have landed after this push's write, in which case
+        // the edit is already gone: keep its tombstone and report it deleted.
+        const { data: present, error: presentErr } = await db
+          .from(table)
+          .select('id')
+          .eq('user_id', userId)
+          .in('id', [...survived.keys()]);
+        if (presentErr) throw new Error(`${table} race check failed: ${presentErr.message}`);
+        const stillThere = new UuidSet(
+          ((present ?? []) as Array<{ id?: unknown }>)
+            .map((row) => row.id)
+            .filter((id): id is string => typeof id === 'string'),
+        );
+        for (const [id, deletedAt] of survived) {
+          if (!stillThere.has(id)) {
+            // Already deleted by a later delete: report it, keep its tombstone.
+            gone.push(id);
+            continue;
+          }
+          // A delete after the existence check rewrites deleted_at, so this
+          // matches nothing and that newer tombstone stands.
+          const { error: clearErr } = await db
+            .from('sync_tombstones')
+            .delete()
+            .eq('user_id', userId)
+            .eq('entity', entity)
+            .eq('entity_id', id)
+            .eq('deleted_at', deletedAt);
+          if (clearErr) throw new Error(`sync tombstone race clear failed: ${clearErr.message}`);
+        }
+      }
+      if (raced.size === 0) return gone;
+      // Compare-and-delete: only while the stored LWW key is still the one
+      // this push wrote (its DTO clock, or the receipt time when undated). A
+      // newer edit that cleared the tombstone and landed meanwhile keeps its
+      // row, and only ids actually deleted are reported.
+      const writtenKey = new Map(
+        rows.map((row) => [normalizeUuid(row.id), row.updatedAt ?? pushReceivedAt]),
       );
+      const racedIds: string[] = [...gone];
+      for (const id of raced) {
+        const key = writtenKey.get(normalizeUuid(id));
+        if (!key) continue;
+        const { data: deleted, error: delErr } = await db
+          .from(table)
+          .delete()
+          .eq('user_id', userId)
+          .eq('id', id)
+          .eq('client_updated_at', key)
+          .select('id');
+        if (delErr) throw new Error(`${table} race re-delete failed: ${delErr.message}`);
+        if (Array.isArray(deleted) && deleted.length > 0) racedIds.push(id);
+      }
+      if (racedIds.length > gone.length) {
+        console.warn(
+          `Re-deleted ${racedIds.length - gone.length} ${table} row(s) deleted concurrently with this push`,
+        );
+      }
       return racedIds;
     };
-    let liveRoutines = payload.routines ?? [];
+    // 204-D: guard_profile_ownership_update refuses to move a stored session
+    // or routine to another local profile without an ownership transfer
+    // (P0001), which would otherwise fail the whole push. The rows it would
+    // refuse are rejected here instead, with the stored LWW key (KD-5), and
+    // nothing of theirs is written. The rule mirrors the trigger (NULL is
+    // 'default'); its SET NULL exception only arises inside a profile-delete
+    // cascade, never on a push. Transfers named in this push already ran
+    // above. Cycles get the same rejection inside
+    // merge_training_cycles_from_push, under its row lock.
+    const pushProfileKey = localProfileId ?? 'default';
+    const findProfileConflicts = async (
+      table: 'workout_sessions' | 'routines',
+      ids: string[],
+    ): Promise<Map<string, string | null>> => {
+      const conflicts = new Map<string, string | null>();
+      for (const chunk of chunked(ids, 100)) {
+        const { data, error } = await db
+          .from(table)
+          .select('id, local_profile_id, client_updated_at')
+          .in('id', chunk)
+          .eq('user_id', userId);
+        if (error) throw new Error(`${table} profile probe failed: ${error.message}`);
+        for (const row of (data ?? []) as Array<{
+          id: string;
+          local_profile_id?: string | null;
+          client_updated_at?: string | null;
+        }>) {
+          if ((row.local_profile_id ?? 'default') === pushProfileKey) continue;
+          conflicts.set(normalizeUuid(row.id), row.client_updated_at ?? null);
+        }
+      }
+      return conflicts;
+    };
+    const profileProbeSessionIds = uniqueUuidValues(
+      (payload.sessions ?? [])
+        .map((s) => s.id)
+        .filter((id) => !blockedWorkoutSessionIds.has(id)),
+    );
+    const profileProbeRoutineIds = uniqueUuidValues((payload.routines ?? []).map((r) => r.id));
+    const [sessionProfileConflicts, routineProfileConflicts] = await Promise.all([
+      profileProbeSessionIds.length > 0
+        ? findProfileConflicts('workout_sessions', profileProbeSessionIds)
+        : Promise.resolve(new Map<string, string | null>()),
+      profileProbeRoutineIds.length > 0
+        ? findProfileConflicts('routines', profileProbeRoutineIds)
+        : Promise.resolve(new Map<string, string | null>()),
+    ]);
+    for (const id of profileProbeSessionIds) {
+      const key = normalizeUuid(id);
+      if (!sessionProfileConflicts.has(key)) continue;
+      blockedWorkoutSessionIds.add(id);
+      rejections.sessions.push({ id, serverUpdatedAt: sessionProfileConflicts.get(key) ?? null });
+    }
+    for (const id of profileProbeRoutineIds) {
+      const key = normalizeUuid(id);
+      if (!routineProfileConflicts.has(key)) continue;
+      rejections.routines.push({ id, serverUpdatedAt: routineProfileConflicts.get(key) ?? null });
+    }
+    if (sessionProfileConflicts.size > 0 || routineProfileConflicts.size > 0) {
+      console.warn(
+        `Rejected ${sessionProfileConflicts.size} session(s) and ` +
+          `${routineProfileConflicts.size} routine(s) held by another local profile`,
+      );
+    }
+
+    let liveRoutines = (payload.routines ?? []).filter(
+      (r) => !routineProfileConflicts.has(normalizeUuid(r.id)),
+    );
     let liveCycles = payload.cycles ?? [];
     if (allRoutineIds.length > 0 || allCycleIds.length > 0) {
-      const { data: tombstoneRows, error: tombstoneErr } = await supabase.rpc(
-        'get_sync_tombstones',
+      // 204-E: a tombstone carries the delete's client clock. A pushed row is
+      // skipped when its own clock is missing (older builds send none) or not
+      // strictly newer; a strictly newer edit wins and the SQL removes the
+      // tombstone in the same transaction (docs/sync-reliability-contract.md).
+      // The DTO clock is used, never the receipt time: an undated push must
+      // keep losing to a delete (KD-4).
+      const { data: tombstoneRows, error: tombstoneErr } = await db.rpc(
+        'apply_sync_tombstone_gate',
         {
           p_user_id: userId,
-          p_entity: null,
-          p_ids: [...new Set([...allRoutineIds, ...allCycleIds])],
-          p_since: null,
+          p_rows: [
+            ...(payload.routines ?? []).map((r) => ({
+              entity: 'routine',
+              id: r.id,
+              clock: r.updatedAt ?? null,
+            })),
+            ...(payload.cycles ?? []).map((c) => ({
+              entity: 'cycle',
+              id: c.id,
+              clock: c.updatedAt ?? null,
+            })),
+          ],
         },
       );
-      if (tombstoneErr) throw new Error(`sync tombstone lookup failed: ${tombstoneErr.message}`);
-      const tombstonedRoutineIds = new Set<string>();
-      const tombstonedCycleIds = new Set<string>();
+      if (tombstoneErr) throw new Error(`sync tombstone gate failed: ${tombstoneErr.message}`);
+      const tombstonedRoutineIds = new UuidSet();
+      const tombstonedCycleIds = new UuidSet();
+      let supersededTombstones = 0;
       for (const row of (Array.isArray(tombstoneRows) ? tombstoneRows : []) as Array<{
         entity?: unknown;
         entity_id?: unknown;
+        skipped?: unknown;
       }>) {
         if (typeof row.entity_id !== 'string') continue;
+        if (row.skipped !== true) {
+          supersededTombstones++;
+          continue;
+        }
         if (row.entity === 'routine') tombstonedRoutineIds.add(row.entity_id);
         else if (row.entity === 'cycle') tombstonedCycleIds.add(row.entity_id);
       }
+      if (supersededTombstones > 0) {
+        console.log(`A newer edit superseded ${supersededTombstones} delete tombstone(s)`);
+      }
       liveRoutines = liveRoutines.filter((r) => !tombstonedRoutineIds.has(r.id));
       liveCycles = liveCycles.filter((c) => !tombstonedCycleIds.has(c.id));
-      skippedDeleted.routines = [...new Set(allRoutineIds.filter((id) => tombstonedRoutineIds.has(id)))];
-      skippedDeleted.cycles = [...new Set(allCycleIds.filter((id) => tombstonedCycleIds.has(id)))];
+      // Echoed to the device in the spelling it sent (iOS compares exactly).
+      skippedDeleted.routines = uniqueUuidValues(allRoutineIds.filter((id) => tombstonedRoutineIds.has(id)));
+      skippedDeleted.cycles = uniqueUuidValues(allCycleIds.filter((id) => tombstonedCycleIds.has(id)));
       if (skippedDeleted.routines.length > 0 || skippedDeleted.cycles.length > 0) {
         console.log(
           `Skipped ${skippedDeleted.routines.length} deleted routine(s) and ` +
@@ -2079,15 +2802,16 @@ async function mobileSyncPushHandler(
         // to filter the exercises/sets/rep_summaries child upserts below.
         // The rows already carry the LWW key (`pushReceivedAt` when the DTO
         // omitted `updatedAt`), identically to the LWW-off branch.
-        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+        const { data: lwwData, error: lwwErr } = await db.rpc(
           'upsert_workout_session_lww',
           { p_rows: sessionRows },
         );
         if (lwwErr) {
           if (isOwnerRefusal(lwwErr)) throw new OwnerRefusalError('workout_sessions');
+          if (isProfileTransferRace(lwwErr)) throw new PartialWriteRetryError('workout_sessions profile guard', lwwErr);
           throw new Error(`workout_sessions LWW RPC failed: ${lwwErr.message}`);
         }
-        acceptedSessionIds = new Set<string>();
+        acceptedSessionIds = new UuidSet();
         for (const r of (lwwData ?? []) as LwwUpsertRow[]) {
           if (r.accepted) acceptedSessionIds.add(r.id);
           else rejections.sessions.push({ id: r.id, serverUpdatedAt: r.server_updated_at });
@@ -2098,11 +2822,12 @@ async function mobileSyncPushHandler(
         // parents. Keep every payload session id in validPersonalRecordSessionIds;
         // acceptedSessionIds only gates child-row rewrites below.
       } else {
-        const { error: sessErr } = await supabase
+        const { error: sessErr } = await db
           .from('workout_sessions')
           .upsert(sessionRows, { onConflict: 'id' });
         if (sessErr) {
           if (isOwnerRefusal(sessErr)) throw new OwnerRefusalError('workout_sessions');
+          if (isProfileTransferRace(sessErr)) throw new PartialWriteRetryError('workout_sessions profile guard', sessErr);
           throw new Error(`workout_sessions upsert failed: ${sessErr.message}`);
         }
         sessionsInserted = sessionRows.length;
@@ -2112,7 +2837,7 @@ async function mobileSyncPushHandler(
         // SessionIds` must report what was written under BOTH flag values
         // (reliability contract at the response). sessionRows is exactly the
         // non-blocked payload sessions, so childAllowed is unchanged.
-        acceptedSessionIds = new Set(sessionRows.map((row) => row.id));
+        acceptedSessionIds = new UuidSet(sessionRows.map((row) => row.id));
       }
 
       // --- 4b-pre. Atomic delete + re-insert of session children (issue #33, F343) ---
@@ -2248,7 +2973,7 @@ async function mobileSyncPushHandler(
       // transaction (now atomic) would roll back on that FK violation, blocking
       // every other session's data in the same push. Drop the stale telemetry
       // instead — we are keeping the server's newer version of that session.
-      const acceptedSetIds = new Set(dedupedSetRows.map((r) => r.id));
+      const acceptedSetIds = new UuidSet(dedupedSetRows.map((r) => r.id));
       const telemetryRows = (payload.telemetry ?? [])
         .filter((t) => acceptedSetIds.has(t.setId))
         .map((t) => ({
@@ -2287,8 +3012,8 @@ async function mobileSyncPushHandler(
         exercise_name: string;
       }) =>
         row.exercise_id !== null && row.exercise_id.length > 0
-          ? `${row.session_id}:id:${row.exercise_id}`
-          : `${row.session_id}:name:${row.exercise_name}`;
+          ? `${normalizeUuid(row.session_id)}:id:${normalizeUuidShapedText(row.exercise_id)}`
+          : `${normalizeUuid(row.session_id)}:name:${row.exercise_name}`;
       const seenProgressKeys = new Set<string>();
       const progressRows = buildExerciseProgressRows(
         acceptedSessions,
@@ -2319,7 +3044,7 @@ async function mobileSyncPushHandler(
         dedupedExerciseRows.length > 0 ||
         dedupedTelemetryRows.length > 0
       ) {
-        const { data: replaceData, error: replaceErr } = await supabase.rpc('replace_session_children', {
+        const { data: replaceData, error: replaceErr } = await db.rpc('replace_session_children', {
           p_user_id: userId,
           p_session_ids: affectedSessionIds,
           p_exercises: dedupedExerciseRows,
@@ -2351,8 +3076,12 @@ async function mobileSyncPushHandler(
     // clients. Set-derived rows remain the fallback for old clients that only
     // send isPr/prType/prPhase/prVolume on sets.
     // =========================================================================
+    // No set-derived fallback rows from a blocked session: one held by another
+    // local profile (204-D) would otherwise mint current-profile PRs pointing
+    // at that profile's row. An LWW-rejected session stays in: its row is this
+    // profile's, and an identical re-push must stay idempotent (PR 57).
     let prRows = buildPersonalRecordRowsForPush(
-      payload.sessions ?? [],
+      (payload.sessions ?? []).filter((s) => !blockedWorkoutSessionIds.has(s.id)),
       payload.personalRecords ?? [],
       userId,
       localProfileId,
@@ -2402,7 +3131,7 @@ async function mobileSyncPushHandler(
         const chunkSize = 100;
         for (let i = 0; i < personalRecordExerciseCatalogIdsToLookup.length; i += chunkSize) {
           const chunk = personalRecordExerciseCatalogIdsToLookup.slice(i, i + chunkSize);
-          const { data: catalogRows, error: catalogLookupErr } = await supabase
+          const { data: catalogRows, error: catalogLookupErr } = await db
             .from('exercise_catalog')
             .select('id, user_id, name, display_name')
             .in('id', chunk);
@@ -2470,7 +3199,7 @@ async function mobileSyncPushHandler(
       const existingPrs: PersonalRecordIdentityCandidate[] = [];
       let existingPrCursor: string | null = null;
       for (;;) {
-        const { data: page, error: existingPrErr } = await supabase.rpc(
+        const { data: page, error: existingPrErr } = await db.rpc(
           'get_personal_record_identity_candidates',
           {
             p_user_id: userId,
@@ -2519,7 +3248,10 @@ async function mobileSyncPushHandler(
       const dedupedPrRows = [...latestPayloadRowsByIdentity.values()].filter((row) => {
         const key = personalRecordIdentityKey(row);
         const existingId = existingPrIdsByIdentity.get(key);
-        if (existingId && (!row.id || row.id !== existingId)) return false;
+        if (
+          existingId &&
+          (!row.id || normalizeUuid(row.id) !== normalizeUuid(existingId))
+        ) return false;
         existingPrIdsByIdentity.set(key, row.id ?? existingId ?? null);
         return true;
       });
@@ -2530,11 +3262,11 @@ async function mobileSyncPushHandler(
       const existingPrsById = new Map(
         (existingPrs ?? [])
           .filter((row) => typeof row.id === 'string')
-          .map((row) => [row.id as string, row]),
+          .map((row) => [normalizeUuid(row.id as string), row]),
       );
       const prRowsToWrite = dedupedPrRows.filter((row) => {
         if (!dedicatedPrsPresent || !row.id) return true;
-        const existing = existingPrsById.get(row.id);
+        const existing = existingPrsById.get(normalizeUuid(row.id));
         if (!existing) return true;
         // Once a UUID has been tombstoned, active writes cannot resurrect it,
         // even if a stale client assigns the write a later timestamp.
@@ -2561,10 +3293,10 @@ async function mobileSyncPushHandler(
         // index on their derived identity (R-3): a re-push or a concurrent
         // push of the same PR updates one row instead of inserting another.
         const writePersonalRecords = (rows: typeof prRowsToWrite) => dedicatedPrsPresent
-          ? supabase
+          ? db
               .from('personal_records')
               .upsert(rows, { onConflict: 'id' })
-          : supabase.rpc('upsert_set_derived_personal_records', {
+          : db.rpc('upsert_set_derived_personal_records', {
               p_user_id: userId,
               p_rows: rows,
             });
@@ -2685,26 +3417,28 @@ async function mobileSyncPushHandler(
       // Ownership of every routine id was verified once in directOwnerChecks.
 
       if (syncLwwEnabled) {
-        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+        const { data: lwwData, error: lwwErr } = await db.rpc(
           'upsert_routine_lww',
           { p_rows: routineRows },
         );
         if (lwwErr) {
           if (isOwnerRefusal(lwwErr)) throw new OwnerRefusalError('routines');
+          if (isProfileTransferRace(lwwErr)) throw new PartialWriteRetryError('routines profile guard', lwwErr);
           throw new Error(`routines LWW RPC failed: ${lwwErr.message}`);
         }
-        acceptedRoutineIds = new Set<string>();
+        acceptedRoutineIds = new UuidSet();
         for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
           if (rr.accepted) acceptedRoutineIds.add(rr.id);
           else rejections.routines.push({ id: rr.id, serverUpdatedAt: rr.server_updated_at });
         }
         routinesUpserted = acceptedRoutineIds.size;
       } else {
-        const { error: routErr } = await supabase
+        const { error: routErr } = await db
           .from('routines')
           .upsert(routineRows, { onConflict: 'id' });
         if (routErr) {
           if (isOwnerRefusal(routErr)) throw new OwnerRefusalError('routines');
+          if (isProfileTransferRace(routErr)) throw new PartialWriteRetryError('routines profile guard', routErr);
           throw new Error(`routines upsert failed: ${routErr.message}`);
         }
         routinesUpserted = routineRows.length;
@@ -2745,7 +3479,7 @@ async function mobileSyncPushHandler(
         const chunkSize = 100;
         for (let i = 0; i < dropSetProbeIds.length; i += chunkSize) {
           const chunk = dropSetProbeIds.slice(i, i + chunkSize);
-          const { data: existingExercises, error: existingDropSetErr } = await supabase
+          const { data: existingExercises, error: existingDropSetErr } = await db
             .from('routine_exercises')
             .select('id, drop_set_enabled, drop_set_min_weight_kg, duration_seconds')
             .in('id', chunk);
@@ -2756,14 +3490,14 @@ async function mobileSyncPushHandler(
           }
           for (const row of existingExercises ?? []) {
             if (typeof row.id !== 'string') continue;
-            existingDropSets.set(row.id, {
+            existingDropSets.set(normalizeUuid(row.id), {
               drop_set_enabled: row.drop_set_enabled === true,
               drop_set_min_weight_kg: coerceDropSetMinWeightKg(
                 row.drop_set_min_weight_kg,
               ),
             });
             existingDurations.set(
-              row.id,
+              normalizeUuid(row.id),
               typeof row.duration_seconds === 'number' ? row.duration_seconds : null,
             );
           }
@@ -2803,19 +3537,19 @@ async function mobileSyncPushHandler(
             dropSetEnabled: e.dropSetEnabled,
             dropSetMinWeightKg: e.dropSetMinWeightKg,
           },
-          existingDropSets.get(e.id) ?? null,
+          existingDropSets.get(normalizeUuid(e.id)) ?? null,
         ),
         ...(anyDurationSent
           ? {
             duration_seconds: e.durationSeconds !== undefined
               ? e.durationSeconds
-              : existingDurations.get(e.id) ?? null,
+              : existingDurations.get(normalizeUuid(e.id)) ?? null,
           }
           : {}),
       }));
 
       if (reRows.length > 0) {
-        const { error: reErr } = await supabase
+        const { error: reErr } = await db
           .from('routine_exercises')
           .upsert(reRows, { onConflict: 'id' });
         // Same retryable contract as the orphan cleanup that follows (R-5).
@@ -2830,12 +3564,14 @@ async function mobileSyncPushHandler(
         .map((r) => r.id);
       for (const routineId of routineIds) {
         const idsForRoutine = syncedExerciseIds.length > 0
-          ? reRows.filter((r) => r.routine_id === routineId).map((r) => r.id)
+          ? reRows
+            .filter((r) => normalizeUuid(r.routine_id) === normalizeUuid(routineId))
+            .map((r) => r.id)
           : [];
 
         if (idsForRoutine.length > 0) {
           // Delete exercises in this routine that are NOT in the payload
-          const { error: orphanErr } = await supabase
+          const { error: orphanErr } = await db
             .from('routine_exercises')
             .delete()
             .eq('routine_id', routineId)
@@ -2843,7 +3579,7 @@ async function mobileSyncPushHandler(
           if (orphanErr) throw new PartialWriteRetryError('routine_exercises orphan cleanup', orphanErr);
         } else {
           // Routine has zero exercises now -- delete all
-          const { error: orphanErr } = await supabase
+          const { error: orphanErr } = await db
             .from('routine_exercises')
             .delete()
             .eq('routine_id', routineId);
@@ -2852,13 +3588,16 @@ async function mobileSyncPushHandler(
       }
 
       // R-4 race guard: undo a re-create of a routine deleted meanwhile.
+      // Only rows this push wrote: a routine the LWW gate rejected was not
+      // written, and judging its older clock here could delete another
+      // push's winning edit.
       const racedRoutineIds = await reDeleteRacedTombstones(
         'routine',
         'routines',
-        liveRoutines.map((r) => r.id),
+        liveRoutines.filter((r) => acceptedRoutineIds?.has(r.id) ?? true),
       );
       if (racedRoutineIds.length > 0) {
-        const raced = new Set(racedRoutineIds);
+        const raced = new UuidSet(racedRoutineIds);
         liveRoutines = liveRoutines.filter((r) => !raced.has(r.id));
         skippedDeleted.routines.push(...racedRoutineIds);
         routinesUpserted = Math.max(0, routinesUpserted - racedRoutineIds.length);
@@ -2872,7 +3611,7 @@ async function mobileSyncPushHandler(
     // =========================================================================
     if (payload.deletedRoutineIds && payload.deletedRoutineIds.length > 0) {
       const ownershipResp = await assertRowsOwnedByUser(
-        supabase,
+        db,
         'routines',
         payload.deletedRoutineIds,
         userId,
@@ -2881,7 +3620,7 @@ async function mobileSyncPushHandler(
       if (ownershipResp) return ownershipResp;
 
       await deleteOwnedRowsInChunks(
-        supabase,
+        db,
         'routines',
         payload.deletedRoutineIds,
         userId,
@@ -2910,26 +3649,33 @@ async function mobileSyncPushHandler(
     //     server row is a silent no-op (neither acknowledged nor rejected).
     //     Ids already covered by a clocked entry are left to that gate.
     // =========================================================================
-    const clockedDeleteById = new Map<string, string>();
+    // Keyed case-insensitively; the device's first spelling is kept for the
+    // receipt. Instants, not strings: `10:00-04:00` is later than `13:00Z`.
+    const clockedDeleteById = new Map<string, { id: string; updatedAt: string }>();
     for (const deletion of payload.deletedCycles ?? []) {
-      const previous = clockedDeleteById.get(deletion.id);
-      // Instants, not strings: `10:00-04:00` is later than `13:00Z`.
-      if (!previous || Date.parse(deletion.updatedAt) > Date.parse(previous)) {
-        clockedDeleteById.set(deletion.id, deletion.updatedAt);
+      const key = normalizeUuid(deletion.id);
+      const previous = clockedDeleteById.get(key);
+      if (!previous || Date.parse(deletion.updatedAt) > Date.parse(previous.updatedAt)) {
+        clockedDeleteById.set(key, {
+          id: previous?.id ?? deletion.id,
+          updatedAt: deletion.updatedAt,
+        });
       }
     }
-    const legacyDeleteIds = [...new Set(payload.deletedCycleIds ?? [])].filter(
-      (id) => Boolean(id) && !clockedDeleteById.has(id),
+    const legacyDeleteIds = uniqueUuidValues(payload.deletedCycleIds ?? []).filter(
+      (id) => Boolean(id) && !clockedDeleteById.has(normalizeUuid(id)),
     );
-    const cycleDeleteProbeIds = [
-      ...new Set([...clockedDeleteById.keys(), ...legacyDeleteIds]),
-    ].filter(Boolean);
+    const clockedDeleteIds = [...clockedDeleteById.values()].map((d) => d.id);
+    const cycleDeleteProbeIds = uniqueUuidValues([
+      ...clockedDeleteIds,
+      ...legacyDeleteIds,
+    ]).filter(Boolean);
 
     if (cycleDeleteProbeIds.length > 0) {
       // Ownership: a crafted id that belongs to somebody else is still a 400,
       // whichever delete form named it.
       const cycleDelOwnershipResp = await assertRowsOwnedByUser(
-        supabase,
+        db,
         'training_cycles',
         cycleDeleteProbeIds,
         userId,
@@ -2937,85 +3683,76 @@ async function mobileSyncPushHandler(
       );
       if (cycleDelOwnershipResp) return cycleDelOwnershipResp;
 
-      // One probe for both forms. The stored LWW key orders a clocked delete
-      // and is what a rejection reports as `serverUpdatedAt` (KD-5).
-      const storedLwwById = new Map<string, string | null>();
-      for (let i = 0; i < cycleDeleteProbeIds.length; i += 100) {
-        const chunk = cycleDeleteProbeIds.slice(i, i + 100);
-        const { data: rows, error } = await supabase
-          .from('training_cycles')
-          .select('id, client_updated_at')
-          .in('id', chunk)
-          .eq('user_id', userId);
-        if (error) throw new PartialWriteRetryError('cycle delete probe', error);
-        for (const row of (rows ?? []) as Array<{
-          id: string;
-          client_updated_at: string | null;
-        }>) {
-          storedLwwById.set(row.id, row.client_updated_at ?? null);
-        }
-      }
-
       // --- 7b-i. Clocked deletes (the authoritative form) ---
-      const winningDeleteIds: string[] = [];
-      for (const [id, deleteClock] of clockedDeleteById) {
-        const hasRow = storedLwwById.has(id);
-        const stored = storedLwwById.get(id) ?? null;
-        const storedMs = stored ? Date.parse(stored) : Number.NaN;
-        const deleteMs = Date.parse(deleteClock);
-        // A usable incoming timestamp may delete only when it is at least the
-        // stored LWW key. A row whose stored key is strictly newer survives.
-        // A row with no usable stored key loses to a usable delete clock.
-        if (
-          hasRow &&
-          Number.isFinite(storedMs) &&
-          Number.isFinite(deleteMs) &&
-          storedMs > deleteMs
-        ) {
-          rejections.cycles.push({ id, serverUpdatedAt: stored });
-          continue;
-        }
-        winningDeleteIds.push(id);
-      }
-
-      if (winningDeleteIds.length > 0) {
-        const presentIds = winningDeleteIds.filter((id) => storedLwwById.has(id));
-        const absentIds = winningDeleteIds.filter((id) => !storedLwwById.has(id));
-        if (presentIds.length > 0) {
-          await deleteOwnedRowsInChunks(
-            supabase,
-            'training_cycles',
-            presentIds,
-            userId,
-            'cycle delete',
-          );
-        }
-        // An id the server no longer holds still needs the tombstone, or the
-        // next stale upload from the deleting device recreates the cycle.
-        for (let i = 0; i < absentIds.length; i += 100) {
-          const chunk = absentIds.slice(i, i + 100);
-          const { error } = await supabase.from('sync_tombstones').upsert(
-            chunk.map((id) => ({
-              user_id: userId,
-              entity: 'cycle' as const,
-              entity_id: id,
-              deleted_at: new Date(dependencies.now()).toISOString(),
+      // One SQL call decides and deletes each id under the per-cycle lock
+      // every cycle write holds, so a concurrent write cannot land between
+      // the clock comparison and the delete (204-C). A delete whose clock is
+      // at least the stored LWW key wins (a row with no stored key loses to
+      // it); an id the server no longer holds is tombstoned with the device
+      // clock so a later stale upload cannot recreate it.
+      if (clockedDeleteIds.length > 0) {
+        const { data: deleteRows, error: deleteErr } = await db.rpc(
+          'delete_cycles_clocked',
+          {
+            p_user_id: userId,
+            p_deletions: [...clockedDeleteById.values()].map((d) => ({
+              id: d.id,
+              updatedAt: d.updatedAt,
             })),
-            { onConflict: 'user_id,entity,entity_id' },
-          );
-          if (error) throw new PartialWriteRetryError('cycle tombstone insert', error);
-        }
-        acknowledgedDeletedCycleIds.push(...winningDeleteIds);
-        console.log(
-          `Deleted ${presentIds.length} cycle(s) from server; ` +
-            `tombstoned ${absentIds.length} already-absent cycle(s)`,
+          },
         );
+        if (deleteErr) throw new PartialWriteRetryError('cycle delete', deleteErr);
+        const spelling = new Map(clockedDeleteIds.map((id) => [normalizeUuid(id), id]));
+        let deleted = 0;
+        let tombstonedAbsent = 0;
+        for (const row of (Array.isArray(deleteRows) ? deleteRows : []) as Array<{
+          id: string;
+          accepted: boolean;
+          existed: boolean;
+          server_updated_at: string | null;
+        }>) {
+          const id = spelling.get(normalizeUuid(row.id)) ?? row.id;
+          if (!row.accepted) {
+            // KD-5: the stored LWW key the delete lost to.
+            rejections.cycles.push({ id, serverUpdatedAt: row.server_updated_at ?? null });
+            continue;
+          }
+          acknowledgedDeletedCycleIds.push(id);
+          if (row.existed) deleted++;
+          else tombstonedAbsent++;
+        }
+        if (deleted + tombstonedAbsent > 0) {
+          console.log(
+            `Deleted ${deleted} cycle(s) from server; ` +
+              `tombstoned ${tombstonedAbsent} already-absent cycle(s)`,
+          );
+        }
       }
 
       // --- 7b-ii. Legacy clockless ids: never hard-delete, never tombstone. ---
-      for (const id of legacyDeleteIds) {
-        if (!storedLwwById.has(id)) continue; // silent no-op
-        rejections.cycles.push({ id, serverUpdatedAt: storedLwwById.get(id) ?? null });
+      // Read-only, so no race: an existing row is a structured rejection that
+      // keeps the server copy; an absent id is a silent no-op.
+      if (legacyDeleteIds.length > 0) {
+        const storedLwwById = new Map<string, string | null>();
+        for (const chunk of chunked(legacyDeleteIds, 100)) {
+          const { data: rows, error } = await db
+            .from('training_cycles')
+            .select('id, client_updated_at')
+            .in('id', chunk)
+            .eq('user_id', userId);
+          if (error) throw new PartialWriteRetryError('cycle delete probe', error);
+          for (const row of (rows ?? []) as Array<{
+            id: string;
+            client_updated_at: string | null;
+          }>) {
+            storedLwwById.set(normalizeUuid(row.id), row.client_updated_at ?? null);
+          }
+        }
+        for (const id of legacyDeleteIds) {
+          const key = normalizeUuid(id);
+          if (!storedLwwById.has(key)) continue; // silent no-op
+          rejections.cycles.push({ id, serverUpdatedAt: storedLwwById.get(key) ?? null });
+        }
       }
     }
 
@@ -3037,12 +3774,12 @@ async function mobileSyncPushHandler(
       // exists on the server), or it already existed for this user at the 3b
       // probe. A tombstoned, missing or just-deleted routine becomes NULL,
       // matching the FK's ON DELETE SET NULL, so the write cannot fail.
-      const deletedInThisPush = new Set(payload.deletedRoutineIds ?? []);
-      const keepableDayRoutineIds = new Set<string>([
+      const deletedInThisPush = new UuidSet(payload.deletedRoutineIds ?? []);
+      const keepableDayRoutineIds = new UuidSet([
         ...liveRoutines.map((r) => r.id),
         ...dayRoutineProbe.validIds,
       ]);
-      const skippedRoutineIds = new Set(skippedDeleted.routines);
+      const skippedRoutineIds = new UuidSet(skippedDeleted.routines);
       // Cleared references are logged, never dropped silently (R-3).
       const clearedDeletedRefs = new Set<string>();
       const clearedMissingRefs = new Set<string>();
@@ -3133,7 +3870,7 @@ async function mobileSyncPushHandler(
       // PR 22: the merge is transactional, so an RPC error rolls its own
       // writes back but leaves this push's earlier writes in place — a
       // partial write. Answer 503 partial_write_retry so the device retries.
-      const { data: mergeData, error: mergeErr } = await supabase.rpc(
+      const { data: mergeData, error: mergeErr } = await db.rpc(
         'merge_training_cycles_from_push',
         { p_user_id: userId, p_cycles: cycleRows, p_use_lww: syncLwwEnabled },
       );
@@ -3143,7 +3880,7 @@ async function mobileSyncPushHandler(
         // merge error (a 42501 included) stays the retryable partial write.
         throw new PartialWriteRetryError('training_cycles merge RPC', mergeErr);
       }
-      acceptedCycleIds = new Set<string>();
+      acceptedCycleIds = new UuidSet();
       for (const row of (Array.isArray(mergeData) ? mergeData : []) as CycleMergeRow[]) {
         if (row.accepted) {
           acceptedCycleIds.add(row.id);
@@ -3162,10 +3899,11 @@ async function mobileSyncPushHandler(
       cyclesUpserted = acceptedCycleIds.size;
 
       // R-4 race guard: undo a re-create of a cycle deleted meanwhile.
+      // Only cycles the merge accepted (see the routine call above).
       const racedCycleIds = await reDeleteRacedTombstones(
         'cycle',
         'training_cycles',
-        liveCycles.map((c) => c.id),
+        liveCycles.filter((c) => acceptedCycleIds.has(c.id)),
       );
       if (racedCycleIds.length > 0) {
         skippedDeleted.cycles.push(...racedCycleIds);
@@ -3231,7 +3969,7 @@ async function mobileSyncPushHandler(
 
       // Both flag paths go through the RPC: it is the only writer that knows
       // which columns are device-owned.
-      const { data: lwwData, error: lwwErr } = await supabase.rpc(
+      const { data: lwwData, error: lwwErr } = await db.rpc(
         'upsert_rpg_attributes_lww',
         { p_rows: [rpgRow] },
       );
@@ -3262,7 +4000,7 @@ async function mobileSyncPushHandler(
         earned_at: b.earnedAt ?? new Date().toISOString(),
       }));
 
-      const { error: badgeErr } = await supabase
+      const { error: badgeErr } = await db
         .from('earned_badges')
         .upsert(badgeRows, { onConflict: 'user_id,badge_id' });
       if (badgeErr) throw new Error(`earned_badges upsert failed: ${badgeErr.message}`);
@@ -3299,7 +4037,7 @@ async function mobileSyncPushHandler(
         last_workout_at: deviceLastWorkoutAt,
       };
 
-      const { data: lwwData, error: lwwErr } = await supabase.rpc(
+      const { data: lwwData, error: lwwErr } = await db.rpc(
         'upsert_gamification_stats_lww',
         { p_rows: [gsRow] },
       );
@@ -3341,7 +4079,7 @@ async function mobileSyncPushHandler(
         eccentric_watt_max: ps.eccentricWattMax,
       }));
 
-      const { error: psErr } = await supabase
+      const { error: psErr } = await db
         .from('session_phase_statistics')
         .upsert(phaseRows, { onConflict: 'session_id' });
       if (psErr) {
@@ -3373,7 +4111,7 @@ async function mobileSyncPushHandler(
         }];
       });
 
-      const { error: sigErr } = await supabase
+      const { error: sigErr } = await db
         .from('exercise_signatures')
         .upsert(sigRows, { onConflict: 'user_id,exercise_id' });
       if (sigErr) {
@@ -3415,7 +4153,7 @@ async function mobileSyncPushHandler(
       // true new-row count. clientId is stripped before the write and kept
       // for `failed` reporting (PR 22).
       if (assessRows.length > 0) {
-        const { data: insertedAssess, error: aErr } = await supabase
+        const { data: insertedAssess, error: aErr } = await db
           .from('vbt_assessments')
           .upsert(
             assessRows.map(({ clientId: _clientId, ...row }) => row),
@@ -3465,7 +4203,7 @@ async function mobileSyncPushHandler(
         // Phase 3.2: route through LWW RPC so a stale webhook push does not
         // overwrite a newer mobile-captured row (or vice versa). The RPC
         // returns the canonical server id which we surface in the ack list.
-        const { data: lwwData, error: lwwErr } = await supabase.rpc(
+        const { data: lwwData, error: lwwErr } = await db.rpc(
           'upsert_external_activity_lww',
           { p_rows: activityRows },
         );
@@ -3476,23 +4214,13 @@ async function mobileSyncPushHandler(
           externalActivityKeys = [];
         } else {
           const acceptedRows = (lwwData ?? []) as LwwUpsertRow[];
-          // Preserve compound-key metadata by matching back against activityRows.
-          const byIdx = new Map<string, { externalId: string; provider: string }>();
-          for (const r of activityRows) {
-            byIdx.set(r.id, { externalId: r.external_id, provider: r.provider });
-          }
-          externalActivityKeys = acceptedRows
-            .filter((r) => r.accepted)
-            .map((r) => {
-              const meta = byIdx.get(r.id) ?? { externalId: '', provider: '' };
-              return {
-                localId: r.id,
-                serverId: r.id,
-                externalId: meta.externalId,
-                provider: meta.provider,
-                updatedAt: r.server_updated_at ?? new Date().toISOString(),
-              };
-            });
+          // Preserve compound-key metadata by matching the UUID returned by
+          // Postgres back to the mobile row case-insensitively.
+          externalActivityKeys = buildExternalActivityAcks(
+            activityRows,
+            acceptedRows,
+            new Date().toISOString(),
+          );
           for (const r of acceptedRows) {
             if (!r.accepted) {
               rejections.externalActivities.push({
@@ -3507,7 +4235,7 @@ async function mobileSyncPushHandler(
       } else {
         // fix(audit #10): .select() after upsert so we can return the
         // server-canonical row metadata (including updated_at) to the client.
-        const { data: extData, error: extErr } = await supabase
+        const { data: extData, error: extErr } = await db
           .from('external_activities')
           .upsert(activityRows, { onConflict: 'user_id,provider,external_id' })
           .select('id, external_id, provider, updated_at');
@@ -3537,7 +4265,7 @@ async function mobileSyncPushHandler(
     ];
     try {
       for (const mutation of preferenceEnvelope.validatedMutations) {
-        const { data, error } = await supabase.rpc(
+        const { data, error } = await db.rpc(
           'mutate_local_profile_preference_section',
           {
             p_user_id: verifiedUserId,
@@ -3595,7 +4323,7 @@ async function mobileSyncPushHandler(
     // The counters are self-healing (the next push and the delete triggers
     // reconcile them), so a stale counter is strictly better than a wedged
     // sync. index.test.ts pins this direction.
-    const { error: recomputeErr } = await supabase.rpc(
+    const { error: recomputeErr } = await db.rpc(
       'recompute_gamification_stats',
       { p_user_id: userId },
     );
@@ -3642,6 +4370,17 @@ async function mobileSyncPushHandler(
       canonicalProfilePreferenceSections.length > 0 ||
       optionalWriteFailed ||
       recomputeFailed;
+    // Nothing is visible to the portal until this commits, so the broadcast
+    // comes after it. A failed COMMIT committed nothing: retryable.
+    if (pushTx) {
+      try {
+        await pushTx.commit();
+      } catch (commitErr) {
+        throw new PartialWriteRetryError('push transaction commit', {
+          message: safeErrorName(commitErr, 'CommitFailure'),
+        });
+      }
+    }
     if (pushChangedPortalData) {
       await broadcastSyncComplete(supabase, userId, syncTime);
     }
@@ -3683,11 +4422,25 @@ async function mobileSyncPushHandler(
         // Reliability contract: exact committed receipts. An id appears here
         // only after its write committed — never for a rejected or rolled-back
         // row. Older builds ignore the keys.
-        acknowledgedWorkoutSessionIds: [...(acceptedSessionIds ?? [])],
-        acknowledgedCycleIds: [...acceptedCycleIds],
+        // Receipts echo the device's own id spelling (the accepted sets are
+        // case-insensitive and store lowercase; iOS compares exactly).
+        acknowledgedWorkoutSessionIds: uniqueUuidValues(
+          allSessionIds.filter((id) => acceptedSessionIds?.has(id) ?? false),
+        ),
+        acknowledgedCycleIds: uniqueUuidValues(
+          allCycleIds.filter((id) => acceptedCycleIds.has(id)),
+        ),
         acknowledgedWorkoutDeletionIds,
         acknowledgedOwnershipTransferIds,
         acknowledgedDeletedCycleIds,
+        // NF-37: session fields stored at a push limit instead of the value
+        // sent, for committed sessions only (a rejected session kept the
+        // stored row). Additive; older builds ignore it.
+        clamped: clamped.filter((c) => acceptedSessionIds?.has(c.id) ?? false),
+        // C10: session startedAt/durationSeconds rewritten by the epoch-zero
+        // repair, for committed sessions only (same rule as `clamped`).
+        // Additive; older builds ignore it.
+        repaired: epochRepaired.filter((r) => acceptedSessionIds?.has(r.id) ?? false),
         ...(preferenceEnvelope.present ? { profilePreferencesAccepted: true } : {}),
         canonicalProfilePreferenceSections,
         profilePreferenceRejections,
@@ -3695,6 +4448,14 @@ async function mobileSyncPushHandler(
       { headers: { ...cors, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
+    // Postgres ended the push transaction under a call (transaction_timeout,
+    // a dropped connection): whatever surfaced is a consequence, nothing
+    // committed, and the device must retry.
+    if (pushTx?.aborted && !(err instanceof PartialWriteRetryError)) {
+      err = new PartialWriteRetryError('push transaction aborted', {
+        message: safeErrorName(err, 'TransactionAborted'),
+      });
+    }
     if (err instanceof OwnerRefusalError) {
       // The SQLSTATE, not the DB message, goes to the log.
       console.warn('mobile-sync-push owner refusal, answering 400:', {
@@ -3736,6 +4497,17 @@ async function mobileSyncPushHandler(
       JSON.stringify(errorBody),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } }
     );
+  } finally {
+    // Every exit that did not commit (a thrown failure or an early 4xx after
+    // the transaction opened) discards the push's writes.
+    if (pushTx && !pushTx.settled) {
+      await pushTx.rollback().catch((rollbackErr) => {
+        console.warn(
+          'mobile-sync-push rollback failed:',
+          safeErrorName(rollbackErr, 'RollbackFailure'),
+        );
+      });
+    }
   }
 }
 

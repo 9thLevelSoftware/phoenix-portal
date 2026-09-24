@@ -72,6 +72,12 @@ export interface UserDataTable {
 	/** Exported columns (selected explicitly; credentials never listed). */
 	columns: readonly string[];
 	/**
+	 * Page through a service-role RPC instead of keyset on `keyColumns`: the
+	 * RPC takes (p_user_id, p_after_<cursorColumn>, p_target_rows) and returns
+	 * the table's rows ordered by `cursorColumn` first, whole groups per page.
+	 */
+	exportPager?: { rpc: string; cursorColumn: string };
+	/**
 	 * Columns that exist in prod but not in migrations (dashboard drift).
 	 * Selected too; if the database lacks them (42703), the page is re-read
 	 * with `columns` only.
@@ -360,6 +366,10 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"vbt_zone",
 		"user_id",
 	]),
+	// A security_invoker VIEW since 20260925200000: one row per sample over
+	// set_telemetry plus any legacy rows not yet folded, with the same columns
+	// the table had, so the export is unchanged. The two backing tables are in
+	// EXCLUDED so no sample is exported twice.
 	owned("rep_telemetry", "cascade", [
 		"id",
 		"set_id",
@@ -369,7 +379,11 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"position_mm",
 		"cable",
 		"user_id",
-	]),
+	], {
+		// Keyset by sample id would unpack every set of the user per page (the
+		// id exists only after unnest): paged by set instead, linear.
+		exportPager: { rpc: "export_rep_telemetry_page", cursorColumn: "set_id" },
+	}),
 	owned("personal_records", "cascade", [
 		"id",
 		"user_id",
@@ -687,10 +701,10 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		table: "sync_tombstones",
 		ownership: byUserId,
 		keyColumns: ["entity", "entity_id"],
-		columns: ["user_id", "entity", "entity_id", "deleted_at"],
+		columns: ["user_id", "entity", "entity_id", "deleted_at", "client_deleted_at"],
 		purge: "explicit",
 		mayBeAbsent: true,
-		note: "PK (user_id, entity, entity_id), no FK (PR 16); purgeUser deletes it after deleteUser (R-6, R-30).",
+		note: "PK (user_id, entity, entity_id); user_id cascades from auth.users since 20260920001600, and purgeUser still deletes it explicitly (R-6, R-30). client_deleted_at is the deletion's LWW clock (204-E); deleted_at stays the server clock.",
 	},
 	// Goals, gamification, insights
 	owned(
@@ -1022,6 +1036,30 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
  * account deletion removes its rows.
  */
 export const EXCLUDED: readonly ExcludedUserDataTable[] = [
+	{
+		table: "set_telemetry",
+		reason: "Storage for force-curve samples, one row per set as arrays (20260925200000). Every sample is exported once, per row, through the rep_telemetry view in the manifest.",
+		purge: "cascade",
+		purgeMatch: { column: "user_id" },
+	},
+	{
+		table: "set_telemetry_sample_ids",
+		reason: "Trigger-maintained unique index of the sample ids stored in set_telemetry (20260925200000): ids and set ids only, no content of its own. Every sample id is already exported through the rep_telemetry view.",
+		// set_id -> set_telemetry ON DELETE CASCADE, which cascades from auth.users.
+		purge: "cascade",
+		purgeMatch: { column: "set_id" },
+	},
+	{
+		table: "rep_telemetry_legacy",
+		reason: "Per-sample rows written before 20260925200000, kept until the set_telemetry backfill is verified. The rep_telemetry view serves them until then, so they are exported through it and never twice.",
+		// The renamed table keeps its FK to auth.users ON DELETE CASCADE, but
+		// the migration parser cannot see a rename, so the purge is explicit
+		// (always safe) rather than a cascade the tests cannot verify.
+		purge: "explicit",
+		purgeMatch: { column: "user_id" },
+		// Dropped by a later migration once the backfill is verified.
+		mayBeAbsent: true,
+	},
 	{
 		table: "oauth_tokens",
 		reason: "Provider access/refresh tokens and API keys are credentials, not user content; connection metadata is exported via user_integrations.",

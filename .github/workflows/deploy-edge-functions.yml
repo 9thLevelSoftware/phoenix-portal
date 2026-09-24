@@ -10,10 +10,10 @@ name: Deploy Edge Functions
 # Migration owner (release-plan decision, Operator Action 3): the human
 # operator applies production migrations with `supabase db push` (see
 # AGENTS.md -> "Release order" and CLAUDE.md -> "Migration Workflow
-# Discipline"). The Supabase GitHub App's migration step is not relied on: its
-# `main` branch record has reported MIGRATIONS_FAILED since 2026-03-16 and
-# prod migrations have been applied out-of-band. If that decision changes,
-# update this header, AGENTS.md and CLAUDE.md together.
+# Discipline"). The Supabase GitHub App's production migration step must stay
+# disabled. It reported MIGRATIONS_FAILED from 2026-03-16 until a history
+# repair on 2026-09-23, then applied merged migrations to prod unrehearsed. If
+# that decision changes, update this header, AGENTS.md and CLAUDE.md together.
 #
 # Two gates run before any upload:
 #   1. `verify`: the Edge type-check and handler tests (`check:edge-functions`,

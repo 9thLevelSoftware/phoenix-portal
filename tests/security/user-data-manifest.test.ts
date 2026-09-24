@@ -65,6 +65,8 @@ const TABLES_WITHOUT_MIGRATION_DDL: Record<string, string> = {
 	// table is now parseable from the migrations and the column checks apply to
 	// all of them. Add an entry here only for a table that genuinely has no
 	// DDL on the branch.
+	rep_telemetry_legacy:
+		"Created by ALTER TABLE rep_telemetry RENAME TO (20260925200000), which the lightweight parser does not follow; it keeps the old table's columns and FKs.",
 };
 
 const CREDENTIAL_COLUMN = /token|api_key|secret|password/;
@@ -78,7 +80,7 @@ function ownershipColumn(entry: UserDataTable): string {
 /**
  * The purge behaviour the parsed FKs actually give, or null if unknown: the
  * ownership column's FK to auth.users, else an ON DELETE CASCADE FK to a
- * manifest table that itself cascades.
+ * manifest or EXCLUDED table that itself cascades.
  */
 function derivedPurge(
 	table: string,
@@ -97,10 +99,13 @@ function derivedPurge(
 		if (!fk.ref.startsWith("public.") || fk.onDelete !== "cascade") continue;
 		const parentTable = fk.ref.slice(7);
 		const parent = USER_DATA_MANIFEST.find((e) => e.table === parentTable);
+		const excludedParent = EXCLUDED.find((e) => e.table === parentTable);
+		const parentColumn = parent
+			? ownershipColumn(parent)
+			: excludedParent?.purgeMatch.column;
 		if (
-			parent &&
-			derivedPurge(parentTable, ownershipColumn(parent), new Set(seen)) ===
-				"cascade"
+			parentColumn &&
+			derivedPurge(parentTable, parentColumn, new Set(seen)) === "cascade"
 		) {
 			return "cascade";
 		}

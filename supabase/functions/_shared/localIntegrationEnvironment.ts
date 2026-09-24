@@ -26,6 +26,12 @@ export interface LocalIntegrationEnvironment {
   url: string;
   anonKey: string;
   serviceRoleKey: string;
+  /**
+   * The local stack's Postgres URL (SUPABASE_DB_URL), for the tests that open
+   * a direct connection (the single-transaction push). Optional: only those
+   * tests require it, and they fail loudly without it.
+   */
+  dbUrl?: string;
 }
 
 const LOCAL_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
@@ -55,7 +61,21 @@ export function readLocalIntegrationEnvironment(
       `Refusing real-SQL integration tests against non-local SUPABASE_URL host "${hostname}"`,
     );
   }
-  return { url, anonKey, serviceRoleKey };
+  const dbUrl = get("SUPABASE_DB_URL");
+  if (dbUrl) {
+    let dbHost: string;
+    try {
+      dbHost = new URL(dbUrl).hostname;
+    } catch {
+      throw new Error("SUPABASE_DB_URL is not a valid URL");
+    }
+    if (!LOCAL_HOSTNAMES.has(dbHost)) {
+      throw new Error(
+        `Refusing real-SQL integration tests against non-local SUPABASE_DB_URL host "${dbHost}"`,
+      );
+    }
+  }
+  return { url, anonKey, serviceRoleKey, ...(dbUrl ? { dbUrl } : {}) };
 }
 
 export const localIntegrationEnvironment: LocalIntegrationEnvironment | null =
