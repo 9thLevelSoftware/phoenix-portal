@@ -209,7 +209,7 @@ export function Community() {
 										onClick={() => setSort(opt.value as "hot" | "top" | "new")}
 										className={
 											sort === opt.value
-												? "bg-primary text-foreground border-0 text-xs px-3 h-7"
+												? "bg-primary text-primary-foreground border-0 text-xs px-3 h-7"
 												: "border-secondary text-muted-foreground text-xs px-3 h-7"
 										}
 									>
@@ -373,7 +373,7 @@ export function Community() {
 									<button
 										type="button"
 										onClick={() => refetch()}
-										className="px-4 py-2 text-sm font-medium rounded-lg bg-primary hover:bg-primary/90 text-foreground transition-colors"
+										className="px-4 py-2 text-sm font-medium rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground transition-colors"
 									>
 										Retry
 									</button>

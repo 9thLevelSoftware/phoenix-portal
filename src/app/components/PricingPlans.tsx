@@ -138,14 +138,15 @@ const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 		accentBg: "from-[var(--color-forge-green)]/10 to-emerald-900/10",
 		accentText: "text-[var(--color-forge-green)]",
 		buttonClass:
-			"bg-[var(--color-forge-green)] hover:bg-[var(--color-forge-green)]/90 text-white border-0",
+			"bg-success hover:bg-success/90 text-success-foreground border-0",
 	},
 	FLAME: {
 		icon: Flame,
 		accentBorder: "border-primary",
 		accentBg: "from-primary/10 to-chart-2/10",
 		accentText: "text-primary",
-		buttonClass: "bg-primary hover:bg-primary/90 text-foreground border-0",
+		buttonClass:
+			"bg-primary hover:bg-primary/90 text-primary-foreground border-0",
 		popular: true,
 	},
 	INFERNO: {
@@ -920,7 +921,7 @@ export function PricingPlans() {
 						role="status"
 					>
 						<AlertTriangle className="w-5 h-5 text-warning shrink-0" />
-						<p className="text-sm text-white flex-1">
+						<p className="text-sm text-foreground flex-1">
 							Your last payment failed — update your card to keep your plan.
 						</p>
 						<Button
@@ -944,7 +945,7 @@ export function PricingPlans() {
 					<div
 						role="status"
 						data-testid="checkout-activation-pending"
-						className="max-w-2xl mx-auto mb-8 flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-white"
+						className="max-w-2xl mx-auto mb-8 flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-foreground"
 					>
 						<Loader2 className="w-4 h-4 shrink-0 animate-spin text-primary" />
 						<span>
@@ -959,7 +960,7 @@ export function PricingPlans() {
 						className="max-w-lg mx-auto text-center py-16"
 						data-testid="billing-status-error"
 					>
-						<p className="text-lg text-white mb-2">
+						<p className="text-lg text-foreground mb-2">
 							Couldn't load billing status
 						</p>
 						<p className="text-sm text-muted-foreground mb-6">
@@ -993,7 +994,7 @@ export function PricingPlans() {
 								>
 									{tierConfig.popular && (
 										<div className="absolute -top-3 left-1/2 -translate-x-1/2">
-											<Badge className="bg-primary text-white border-0 px-3">
+											<Badge className="bg-primary text-primary-foreground border-0 px-3">
 												Most Popular
 											</Badge>
 										</div>
@@ -1037,7 +1038,7 @@ export function PricingPlans() {
 									<CardContent className="text-center">
 										<div className="mb-6">
 											<div className="flex items-baseline justify-center gap-1">
-												<span className="text-4xl font-bold text-white font-data">
+												<span className="text-4xl font-bold text-foreground font-data">
 													{isAnnual
 														? tierConfig.annualMonthly
 														: tierConfig.monthlyPrice}
@@ -1104,7 +1105,7 @@ export function PricingPlans() {
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
-							className="bg-primary text-foreground border-0"
+							className="bg-primary text-primary-foreground border-0"
 							onClick={() => {
 								if (pendingPlanChange) {
 									void handlePlanChange(pendingPlanChange);

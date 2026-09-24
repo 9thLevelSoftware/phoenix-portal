@@ -1,4 +1,4 @@
-import { getThemeTokens, withAlpha } from "./theme-tokens";
+import { getThemeTokens, memoByTheme, withAlpha } from "./theme-tokens";
 
 export interface PhoenixColors {
 	ember: string;
@@ -51,10 +51,8 @@ export interface VelocityZoneColors {
 	grind: string;
 }
 
-/** Phoenix Signal colors, resolved from the active theme at call time. */
-export function PHOENIX(): PhoenixColors {
-	const tokens = getThemeTokens();
-	return {
+const _phoenix = memoByTheme(
+	(tokens): PhoenixColors => ({
 		ember: tokens.primary,
 		flameRed: tokens.danger,
 		gold: tokens.accent,
@@ -67,68 +65,88 @@ export function PHOENIX(): PhoenixColors {
 		crimson: tokens.danger,
 		flameYellow: tokens.accent,
 		mutedForeground: tokens.mutedForeground,
-	};
+	}),
+);
+
+/** Phoenix Signal colors, resolved from the active theme at call time. */
+export function PHOENIX(): PhoenixColors {
+	return _phoenix();
 }
 
-/** Cable colors — the bilateral identity of Phoenix. */
-export function CABLE(): CableColors {
-	const tokens = getThemeTokens();
-	return {
+const _cable = memoByTheme(
+	(tokens): CableColors => ({
 		a: tokens.cableA,
 		b: tokens.cableB,
 		aDim: withAlpha(tokens.cableA, 0.15),
 		bDim: withAlpha(tokens.cableB, 0.15),
-	};
+	}),
+);
+
+/** Cable colors — the bilateral identity of Phoenix. */
+export function CABLE(): CableColors {
+	return _cable();
 }
 
-/** Signal status colors. */
-export function SIGNAL(): SignalColors {
-	const tokens = getThemeTokens();
-	return {
+const _signal = memoByTheme(
+	(tokens): SignalColors => ({
 		ok: tokens.success,
 		warn: tokens.warning,
 		danger: tokens.danger,
-	};
+	}),
+);
+
+/** Signal status colors. */
+export function SIGNAL(): SignalColors {
+	return _signal();
 }
 
-/** Surface layer colors for programmatic use. */
-export function SURFACE(): SurfaceColors {
-	const tokens = getThemeTokens();
-	return {
+const _surface = memoByTheme(
+	(tokens): SurfaceColors => ({
 		base: tokens.background,
 		raised: tokens.surface1,
 		elevated: tokens.surface2,
 		overlay: withAlpha(tokens.background, 0.95),
-	};
+	}),
+);
+
+/** Surface layer colors for programmatic use. */
+export function SURFACE(): SurfaceColors {
+	return _surface();
 }
 
-/** Semantic colors for data contexts. */
-export function SEMANTIC(): SemanticColors {
-	const tokens = getThemeTokens();
-	return {
+const _semantic = memoByTheme(
+	(tokens): SemanticColors => ({
 		positive: tokens.success,
 		caution: tokens.warning,
 		info: tokens.cableB,
 		negative: tokens.danger,
 		neutral: tokens.muted,
-	};
+	}),
+);
+
+/** Semantic colors for data contexts. */
+export function SEMANTIC(): SemanticColors {
+	return _semantic();
 }
 
-/** Velocity zone colors. */
-export function VELOCITY_ZONES(): VelocityZoneColors {
-	const tokens = getThemeTokens();
-	return {
+const _velocityzones = memoByTheme(
+	(tokens): VelocityZoneColors => ({
 		explosive: tokens.danger,
 		fast: tokens.warning,
 		moderate: tokens.success,
 		slow: tokens.cableB,
 		grind: tokens.chart5,
-	};
+	}),
+);
+
+/** Velocity zone colors. */
+export function VELOCITY_ZONES(): VelocityZoneColors {
+	return _velocityzones();
 }
 
 /** Chart palette for visx/Recharts programmatic configuration. */
 export function CHART_PALETTE(): readonly string[] {
-	return [...getThemeTokens().chartPalette];
+	return getThemeTokens().chartPalette;
 }
 
 export type PhoenixColor = PhoenixColors[keyof PhoenixColors];

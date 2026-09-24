@@ -422,7 +422,7 @@ export function CycleSnapshotPreview({
 											variant={isWorkout ? "default" : "outline"}
 											className={
 												isWorkout
-													? "border-0 bg-primary text-foreground"
+													? "border-0 bg-primary text-primary-foreground"
 													: "border-secondary text-muted-foreground"
 											}
 										>

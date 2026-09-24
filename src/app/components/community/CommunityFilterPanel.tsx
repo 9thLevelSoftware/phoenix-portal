@@ -76,7 +76,7 @@ export function CommunityFilterPanel() {
 				<Filter className="w-4 h-4 mr-1.5" />
 				Filter
 				{activeCount > 0 && (
-					<Badge className="absolute -top-2 -right-2 bg-primary text-foreground text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center border-0">
+					<Badge className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-[10px] px-1.5 py-0 min-w-[18px] h-[18px] flex items-center justify-center border-0">
 						{activeCount}
 					</Badge>
 				)}

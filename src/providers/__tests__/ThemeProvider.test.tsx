@@ -183,7 +183,7 @@ describe("ThemeProvider", () => {
 				document
 					.querySelector("meta[name='color-scheme']")
 					?.getAttribute("content"),
-			).toBe("light dark");
+			).toBe("light");
 		});
 	});
 });

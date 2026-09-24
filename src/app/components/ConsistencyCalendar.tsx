@@ -8,6 +8,7 @@ import {
 import { Flame } from "lucide-react";
 import { useMemo, useState } from "react";
 import { PHOENIX } from "@/lib/colors";
+import { withAlpha } from "@/lib/theme-tokens";
 
 export interface ConsistencyCalendarProps {
 	workoutDates: Date[];
@@ -23,8 +24,8 @@ const TOP_LABEL_HEIGHT = 18;
 
 function getIntensity(count: number, ember: string): string {
 	if (count === 0) return BG_EMPTY;
-	if (count === 1) return `${ember}66`; // 40% opacity
-	if (count === 2) return `${ember}B3`; // 70% opacity
+	if (count === 1) return withAlpha(ember, 0.4); // 40% opacity
+	if (count === 2) return withAlpha(ember, 0.7); // 70% opacity
 	return ember; // 100%
 }
 
@@ -296,8 +297,8 @@ export function ConsistencyCalendar({
 				<span>Less</span>
 				{[
 					BG_EMPTY,
-					`${phoenix.ember}66`,
-					`${phoenix.ember}B3`,
+					withAlpha(phoenix.ember, 0.4),
+					withAlpha(phoenix.ember, 0.7),
 					phoenix.ember,
 				].map((color, i) => (
 					<div

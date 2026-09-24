@@ -15,10 +15,8 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { DataFreshnessStrip } from "@/app/components/analytics/DataFreshnessStrip";
-import {
-	CHART_COLORS,
-	ECHARTS_GRID,
-} from "@/app/components/charts/shared/EChartsTheme";
+import { useChartColors } from "@/app/components/charts/shared/ChartTheme";
+import { ECHARTS_GRID } from "@/app/components/charts/shared/EChartsTheme";
 import type { InsightItem } from "@/app/components/InsightsFeed";
 import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
@@ -62,6 +60,7 @@ import {
 } from "@/lib/recommendations";
 import type { MuscleRecovery } from "@/lib/sra-recovery";
 import { computeSraStatus } from "@/lib/sra-recovery";
+import { withAlpha } from "@/lib/theme-tokens";
 import { calculateRTL, classifyTrainingLoad } from "@/lib/training-load";
 import {
 	convertWeight,
@@ -141,13 +140,16 @@ function AnalyticsTabSkeleton() {
 	);
 }
 
+// CSS variables, not resolved values: this map is built once at module load,
+// so resolved colours would stay on whichever theme was active then. SVG and
+// DOM styles take var() directly and EChartsWrapper resolves it per theme.
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
-	Chest: PHOENIX().ember,
-	Back: PHOENIX().flameRed,
-	Legs: PHOENIX().gold,
-	Shoulders: PHOENIX().forgeGreen,
-	Arms: PHOENIX().ashGray,
-	Core: PHOENIX().flameYellow,
+	Chest: "var(--chart-1)",
+	Back: "var(--destructive)",
+	Legs: "var(--chart-3)",
+	Shoulders: "var(--chart-4)",
+	Arms: "var(--chart-2)",
+	Core: "var(--chart-6)",
 };
 
 // Map old tab names to new tab names for backward compatibility
@@ -497,12 +499,13 @@ function toWeeklyVolumeSeriesMobile(buckets: VolumeBucket[]) {
 	}));
 }
 
+// CSS variables for the same reason as MUSCLE_GROUP_COLORS above.
 const MUSCLE_GROUP_COLORS_MOBILE: Record<string, string> = {
-	Chest: PHOENIX().ember,
-	Back: PHOENIX().gold,
-	Legs: PHOENIX().forgeGreen,
-	Shoulders: "var(--chart-5)",
-	Arms: "var(--chart-5)",
+	Chest: "var(--primary)",
+	Back: "var(--accent)",
+	Legs: "var(--success)",
+	Shoulders: "var(--chart-2)",
+	Arms: "var(--chart-6)",
 	Core: "var(--chart-5)",
 };
 
@@ -551,6 +554,9 @@ function percentDelta(current: number, previous: number): number | null {
 }
 
 export function Analytics() {
+	// Theme-aware colours; a dependency of the chart options below so the
+	// options are rebuilt when the theme changes.
+	const chartColors = useChartColors();
 	const { user } = useAuth();
 	const [timePeriod, setTimePeriod] = useState("30D");
 	const [selectedProgressionExercise, setSelectedProgressionExercise] =
@@ -818,7 +824,7 @@ export function Analytics() {
 	const volumeData = toWeeklyVolumeSeries(volumeRaw ?? [], queryPeriod);
 	const muscleGroupData = (muscleGroupRaw ?? []).map((m) => ({
 		...m,
-		color: MUSCLE_GROUP_COLORS[m.name] ?? PHOENIX().ashGray,
+		color: MUSCLE_GROUP_COLORS[m.name] ?? "var(--muted-foreground)",
 	}));
 
 	const strengthSeries = useMemo(
@@ -998,12 +1004,12 @@ export function Analytics() {
 				{
 					type: "value" as const,
 					name: `Volume (${unit})`,
-					nameTextStyle: { color: CHART_COLORS().axisText, fontSize: 11 },
+					nameTextStyle: { color: chartColors.axisText, fontSize: 11 },
 				},
 				{
 					type: "value" as const,
 					name: "Sessions",
-					nameTextStyle: { color: CHART_COLORS().axisText, fontSize: 11 },
+					nameTextStyle: { color: chartColors.axisText, fontSize: 11 },
 					splitLine: { show: false },
 				},
 			],
@@ -1023,13 +1029,13 @@ export function Analytics() {
 							x2: 0,
 							y2: 1,
 							colorStops: [
-								{ offset: 0, color: `${CHART_COLORS().primary}80` },
-								{ offset: 1, color: `${CHART_COLORS().primary}08` },
+								{ offset: 0, color: withAlpha(chartColors.primary, 0.5) },
+								{ offset: 1, color: withAlpha(chartColors.primary, 0.03) },
 							],
 						},
 					},
-					lineStyle: { color: CHART_COLORS().primary, width: 2 },
-					itemStyle: { color: CHART_COLORS().primary },
+					lineStyle: { color: chartColors.primary, width: 2 },
+					itemStyle: { color: chartColors.primary },
 				},
 				{
 					name: "Sessions",
@@ -1038,13 +1044,13 @@ export function Analytics() {
 					data: volumeData.map((d) => d.workouts),
 					barWidth: "40%",
 					itemStyle: {
-						color: `${CHART_COLORS().secondary}99`,
+						color: withAlpha(chartColors.secondary, 0.6),
 						borderRadius: [4, 4, 0, 0],
 					},
 				},
 			],
 		};
-	}, [volumeData, unit]);
+	}, [chartColors, volumeData, unit]);
 
 	// --- ECharts: Muscle Distribution donut ---
 	const muscleDonutOption = useMemo(() => {
@@ -1057,7 +1063,7 @@ export function Analytics() {
 			},
 			legend: {
 				bottom: 0,
-				textStyle: { color: CHART_COLORS().axisText, fontSize: 11 },
+				textStyle: { color: chartColors.axisText, fontSize: 11 },
 			},
 			series: [
 				{
@@ -1089,7 +1095,7 @@ export function Analytics() {
 				},
 			],
 		};
-	}, [muscleGroupData]);
+	}, [chartColors, muscleGroupData]);
 
 	// --- ECharts: 1RM Progression line chart ---
 	const strengthEChartsOption = useMemo(() => {
@@ -1101,14 +1107,14 @@ export function Analytics() {
 			legend: {
 				data: strengthExercises,
 				bottom: 0,
-				textStyle: { color: CHART_COLORS().axisText, fontSize: 11 },
+				textStyle: { color: chartColors.axisText, fontSize: 11 },
 			},
 			grid: { ...ECHARTS_GRID, bottom: 60 },
 			xAxis: { type: "category" as const, data: dates },
 			yAxis: {
 				type: "value" as const,
 				name: unit,
-				nameTextStyle: { color: CHART_COLORS().axisText, fontSize: 11 },
+				nameTextStyle: { color: chartColors.axisText, fontSize: 11 },
 			},
 			series: strengthSeries.series.map((item, i) => ({
 				name: item.name,
@@ -1123,7 +1129,13 @@ export function Analytics() {
 				symbolSize: 6,
 			})),
 		};
-	}, [strengthProgressData, strengthExercises, strengthSeries.series, unit]);
+	}, [
+		chartColors,
+		strengthProgressData,
+		strengthExercises,
+		strengthSeries.series,
+		unit,
+	]);
 
 	// --- ECharts: Volume trend area (for Progress tab) ---
 	const volumeAreaOption = useMemo(() => {
@@ -1138,7 +1150,7 @@ export function Analytics() {
 			yAxis: {
 				type: "value" as const,
 				name: `Volume (${unit})`,
-				nameTextStyle: { color: CHART_COLORS().axisText, fontSize: 11 },
+				nameTextStyle: { color: chartColors.axisText, fontSize: 11 },
 			},
 			series: [
 				{
@@ -1156,17 +1168,17 @@ export function Analytics() {
 							x2: 0,
 							y2: 1,
 							colorStops: [
-								{ offset: 0, color: `${CHART_COLORS().success}60` },
-								{ offset: 1, color: `${CHART_COLORS().success}08` },
+								{ offset: 0, color: withAlpha(chartColors.success, 0.38) },
+								{ offset: 1, color: withAlpha(chartColors.success, 0.03) },
 							],
 						},
 					},
-					lineStyle: { color: CHART_COLORS().success, width: 2 },
-					itemStyle: { color: CHART_COLORS().success },
+					lineStyle: { color: chartColors.success, width: 2 },
+					itemStyle: { color: chartColors.success },
 				},
 			],
 		};
-	}, [volumeData, unit]);
+	}, [chartColors, volumeData, unit]);
 
 	// --- Insights feed: a fresh server batch OR local, never both (KD-14) ---
 	const { items: insightsFeedItems, source: insightsSource } = useMemo(
@@ -1276,8 +1288,8 @@ export function Analytics() {
 	);
 	const mobileMusclData = (muscleGroupRaw ?? []).map((m) => ({
 		...m,
-		color: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX().ashGray,
-		fill: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX().ashGray,
+		color: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? "var(--muted-foreground)",
+		fill: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? "var(--muted-foreground)",
 	}));
 	const mobileStrengthData = buildMobileStrengthPhaseData(
 		strengthRaw ?? [],
@@ -1368,7 +1380,7 @@ export function Analytics() {
 
 	const analyticsEmpty = hasLoadError ? (
 		<div className="text-center py-16">
-			<p className="text-lg text-white mb-2">Couldn't load analytics</p>
+			<p className="text-lg text-foreground mb-2">Couldn't load analytics</p>
 			<p className="text-sm text-muted-foreground mb-6">
 				Something went wrong while loading your training data. Please try again.
 			</p>

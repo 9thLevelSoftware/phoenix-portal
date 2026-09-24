@@ -438,7 +438,7 @@ export function Goals() {
 		return (
 			<div className="min-h-screen pb-20 md:pb-8">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-					<h1 className="text-xl font-semibold text-white mb-2">
+					<h1 className="text-xl font-semibold text-foreground mb-2">
 						Couldn't load your goals
 					</h1>
 					<p className="text-sm text-muted-foreground mb-6">
@@ -566,7 +566,7 @@ export function Goals() {
 											<div className="flex-1 min-w-0">
 												<div className="flex items-center gap-2 mb-1">
 													<Icon className="w-4 h-4 text-primary" />
-													<h3 className="text-lg font-semibold text-white">
+													<h3 className="text-lg font-semibold text-foreground">
 														{getGoalDescription(goal, unit)}
 													</h3>
 												</div>
@@ -641,7 +641,7 @@ export function Goals() {
 												<Award className="w-4 h-4 text-success" />
 											</div>
 											<div>
-												<p className="text-sm text-white">
+												<p className="text-sm text-foreground">
 													{getGoalDescription(goal, unit)}
 												</p>
 												<p className="text-xs text-muted-foreground">

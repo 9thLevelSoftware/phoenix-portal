@@ -159,7 +159,7 @@ export function CommunityDistribution({
 					smooth: true,
 					symbol: "none",
 					lineStyle: { color, width: 1.5 },
-					areaStyle: { color: `${color}33` },
+					areaStyle: { color: withAlpha(color, 0.2) },
 					silent: true,
 					z: 2,
 					markLine: {

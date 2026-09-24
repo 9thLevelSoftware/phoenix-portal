@@ -130,14 +130,14 @@ export default function MobileBodyTab({
 					<div className="flex overflow-hidden rounded-lg bg-muted/20">
 						<button
 							type="button"
-							className={`px-3 py-1 text-xs ${bodySide === "front" ? "bg-primary text-white" : "text-muted-foreground"}`}
+							className={`px-3 py-1 text-xs ${bodySide === "front" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
 							onClick={() => setBodySide("front")}
 						>
 							Front
 						</button>
 						<button
 							type="button"
-							className={`px-3 py-1 text-xs ${bodySide === "back" ? "bg-primary text-white" : "text-muted-foreground"}`}
+							className={`px-3 py-1 text-xs ${bodySide === "back" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
 							onClick={() => setBodySide("back")}
 						>
 							Back
@@ -184,7 +184,9 @@ export default function MobileBodyTab({
 							onClick={() => setSelectedMuscleId(muscle.muscleId)}
 						>
 							<div className="flex items-center justify-between gap-3">
-								<span className="text-sm text-white">{muscle.muscleName}</span>
+								<span className="text-sm text-foreground">
+									{muscle.muscleName}
+								</span>
 								<span className="text-xs text-primary">
 									{muscle.loadShare}%
 								</span>

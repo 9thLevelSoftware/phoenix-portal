@@ -162,7 +162,7 @@ export function CreatorProfile({
 							{stats.avatar_url && (
 								<AvatarImage src={stats.avatar_url} alt={stats.display_name} />
 							)}
-							<AvatarFallback className="bg-primary text-foreground text-lg">
+							<AvatarFallback className="bg-primary text-primary-foreground text-lg">
 								{getInitials(stats.display_name)}
 							</AvatarFallback>
 						</Avatar>

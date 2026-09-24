@@ -18,7 +18,7 @@ export function WeekOverview({ days }: WeekOverviewProps) {
 		{ name: "Legs", percentage: 18, color: PHOENIX().gold },
 		{ name: "Shoulders", percentage: 15, color: PHOENIX().forgeGreen },
 		{ name: "Arms", percentage: 15, color: "var(--chart-5)" },
-		{ name: "Core", percentage: 10, color: "var(--chart-5)" },
+		{ name: "Core", percentage: 10, color: "var(--chart-6)" },
 	];
 
 	const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];

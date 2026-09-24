@@ -4,7 +4,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark light" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Sets data-theme before first paint; see public/theme-boot.js -->
+    <script src="/theme-boot.js"></script>
     <!-- CSP is enforced via HTTP headers in public/_headers (Cloudflare Pages) -->
     <title>Phoenix Project Fitness Portal</title>
     <meta name="description" content="Phoenix Portal — training companion dashboard for Phoenix fitness machines. View workouts, build routines, track personal records, and analyze performance data.">
@@ -22,19 +24,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Load Inter Variable (UI) + Chakra Petch (display) + JetBrains Mono (data) -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:ital,wght@0,100..900;1,100..900&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
-    <script>
-  try {
-    var t = localStorage.getItem("phoenix-theme");
-    var valid = t === "dark" || t === "light" || t === "system";
-    var chosen = valid ? t : "dark";
-    var r = chosen === "system"
-      ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
-      : chosen;
-    document.documentElement.dataset.theme = r;
-  } catch (e) {
-    document.documentElement.dataset.theme = "dark";
-  }
-  </script>
   </head>
 
   <body>

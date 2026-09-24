@@ -424,7 +424,7 @@ export function Dashboard() {
 			<div className="min-h-screen pb-20 md:pb-8">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
 					<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
-					<h1 className="text-xl font-semibold text-white mb-2">
+					<h1 className="text-xl font-semibold text-foreground mb-2">
 						Couldn't load your workouts
 					</h1>
 					<p className="text-sm text-muted-foreground mb-6">
@@ -500,7 +500,7 @@ export function Dashboard() {
 											<Target className="w-5 h-5 text-white" />
 										</div>
 										<div>
-											<h3 className="font-semibold text-white">
+											<h3 className="font-semibold text-foreground">
 												Set training goals
 											</h3>
 											<p className="text-xs text-muted-foreground">
@@ -525,7 +525,7 @@ export function Dashboard() {
 											<HeartPulse className="w-5 h-5 text-white" />
 										</div>
 										<div>
-											<h3 className="font-semibold text-white">
+											<h3 className="font-semibold text-foreground">
 												Check recovery
 											</h3>
 											<p className="text-xs text-muted-foreground">
@@ -586,7 +586,7 @@ export function Dashboard() {
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
 										<Target className="w-6 h-6 text-white" />
 									</div>
-									<h3 className="text-lg font-semibold text-white mb-2">
+									<h3 className="text-lg font-semibold text-foreground mb-2">
 										Set training goals
 									</h3>
 									<p className="text-sm text-muted-foreground">
@@ -603,7 +603,7 @@ export function Dashboard() {
 									<div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center mb-4">
 										<HeartPulse className="w-6 h-6 text-white" />
 									</div>
-									<h3 className="text-lg font-semibold text-white mb-2">
+									<h3 className="text-lg font-semibold text-foreground mb-2">
 										Check recovery
 									</h3>
 									<p className="text-sm text-muted-foreground">
@@ -1443,7 +1443,9 @@ export function Dashboard() {
 							{/* Active Challenges */}
 							<motion.div variants={fadeUp}>
 								<Card className="p-5 signal-panel">
-									<h3 className="text-xl text-white mb-4">Active Challenges</h3>
+									<h3 className="text-xl text-foreground mb-4">
+										Active Challenges
+									</h3>
 									<ActiveChallengesSection
 										userId={user?.id ?? ""}
 										unit={unit}
@@ -1454,7 +1456,9 @@ export function Dashboard() {
 							{/* Badge Showcase */}
 							<motion.div variants={fadeUp}>
 								<Card className="p-5 signal-panel">
-									<h3 className="text-xl text-white mb-4">Recent Badges</h3>
+									<h3 className="text-xl text-foreground mb-4">
+										Recent Badges
+									</h3>
 									{badgesLoading ? (
 										<div className="space-y-3">
 											{["sk-a", "sk-b", "sk-c"].map((k) => (

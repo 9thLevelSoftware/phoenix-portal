@@ -43,7 +43,9 @@ interface RecommendationCalloutProps {
 function RecommendationCallout({ recommendation }: RecommendationCalloutProps) {
 	const isCritical = recommendation.priority === "critical";
 	const borderColor = isCritical ? "var(--destructive)" : "var(--accent)";
-	const bgColor = isCritical ? "rgba(220,38,38,0.08)" : "rgba(245,158,11,0.08)";
+	const bgColor = isCritical
+		? "color-mix(in srgb, var(--destructive) 8%, transparent)"
+		: "color-mix(in srgb, var(--accent) 8%, transparent)";
 
 	return (
 		<div
@@ -188,7 +190,8 @@ export function VolumeLandmarks({
 											style={{
 												left: `${pct(landmark.mavLow)}%`,
 												width: `${pct(landmark.mavHigh) - pct(landmark.mavLow)}%`,
-												backgroundColor: "rgba(16,185,129,0.15)",
+												backgroundColor:
+													"color-mix(in srgb, var(--success) 15%, transparent)",
 											}}
 											aria-hidden="true"
 										/>

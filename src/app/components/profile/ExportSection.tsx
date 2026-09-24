@@ -215,7 +215,7 @@ export function ExportSection() {
 							void handleExportRecords();
 						}}
 						disabled={recordsLoading || exporting !== null}
-						className="flex-1 border-secondary text-white hover:bg-secondary/50"
+						className="flex-1 border-secondary text-foreground hover:bg-secondary/50"
 					>
 						{exporting === "records" ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -247,7 +247,7 @@ export function ExportSection() {
 				)}
 
 				<div className="border-t border-secondary pt-4 mt-4">
-					<p className="text-sm font-medium text-white mb-2">
+					<p className="text-sm font-medium text-foreground mb-2">
 						Analytics Tables
 					</p>
 					<p className="text-xs text-muted-foreground mb-3">
@@ -258,7 +258,7 @@ export function ExportSection() {
 						variant="outline"
 						onClick={handleAnalyticsExport}
 						disabled={analyticsExporting || fullExporting || !user?.id}
-						className="w-full border-secondary text-white hover:bg-secondary/50"
+						className="w-full border-secondary text-foreground hover:bg-secondary/50"
 					>
 						{analyticsExporting ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -272,7 +272,7 @@ export function ExportSection() {
 				</div>
 
 				<div className="border-t border-secondary pt-4 mt-4">
-					<p className="text-sm font-medium text-white mb-2">
+					<p className="text-sm font-medium text-foreground mb-2">
 						Complete Data Export
 					</p>
 					<p className="text-xs text-muted-foreground mb-3">

@@ -214,7 +214,7 @@ export function Recovery() {
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 					<Card className="p-6 sm:p-8 bg-surface-2 border-secondary text-center">
 						<HeartPulse className="w-10 h-10 text-primary mx-auto mb-4" />
-						<h2 className="text-xl text-white mb-2">
+						<h2 className="text-xl text-foreground mb-2">
 							Couldn't load recovery data
 						</h2>
 						<p className="text-sm text-muted-foreground mb-6">

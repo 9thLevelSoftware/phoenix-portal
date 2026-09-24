@@ -10,14 +10,15 @@ import {
 export function getPhoenixEchartsTheme(tokens: ThemeTokens = getThemeTokens()) {
 	const colors = CHART_COLORS(tokens);
 	return {
+		// Eight distinct series colours (no repeats).
 		color: [
 			colors.primary,
 			colors.secondary,
 			colors.success,
 			colors.danger,
-			tokens.chart5,
-			tokens.chart5,
-			tokens.cableB,
+			tokens.chart2,
+			tokens.chart6,
+			tokens.chart7,
 			tokens.chart5,
 		],
 		backgroundColor: "transparent",

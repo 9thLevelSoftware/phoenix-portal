@@ -252,7 +252,7 @@ export function RoutineDetail() {
 										<h2 className="text-lg font-semibold text-foreground">
 											{item.exercise.name}
 										</h2>
-										<Badge className="border-0 bg-primary text-foreground">
+										<Badge className="border-0 bg-primary text-primary-foreground">
 											{item.exercise.muscle_group}
 										</Badge>
 									</div>
@@ -308,7 +308,7 @@ export function RoutineDetail() {
 													<h2 className="text-lg font-semibold text-foreground">
 														{exercise.name}
 													</h2>
-													<Badge className="border-0 bg-primary text-foreground">
+													<Badge className="border-0 bg-primary text-primary-foreground">
 														{exercise.muscle_group}
 													</Badge>
 												</div>

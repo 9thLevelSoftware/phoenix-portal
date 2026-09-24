@@ -429,7 +429,9 @@ function ForceCurveNotice({ isInferno }: { isInferno: boolean }) {
 
 	return (
 		<div className="rounded-lg border border-secondary bg-surface-2 p-4 text-sm space-y-1">
-			<p className="font-medium text-white">Force curves require Inferno</p>
+			<p className="font-medium text-foreground">
+				Force curves require Inferno
+			</p>
 			<p className="text-muted-foreground">
 				Your plan includes rep-by-rep replay. Upgrade to Inferno for per-sample
 				force and velocity curves.{" "}

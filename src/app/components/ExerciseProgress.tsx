@@ -99,7 +99,7 @@ function DirectionIcon({ direction }: { direction: "up" | "down" | "flat" }) {
 
 // Distinct hue for the velocity (VBT) estimate so it never reads as the same
 // metric as the green rep-based estimate.
-const VELOCITY_COLOR = "#8B7CF6";
+const VELOCITY_COLOR = "var(--chart-5)";
 
 const VELOCITY_HELP =
 	"Velocity-based (VBT) estimate from cable speed (mean concentric velocity) captured by the trainer — distinct from the stored mobile estimated 1RM.";
@@ -113,7 +113,7 @@ function InfoTooltip({ text }: { text: string }) {
 					<button
 						type="button"
 						aria-label="More info"
-						className="text-muted-foreground hover:text-white focus:outline-none"
+						className="text-muted-foreground hover:text-foreground focus:outline-none"
 					>
 						<Info className="w-3.5 h-3.5" />
 					</button>
@@ -330,7 +330,7 @@ export function ExerciseProgress({
 	if (exercisesError) {
 		return (
 			<div className="text-center py-16">
-				<h3 className="text-2xl font-semibold text-white mb-2">
+				<h3 className="text-2xl font-semibold text-foreground mb-2">
 					Couldn't load exercise progress
 				</h3>
 				<p className="text-muted-foreground max-w-md mx-auto">

@@ -183,7 +183,7 @@ export function Chart({ width, height }: { width: number; height: number }) {
 						y1={0}
 						x2={phaseDividerX}
 						y2={innerHeight}
-						stroke="rgba(255, 255, 255, 0.08)"
+						stroke="color-mix(in srgb, var(--foreground) 8%, transparent)"
 						strokeDasharray="4 4"
 					/>
 
@@ -198,7 +198,7 @@ export function Chart({ width, height }: { width: number; height: number }) {
 									y1={0}
 									x2={tooltipLeft - MARGINS.left}
 									y2={innerHeight}
-									stroke="rgba(255, 255, 255, 0.2)"
+									stroke="color-mix(in srgb, var(--foreground) 20%, transparent)"
 									strokeWidth={1}
 									pointerEvents="none"
 								/>
@@ -272,7 +272,7 @@ export function Chart({ width, height }: { width: number; height: number }) {
 							lineHeight: 1.4,
 							color: "var(--primary-foreground)",
 							pointerEvents: "none",
-							boxShadow: "0 4px 12px rgba(0, 0, 0, 0.4)",
+							boxShadow: "var(--elevation-md)",
 							whiteSpace: "nowrap",
 						}}
 					>

@@ -9,6 +9,7 @@ import { TooltipWithBounds, useTooltip } from "@visx/tooltip";
 import { useMemo } from "react";
 import { ASYMMETRY_THRESHOLD, calculateAsymmetry } from "@/lib/biomechanics";
 import { PHOENIX } from "@/lib/colors";
+import { withAlpha } from "@/lib/theme-tokens";
 import type { RepSummary } from "@/schemas/telemetry";
 
 function getAsymmetryColors() {
@@ -324,9 +325,9 @@ function SummaryDisplay({ repSummaries }: { repSummaries: RepSummary[] }) {
 			<span
 				className="rounded-full px-4 py-1.5 text-sm font-medium"
 				style={{
-					backgroundColor: `${color}20`,
+					backgroundColor: withAlpha(color, 0.13),
 					color,
-					border: `1px solid ${color}40`,
+					border: `1px solid ${withAlpha(color, 0.25)}`,
 				}}
 			>
 				{label}

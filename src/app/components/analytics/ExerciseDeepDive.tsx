@@ -82,7 +82,7 @@ function computeDelta(values: number[]): number | null {
 // ---------------------------------------------------------------------------
 
 // Velocity (VBT) accent + help copy, kept distinct from the rep-based estimate.
-const VELOCITY_VALUE_CLASS = "text-[#8B7CF6]";
+const VELOCITY_VALUE_CLASS = "text-chart-5";
 const REP_BASED_HELP =
 	"Estimated from weight × reps via a formula (Brzycki / Epley).";
 const VELOCITY_HELP =
@@ -97,7 +97,7 @@ function InfoTooltip({ text }: { text: string }) {
 					<button
 						type="button"
 						aria-label="More info"
-						className="text-muted-foreground hover:text-white focus:outline-none"
+						className="text-muted-foreground hover:text-foreground focus:outline-none"
 					>
 						<Info className="w-3 h-3" />
 					</button>

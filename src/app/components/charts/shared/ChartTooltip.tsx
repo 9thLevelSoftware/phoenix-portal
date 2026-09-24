@@ -44,7 +44,7 @@ export function ChartTooltipContent({
 				color: "var(--foreground)",
 				fontSize: "12px",
 				lineHeight: "1.4",
-				boxShadow: "0 4px 12px rgba(0, 0, 0, 0.4)",
+				boxShadow: "var(--elevation-md)",
 			}}
 		>
 			<div

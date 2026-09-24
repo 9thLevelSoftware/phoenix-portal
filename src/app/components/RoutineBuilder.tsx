@@ -958,7 +958,7 @@ function SortableExerciseItem({
 						<div
 							className={`flex h-5 w-5 items-center justify-center rounded border text-xs ${
 								isSelectionSelected
-									? "border-primary bg-primary text-foreground"
+									? "border-primary bg-primary text-primary-foreground"
 									: "border-secondary text-muted-foreground"
 							}`}
 						>
@@ -1168,7 +1168,7 @@ function ExerciseDetailPanel({
 									variant={!isDurationBased ? "default" : "outline"}
 									onClick={() => onUpdate({ durationSeconds: null })}
 									className={
-										!isDurationBased ? "bg-primary text-foreground" : ""
+										!isDurationBased ? "bg-primary text-primary-foreground" : ""
 									}
 								>
 									Reps
@@ -1182,7 +1182,7 @@ function ExerciseDetailPanel({
 										})
 									}
 									className={
-										isDurationBased ? "bg-primary text-foreground" : ""
+										isDurationBased ? "bg-primary text-primary-foreground" : ""
 									}
 								>
 									Duration
@@ -1285,7 +1285,7 @@ function ExerciseDetailPanel({
 															})
 														: updatePerSetReps(i, e.target.value)
 												}
-												className="bg-background border-secondary text-white"
+												className="bg-background border-secondary text-foreground"
 												placeholder={isDurationBased ? "30" : "10"}
 											/>
 										)}
@@ -1300,7 +1300,7 @@ function ExerciseDetailPanel({
 												step={unit === "lbs" ? "0.5" : "1"}
 												value={getDisplayWeight(weightValues[i] ?? 0, unit)}
 												onChange={(e) => updatePerSetWeight(i, e.target.value)}
-												className="bg-background border-secondary text-white"
+												className="bg-background border-secondary text-foreground"
 												placeholder={unit === "lbs" ? "45.0" : "20"}
 											/>
 										</div>
@@ -1313,7 +1313,7 @@ function ExerciseDetailPanel({
 											type="number"
 											value={restValues[i] ?? 0}
 											onChange={(e) => updatePerSetRest(i, e.target.value)}
-											className="bg-background border-secondary text-white"
+											className="bg-background border-secondary text-foreground"
 											placeholder="90"
 										/>
 									</div>
@@ -1350,7 +1350,7 @@ function ExerciseDetailPanel({
 						<select
 							value={exercise.mode}
 							onChange={(e) => onUpdate({ mode: e.target.value })}
-							className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+							className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
 						>
 							{WIRE_MODES.map((wire) => (
 								<option key={wire} value={wire}>
@@ -1374,7 +1374,7 @@ function ExerciseDetailPanel({
 						<div className="space-y-3 rounded-lg border border-secondary/70 bg-background/60 px-4 py-3">
 							<div className="flex items-center justify-between gap-4">
 								<div>
-									<Label className="text-white">
+									<Label className="text-foreground">
 										Offer drop set after failure
 									</Label>
 									<p className="text-xs text-muted-foreground">
@@ -1413,7 +1413,7 @@ function ExerciseDetailPanel({
 													unit === "lbs" ? toKg(parsed) : parsed,
 											});
 										}}
-										className="bg-background border-secondary text-white"
+										className="bg-background border-secondary text-foreground"
 										placeholder={unit === "lbs" ? "45.0" : "20"}
 									/>
 									{(exercise.dropSetMinWeightKg == null ||
@@ -1428,7 +1428,7 @@ function ExerciseDetailPanel({
 					)}
 
 					<Collapsible>
-						<CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border border-secondary px-4 py-3 text-sm text-muted-foreground transition-colors hover:text-white">
+						<CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border border-secondary px-4 py-3 text-sm text-muted-foreground transition-colors hover:text-foreground">
 							<span>Advanced Settings</span>
 							<ChevronDown className="h-4 w-4" />
 						</CollapsibleTrigger>
@@ -1455,7 +1455,7 @@ function ExerciseDetailPanel({
 														),
 													})
 												}
-												className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+												className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
 											>
 												<option value="">Default (100%)</option>
 												{ECCENTRIC_LOADS.map((load) => (
@@ -1486,7 +1486,7 @@ function ExerciseDetailPanel({
 												onChange={(e) =>
 													onUpdate({ echoLevel: toEchoLevel(e.target.value) })
 												}
-												className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+												className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
 											>
 												<option value="">Default (Harder)</option>
 												{ECHO_LEVELS.map((level) => (
@@ -1510,7 +1510,7 @@ function ExerciseDetailPanel({
 												repCountTiming: toRepCountTiming(e.target.value),
 											})
 										}
-										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
 									>
 										<option value="">Default (Top)</option>
 										{REP_COUNT_TIMINGS.map((timing) => (
@@ -1532,7 +1532,7 @@ function ExerciseDetailPanel({
 												stopAtPosition: toStopAtPosition(e.target.value),
 											})
 										}
-										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-white text-sm focus:border-primary focus:outline-none"
+										className="w-full px-3 py-2 rounded-lg bg-background border border-secondary text-foreground text-sm focus:border-primary focus:outline-none"
 									>
 										<option value="">Don't stop</option>
 										<option value="TOP">Stop at top</option>
@@ -1681,7 +1681,7 @@ function ExercisePickerModal({
 							onClick={() => setMuscleFilter(null)}
 							className={
 								!muscleFilter
-									? "bg-primary border-0 text-foreground flex-shrink-0"
+									? "bg-primary border-0 text-primary-foreground flex-shrink-0"
 									: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
 							}
 						>
@@ -1696,7 +1696,7 @@ function ExercisePickerModal({
 								}
 								className={
 									muscleFilter === group
-										? "bg-primary border-0 text-foreground flex-shrink-0"
+										? "bg-primary border-0 text-primary-foreground flex-shrink-0"
 										: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
 								}
 							>
@@ -1739,11 +1739,11 @@ function ExercisePickerModal({
 												</div>
 											)}
 											<div className="min-w-0">
-												<h4 className="mb-1 truncate font-semibold text-white">
+												<h4 className="mb-1 truncate font-semibold text-foreground">
 													{exercise.name}
 												</h4>
 												<div className="flex flex-wrap gap-1.5">
-													<Badge className="bg-primary text-white border-0 text-xs">
+													<Badge className="bg-primary text-primary-foreground border-0 text-xs">
 														{exercise.muscleGroup}
 													</Badge>
 													{exercise.equipment.length > 0 && (

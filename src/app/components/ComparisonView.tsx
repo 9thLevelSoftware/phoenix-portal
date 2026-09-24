@@ -104,25 +104,25 @@ function SessionSummaryCard({
 			<div className="grid grid-cols-2 gap-4 text-sm">
 				<div>
 					<div className="text-muted-foreground">Volume</div>
-					<div className="text-white font-semibold font-data">
+					<div className="text-foreground font-semibold font-data">
 						{formatVolume(summary.totalVolume, unit)}
 					</div>
 				</div>
 				<div>
 					<div className="text-muted-foreground">Duration</div>
-					<div className="text-white font-semibold font-data">
+					<div className="text-foreground font-semibold font-data">
 						{summary.duration}m
 					</div>
 				</div>
 				<div>
 					<div className="text-muted-foreground">Exercises</div>
-					<div className="text-white font-semibold font-data">
+					<div className="text-foreground font-semibold font-data">
 						{summary.exerciseCount}
 					</div>
 				</div>
 				<div>
 					<div className="text-muted-foreground">Sets</div>
-					<div className="text-white font-semibold font-data">
+					<div className="text-foreground font-semibold font-data">
 						{summary.setCount}
 					</div>
 				</div>
@@ -355,7 +355,7 @@ export function ComparisonView() {
 				</div>
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
 					<Crown className="w-12 h-12 text-warning mx-auto mb-4" />
-					<h2 className="text-2xl font-semibold text-white mb-2">
+					<h2 className="text-2xl font-semibold text-foreground mb-2">
 						Premium Feature
 					</h2>
 					<p className="text-muted-foreground mb-6 max-w-md mx-auto">

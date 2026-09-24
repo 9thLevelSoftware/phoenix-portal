@@ -122,7 +122,7 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 													alt={creator.display_name}
 												/>
 											)}
-											<AvatarFallback className="bg-primary text-foreground text-sm">
+											<AvatarFallback className="bg-primary text-primary-foreground text-sm">
 												{getInitials(creator.display_name)}
 											</AvatarFallback>
 										</Avatar>

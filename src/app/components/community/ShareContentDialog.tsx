@@ -283,7 +283,7 @@ export function ShareContentDialog({
 											className={cn(
 												"cursor-pointer select-none transition-colors",
 												isSelected &&
-													"bg-primary hover:bg-primary/80 text-foreground",
+													"bg-primary hover:bg-primary/80 text-primary-foreground",
 											)}
 											onClick={() => toggleTag(tag)}
 										>
@@ -314,7 +314,7 @@ export function ShareContentDialog({
 
 						{/* Submit */}
 						<Button
-							className="w-full bg-primary hover:bg-primary/90 text-foreground"
+							className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
 							onClick={handleSubmit}
 							disabled={!isFormValid || shareContent.isPending}
 						>

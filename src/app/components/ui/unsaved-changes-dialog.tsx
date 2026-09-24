@@ -57,7 +57,7 @@ export function UnsavedChangesDialog({
 							actionTakenRef.current = true;
 							onCancel();
 						}}
-						className="border-secondary text-muted-foreground hover:text-white"
+						className="border-secondary text-muted-foreground hover:text-foreground"
 					>
 						Cancel
 					</AlertDialogCancel>
@@ -75,7 +75,7 @@ export function UnsavedChangesDialog({
 							actionTakenRef.current = true;
 							onSave();
 						}}
-						className="bg-primary hover:bg-primary/90 border-0 text-white"
+						className="bg-primary hover:bg-primary/90 border-0 text-primary-foreground"
 					>
 						Save
 					</AlertDialogAction>

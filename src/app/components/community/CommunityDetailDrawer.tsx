@@ -120,7 +120,7 @@ function DetailContent({
 			{/* Author */}
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-2">
-					<div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-foreground text-sm">
+					<div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
 						{authorName.charAt(0).toUpperCase()}
 					</div>
 					<div>

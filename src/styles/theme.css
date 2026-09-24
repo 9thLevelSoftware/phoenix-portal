@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --font-size: 16px;
   --font-display: "Chakra Petch", "Inter", ui-sans-serif, system-ui, sans-serif;
 
@@ -55,12 +56,21 @@
   --switch-background: #1a1a24;
   --ring: #ff6b35;
 
-  /* Chart colors — Signal palette */
+  /* Chart colors — Signal palette. 6-8 exist so series that need more than
+     five distinct colours (muscle groups, per-rep series) never repeat. */
   --chart-1: #ff6b35;
   --chart-2: #6ba3f7;
   --chart-3: #f59e0b;
   --chart-4: #00e676;
   --chart-5: #7c4dff;
+  --chart-6: #f472b6;
+  --chart-7: #22d3ee;
+  --chart-8: #a3e635;
+
+  /* Leaderboard podium */
+  --rank-gold: #f59e0b;
+  --rank-silver: #9ca3af;
+  --rank-bronze: #cd7f32;
 
   --radius: var(--radius-lg);
   --radius-sm: 2px;
@@ -71,7 +81,7 @@
   --sidebar-foreground: #e0e0e8;
   --sidebar-primary: #ff6b35;
   --sidebar-primary-foreground: #06060a;
-  --sidebar-accent: rgba(255, 107, 53, 0.1);
+  --sidebar-accent: color-mix(in srgb, var(--primary) 10%, transparent);
   --sidebar-accent-foreground: #ff6b35;
   --sidebar-border: #1a1a24;
   --sidebar-ring: #ff6b35;
@@ -85,9 +95,14 @@
   --surface-overlay: rgba(6, 6, 10, 0.95);
 
   /* Shadows — minimal, no brand tint */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --elevation-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --elevation-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --elevation-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+  /* Main-content scrollbar */
+  --scrollbar-track: var(--background);
+  --scrollbar-thumb: #1a1a24;
+  --scrollbar-thumb-hover: #2a2a36;
 
   /* Icon colors */
   --icon-default: var(--foreground);
@@ -129,6 +144,7 @@
 }
 
 :root[data-theme='light'] {
+  color-scheme: light;
   /* Typography and brand identity are theme-independent. */
   --font-size: 16px;
   --font-display: "Chakra Petch", "Inter", ui-sans-serif, system-ui, sans-serif;
@@ -143,13 +159,21 @@
   --phoenix-crimson: #ef4444;
   --phoenix-white: #e0e0e8;
   --phoenix-light-gray: #e5e7eb;
-  --switch-background: #1a1a24;
+  --switch-background: #c4c4cc;
   --ring: #c2410c;
-  --chart-1: #ff6b35;
-  --chart-2: #6ba3f7;
-  --chart-3: #f59e0b;
-  --chart-4: #00e676;
-  --chart-5: #7c4dff;
+  /* Every chart colour keeps at least 3:1 against white (WCAG 1.4.11). */
+  --chart-1: #c2410c;
+  --chart-2: #2563eb;
+  --chart-3: #a16207;
+  --chart-4: #047857;
+  --chart-5: #7c3aed;
+  --chart-6: #be185d;
+  --chart-7: #0e7490;
+  --chart-8: #4d7c0f;
+
+  --rank-gold: #a16207;
+  --rank-silver: #6b7280;
+  --rank-bronze: #9a3412;
   --radius: var(--radius-lg);
   --radius-sm: 2px;
   --radius-md: 4px;
@@ -170,14 +194,14 @@
   --muted-hover: #c4c4cc;
   --hover-surface: #ececf1;
   --disabled-foreground: #a0a0ac;
-  --accent: #b45309;
+  --accent: #a16207;
   --accent-foreground: #ffffff;
   --destructive: #b91c1c;
   --destructive-foreground: #ffffff;
   --success: #047857;
   --success-foreground: #ffffff;
   --warning: #b45309;
-  --warning-foreground: #101014;
+  --warning-foreground: #ffffff;
   --text-on-primary: #ffffff;
   --text-on-success: #ffffff;
   --text-on-danger: #ffffff;
@@ -202,9 +226,13 @@
   --surface-3: #ececf1;
   --surface-overlay: rgba(255, 255, 255, 0.95);
 
-  --shadow-sm: 0 1px 2px rgba(15, 15, 25, 0.06);
-  --shadow-md: 0 4px 12px rgba(15, 15, 25, 0.08);
-  --shadow-lg: 0 8px 24px rgba(15, 15, 25, 0.1);
+  --elevation-sm: 0 1px 2px rgba(15, 15, 25, 0.06);
+  --elevation-md: 0 4px 12px rgba(15, 15, 25, 0.08);
+  --elevation-lg: 0 8px 24px rgba(15, 15, 25, 0.1);
+
+  --scrollbar-track: var(--background);
+  --scrollbar-thumb: #d4d4dc;
+  --scrollbar-thumb-hover: #b4b4bc;
 
   --icon-default: var(--foreground);
   --icon-muted: var(--muted-foreground);
@@ -270,10 +298,18 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
-  --color-text-on-primary: var(--text-on-primary);
-  --color-text-on-success: var(--text-on-success);
-  --color-text-on-danger: var(--text-on-danger);
-  --color-text-on-warning: var(--text-on-warning);
+  /* Utilities are named for the property: text-on-primary, not text-text-on-primary. */
+  --color-on-primary: var(--text-on-primary);
+  --color-on-success: var(--text-on-success);
+  --color-on-danger: var(--text-on-danger);
+  --color-on-warning: var(--text-on-warning);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-rank-gold: var(--rank-gold);
+  --color-rank-silver: var(--rank-silver);
+  --color-rank-bronze: var(--rank-bronze);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-input-background: var(--input-background);
@@ -284,6 +320,9 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
@@ -351,11 +390,13 @@
   gap: var(--space-6);
 }
 
-/* Wire shadow values to Tailwind shadow-sm/md/lg utility classes */
-@theme {
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+/* Wire the per-theme shadow values to the shadow-sm/md/lg utilities. The
+   utilities reference the variables (inline), so they follow the theme; a
+   literal here would bake the dark shadows into light mode. */
+@theme inline {
+  --shadow-sm: var(--elevation-sm);
+  --shadow-md: var(--elevation-md);
+  --shadow-lg: var(--elevation-lg);
 }
 
 @layer base {
@@ -400,13 +441,13 @@
 
   /* VIS-04: Default card elevation — warm shadow applied to all shadcn Card components */
   [data-slot="card"] {
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--elevation-sm);
   }
 
   /* Phoenix sidebar scrollbar */
   [data-sidebar="content"] {
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 107, 53, 0.1) transparent;
+    scrollbar-color: color-mix(in srgb, var(--primary) 10%, transparent) transparent;
   }
   [data-sidebar="content"]::-webkit-scrollbar {
     width: 5px;
@@ -415,30 +456,30 @@
     background: transparent;
   }
   [data-sidebar="content"]::-webkit-scrollbar-thumb {
-    background: rgba(255, 107, 53, 0.1);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
     border-radius: 2px;
   }
   [data-sidebar="content"]::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 107, 53, 0.2);
+    background: color-mix(in srgb, var(--primary) 20%, transparent);
   }
 
-  /* Main content scrollbar — subtle dark styling */
+  /* Main content scrollbar — follows the theme */
   main {
     scrollbar-width: thin;
-    scrollbar-color: #1a1a24 #06060a;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
   main::-webkit-scrollbar {
     width: 6px;
   }
   main::-webkit-scrollbar-track {
-    background: #06060a;
+    background: var(--scrollbar-track);
   }
   main::-webkit-scrollbar-thumb {
-    background: #1a1a24;
+    background: var(--scrollbar-thumb);
     border-radius: 2px;
   }
   main::-webkit-scrollbar-thumb:hover {
-    background: #2a2a36;
+    background: var(--scrollbar-thumb-hover);
   }
 
   /* Phoenix sidebar icons — 20px in expanded, revert to default 16px in collapsed */
@@ -464,7 +505,7 @@
 
   /* Phoenix sidebar active state — ember gradient (0.12 for visible tint, AA foreground) */
   [data-sidebar="menu-button"][data-active="true"] {
-    background: rgba(255, 107, 53, 0.12) !important;
+    background: color-mix(in srgb, var(--primary) 12%, transparent) !important;
     color: var(--sidebar-accent-foreground) !important;
   }
   [data-sidebar="menu-button"][data-active="true"] svg {
@@ -478,7 +519,7 @@
       color 150ms ease;
   }
   [data-sidebar="menu-button"]:not([data-active="true"]):hover {
-    background: rgba(255, 107, 53, 0.12) !important;
+    background: color-mix(in srgb, var(--primary) 12%, transparent) !important;
     color: var(--primary) !important;
   }
   [data-sidebar="menu-button"]:not([data-active="true"]):hover svg {
@@ -676,7 +717,7 @@
     background: var(--surface-1);
     border: 1px solid var(--cable-a);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--elevation-sm);
   }
 
   /* Signal metric strip cell */
@@ -689,15 +730,15 @@
   .card-landing-feature {
     border: 1px solid var(--border);
     background: var(--surface-2);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--elevation-sm);
     transition:
       border-color 200ms ease,
       box-shadow 200ms ease;
     border-radius: var(--radius-md);
   }
   .card-landing-feature:hover {
-    border-color: rgba(255, 107, 53, 0.3);
-    box-shadow: var(--shadow-md);
+    border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+    box-shadow: var(--elevation-md);
   }
 
   /* Phoenix sidebar separator */

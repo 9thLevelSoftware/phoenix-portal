@@ -39,7 +39,7 @@ export function SubscriptionGate({
 				className="flex flex-col items-center justify-center py-16 text-center"
 				data-testid="subscription-error"
 			>
-				<p className="mb-2 text-lg text-white">
+				<p className="mb-2 text-lg text-foreground">
 					Couldn't load your subscription
 				</p>
 				<p className="mb-6 max-w-sm text-sm text-muted-foreground">

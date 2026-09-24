@@ -151,7 +151,7 @@ export function SessionDetail() {
 				</div>
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
 					<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
-					<h2 className="text-xl font-semibold text-white mb-2">
+					<h2 className="text-xl font-semibold text-foreground mb-2">
 						Couldn't load this session
 					</h2>
 					<p className="text-muted-foreground mb-6">
@@ -317,7 +317,7 @@ export function SessionDetail() {
 									<Clock className="w-5 h-5 text-primary" />
 									<div className="text-sm text-muted-foreground">Duration</div>
 								</div>
-								<div className="text-2xl font-semibold text-white font-data">
+								<div className="text-2xl font-semibold text-foreground font-data">
 									{Math.round(session.duration_seconds / 60)}m
 								</div>
 							</div>
@@ -369,7 +369,7 @@ export function SessionDetail() {
 											Heaviest Lift
 										</div>
 									</div>
-									<div className="text-2xl font-semibold text-white font-data">
+									<div className="text-2xl font-semibold text-foreground font-data">
 										{/* Session-level: no cable count, so per cable only */}
 										<LoadValue
 											perCableKg={session.heaviest_lift_kg}
@@ -709,7 +709,7 @@ export function SessionDetail() {
 																</td>
 																<td className="py-3">
 																	{set.is_pr && (
-																		<Badge className="bg-accent text-foreground border-0">
+																		<Badge className="bg-accent text-accent-foreground border-0">
 																			NEW PR
 																		</Badge>
 																	)}

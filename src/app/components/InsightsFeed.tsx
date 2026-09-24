@@ -1,6 +1,7 @@
 import { AlertTriangle, Info, TrendingUp, Trophy } from "lucide-react";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
+import { withAlpha } from "@/lib/theme-tokens";
 import { isWeightUnit } from "@/lib/units";
 
 export interface InsightItem {
@@ -114,7 +115,7 @@ export function InsightsFeed({
 							{/* Icon */}
 							<div
 								className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full"
-								style={{ backgroundColor: `${color}22` }}
+								style={{ backgroundColor: withAlpha(color, 0.13) }}
 							>
 								<Icon size={16} style={{ color }} />
 							</div>

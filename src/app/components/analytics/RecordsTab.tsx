@@ -260,7 +260,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 	if (isError && records == null) {
 		return (
 			<div className="text-center py-16">
-				<p className="text-lg text-white mb-2">
+				<p className="text-lg text-foreground mb-2">
 					Couldn't load personal records
 				</p>
 				<p className="text-sm text-muted-foreground mb-6">
@@ -298,7 +298,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 								size="sm"
 								className={
 									activeFilter === filter
-										? "bg-primary border-0 text-foreground flex-shrink-0"
+										? "bg-primary border-0 text-primary-foreground flex-shrink-0"
 										: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
 								}
 							>

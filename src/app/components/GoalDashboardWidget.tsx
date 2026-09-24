@@ -102,7 +102,7 @@ export function GoalDashboardWidget() {
 									strokeWidth={4}
 								/>
 								<div className="flex-1 min-w-0">
-									<p className="text-sm text-white truncate">
+									<p className="text-sm text-foreground truncate">
 										{getGoalLabel(goal, unit)}
 									</p>
 									<p className="text-xs text-muted-foreground">

@@ -180,12 +180,12 @@ export default function BodyTab({
 			{/* Interactive Body Heatmap */}
 			<Card className="p-6 bg-surface-2 border-secondary">
 				<div className="flex justify-between items-center mb-6">
-					<h3 className="text-xl text-white">Body Overview</h3>
+					<h3 className="text-xl text-foreground">Body Overview</h3>
 					<div className="flex items-center gap-3">
 						{selectedMuscleGroup && (
 							<button
 								type="button"
-								className="text-xs text-primary hover:text-white transition-colors"
+								className="text-xs text-primary hover:text-foreground transition-colors"
 								onClick={() => setSelectedMuscleId(null)}
 							>
 								Clear selection
@@ -194,14 +194,14 @@ export default function BodyTab({
 						<div className="flex bg-muted/20 rounded-lg overflow-hidden">
 							<button
 								type="button"
-								className={`px-3 py-1 text-sm transition-colors ${bodySide === "front" ? "bg-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+								className={`px-3 py-1 text-sm transition-colors ${bodySide === "front" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
 								onClick={() => setBodySide("front")}
 							>
 								Front
 							</button>
 							<button
 								type="button"
-								className={`px-3 py-1 text-sm transition-colors ${bodySide === "back" ? "bg-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+								className={`px-3 py-1 text-sm transition-colors ${bodySide === "back" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
 								onClick={() => setBodySide("back")}
 							>
 								Back
@@ -344,7 +344,7 @@ function SelectedMuscleContribution({
 	if (!muscle) {
 		return (
 			<div className="rounded-lg border border-secondary bg-muted/10 p-4">
-				<p className="text-sm font-medium text-white mb-3">
+				<p className="text-sm font-medium text-foreground mb-3">
 					Ranked muscle contributions
 				</p>
 				<div className="space-y-2">
@@ -357,7 +357,9 @@ function SelectedMuscleContribution({
 								className="w-full rounded-md border border-secondary/60 bg-surface-2 px-3 py-2 text-left transition-colors hover:border-primary/60"
 							>
 								<div className="flex items-center justify-between gap-3">
-									<span className="text-sm text-white">{item.muscleName}</span>
+									<span className="text-sm text-foreground">
+										{item.muscleName}
+									</span>
 									<span className="text-xs text-primary tabular-nums">
 										{item.loadShare}%
 									</span>
@@ -388,7 +390,7 @@ function SelectedMuscleContribution({
 			<div className="flex items-start justify-between gap-3">
 				<div>
 					<p className="text-sm text-muted-foreground">Selected muscle</p>
-					<h4 className="text-lg font-semibold text-white">
+					<h4 className="text-lg font-semibold text-foreground">
 						{muscle.muscleName}
 					</h4>
 				</div>
@@ -402,19 +404,19 @@ function SelectedMuscleContribution({
 			<div className="grid grid-cols-3 gap-2 my-4">
 				<div className="rounded-md bg-surface-2 p-2">
 					<p className="text-[10px] uppercase text-muted-foreground">Load</p>
-					<p className="text-sm font-semibold text-white">
+					<p className="text-sm font-semibold text-foreground">
 						{formatLoad(muscle.totalVolumeKg, muscle.totalSets, unit)}
 					</p>
 				</div>
 				<div className="rounded-md bg-surface-2 p-2">
 					<p className="text-[10px] uppercase text-muted-foreground">Reps</p>
-					<p className="text-sm font-semibold text-white">
+					<p className="text-sm font-semibold text-foreground">
 						{muscle.totalReps.toFixed(0)}
 					</p>
 				</div>
 				<div className="rounded-md bg-surface-2 p-2">
 					<p className="text-[10px] uppercase text-muted-foreground">Share</p>
-					<p className="text-sm font-semibold text-white">
+					<p className="text-sm font-semibold text-foreground">
 						{muscle.loadShare}%
 					</p>
 				</div>
@@ -428,7 +430,7 @@ function SelectedMuscleContribution({
 					>
 						<div className="flex items-start justify-between gap-3">
 							<div className="min-w-0">
-								<p className="truncate text-sm font-medium text-white">
+								<p className="truncate text-sm font-medium text-foreground">
 									{exercise.exerciseName}
 								</p>
 								<p className="text-[11px] text-muted-foreground">

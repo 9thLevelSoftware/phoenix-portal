@@ -424,7 +424,7 @@ export function SummaryReport({ userId, unit = "kg" }: SummaryReportProps) {
 								Total Volume
 							</span>
 						</div>
-						<div className="text-2xl font-semibold text-white mb-2">
+						<div className="text-2xl font-semibold text-foreground mb-2">
 							{formatVolume(summary.totalVolume, unit)}
 						</div>
 						{displayDailyVolume.length > 0 && (
@@ -635,7 +635,9 @@ export function SummaryReport({ userId, unit = "kg" }: SummaryReportProps) {
 								<div className="flex items-start gap-3">
 									<TrendingUp className="w-4 h-4 text-success mt-0.5 shrink-0" />
 									<div>
-										<span className="text-white text-sm">Most improved: </span>
+										<span className="text-foreground text-sm">
+											Most improved:{" "}
+										</span>
 										<span className="text-success text-sm font-medium">
 											{summary.mostImprovedExercise} (+
 											{formatLoad(summary.mostImprovedAmount, null, unit)})

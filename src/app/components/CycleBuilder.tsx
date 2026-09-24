@@ -488,7 +488,7 @@ export function CycleBuilder() {
 					animate={{ opacity: 1, y: 0 }}
 				>
 					<Card className="p-6 bg-surface-2 border-secondary">
-						<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
+						<h2 className="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
 							<Calendar className="w-5 h-5 text-primary" />
 							Cycle Details
 						</h2>
@@ -1234,7 +1234,7 @@ function ProgressionRules({
 
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
-			<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
+			<h2 className="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
 				<Settings className="w-5 h-5 text-primary" />
 				Progression Rules
 			</h2>
@@ -1593,14 +1593,14 @@ function PreviewModal({
 							Progression
 						</h4>
 						<div className="p-3 bg-background rounded-lg border border-secondary space-y-1">
-							<div className="text-sm text-white">
+							<div className="text-sm text-foreground">
 								Type:{" "}
 								<span className="text-primary capitalize">
 									{cycle.progression.type}
 								</span>
 							</div>
 							{cycle.progression.type !== "manual" && (
-								<div className="text-sm text-white">
+								<div className="text-sm text-foreground">
 									Amount:{" "}
 									<span className="text-primary">
 										{cycle.progression.type === "percentage"

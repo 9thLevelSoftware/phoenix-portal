@@ -19,7 +19,6 @@ import { CanvasRenderer } from "echarts/renderers";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import { useEffect, useMemo, useRef } from "react";
 import {
-	getThemeTokens,
 	type ThemeTokens,
 	useThemeTokens,
 	withAlpha,
@@ -135,16 +134,21 @@ export function EChartsWrapper({
 }: EChartsWrapperProps) {
 	const chartRef = useRef<ReactEChartsCore>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
-	useThemeTokens();
-	const resolvedTokens = getThemeTokens();
+	// A stable snapshot that changes only when the theme does, so both memos
+	// below hold between renders.
+	const resolvedTokens = useThemeTokens();
 	const resolvedOption = useMemo(
 		() => resolveChartOption(option, resolvedTokens),
 		[option, resolvedTokens],
 	);
-	const themeName = useMemo(() => {
-		echarts.registerTheme("phoenix", getPhoenixEchartsTheme(resolvedTokens));
-		return "phoenix";
-	}, [resolvedTokens]);
+	// Passed as an object, not a registered name: echarts-for-react deep-compares
+	// the theme prop and re-initialises the chart when it changes, so theme-level
+	// defaults (palette, axes, tooltip) follow a theme switch. A fixed
+	// registered name never changes, so existing charts kept the old theme.
+	const theme = useMemo(
+		() => getPhoenixEchartsTheme(resolvedTokens),
+		[resolvedTokens],
+	);
 
 	// Handle responsive resize: window resize plus container-size changes
 	// (tabs/cards/sidebars can resize the chart without a window resize).
@@ -170,7 +174,7 @@ export function EChartsWrapper({
 				ref={chartRef}
 				echarts={echarts}
 				option={resolvedOption}
-				theme={themeName}
+				theme={theme}
 				style={{ height: "100%", width: "100%" }}
 				className={className}
 				showLoading={loading}

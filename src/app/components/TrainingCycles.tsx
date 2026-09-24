@@ -115,7 +115,7 @@ export function TrainingCycles() {
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 							<div>
-								<h1 className="text-display-2 mb-2 text-white">
+								<h1 className="text-display-2 mb-2 text-foreground">
 									Training Cycles
 								</h1>
 								<p className="text-muted-foreground">Periodize your progress</p>
@@ -125,7 +125,7 @@ export function TrainingCycles() {
 				</div>
 				<PageShell>
 					<div className="text-center py-16">
-						<p className="text-lg text-white mb-2">
+						<p className="text-lg text-foreground mb-2">
 							Couldn't load your training cycles
 						</p>
 						<p className="text-sm text-muted-foreground mb-6">
@@ -284,7 +284,7 @@ export function TrainingCycles() {
 															? "bg-primary/80 text-foreground border-0"
 															: cycle.status === "completed"
 																? "bg-muted text-foreground border-0"
-																: "bg-accent text-foreground border-0"
+																: "bg-accent text-accent-foreground border-0"
 													}
 												>
 													{cycle.status === "active"

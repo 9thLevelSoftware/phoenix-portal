@@ -1,6 +1,6 @@
 import type { TelemetryPointRow } from "@/schemas/telemetry";
 import type { ReplayIntelligence } from "./replay-intelligence";
-import { getThemeTokens, withAlpha } from "./theme-tokens";
+import { getThemeTokens, type ThemeTokens, withAlpha } from "./theme-tokens";
 
 interface RenderOptions {
 	width: number;
@@ -9,6 +9,8 @@ interface RenderOptions {
 	currentTimeMs: number;
 	repBoundaries: number[];
 	intelligence?: ReplayIntelligence | null;
+	/** Theme snapshot; defaults to the active theme. */
+	tokens?: ThemeTokens;
 }
 
 const MARGIN = { top: 20, right: 20, bottom: 40, left: 50 };
@@ -27,11 +29,11 @@ function drawRepBands(
 	plotArea: ReturnType<typeof getPlotArea>,
 	repBoundaries: number[],
 	maxTime: number,
+	{ cableA }: ThemeTokens,
 ) {
 	if (repBoundaries.length === 0 || maxTime === 0) return;
 
 	const xScale = plotArea.width / maxTime;
-	const { cableA } = getThemeTokens();
 
 	for (let i = 0; i < repBoundaries.length; i++) {
 		if (i % 2 === 1) {
@@ -48,11 +50,11 @@ function drawPlayhead(
 	plotArea: ReturnType<typeof getPlotArea>,
 	currentTimeMs: number,
 	maxTime: number,
+	{ foreground }: ThemeTokens,
 ) {
 	if (maxTime === 0) return;
 
 	const xScale = plotArea.width / maxTime;
-	const { foreground } = getThemeTokens();
 	const x = plotArea.x + currentTimeMs * xScale;
 
 	ctx.strokeStyle = withAlpha(foreground, 0.7);
@@ -71,13 +73,13 @@ function drawReplayIntelligence(
 	intelligence: ReplayIntelligence | null | undefined,
 	maxTime: number,
 	currentTimeMs: number,
+	{ danger, accent }: ThemeTokens,
 ) {
 	if (!intelligence || intelligence.status === "empty" || maxTime === 0) return;
 
 	const xScale = plotArea.width / maxTime;
 	const clampTime = (timestampMs: number) =>
 		Math.max(0, Math.min(timestampMs, maxTime));
-	const { danger, accent } = getThemeTokens();
 
 	for (const rep of intelligence.repInsights) {
 		if (rep.velocityLossPct < 20) continue;
@@ -105,7 +107,9 @@ export function renderForceCurve(
 	const { width, height, data, currentTimeMs, repBoundaries, intelligence } =
 		options;
 	const plotArea = getPlotArea(width, height);
-	const { background, primary } = getThemeTokens();
+	// Resolved once per frame and handed to the helpers.
+	const tokens = options.tokens ?? getThemeTokens();
+	const { background, primary } = tokens;
 
 	ctx.fillStyle = background;
 	ctx.fillRect(0, 0, width, height);
@@ -120,13 +124,20 @@ export function renderForceCurve(
 	const xScale = plotArea.width / maxTime;
 	const yScale = plotArea.height / maxForce;
 
-	drawRepBands(ctx, plotArea, repBoundaries, maxTime);
-	drawReplayIntelligence(ctx, plotArea, intelligence, maxTime, currentTimeMs);
+	drawRepBands(ctx, plotArea, repBoundaries, maxTime, tokens);
+	drawReplayIntelligence(
+		ctx,
+		plotArea,
+		intelligence,
+		maxTime,
+		currentTimeMs,
+		tokens,
+	);
 
 	const visibleData = data.filter((d) => d.timestamp_ms <= currentTimeMs);
 
 	if (visibleData.length === 0) {
-		drawPlayhead(ctx, plotArea, currentTimeMs, maxTime);
+		drawPlayhead(ctx, plotArea, currentTimeMs, maxTime, tokens);
 		return;
 	}
 
@@ -163,7 +174,7 @@ export function renderForceCurve(
 	ctx.lineWidth = 2;
 	ctx.stroke();
 
-	drawPlayhead(ctx, plotArea, currentTimeMs, maxTime);
+	drawPlayhead(ctx, plotArea, currentTimeMs, maxTime, tokens);
 }
 
 export function renderVelocityBars(
@@ -173,7 +184,9 @@ export function renderVelocityBars(
 	const { width, height, data, currentTimeMs, repBoundaries, intelligence } =
 		options;
 	const plotArea = getPlotArea(width, height);
-	const { background, primary } = getThemeTokens();
+	// Resolved once per frame and handed to the helpers.
+	const tokens = options.tokens ?? getThemeTokens();
+	const { background, primary } = tokens;
 
 	ctx.fillStyle = background;
 	ctx.fillRect(0, 0, width, height);
@@ -188,13 +201,20 @@ export function renderVelocityBars(
 	const xScale = plotArea.width / maxTime;
 	const yScale = plotArea.height / maxVelocity;
 
-	drawRepBands(ctx, plotArea, repBoundaries, maxTime);
-	drawReplayIntelligence(ctx, plotArea, intelligence, maxTime, currentTimeMs);
+	drawRepBands(ctx, plotArea, repBoundaries, maxTime, tokens);
+	drawReplayIntelligence(
+		ctx,
+		plotArea,
+		intelligence,
+		maxTime,
+		currentTimeMs,
+		tokens,
+	);
 
 	const visibleData = data.filter((d) => d.timestamp_ms <= currentTimeMs);
 
 	if (visibleData.length === 0) {
-		drawPlayhead(ctx, plotArea, currentTimeMs, maxTime);
+		drawPlayhead(ctx, plotArea, currentTimeMs, maxTime, tokens);
 		return;
 	}
 
@@ -231,5 +251,5 @@ export function renderVelocityBars(
 	ctx.lineWidth = 2;
 	ctx.stroke();
 
-	drawPlayhead(ctx, plotArea, currentTimeMs, maxTime);
+	drawPlayhead(ctx, plotArea, currentTimeMs, maxTime, tokens);
 }

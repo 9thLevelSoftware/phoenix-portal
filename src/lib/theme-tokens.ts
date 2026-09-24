@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 export type ThemeTokens = {
 	primary: string;
@@ -23,6 +23,9 @@ export type ThemeTokens = {
 	chart3: string;
 	chart4: string;
 	chart5: string;
+	chart6: string;
+	chart7: string;
+	chart8: string;
 	chartPalette: readonly string[];
 };
 
@@ -49,34 +52,40 @@ const FALLBACKS: ThemeTokens = {
 	chart3: "rgb(245, 158, 11)",
 	chart4: "rgb(0, 230, 118)",
 	chart5: "rgb(124, 77, 255)",
+	chart6: "rgb(244, 114, 182)",
+	chart7: "rgb(34, 211, 238)",
+	chart8: "rgb(163, 230, 53)",
 	chartPalette: [
 		"rgb(255, 107, 53)",
 		"rgb(107, 163, 247)",
 		"rgb(245, 158, 11)",
 		"rgb(0, 230, 118)",
 		"rgb(124, 77, 255)",
+		"rgb(244, 114, 182)",
+		"rgb(34, 211, 238)",
+		"rgb(163, 230, 53)",
 	],
 };
 
+export const THEME_CHANGE_EVENT = "phoenix-theme-change";
+
 function readCssVariable(
-	styles: CSSStyleDeclaration | null,
+	styles: CSSStyleDeclaration,
 	name: string,
 	fallback: string,
 ) {
-	return styles?.getPropertyValue(name).trim() || fallback;
+	return styles.getPropertyValue(name).trim() || fallback;
 }
 
-/** Read the active CSS theme at call time. */
-export function getThemeTokens(): ThemeTokens {
-	const styles =
-		typeof document !== "undefined"
-			? getComputedStyle(document.documentElement)
-			: null;
+function readThemeTokens(styles: CSSStyleDeclaration): ThemeTokens {
 	const chart1 = readCssVariable(styles, "--chart-1", FALLBACKS.chart1);
 	const chart2 = readCssVariable(styles, "--chart-2", FALLBACKS.chart2);
 	const chart3 = readCssVariable(styles, "--chart-3", FALLBACKS.chart3);
 	const chart4 = readCssVariable(styles, "--chart-4", FALLBACKS.chart4);
 	const chart5 = readCssVariable(styles, "--chart-5", FALLBACKS.chart5);
+	const chart6 = readCssVariable(styles, "--chart-6", FALLBACKS.chart6);
+	const chart7 = readCssVariable(styles, "--chart-7", FALLBACKS.chart7);
+	const chart8 = readCssVariable(styles, "--chart-8", FALLBACKS.chart8);
 	return {
 		primary: readCssVariable(styles, "--primary", FALLBACKS.primary),
 		primaryForeground: readCssVariable(
@@ -112,21 +121,88 @@ export function getThemeTokens(): ThemeTokens {
 		chart3,
 		chart4,
 		chart5,
-		chartPalette: [chart1, chart2, chart3, chart4, chart5],
+		chart6,
+		chart7,
+		chart8,
+		chartPalette: [
+			chart1,
+			chart2,
+			chart3,
+			chart4,
+			chart5,
+			chart6,
+			chart7,
+			chart8,
+		],
 	};
 }
 
-/** Subscribe to ThemeProvider's resolved-theme event and refresh tokens. */
+function sameTokens(a: ThemeTokens, b: ThemeTokens): boolean {
+	return (Object.keys(a) as Array<keyof ThemeTokens>).every((key) =>
+		key === "chartPalette"
+			? a.chartPalette.join() === b.chartPalette.join()
+			: a[key] === b[key],
+	);
+}
+
+// getComputedStyle forces a style recalculation, and colour lookups run in
+// hot paths (replay frames, per-rep zone classification, chart options), so
+// the resolved snapshot is cached until the theme changes. ThemeProvider calls
+// invalidateThemeTokens() before it announces a change. Identity is stable
+// while the values are unchanged, so it is safe as a memo/effect dependency.
+let cachedTokens: ThemeTokens | null = null;
+let lastTokens: ThemeTokens = FALLBACKS;
+
+/** The active theme's colours: a stable snapshot until the theme changes. */
+export function getThemeTokens(): ThemeTokens {
+	if (cachedTokens) return cachedTokens;
+	if (typeof document === "undefined") return FALLBACKS;
+	const styles = getComputedStyle(document.documentElement);
+	// Before the stylesheet applies (or under jsdom) nothing is defined: answer
+	// with the fallbacks but do not pin them.
+	if (!styles.getPropertyValue("--primary").trim()) return FALLBACKS;
+	const next = readThemeTokens(styles);
+	cachedTokens = sameTokens(next, lastTokens) ? lastTokens : next;
+	lastTokens = cachedTokens;
+	return cachedTokens;
+}
+
+/** Drop the cached snapshot; the next getThemeTokens() re-reads the CSS. */
+export function invalidateThemeTokens(): void {
+	cachedTokens = null;
+}
+
+function subscribeToThemeChanges(onChange: () => void): () => void {
+	window.addEventListener(THEME_CHANGE_EVENT, onChange);
+	return () => window.removeEventListener(THEME_CHANGE_EVENT, onChange);
+}
+
+/** The active theme's colours; re-renders the caller when the theme changes. */
 export function useThemeTokens(): ThemeTokens {
-	const [tokens, setTokens] = useState<ThemeTokens>(getThemeTokens);
+	return useSyncExternalStore(
+		subscribeToThemeChanges,
+		getThemeTokens,
+		() => FALLBACKS,
+	);
+}
 
-	useEffect(() => {
-		const refresh = () => setTokens(getThemeTokens());
-		window.addEventListener("phoenix-theme-change", refresh);
-		return () => window.removeEventListener("phoenix-theme-change", refresh);
-	}, []);
-
-	return tokens;
+/**
+ * Memoise a derivation of the theme (a palette, a zone table) per token
+ * snapshot, so callers get the same array/object back until the theme
+ * changes instead of a fresh allocation on every call.
+ */
+export function memoByTheme<T>(
+	derive: (tokens: ThemeTokens) => T,
+): (tokens?: ThemeTokens) => T {
+	const cache = new WeakMap<ThemeTokens, T>();
+	return (tokens = getThemeTokens()) => {
+		let value = cache.get(tokens);
+		if (value === undefined) {
+			value = derive(tokens);
+			cache.set(tokens, value);
+		}
+		return value;
+	};
 }
 
 export function withAlpha(color: string, alpha: number): string {

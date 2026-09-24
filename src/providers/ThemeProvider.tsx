@@ -1,10 +1,13 @@
 import {
 	createContext,
 	type ReactNode,
+	useCallback,
 	useContext,
 	useEffect,
+	useMemo,
 	useState,
 } from "react";
+import { invalidateThemeTokens, THEME_CHANGE_EVENT } from "@/lib/theme-tokens";
 
 type Theme = "dark" | "light" | "system";
 type ResolvedTheme = "dark" | "light";
@@ -46,13 +49,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 	useEffect(() => {
 		const root = document.documentElement;
 		root.dataset.theme = resolved;
-		const meta = document.querySelector(
+		// Only the resolved scheme: "dark light" would let the OS preference win
+		// for native controls and scrollbars over an explicit choice.
+		const meta = document.querySelector<HTMLMetaElement>(
 			"meta[name='color-scheme']",
-		) as HTMLMetaElement | null;
-		if (meta)
-			meta.content = resolved + (resolved === "dark" ? " light" : " dark");
+		);
+		if (meta) meta.content = resolved;
+		// Colour snapshots read by canvas/ECharts code must be re-read before
+		// anyone is told the theme changed.
+		invalidateThemeTokens();
 		window.dispatchEvent(
-			new CustomEvent("phoenix-theme-change", { detail: resolved }),
+			new CustomEvent(THEME_CHANGE_EVENT, { detail: resolved }),
 		);
 	}, [resolved]);
 
@@ -64,20 +71,21 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 		return () => mq.removeEventListener("change", fn);
 	}, [theme]);
 
-	const setTheme = (t: Theme) => {
+	const setTheme = useCallback((t: Theme) => {
 		setThemeState(t);
 		try {
 			localStorage.setItem("phoenix-theme", t);
 		} catch {
 			// Theme state still applies when storage is unavailable.
 		}
-	};
+	}, []);
 
-	return (
-		<Ctx.Provider value={{ theme, resolved, setTheme }}>
-			{children}
-		</Ctx.Provider>
+	const value = useMemo(
+		() => ({ theme, resolved, setTheme }),
+		[theme, resolved, setTheme],
 	);
+
+	return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useTheme() {

@@ -3,7 +3,7 @@
 // Supports both simplified 5-zone (mobile) and Dr. Mann VBT zones
 // ============================================================
 
-import { getThemeTokens } from "./theme-tokens";
+import { memoByTheme } from "./theme-tokens";
 
 // --- Simplified Zone System (Mobile) ---
 
@@ -27,50 +27,55 @@ export interface SimplifiedZoneInfo {
  * Simplified 5-zone system matching mobile app classification.
  * Used for user-facing velocity feedback during workouts.
  */
+const simplifiedZones = memoByTheme((tokens): SimplifiedZoneInfo[] => [
+	{
+		zone: "GRIND",
+		label: "Grind",
+		color: tokens.danger, // Flame Red
+		minVelocity: 0,
+		maxVelocity: 0.25,
+		description: "Slow controlled movement, heavy resistance",
+	},
+	{
+		zone: "SLOW",
+		label: "Slow",
+		color: tokens.accent, // Gold
+		minVelocity: 0.25,
+		maxVelocity: 0.5,
+		description: "Controlled tempo, moderate resistance",
+	},
+	{
+		zone: "MODERATE",
+		label: "Moderate",
+		color: tokens.primary, // Ember
+		minVelocity: 0.5,
+		maxVelocity: 0.75,
+		description: "Steady pace, challenging resistance",
+	},
+	{
+		zone: "FAST",
+		label: "Fast",
+		color: tokens.success, // Forge Green
+		minVelocity: 0.75,
+		maxVelocity: 1.0,
+		description: "Quick movement, lighter resistance",
+	},
+	{
+		zone: "EXPLOSIVE",
+		label: "Explosive",
+		color: tokens.cableB, // Blue
+		minVelocity: 1.0,
+		maxVelocity: Infinity,
+		description: "Maximum velocity, explosive power",
+	},
+]);
+
+/**
+ * Simplified 5-zone table for the active theme (a stable array until the
+ * theme changes).
+ */
 export function SIMPLIFIED_ZONES(): SimplifiedZoneInfo[] {
-	const tokens = getThemeTokens();
-	return [
-		{
-			zone: "GRIND",
-			label: "Grind",
-			color: tokens.danger, // Flame Red
-			minVelocity: 0,
-			maxVelocity: 0.25,
-			description: "Slow controlled movement, heavy resistance",
-		},
-		{
-			zone: "SLOW",
-			label: "Slow",
-			color: tokens.accent, // Gold
-			minVelocity: 0.25,
-			maxVelocity: 0.5,
-			description: "Controlled tempo, moderate resistance",
-		},
-		{
-			zone: "MODERATE",
-			label: "Moderate",
-			color: tokens.primary, // Ember
-			minVelocity: 0.5,
-			maxVelocity: 0.75,
-			description: "Steady pace, challenging resistance",
-		},
-		{
-			zone: "FAST",
-			label: "Fast",
-			color: tokens.success, // Forge Green
-			minVelocity: 0.75,
-			maxVelocity: 1.0,
-			description: "Quick movement, lighter resistance",
-		},
-		{
-			zone: "EXPLOSIVE",
-			label: "Explosive",
-			color: tokens.cableB, // Blue
-			minVelocity: 1.0,
-			maxVelocity: Infinity,
-			description: "Maximum velocity, explosive power",
-		},
-	];
+	return simplifiedZones();
 }
 
 // --- Dr. Mann VBT Zone System ---
@@ -106,50 +111,52 @@ export type VbtZoneInfo = MannZoneInfo;
  * Colors map to Phoenix theme palette.
  * Used for advanced VBT training zone classification.
  */
+const mannZones = memoByTheme((tokens): MannZoneInfo[] => [
+	{
+		zone: "absolute-strength",
+		label: "Absolute Strength",
+		color: tokens.danger,
+		minVelocity: 0,
+		maxVelocity: 0.5,
+		description: "Maximum force production, heavy grinding reps",
+	},
+	{
+		zone: "accelerative-strength",
+		label: "Accelerative Strength",
+		color: tokens.primary,
+		minVelocity: 0.5,
+		maxVelocity: 0.75,
+		description: "Heavy with intent to accelerate",
+	},
+	{
+		zone: "strength-speed",
+		label: "Strength-Speed",
+		color: tokens.accent,
+		minVelocity: 0.75,
+		maxVelocity: 1.0,
+		description: "Moderate load moved with speed",
+	},
+	{
+		zone: "speed-strength",
+		label: "Speed-Strength",
+		color: tokens.success,
+		minVelocity: 1.0,
+		maxVelocity: 1.3,
+		description: "Light load, emphasis on velocity",
+	},
+	{
+		zone: "starting-strength",
+		label: "Starting Strength",
+		color: tokens.cableB,
+		minVelocity: 1.3,
+		maxVelocity: Infinity,
+		description: "Explosive movement from dead stop",
+	},
+]);
+
+/** Dr. Mann zone table for the active theme (stable until the theme changes). */
 export function MANN_ZONES(): MannZoneInfo[] {
-	const tokens = getThemeTokens();
-	return [
-		{
-			zone: "absolute-strength",
-			label: "Absolute Strength",
-			color: tokens.danger,
-			minVelocity: 0,
-			maxVelocity: 0.5,
-			description: "Maximum force production, heavy grinding reps",
-		},
-		{
-			zone: "accelerative-strength",
-			label: "Accelerative Strength",
-			color: tokens.primary,
-			minVelocity: 0.5,
-			maxVelocity: 0.75,
-			description: "Heavy with intent to accelerate",
-		},
-		{
-			zone: "strength-speed",
-			label: "Strength-Speed",
-			color: tokens.accent,
-			minVelocity: 0.75,
-			maxVelocity: 1.0,
-			description: "Moderate load moved with speed",
-		},
-		{
-			zone: "speed-strength",
-			label: "Speed-Strength",
-			color: tokens.success,
-			minVelocity: 1.0,
-			maxVelocity: 1.3,
-			description: "Light load, emphasis on velocity",
-		},
-		{
-			zone: "starting-strength",
-			label: "Starting Strength",
-			color: tokens.cableB,
-			minVelocity: 1.3,
-			maxVelocity: Infinity,
-			description: "Explosive movement from dead stop",
-		},
-	];
+	return mannZones();
 }
 
 /**

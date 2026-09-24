@@ -237,7 +237,7 @@ function RomChart({
 						fontSize: 12,
 						fontFamily: "Inter, system-ui, sans-serif",
 						lineHeight: 1.5,
-						boxShadow: "0 4px 12px rgba(0, 0, 0, 0.4)",
+						boxShadow: "var(--elevation-md)",
 					}}
 				>
 					<div style={{ fontWeight: 600, marginBottom: 4 }}>

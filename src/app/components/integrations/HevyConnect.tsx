@@ -323,7 +323,7 @@ export function HevyConnect({
 							onClick={handleExport}
 							disabled={isExporting}
 							size="sm"
-							className="bg-[var(--cable-b)] hover:bg-[var(--cable-b)]/90 text-white"
+							className="bg-cable-b hover:bg-cable-b/90 text-background"
 						>
 							{isExporting ? (
 								"Exporting..."
@@ -392,7 +392,7 @@ export function HevyConnect({
 										onClick={handleImport}
 										disabled={isImporting}
 										size="sm"
-										className="bg-[var(--color-phoenix-primary)] hover:bg-[var(--color-phoenix-primary)]/90 text-white"
+										className="bg-primary hover:bg-primary/90 text-primary-foreground"
 									>
 										{isImporting
 											? "Importing..."

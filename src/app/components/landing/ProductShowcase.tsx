@@ -94,7 +94,7 @@ function RecoveryPanel() {
 						cx="24"
 						cy="24"
 						r={radius}
-						stroke="rgba(255,255,255,0.06)"
+						stroke="color-mix(in srgb, var(--foreground) 6%, transparent)"
 						strokeWidth="4"
 						fill="none"
 					/>
