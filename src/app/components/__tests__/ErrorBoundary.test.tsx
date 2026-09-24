@@ -11,12 +11,14 @@ import { PageErrorFallback } from "../ErrorFallback";
 vi.mock("sonner", () => ({
 	toast: {
 		error: vi.fn(),
+		success: vi.fn(),
 	},
 }));
 
 // Suppress expected error boundary console.error output
 const originalError = console.error;
 beforeEach(() => {
+	vi.clearAllMocks();
 	console.error = vi.fn();
 });
 afterEach(() => {
@@ -88,10 +90,36 @@ describe("ErrorBoundary + PageErrorFallback", () => {
 
 		await user.click(screen.getByRole("button", { name: /copy error id/i }));
 
-		expect(writeText).toHaveBeenCalledWith(expect.any(String));
-		expect(toast.error).toHaveBeenCalledWith(
-			"Something went wrong — error id copied",
+		// The copied id is the one shown on screen, and success is only
+		// announced once the clipboard write resolved.
+		const shownId = screen
+			.getByText(/^Error id:/)
+			.querySelector("span")?.textContent;
+		expect(shownId).toBeTruthy();
+		expect(writeText).toHaveBeenCalledWith(shownId);
+		expect(toast.success).toHaveBeenCalledWith("Error id copied");
+		expect(toast.error).not.toHaveBeenCalled();
+	});
+
+	it("says the copy failed when the clipboard rejects", async () => {
+		const user = userEvent.setup();
+		Object.defineProperty(navigator, "clipboard", {
+			configurable: true,
+			value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
+		});
+
+		renderWithProviders(
+			<BoundaryWrapper>
+				<BombComponent shouldThrow />
+			</BoundaryWrapper>,
 		);
+
+		await user.click(screen.getByRole("button", { name: /copy error id/i }));
+
+		expect(toast.error).toHaveBeenCalledWith(
+			"Couldn't copy the error id — select it above instead",
+		);
+		expect(toast.success).not.toHaveBeenCalled();
 	});
 
 	it("navigates back to the dashboard from the fallback", async () => {

@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { Button } from "@/app/components/ui/button";
 import { fadeUp } from "@/lib/animations";
 import { getConsentStatus, setConsentStatus } from "@/lib/consent";
+import { enableErrorReporting } from "@/lib/errorReporting";
 
 export function CookieConsentBanner() {
 	const [visible, setVisible] = useState(false);
@@ -34,7 +35,9 @@ export function CookieConsentBanner() {
 		} catch {
 			// ignore persistence failure
 		}
-		import("@/lib/sentry").then(({ initSentry }) => initSentry());
+		// Same path as a boot-time consent, so React's root error callbacks
+		// forward to Sentry from now on, not only after a reload.
+		void enableErrorReporting();
 		setVisible(false);
 	};
 

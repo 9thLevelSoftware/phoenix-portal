@@ -610,6 +610,8 @@ export function RoutineBuilder() {
 							<Input
 								id="routine-name"
 								value={routineName}
+								// The save-time summary jumps to this field while the name is blank.
+								aria-invalid={formErrors.length > 0 && !routineName.trim()}
 								onChange={(e) => {
 									setRoutineName(e.target.value);
 									setHasUnsavedChanges(true);

@@ -111,9 +111,7 @@ describe("WorkoutHistory", () => {
 			data: { pages: [[]] },
 		};
 		renderWithProviders(<WorkoutHistory />);
-		expect(
-			screen.getByText(/no workouts yet/i),
-		).toBeInTheDocument();
+		expect(screen.getByText(/no workouts yet/i)).toBeInTheDocument();
 		expect(
 			screen.queryByText(/couldn't load your workout history/i),
 		).not.toBeInTheDocument();

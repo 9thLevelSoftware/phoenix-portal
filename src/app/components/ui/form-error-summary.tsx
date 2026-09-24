@@ -1,4 +1,5 @@
 import { AlertCircle } from "lucide-react";
+import { useRef } from "react";
 import { useFormContext } from "react-hook-form";
 
 interface FormErrorSummaryProps {
@@ -41,22 +42,30 @@ function ErrorSummary({
 	messages: string[];
 	className?: string;
 }) {
+	const containerRef = useRef<HTMLDivElement>(null);
 	if (messages.length === 0) return null;
 
+	// Jump to the first invalid field of *this* form (the nearest <form>, else
+	// the summary's parent section), not the first one anywhere on the page.
 	const scrollToFirstError = () => {
-		const firstInvalid = document.querySelector(
+		const container = containerRef.current;
+		const scope =
+			container?.closest("form") ?? container?.parentElement ?? document;
+		const firstInvalid = scope.querySelector<HTMLElement>(
 			'[aria-invalid="true"]',
-		) as HTMLElement | null;
+		);
 		if (firstInvalid) {
 			firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
 			firstInvalid.focus();
 		}
 	};
 
+	// role="alert" is already an assertive live region; adding
+	// aria-live="polite" contradicted it and delayed the announcement.
 	return (
 		<div
+			ref={containerRef}
 			role="alert"
-			aria-live="polite"
 			className={`rounded-md border border-destructive/30 bg-destructive/5 p-3 ${className ?? ""}`}
 		>
 			<button

@@ -436,6 +436,8 @@ export function CycleBuilder() {
 						<Input
 							id="cycle-name"
 							value={cycleName}
+							// The save-time summary jumps to this field while the name is blank.
+							aria-invalid={formErrors.length > 0 && !cycleName.trim()}
 							onChange={(e) => {
 								setCycleName(e.target.value);
 								setHasUnsavedChanges(true);

@@ -4,6 +4,7 @@ import type { FallbackProps } from "react-error-boundary";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { Button } from "@/app/components/ui/button";
+import { lastReportedErrorId } from "@/lib/errorReporting";
 
 /**
  * Detects chunk/module load failures caused by a new deployment
@@ -55,15 +56,54 @@ function safeSessionRemove(key: string): void {
 	}
 }
 
+// crypto.randomUUID only exists in secure contexts (not plain-HTTP LAN
+// testing), and this screen must never throw while handling an error.
+function localErrorId(): string {
+	return typeof globalThis.crypto?.randomUUID === "function"
+		? globalThis.crypto.randomUUID()
+		: `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function PageErrorFallback({
 	error,
 	resetErrorBoundary,
 }: FallbackProps) {
 	const navigate = useNavigate();
-	const [errorId] = useState(() => crypto.randomUUID());
+	const [localId] = useState(localErrorId);
+	const [reportedId, setReportedId] = useState<string>();
+	const errorId = reportedId ?? localId;
 	const hasAutoReloaded = useRef(false);
 	const errorMessage =
 		error instanceof Error ? error.message : "Unknown application error";
+
+	// React reports the error to the root callbacks during the commit, before
+	// effects run, so with Sentry on this picks up the id of that event: the
+	// id the user copies is the one support can look up. Without Sentry the
+	// local id is logged beside the error so the console run is searchable.
+	useEffect(() => {
+		const sentryId = lastReportedErrorId();
+		if (sentryId) {
+			setReportedId(sentryId);
+		} else {
+			console.error(`[error id ${localId}]`, error);
+		}
+	}, [error, localId]);
+
+	const copyErrorId = async () => {
+		try {
+			await navigator.clipboard.writeText(errorId);
+			toast.success("Error id copied");
+		} catch {
+			toast.error("Couldn't copy the error id — select it above instead");
+		}
+	};
+
+	const backToDashboard = () => {
+		navigate("/dashboard");
+		// The app-level boundary is not keyed by location, so navigating alone
+		// would leave this fallback on screen.
+		resetErrorBoundary();
+	};
 
 	useEffect(() => {
 		if (!isChunkLoadError(error)) return;
@@ -95,12 +135,15 @@ export function PageErrorFallback({
 							? "New version available"
 							: "Something went wrong"}
 				</h2>
-				<p className="text-muted-foreground mb-6 text-sm">
+				<p className="text-muted-foreground mb-2 text-sm">
 					{offlineChunkError
 						? "This page hasn't been downloaded for offline use yet. Reconnect and try again."
 						: chunkError
 							? "The app has been updated. Reloading to get the latest version..."
 							: errorMessage}
+				</p>
+				<p className="text-muted-foreground mb-6 text-xs">
+					Error id: <span className="font-data select-all">{errorId}</span>
 				</p>
 				<div className="flex flex-wrap justify-center gap-2">
 					<Button
@@ -122,17 +165,11 @@ export function PageErrorFallback({
 							"Try Again"
 						)}
 					</Button>
-					<Button
-						variant="outline"
-						onClick={() => {
-							void navigator.clipboard?.writeText(errorId);
-							toast.error("Something went wrong — error id copied");
-						}}
-					>
-						<Copy className="w-4 h-4" />
+					<Button variant="outline" onClick={() => void copyErrorId()}>
+						<Copy aria-hidden="true" className="w-4 h-4" />
 						Copy error id
 					</Button>
-					<Button variant="ghost" onClick={() => navigate("/dashboard")}>
+					<Button variant="ghost" onClick={backToDashboard}>
 						Back to dashboard
 					</Button>
 				</div>

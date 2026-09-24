@@ -3,16 +3,15 @@ import { BrowserRouter } from "react-router";
 import App from "./app/App.tsx";
 import { CookieConsentBanner } from "./app/components/CookieConsentBanner";
 import { getConsentStatus } from "./lib/consent";
+import { enableErrorReporting, forwardReactError } from "./lib/errorReporting";
 import { AuthProvider } from "./providers/AuthProvider";
 import { QueryProvider } from "./providers/QueryProvider";
 import { ThemeProvider } from "./providers/ThemeProvider";
 import "./styles/index.css";
 
-// Initialize Sentry lazily — only fetched for users who have consented
-// Lightweight proxy forwards errors to Sentry only if/when SDK loads
-let sentryHandler: ((error: unknown, errorInfo: unknown) => void) | null = null;
-// Reading consent touches localStorage, which can throw in privacy modes /
-// blocked-storage contexts. Default to not-consented rather than failing to boot.
+// Sentry is fetched only for users who have consented. Reading consent
+// touches localStorage, which can throw in privacy modes / blocked-storage
+// contexts: default to not-consented rather than failing to boot.
 let initialConsent: string | null = null;
 try {
 	initialConsent = getConsentStatus();
@@ -20,20 +19,14 @@ try {
 	initialConsent = null;
 }
 if (initialConsent === "accepted") {
-	import("./lib/sentry").then(({ initSentry, sentryErrorHandler }) => {
-		initSentry();
-		sentryHandler = sentryErrorHandler;
-	});
+	void enableErrorReporting();
 }
-const errorProxy = (error: unknown, errorInfo: unknown) => {
-	sentryHandler?.(error, errorInfo);
-};
 
 // biome-ignore lint/style/noNonNullAssertion: root element always exists in index.html
 const root = createRoot(document.getElementById("root")!, {
-	onUncaughtError: errorProxy,
-	onCaughtError: errorProxy,
-	onRecoverableError: errorProxy,
+	onUncaughtError: forwardReactError,
+	onCaughtError: forwardReactError,
+	onRecoverableError: forwardReactError,
 });
 
 root.render(

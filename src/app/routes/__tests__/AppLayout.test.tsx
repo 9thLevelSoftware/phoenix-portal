@@ -107,10 +107,6 @@ vi.mock("@/app/components/ui/sidebar", () => ({
 	),
 }));
 
-vi.mock("@/app/components/ui/sonner", () => ({
-	Toaster: () => null,
-}));
-
 function NavigationHarness() {
 	const navigate = useNavigate();
 	const location = useLocation();
