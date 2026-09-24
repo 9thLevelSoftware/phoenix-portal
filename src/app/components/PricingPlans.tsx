@@ -127,33 +127,34 @@ interface RefreshSubscriptionResponse {
 const TIER_DISPLAY: Record<SubscriptionTier, TierDisplayConfig> = {
 	FREE: {
 		icon: Flame,
-		accentBorder: "border-zinc-700",
-		accentBg: "from-zinc-800/50 to-zinc-900/50",
-		accentText: "text-zinc-400",
+		accentBorder: "border-border",
+		accentBg: "from-secondary/50 to-secondary/20",
+		accentText: "text-muted-foreground",
 		buttonClass: "",
 	},
 	EMBER: {
 		icon: Sparkles,
-		accentBorder: "border-[var(--color-forge-green)]",
-		accentBg: "from-[var(--color-forge-green)]/10 to-emerald-900/10",
-		accentText: "text-[var(--color-forge-green)]",
+		accentBorder: "border-success",
+		accentBg: "from-success/10 to-success/5",
+		accentText: "text-success",
 		buttonClass:
-			"bg-[var(--color-forge-green)] hover:bg-[var(--color-forge-green)]/90 text-white border-0",
+			"bg-success hover:bg-success/90 text-success-foreground border-0",
 	},
 	FLAME: {
 		icon: Flame,
 		accentBorder: "border-primary",
 		accentBg: "from-primary/10 to-chart-2/10",
 		accentText: "text-primary",
-		buttonClass: "bg-primary hover:bg-primary/90 text-white border-0",
+		buttonClass:
+			"bg-primary hover:bg-primary/90 text-primary-foreground border-0",
 		popular: true,
 	},
 	INFERNO: {
 		icon: Crown,
 		accentBorder: "border-accent",
-		accentBg: "from-accent/10 to-[#B45309]/10",
+		accentBg: "from-accent/10 to-[var(--warning)]/10",
 		accentText: "text-accent",
-		buttonClass: "bg-accent hover:bg-accent/90 text-black border-0",
+		buttonClass: "bg-accent hover:bg-accent/90 text-accent-foreground border-0",
 	},
 };
 
@@ -882,7 +883,9 @@ export function PricingPlans() {
 		<div className="min-h-screen p-4 md:p-8">
 			<div className="max-w-5xl mx-auto">
 				<div className="text-center mb-10">
-					<h1 className="text-display-2 text-white mb-3">Choose Your Plan</h1>
+					<h1 className="text-display-2 text-foreground mb-3">
+						Choose Your Plan
+					</h1>
 					<p className="text-muted-foreground text-lg max-w-2xl mx-auto">
 						Unlock premium features to get the most out of your training data
 					</p>
@@ -890,7 +893,7 @@ export function PricingPlans() {
 
 				<div className="flex items-center justify-center gap-3 mb-10">
 					<span
-						className={`text-sm font-medium ${!isAnnual ? "text-white" : "text-muted-foreground"}`}
+						className={`text-sm font-medium ${!isAnnual ? "text-foreground" : "text-muted-foreground"}`}
 					>
 						Monthly
 					</span>
@@ -900,7 +903,7 @@ export function PricingPlans() {
 						aria-label="Annual billing"
 					/>
 					<span
-						className={`text-sm font-medium ${isAnnual ? "text-white" : "text-muted-foreground"}`}
+						className={`text-sm font-medium ${isAnnual ? "text-foreground" : "text-muted-foreground"}`}
 					>
 						Annual
 					</span>
@@ -918,7 +921,7 @@ export function PricingPlans() {
 						role="status"
 					>
 						<AlertTriangle className="w-5 h-5 text-warning shrink-0" />
-						<p className="text-sm text-white flex-1">
+						<p className="text-sm text-foreground flex-1">
 							Your last payment failed — update your card to keep your plan.
 						</p>
 						<Button
@@ -942,7 +945,7 @@ export function PricingPlans() {
 					<div
 						role="status"
 						data-testid="checkout-activation-pending"
-						className="max-w-2xl mx-auto mb-8 flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-white"
+						className="max-w-2xl mx-auto mb-8 flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-foreground"
 					>
 						<Loader2 className="w-4 h-4 shrink-0 animate-spin text-primary" />
 						<span>
@@ -957,7 +960,7 @@ export function PricingPlans() {
 						className="max-w-lg mx-auto text-center py-16"
 						data-testid="billing-status-error"
 					>
-						<p className="text-lg text-white mb-2">
+						<p className="text-lg text-foreground mb-2">
 							Couldn't load billing status
 						</p>
 						<p className="text-sm text-muted-foreground mb-6">
@@ -991,7 +994,7 @@ export function PricingPlans() {
 								>
 									{tierConfig.popular && (
 										<div className="absolute -top-3 left-1/2 -translate-x-1/2">
-											<Badge className="bg-primary text-white border-0 px-3">
+											<Badge className="bg-primary text-primary-foreground border-0 px-3">
 												Most Popular
 											</Badge>
 										</div>
@@ -1035,7 +1038,7 @@ export function PricingPlans() {
 									<CardContent className="text-center">
 										<div className="mb-6">
 											<div className="flex items-baseline justify-center gap-1">
-												<span className="text-4xl font-bold text-white font-data">
+												<span className="text-4xl font-bold text-foreground font-data">
 													{isAnnual
 														? tierConfig.annualMonthly
 														: tierConfig.monthlyPrice}
@@ -1102,7 +1105,7 @@ export function PricingPlans() {
 					<AlertDialogFooter>
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
-							className="bg-primary text-white border-0"
+							className="bg-primary text-primary-foreground border-0"
 							onClick={() => {
 								if (pendingPlanChange) {
 									void handlePlanChange(pendingPlanChange);

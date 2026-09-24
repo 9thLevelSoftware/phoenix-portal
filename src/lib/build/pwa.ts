@@ -22,6 +22,8 @@ type ManifestTransform = NonNullable<
  */
 export const PWA_SHELL_STATIC_FILES = [
 	"index.html",
+	// Pre-paint theme script loaded by index.html (public/theme-boot.js).
+	"theme-boot.js",
 	"manifest.webmanifest",
 	"favicon.svg",
 	"pwa-192x192.png",

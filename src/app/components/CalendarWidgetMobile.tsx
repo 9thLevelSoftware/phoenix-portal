@@ -62,16 +62,18 @@ export function CalendarWidgetMobile({
 					type="button"
 					onClick={() => navigateMonth("prev")}
 					aria-label="Previous month"
-					className="flex items-center justify-center h-11 w-11 rounded-lg text-muted-foreground hover:text-white hover:bg-secondary active:bg-secondary/70 transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-primary"
+					className="flex items-center justify-center h-11 w-11 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary active:bg-secondary/70 transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-primary"
 				>
 					<ChevronLeft className="h-5 w-5" />
 				</button>
-				<span className="text-base font-semibold text-white">{monthLabel}</span>
+				<span className="text-base font-semibold text-foreground">
+					{monthLabel}
+				</span>
 				<button
 					type="button"
 					onClick={() => navigateMonth("next")}
 					aria-label="Next month"
-					className="flex items-center justify-center h-11 w-11 rounded-lg text-muted-foreground hover:text-white hover:bg-secondary active:bg-secondary/70 transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-primary"
+					className="flex items-center justify-center h-11 w-11 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary active:bg-secondary/70 transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-primary"
 				>
 					<ChevronRight className="h-5 w-5" />
 				</button>
@@ -118,9 +120,9 @@ export function CalendarWidgetMobile({
 								// 44px minimum height for WCAG 2.5.5 touch target
 								"h-11 w-full rounded-lg text-sm font-medium transition-colors motion-reduce:transition-none relative",
 								"active:scale-95 focus:outline-none focus:ring-2 focus:ring-primary",
-								!selected && !today && "hover:bg-secondary text-white",
-								selected && "bg-primary text-white",
-								today && !selected && "ring-2 ring-primary/50 text-white",
+								!selected && !today && "hover:bg-secondary text-foreground",
+								selected && "bg-primary text-on-primary",
+								today && !selected && "ring-2 ring-primary/50 text-foreground",
 								locked && "opacity-40 cursor-not-allowed",
 							)}
 						>

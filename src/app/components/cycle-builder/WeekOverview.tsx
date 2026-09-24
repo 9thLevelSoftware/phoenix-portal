@@ -1,6 +1,7 @@
 import { BarChart3 } from "lucide-react";
 import { Card } from "@/app/components/ui/card";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import type { CycleDay } from "./types";
 
 interface WeekOverviewProps {
@@ -8,24 +9,26 @@ interface WeekOverviewProps {
 }
 
 export function WeekOverview({ days }: WeekOverviewProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const workoutDays = days.filter((d) => d.type === "workout").length;
 	const restDays = days.filter((d) => d.type === "rest").length;
 
 	// Calculate muscle distribution (mock calculation)
 	const muscleDistribution = [
 		{ name: "Chest", percentage: 22, color: "var(--primary)" },
-		{ name: "Back", percentage: 20, color: PHOENIX.flameRed },
-		{ name: "Legs", percentage: 18, color: PHOENIX.gold },
-		{ name: "Shoulders", percentage: 15, color: PHOENIX.forgeGreen },
-		{ name: "Arms", percentage: 15, color: "#6366F1" },
-		{ name: "Core", percentage: 10, color: "#EC4899" },
+		{ name: "Back", percentage: 20, color: PHOENIX().flameRed },
+		{ name: "Legs", percentage: 18, color: PHOENIX().gold },
+		{ name: "Shoulders", percentage: 15, color: PHOENIX().forgeGreen },
+		{ name: "Arms", percentage: 15, color: "var(--chart-5)" },
+		{ name: "Core", percentage: 10, color: "var(--chart-6)" },
 	];
 
 	const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
-			<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
+			<h2 className="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
 				<BarChart3 className="w-5 h-5 text-primary" />
 				Week at a Glance
 			</h2>
@@ -68,7 +71,7 @@ export function WeekOverview({ days }: WeekOverviewProps) {
 
 			{/* Muscle Distribution */}
 			<div className="border-t border-secondary pt-6">
-				<h3 className="font-semibold text-white mb-4">
+				<h3 className="font-semibold text-foreground mb-4">
 					Muscle Group Distribution
 				</h3>
 				<p className="text-sm text-muted-foreground mb-4">

@@ -1,3 +1,4 @@
+import { getThemeTokens, type ThemeTokens } from "@/lib/theme-tokens";
 import {
 	CHART_COLORS,
 	CHART_MARGINS,
@@ -5,67 +6,71 @@ import {
 	REP_COLORS,
 } from "./ChartTheme";
 
-/** ECharts theme object matching the Phoenix dark palette */
-export const PHOENIX_ECHARTS_THEME = {
-	color: [
-		CHART_COLORS.primary, // #FF6B35 Ember
-		CHART_COLORS.secondary, // #F59E0B Gold
-		CHART_COLORS.success, // #10B981 Forge Green
-		CHART_COLORS.danger, // #DC2626 Flame Red
-		"#6366F1", // Indigo (accent)
-		"#EC4899", // Pink
-		"#06B6D4", // Cyan
-		"#8B5CF6", // Purple
-	],
-	backgroundColor: "transparent",
-	textStyle: {
-		color: CHART_COLORS.axisText,
-		fontFamily: "system-ui, sans-serif",
-	},
-	title: {
+/** Build the ECharts theme from the active token snapshot. */
+export function getPhoenixEchartsTheme(tokens: ThemeTokens = getThemeTokens()) {
+	const colors = CHART_COLORS(tokens);
+	return {
+		// Eight distinct series colours (no repeats).
+		color: [
+			colors.primary,
+			colors.secondary,
+			colors.success,
+			colors.danger,
+			tokens.chart2,
+			tokens.chart6,
+			tokens.chart7,
+			tokens.chart5,
+		],
+		backgroundColor: "transparent",
 		textStyle: {
-			color: "#ffffff",
-			fontSize: FONT_SIZES.title,
-			fontWeight: 600,
+			color: colors.axisText,
+			fontFamily: "system-ui, sans-serif",
 		},
-	},
-	categoryAxis: {
-		axisLine: { lineStyle: { color: "#333" } },
-		axisTick: { lineStyle: { color: "#333" } },
-		axisLabel: { color: CHART_COLORS.axisText, fontSize: FONT_SIZES.axis },
-		splitLine: { lineStyle: { color: "#1a1a2e" } },
-	},
-	valueAxis: {
-		axisLine: { lineStyle: { color: "#333" } },
-		axisTick: { lineStyle: { color: "#333" } },
-		axisLabel: { color: CHART_COLORS.axisText, fontSize: FONT_SIZES.axis },
-		splitLine: { lineStyle: { color: "#1a1a2e", type: "dashed" } },
-	},
-	tooltip: {
-		backgroundColor: CHART_COLORS.tooltipBg,
-		borderColor: CHART_COLORS.tooltipBorder,
-		textStyle: { color: "#ffffff", fontSize: 12 },
-	},
-	legend: {
-		textStyle: { color: CHART_COLORS.axisText },
-	},
-	radar: {
-		axisLine: { lineStyle: { color: "#333" } },
-		splitLine: { lineStyle: { color: "#2a2a2a" } },
-		splitArea: { areaStyle: { color: ["transparent"] } },
-	},
-	gauge: {
-		axisLine: {
-			lineStyle: {
-				color: [
-					[0.3, "#10B981"],
-					[0.7, "#F59E0B"],
-					[1, "#DC2626"],
-				],
+		title: {
+			textStyle: {
+				color: tokens.foreground,
+				fontSize: FONT_SIZES.title,
+				fontWeight: 600,
 			},
 		},
-	},
-} as const;
+		categoryAxis: {
+			axisLine: { lineStyle: { color: tokens.border } },
+			axisTick: { lineStyle: { color: tokens.border } },
+			axisLabel: { color: colors.axisText, fontSize: FONT_SIZES.axis },
+			splitLine: { lineStyle: { color: tokens.surface3 } },
+		},
+		valueAxis: {
+			axisLine: { lineStyle: { color: tokens.border } },
+			axisTick: { lineStyle: { color: tokens.border } },
+			axisLabel: { color: colors.axisText, fontSize: FONT_SIZES.axis },
+			splitLine: { lineStyle: { color: tokens.surface3, type: "dashed" } },
+		},
+		tooltip: {
+			backgroundColor: colors.tooltipBg,
+			borderColor: colors.tooltipBorder,
+			textStyle: { color: tokens.foreground, fontSize: 12 },
+		},
+		legend: {
+			textStyle: { color: colors.axisText },
+		},
+		radar: {
+			axisLine: { lineStyle: { color: tokens.border } },
+			splitLine: { lineStyle: { color: tokens.border } },
+			splitArea: { areaStyle: { color: ["transparent"] } },
+		},
+		gauge: {
+			axisLine: {
+				lineStyle: {
+					color: [
+						[0.3, tokens.success],
+						[0.7, tokens.accent],
+						[1, tokens.danger],
+					],
+				},
+			},
+		},
+	} as const;
+}
 
 /** ECharts-compatible margins */
 export const ECHARTS_GRID = {

@@ -39,6 +39,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/app/components/ui/popover";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import {
 	Tabs,
 	TabsContent,
@@ -437,7 +438,7 @@ export function Goals() {
 		return (
 			<div className="min-h-screen pb-20 md:pb-8">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-					<h1 className="text-xl font-semibold text-white mb-2">
+					<h1 className="text-xl font-semibold text-foreground mb-2">
 						Couldn't load your goals
 					</h1>
 					<p className="text-sm text-muted-foreground mb-6">
@@ -460,7 +461,9 @@ export function Goals() {
 						initial={{ opacity: 0, y: 20 }}
 						animate={{ opacity: 1, y: 0 }}
 					>
-						<h1 className="text-display-2 mb-2 text-white">Training Goals</h1>
+						<h1 className="text-display-2 mb-2 text-foreground">
+							Training Goals
+						</h1>
 						<p className="text-muted-foreground mb-8">
 							Set targets, track progress, achieve greatness.
 						</p>
@@ -494,7 +497,9 @@ export function Goals() {
 					className="flex items-center justify-between mb-8"
 				>
 					<div>
-						<h1 className="text-display-2 mb-2 text-white">Training Goals</h1>
+						<h1 className="text-display-2 mb-2 text-foreground">
+							Training Goals
+						</h1>
 						<p className="text-muted-foreground">
 							Set targets, track progress, achieve greatness.
 						</p>
@@ -507,7 +512,6 @@ export function Goals() {
 						<Button
 							onClick={() => setCreateOpen(true)}
 							disabled={atLimit}
-							variant="cta"
 							title={
 								atLimit && maxGoals !== Infinity
 									? `Maximum ${maxGoals} active goal${maxGoals > 1 ? "s" : ""} reached`
@@ -525,8 +529,8 @@ export function Goals() {
 					<div className="space-y-4">
 						{Array.from({ length: 2 }).map((_, i) => (
 							// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
-							<Card key={i} className="p-6 bg-surface-2 animate-pulse">
-								<div className="h-20" />
+							<Card key={i} className="p-6 bg-surface-2">
+								<Skeleton className="h-20 w-full" />
 							</Card>
 						))}
 					</div>
@@ -562,7 +566,7 @@ export function Goals() {
 											<div className="flex-1 min-w-0">
 												<div className="flex items-center gap-2 mb-1">
 													<Icon className="w-4 h-4 text-primary" />
-													<h3 className="text-lg font-semibold text-white">
+													<h3 className="text-lg font-semibold text-foreground">
 														{getGoalDescription(goal, unit)}
 													</h3>
 												</div>
@@ -613,7 +617,7 @@ export function Goals() {
 						<button
 							type="button"
 							onClick={() => setShowCompleted(!showCompleted)}
-							className="flex items-center gap-2 text-muted-foreground hover:text-white mb-4 transition-colors"
+							className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4 transition-colors"
 						>
 							{showCompleted ? (
 								<ChevronUp className="w-4 h-4" />
@@ -637,7 +641,7 @@ export function Goals() {
 												<Award className="w-4 h-4 text-success" />
 											</div>
 											<div>
-												<p className="text-sm text-white">
+												<p className="text-sm text-foreground">
 													{getGoalDescription(goal, unit)}
 												</p>
 												<p className="text-xs text-muted-foreground">
@@ -664,7 +668,7 @@ export function Goals() {
 						<button
 							type="button"
 							onClick={() => setShowArchived(!showArchived)}
-							className="flex items-center gap-2 text-muted-foreground hover:text-white mb-4 transition-colors"
+							className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4 transition-colors"
 						>
 							{showArchived ? (
 								<ChevronUp className="w-4 h-4" />
@@ -706,7 +710,7 @@ export function Goals() {
 															updates: { status: "active" },
 														})
 													}
-													className="hover:bg-primary/10 text-muted-foreground hover:text-white"
+													className="hover:bg-primary/10 text-muted-foreground hover:text-foreground"
 													title="Restore goal"
 												>
 													<RotateCcw className="w-4 h-4 mr-1" />
@@ -906,7 +910,7 @@ function GoalFormDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="bg-background border-secondary sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle className="text-white">{title}</DialogTitle>
+					<DialogTitle className="text-foreground">{title}</DialogTitle>
 				</DialogHeader>
 
 				<div className="space-y-6 py-4">
@@ -1090,7 +1094,6 @@ function GoalFormDialog({
 					{/* Submit */}
 					<Button
 						onClick={handleSubmit}
-						variant="cta"
 						className="w-full"
 						disabled={
 							!targetValue ||

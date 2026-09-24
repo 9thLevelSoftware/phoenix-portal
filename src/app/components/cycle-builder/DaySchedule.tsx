@@ -24,7 +24,7 @@ export function DaySchedule({
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
 			<div className="flex items-center justify-between mb-6">
-				<h2 className="text-xl font-semibold text-white flex items-center gap-2">
+				<h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
 					<Dumbbell className="w-5 h-5 text-primary" />
 					Workout Schedule
 				</h2>
@@ -44,7 +44,7 @@ export function DaySchedule({
 				<div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none" />
 				<div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none" />
 
-				<div className="overflow-x-auto pb-4 -mx-2 px-2 scrollbar-thin scrollbar-thumb-[#374151] scrollbar-track-transparent">
+				<div className="overflow-x-auto pb-4 -mx-2 px-2 scrollbar-thin scrollbar-thumb-[var(--border)] scrollbar-track-transparent">
 					<div className="flex gap-4 min-w-max px-8">
 						{days.map((day) => (
 							<DayCard

@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { PageShell } from "@/app/components/PageShell";
 import { DangerZone } from "@/app/components/profile/DangerZone";
@@ -56,6 +56,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { PHOENIX } from "@/lib/colors";
 import { cancelSuccessMessage } from "@/lib/paddle";
 import { supabase } from "@/lib/supabase";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { formatVolume, type WeightUnit } from "@/lib/units";
 import { useUpdateProfile } from "@/mutations/profile";
 import { integrationsOptions } from "@/queries/integrations";
@@ -109,8 +110,37 @@ export function formatProfileVolume(
 	return `${formatVolume(perCableKg ?? 0, unit)} per cable`;
 }
 
+const PROFILE_TABS = ["stats", "badges", "integrations", "settings"] as const;
+type ProfileTab = (typeof PROFILE_TABS)[number];
+
+function isProfileTab(value: string | null): value is ProfileTab {
+	return PROFILE_TABS.includes(value as ProfileTab);
+}
+
 export function Profile() {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const { user, signOut } = useAuth();
+	// The sidebar's Settings link is /profile?tab=settings, so the active tab
+	// follows the query string (and writes back to it) instead of always
+	// opening on stats.
+	const [searchParams, setSearchParams] = useSearchParams();
+	const requestedTab = searchParams.get("tab");
+	const activeTab: ProfileTab = isProfileTab(requestedTab)
+		? requestedTab
+		: "stats";
+	const handleTabChange = (value: string) => {
+		if (!isProfileTab(value)) return;
+		setSearchParams(
+			(previous) => {
+				const next = new URLSearchParams(previous);
+				if (value === "stats") next.delete("tab");
+				else next.set("tab", value);
+				return next;
+			},
+			{ replace: true },
+		);
+	};
 	const userId = user?.id ?? "";
 	const {
 		tier,
@@ -208,6 +238,8 @@ export function Profile() {
 	});
 
 	const streak = useStreak(workouts);
+	// Save failures are reported by useUpdateProfile as a generic toast; the
+	// raw database error stays in the logs, never on screen.
 	const updateProfile = useUpdateProfile(userId || undefined);
 
 	// Avatar upload state
@@ -340,7 +372,7 @@ export function Profile() {
 									{profile?.avatar_url ? (
 										<AvatarImage src={profile.avatar_url} alt={displayName} />
 									) : null}
-									<AvatarFallback className="bg-primary text-white text-3xl">
+									<AvatarFallback className="bg-primary text-primary-foreground text-3xl">
 										{profileLoading ? "..." : initials}
 									</AvatarFallback>
 								</Avatar>
@@ -352,12 +384,16 @@ export function Profile() {
 									aria-label="Change avatar"
 								>
 									{avatarUploading ? (
-										<Loader2 className="w-6 h-6 text-white animate-spin" />
+										<Loader2 className="w-6 h-6 text-foreground animate-spin" />
 									) : (
-										<Camera className="w-6 h-6 text-white" />
+										<Camera className="w-6 h-6 text-foreground" />
 									)}
 								</button>
+								<Label htmlFor="avatar-upload" className="sr-only">
+									Avatar image
+								</Label>
 								<input
+									id="avatar-upload"
 									ref={avatarInputRef}
 									type="file"
 									accept="image/*"
@@ -375,7 +411,7 @@ export function Profile() {
 									</>
 								) : (
 									<>
-										<h1 className="text-display-2 text-white mb-2">
+										<h1 className="text-display-2 text-foreground mb-2">
 											{displayName}
 										</h1>
 										<p className="text-muted-foreground mb-4">
@@ -384,8 +420,11 @@ export function Profile() {
 									</>
 								)}
 								<div className="flex items-center justify-center md:justify-start gap-2 mb-4">
-									<Flame className="w-5 h-5 text-accent" fill={PHOENIX.ember} />
-									<span className="text-white font-data">
+									<Flame
+										className="w-5 h-5 text-accent"
+										fill={PHOENIX().ember}
+									/>
+									<span className="text-foreground font-data">
 										{streak} day streak
 									</span>
 								</div>
@@ -402,7 +441,7 @@ export function Profile() {
 										className="text-center p-4 bg-background rounded-lg border border-secondary"
 									>
 										<stat.icon className="w-5 h-5 text-primary mx-auto mb-2" />
-										<div className="text-2xl text-white mb-1 font-data">
+										<div className="text-2xl text-foreground mb-1 font-data">
 											{stat.value}
 										</div>
 										<div className="text-xs text-muted-foreground">
@@ -423,7 +462,7 @@ export function Profile() {
 					className="mb-8"
 				>
 					<Card className="p-6 bg-surface-2 border-secondary">
-						<h3 className="text-xl text-white mb-4 flex items-center gap-2">
+						<h3 className="text-xl text-foreground mb-4 flex items-center gap-2">
 							<CreditCard className="w-5 h-5 text-primary" />
 							Subscription
 						</h3>
@@ -431,7 +470,7 @@ export function Profile() {
 							<div className="flex items-center gap-3">
 								<TierBadge />
 								<div>
-									<div className="text-white font-medium">
+									<div className="text-foreground font-medium">
 										{PLAN_LABELS[subscriptionDisplayTier]}
 									</div>
 									{/*
@@ -468,14 +507,14 @@ export function Profile() {
 							</div>
 							<div className="flex gap-2 flex-wrap items-center">
 								{!isEntitled ? (
-									<Button asChild variant="cta">
+									<Button asChild>
 										<Link to="/pricing">Subscribe</Link>
 									</Button>
 								) : (
 									<>
 										<Button
 											asChild
-											variant={needsPaymentUpdate ? "cta" : "outline"}
+											variant={needsPaymentUpdate ? "default" : "outline"}
 											size="sm"
 										>
 											{/* The full update-payment flow lives on the billing
@@ -503,7 +542,11 @@ export function Profile() {
 				</motion.div>
 
 				{/* Main Content */}
-				<Tabs defaultValue="stats" className="space-y-6">
+				<Tabs
+					value={activeTab}
+					onValueChange={handleTabChange}
+					className="space-y-6"
+				>
 					<TabsList variant="panel">
 						<TabsTrigger value="stats">Public Stats</TabsTrigger>
 						<TabsTrigger value="badges">Badges</TabsTrigger>
@@ -516,7 +559,7 @@ export function Profile() {
 						<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 							{/* Top Exercises */}
 							<Card className="p-6 bg-surface-2 border-secondary">
-								<h3 className="text-xl text-white mb-6">Top Exercises</h3>
+								<h3 className="text-xl text-foreground mb-6">Top Exercises</h3>
 								{exercisesLoading ? (
 									<div className="space-y-4">
 										{Array.from({ length: 5 }).map((_, i) => (
@@ -551,7 +594,7 @@ export function Profile() {
 													<span className="text-sm text-muted-foreground w-5">
 														#{index + 1}
 													</span>
-													<div className="text-white">{exercise.name}</div>
+													<div className="text-foreground">{exercise.name}</div>
 												</div>
 												<div className="text-right">
 													<div className="text-primary font-data">
@@ -566,7 +609,9 @@ export function Profile() {
 
 							{/* Achievement Summary */}
 							<Card className="p-6 bg-surface-2 border-secondary">
-								<h3 className="text-xl text-white mb-6">Achievement Summary</h3>
+								<h3 className="text-xl text-foreground mb-6">
+									Achievement Summary
+								</h3>
 								<div className="space-y-4">
 									<div className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg">
 										<div className="text-sm text-muted-foreground mb-1">
@@ -578,7 +623,7 @@ export function Profile() {
 												: formatProfileVolume(stats?.totalVolume, weightUnit)}
 										</div>
 									</div>
-									<div className="p-4 bg-gradient-to-br from-success/10 to-emerald-600/10 border border-success/30 rounded-lg">
+									<div className="p-4 bg-gradient-to-br from-success/10 to-success/5 border border-success/30 rounded-lg">
 										<div className="text-sm text-muted-foreground mb-1">
 											Best Streak
 										</div>
@@ -603,7 +648,7 @@ export function Profile() {
 					<TabsContent value="badges" className="space-y-6">
 						<div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 							<Card className="p-6 bg-surface-2 border-secondary">
-								<h3 className="text-xl text-white mb-4 flex items-center gap-2">
+								<h3 className="text-xl text-foreground mb-4 flex items-center gap-2">
 									<Award className="w-5 h-5 text-primary" />
 									Badge Summary
 								</h3>
@@ -612,7 +657,7 @@ export function Profile() {
 										<div className="text-sm text-muted-foreground">
 											Badges Earned
 										</div>
-										<div className="text-3xl text-white font-data">
+										<div className="text-3xl text-foreground font-data">
 											{badgesLoading ? "..." : (earnedBadges?.length ?? 0)}
 										</div>
 									</div>
@@ -639,7 +684,7 @@ export function Profile() {
 							</Card>
 
 							<Card className="p-6 bg-surface-2 border-secondary">
-								<h3 className="text-xl text-white mb-4 flex items-center gap-2">
+								<h3 className="text-xl text-foreground mb-4 flex items-center gap-2">
 									<Shield className="w-5 h-5 text-accent" />
 									RPG Attributes
 								</h3>
@@ -647,7 +692,7 @@ export function Profile() {
 									<div className="space-y-3">
 										<div className="flex items-center justify-between text-sm">
 											<span className="text-muted-foreground">Class</span>
-											<span className="text-white">
+											<span className="text-foreground">
 												{rpgAttributes.character_class ?? "PHOENIX"}
 											</span>
 										</div>
@@ -661,7 +706,7 @@ export function Profile() {
 											<div key={label as string}>
 												<div className="flex items-center justify-between text-sm mb-1">
 													<span className="text-muted-foreground">{label}</span>
-													<span className="text-white font-data">
+													<span className="text-foreground font-data">
 														{value as number}
 													</span>
 												</div>
@@ -691,7 +736,7 @@ export function Profile() {
 							</Card>
 
 							<Card className="p-6 bg-surface-2 border-secondary">
-								<h3 className="text-xl text-white mb-4 flex items-center gap-2">
+								<h3 className="text-xl text-foreground mb-4 flex items-center gap-2">
 									<Flame className="w-5 h-5 text-warning" />
 									Gamification
 								</h3>
@@ -700,7 +745,7 @@ export function Profile() {
 										<span className="text-muted-foreground">
 											Total Workouts
 										</span>
-										<span className="text-white font-data">
+										<span className="text-foreground font-data">
 											{gamificationStats?.total_workouts ??
 												stats?.totalWorkouts ??
 												0}
@@ -708,7 +753,7 @@ export function Profile() {
 									</div>
 									<div className="flex items-center justify-between py-2 border-b border-secondary">
 										<span className="text-muted-foreground">Total Reps</span>
-										<span className="text-white font-data">
+										<span className="text-foreground font-data">
 											{gamificationStats?.total_reps ?? 0}
 										</span>
 									</div>
@@ -729,7 +774,7 @@ export function Profile() {
 
 						<Card className="p-6 bg-surface-2 border-secondary">
 							<div className="flex items-center justify-between mb-6">
-								<h3 className="text-xl text-white">Earned Badges</h3>
+								<h3 className="text-xl text-foreground">Earned Badges</h3>
 								{earnedBadges && earnedBadges.length > 0 && (
 									<Badge className="bg-primary/20 text-primary border-primary/30">
 										{earnedBadges.length} total
@@ -768,7 +813,9 @@ export function Profile() {
 										>
 											<div className="flex items-start justify-between gap-3">
 												<div>
-													<div className="text-white">{badge.badge_name}</div>
+													<div className="text-foreground">
+														{badge.badge_name}
+													</div>
 													<div className="text-sm text-muted-foreground">
 														{badge.badge_description ?? badge.badge_id}
 													</div>
@@ -790,7 +837,7 @@ export function Profile() {
 					{/* Integrations Tab */}
 					<TabsContent value="integrations" className="space-y-6">
 						<Card className="p-6 bg-surface-2 border-secondary">
-							<h3 className="text-xl text-white mb-6">Connected Apps</h3>
+							<h3 className="text-xl text-foreground mb-6">Connected Apps</h3>
 							{integrationsLoading ? (
 								<div className="space-y-4">
 									{Array.from({ length: 3 }).map((_, i) => (
@@ -819,7 +866,7 @@ export function Profile() {
 									<p className="text-sm text-muted-foreground mb-4">
 										Connect your fitness apps to sync data
 									</p>
-									<Button variant="cta" asChild>
+									<Button asChild>
 										<Link to="/integrations">Manage Integrations</Link>
 									</Button>
 								</div>
@@ -838,11 +885,13 @@ export function Profile() {
 													className="flex items-center justify-between p-4 bg-background rounded-lg border border-secondary"
 												>
 													<div className="flex items-center gap-4">
-														<div className="w-12 h-12 bg-secondary rounded-lg flex items-center justify-center text-xl font-bold text-white">
+														<div className="w-12 h-12 bg-secondary rounded-lg flex items-center justify-center text-xl font-bold text-foreground">
 															{meta.logo}
 														</div>
 														<div>
-															<div className="text-white">{meta.label}</div>
+															<div className="text-foreground">
+																{meta.label}
+															</div>
 															<div className="text-sm text-muted-foreground">
 																{isConnected
 																	? `Connected${
@@ -882,18 +931,18 @@ export function Profile() {
 					{/* Settings Tab */}
 					<TabsContent value="settings" className="space-y-6">
 						<Card className="p-6 bg-surface-2 border-secondary">
-							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
+							<h3 className="text-xl text-foreground mb-6 flex items-center gap-2">
 								<Bell className="w-5 h-5" />
 								Notification Settings
 							</h3>
-							<p className="text-sm text-muted-foreground mb-4 p-3 rounded-md bg-amber-500/10 border border-amber-500/20">
+							<p className="text-sm text-muted-foreground mb-4 p-3 rounded-md bg-warning/10 border border-warning/20">
 								Notification delivery is not yet active. These preferences are
 								saved and will take effect once the notification system is live.
 							</p>
 							<div className="space-y-4">
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">Email digests</div>
+										<div className="text-foreground">Email digests</div>
 										<div className="text-sm text-muted-foreground">
 											Weekly summary of your progress
 										</div>
@@ -911,7 +960,7 @@ export function Profile() {
 								</div>
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">Push notifications</div>
+										<div className="text-foreground">Push notifications</div>
 										<div className="text-sm text-muted-foreground">
 											Get notified of challenges and PRs
 										</div>
@@ -929,7 +978,7 @@ export function Profile() {
 								</div>
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">Streak reminders</div>
+										<div className="text-foreground">Streak reminders</div>
 										<div className="text-sm text-muted-foreground">
 											Don't break your streak!
 										</div>
@@ -947,7 +996,7 @@ export function Profile() {
 								</div>
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">Challenge updates</div>
+										<div className="text-foreground">Challenge updates</div>
 										<div className="text-sm text-muted-foreground">
 											Updates on active challenges
 										</div>
@@ -967,20 +1016,26 @@ export function Profile() {
 						</Card>
 
 						<Card className="p-6 bg-surface-2 border-secondary">
-							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
+							<h3 className="text-xl text-foreground mb-6 flex items-center gap-2">
 								<Globe className="w-5 h-5" />
 								General Settings
 							</h3>
 							<div className="space-y-4">
 								<div>
-									<Label className="text-white mb-2 block">Display Name</Label>
+									<Label
+										htmlFor="profile-display-name"
+										className="text-foreground mb-2 block"
+									>
+										Display Name
+									</Label>
 									<div className="flex gap-2">
 										<Input
+											id="profile-display-name"
 											type="text"
 											value={editDisplayName}
 											onChange={(e) => setEditDisplayName(e.target.value)}
 											placeholder="Enter your display name..."
-											className="flex-1 bg-background border-secondary text-white"
+											className="flex-1 bg-background border-secondary text-foreground"
 											onKeyDown={(e) => {
 												if (
 													e.key === "Enter" &&
@@ -995,7 +1050,7 @@ export function Profile() {
 										/>
 										<Button
 											variant="outline"
-											className="border-secondary text-white hover:bg-primary hover:border-primary"
+											className="border-secondary text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary"
 											disabled={
 												updateProfile.isPending ||
 												!editDisplayName.trim() ||
@@ -1012,7 +1067,9 @@ export function Profile() {
 									</div>
 								</div>
 								<div>
-									<Label className="text-white mb-2 block">Weight Unit</Label>
+									<Label className="text-foreground mb-2 block">
+										Weight Unit
+									</Label>
 									<div className="flex gap-2">
 										<Button
 											className={
@@ -1054,14 +1111,14 @@ export function Profile() {
 						</Card>
 
 						<Card className="p-6 bg-surface-2 border-secondary">
-							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
+							<h3 className="text-xl text-foreground mb-6 flex items-center gap-2">
 								<Shield className="w-5 h-5" />
 								Privacy & Security
 							</h3>
 							<div className="space-y-4">
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">Profile visibility</div>
+										<div className="text-foreground">Profile visibility</div>
 										<div className="text-sm text-muted-foreground">
 											Make your profile visible to others
 										</div>
@@ -1079,7 +1136,9 @@ export function Profile() {
 								</div>
 								<div className="flex items-center justify-between py-3 border-b border-secondary">
 									<div>
-										<div className="text-white">Leaderboard participation</div>
+										<div className="text-foreground">
+											Leaderboard participation
+										</div>
 										<div className="text-sm text-muted-foreground">
 											Appear on public leaderboards
 										</div>
@@ -1105,7 +1164,7 @@ export function Profile() {
 						<DangerZone />
 
 						<Card className="p-6 bg-surface-2 border-secondary">
-							<h3 className="text-xl text-white mb-6 flex items-center gap-2">
+							<h3 className="text-xl text-foreground mb-6 flex items-center gap-2">
 								<LogOut className="w-5 h-5" />
 								Account
 							</h3>
@@ -1114,7 +1173,7 @@ export function Profile() {
 									Sign out of your account on this device
 								</p>
 								<Button
-									className="w-full bg-chart-2 hover:bg-chart-2/80 text-white border-0"
+									className="w-full bg-chart-2 hover:bg-chart-2/80 text-background border-0"
 									onClick={async () => {
 										await signOut();
 									}}

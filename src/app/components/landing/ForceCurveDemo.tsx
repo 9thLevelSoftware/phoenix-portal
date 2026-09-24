@@ -11,6 +11,7 @@ import { bisector } from "@visx/vendor/d3-array";
 import { useCallback } from "react";
 
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { classifyVbtZone, type SimplifiedZoneInfo } from "@/lib/vbt";
 
 // ---------------------------------------------------------------------------
@@ -71,8 +72,8 @@ const bisectTime = bisector<DataPoint, number>((d) => d.time).left;
 // Axis style constants
 // ---------------------------------------------------------------------------
 
-const AXIS_TEXT_COLOR = "#9CA3AF";
-const GRID_LINE_COLOR = "#1A1A2E";
+const AXIS_TEXT_COLOR = "var(--muted-foreground)";
+const GRID_LINE_COLOR = "var(--surface-3)";
 const AXIS_FONT_SIZE = 10;
 const LABEL_FONT_SIZE = 11;
 
@@ -81,6 +82,8 @@ const LABEL_FONT_SIZE = 11;
 // ---------------------------------------------------------------------------
 
 export function Chart({ width, height }: { width: number; height: number }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const {
 		showTooltip,
 		hideTooltip,
@@ -149,8 +152,8 @@ export function Chart({ width, height }: { width: number; height: number }) {
 			>
 				<LinearGradient
 					id="force-area-gradient"
-					from={PHOENIX.ember}
-					to={PHOENIX.ember}
+					from={PHOENIX().ember}
+					to={PHOENIX().ember}
 					fromOpacity={0.25}
 					toOpacity={0}
 					vertical
@@ -173,7 +176,7 @@ export function Chart({ width, height }: { width: number; height: number }) {
 						x={(d) => xScale(getTime(d))}
 						y={(d) => yScale(getForce(d))}
 						curve={curveMonotoneX}
-						stroke={PHOENIX.ember}
+						stroke={PHOENIX().ember}
 						strokeWidth={2}
 					/>
 
@@ -183,7 +186,7 @@ export function Chart({ width, height }: { width: number; height: number }) {
 						y1={0}
 						x2={phaseDividerX}
 						y2={innerHeight}
-						stroke="rgba(255, 255, 255, 0.08)"
+						stroke="color-mix(in srgb, var(--foreground) 8%, transparent)"
 						strokeDasharray="4 4"
 					/>
 
@@ -198,7 +201,7 @@ export function Chart({ width, height }: { width: number; height: number }) {
 									y1={0}
 									x2={tooltipLeft - MARGINS.left}
 									y2={innerHeight}
-									stroke="rgba(255, 255, 255, 0.2)"
+									stroke="color-mix(in srgb, var(--foreground) 20%, transparent)"
 									strokeWidth={1}
 									pointerEvents="none"
 								/>
@@ -206,8 +209,8 @@ export function Chart({ width, height }: { width: number; height: number }) {
 									cx={tooltipLeft - MARGINS.left}
 									cy={tooltipTop - MARGINS.top}
 									r={4}
-									fill={PHOENIX.ember}
-									stroke={PHOENIX.white}
+									fill={PHOENIX().ember}
+									stroke={PHOENIX().white}
 									strokeWidth={1.5}
 									pointerEvents="none"
 								/>
@@ -264,15 +267,15 @@ export function Chart({ width, height }: { width: number; height: number }) {
 							position: "absolute",
 							top: tooltipTop - 60,
 							left: tooltipLeft + 12,
-							backgroundColor: "#1A1A2E",
-							border: "1px solid #2D2D44",
+							backgroundColor: "var(--surface-3)",
+							border: "1px solid var(--border)",
 							borderRadius: 6,
 							padding: "6px 10px",
 							fontSize: 12,
 							lineHeight: 1.4,
-							color: "#fff",
+							color: "var(--foreground)",
 							pointerEvents: "none",
-							boxShadow: "0 4px 12px rgba(0, 0, 0, 0.4)",
+							boxShadow: "var(--elevation-md)",
 							whiteSpace: "nowrap",
 						}}
 					>
@@ -303,7 +306,7 @@ const CHART_HEIGHT = 220;
 
 export function ForceCurveDemo() {
 	return (
-		<div className="rounded-lg border border-white/[0.06] bg-surface-2 p-3">
+		<div className="rounded-lg border border-foreground/[0.06] bg-surface-2 p-3">
 			{/* Header */}
 			<div className="mb-2">
 				<span className="eyebrow text-primary">LIVE DEMO</span>

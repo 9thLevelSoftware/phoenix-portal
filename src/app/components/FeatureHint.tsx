@@ -52,13 +52,13 @@ export function FeatureHint({
 			<TooltipContent
 				side={side}
 				sideOffset={8}
-				className="max-w-[240px] bg-[#1A1A1A] border border-[#FF6B35]/30 text-white p-3"
+				className="max-w-[240px] bg-[var(--surface-1)] border border-[var(--primary)]/30 text-foreground p-3"
 			>
-				<p className="text-xs text-[#9CA3AF] mb-2">{content}</p>
+				<p className="text-xs text-[var(--muted-foreground)] mb-2">{content}</p>
 				<Button
 					variant="ghost"
 					size="sm"
-					className="h-6 px-2 text-xs text-[#FF6B35] hover:text-[#FF6B35]/80 hover:bg-white/5"
+					className="h-6 px-2 text-xs text-[var(--primary)] hover:text-[var(--primary)]/80 hover:bg-foreground/5"
 					onClick={() => dismissHint.mutate({ hintId })}
 				>
 					Got it

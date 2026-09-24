@@ -8,6 +8,7 @@ import {
 	History,
 	LayoutDashboard,
 	Link2,
+	type LucideIcon,
 	MoreHorizontal,
 	Repeat,
 	Target,
@@ -18,36 +19,43 @@ import {
 import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router";
+import { ThemeToggle } from "@/app/components/ThemeToggle";
 import {
 	Drawer,
 	DrawerContent,
+	DrawerDescription,
 	DrawerHeader,
 	DrawerTitle,
 	DrawerTrigger,
 } from "@/app/components/ui/drawer";
-import { PHOENIX } from "@/lib/colors";
 import { useUIStore } from "@/stores/useUIStore";
 
 const primaryItems = [
 	{ path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
 	{ path: "/history", label: "Workouts", icon: History },
+	{ path: "/routines", label: "Routines", icon: Dumbbell },
 	{ path: "/analytics", label: "Analytics", icon: BarChart3 },
-	{ path: "/community", label: "Community", icon: Users },
 ];
 
-const moreGroups = [
+// Every other destination the desktop sidebar offers. The bottom bar has room
+// for four tabs plus "More", and the sidebar cannot be opened on phones, so
+// anything missing here is unreachable on mobile.
+const moreGroups: Array<{
+	label: string;
+	items: Array<{ path: string; label: string; icon: LucideIcon }>;
+}> = [
 	{
 		label: "Training",
 		items: [
 			{ path: "/goals", label: "Goals", icon: Target },
 			{ path: "/recovery", label: "Recovery", icon: HeartPulse },
-			{ path: "/routines", label: "Routines", icon: Dumbbell },
 			{ path: "/cycles", label: "Cycles", icon: Repeat },
 		],
 	},
 	{
 		label: "Social",
 		items: [
+			{ path: "/community", label: "Community", icon: Users },
 			{ path: "/challenges", label: "Challenges", icon: Trophy },
 			{ path: "/leaderboard", label: "Leaderboard", icon: Award },
 		],
@@ -62,37 +70,75 @@ const moreGroups = [
 	},
 ];
 
-// Flat list of all "more" paths for active state detection
 const moreItemPaths = moreGroups.flatMap((g) => g.items.map((i) => i.path));
+
+function matchesPath(pathname: string, path: string) {
+	return (
+		pathname === path ||
+		(path !== "/dashboard" && pathname.startsWith(`${path}/`))
+	);
+}
+
+function TabIndicator() {
+	return (
+		<>
+			<motion.div
+				layoutId="activeMobileTab"
+				className="absolute top-0 left-0 right-0 h-0.5 bg-primary rounded-full"
+				transition={{ type: "spring", stiffness: 500, damping: 30 }}
+			/>
+			<motion.div
+				className="absolute inset-0 bg-primary/10 rounded-lg -z-10"
+				initial={{ opacity: 0 }}
+				animate={{ opacity: 1 }}
+			/>
+		</>
+	);
+}
+
+function TabLabel({ active, children }: { active: boolean; children: string }) {
+	return (
+		<motion.span
+			className={`text-xs transition-colors ${
+				active ? "text-primary font-medium" : "text-muted-foreground"
+			}`}
+			animate={{ opacity: active ? 1 : 0.8, y: active ? 0 : 1 }}
+		>
+			{children}
+		</motion.span>
+	);
+}
+
+const tabClassName =
+	"relative flex min-h-11 flex-col items-center justify-center gap-1 py-2 px-3 min-w-[60px] transition-colors";
 
 export function MobileBottomNav() {
 	const [moreOpen, setMoreOpen] = useState(false);
 	const location = useLocation();
 	const streak = useUIStore((s) => s.streak);
 
-	const isMoreActive = moreItemPaths.some((path) => location.pathname === path);
+	const isMoreActive = moreItemPaths.some((path) =>
+		matchesPath(location.pathname, path),
+	);
 
-	// Handle browser back button to close drawer
+	// The browser back button closes the drawer instead of leaving the page.
 	const handleDrawerChange = useCallback((open: boolean) => {
 		if (open) {
-			// Push a history entry so the back button can close the drawer
-			window.history.pushState({ moreDrawer: true }, "");
-		} else {
-			// If closing programmatically (not via popstate), clean up the history entry
-			if (window.history.state?.moreDrawer) {
-				window.history.back();
-			}
+			// Keep React Router's state (its idx) on the extra entry, or the
+			// next navigation is recorded with idx NaN.
+			window.history.pushState(
+				{ ...window.history.state, moreDrawer: true },
+				"",
+			);
+		} else if (window.history.state?.moreDrawer) {
+			window.history.back();
 		}
 		setMoreOpen(open);
 	}, []);
 
 	useEffect(() => {
-		function onPopState() {
-			if (moreOpen) {
-				setMoreOpen(false);
-			}
-		}
-
+		if (!moreOpen) return;
+		const onPopState = () => setMoreOpen(false);
 		window.addEventListener("popstate", onPopState);
 		return () => window.removeEventListener("popstate", onPopState);
 	}, [moreOpen]);
@@ -100,149 +146,81 @@ export function MobileBottomNav() {
 	const closeDrawer = () => setMoreOpen(false);
 
 	return (
-		<nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface-1 border-t border-secondary pb-safe">
+		<nav
+			aria-label="Primary"
+			className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface-1 border-t border-secondary pb-safe"
+		>
 			<div className="flex items-center justify-around px-2 py-2 max-w-screen-xl mx-auto">
-				{primaryItems.map((item) => (
-					<NavLink
-						key={item.path}
-						to={item.path}
-						className="relative flex flex-col items-center gap-1 py-2 px-3 min-w-[60px] transition-colors"
-					>
-						{({ isActive }) => {
-							const Icon = item.icon;
+				{primaryItems.map((item) => {
+					const isActive = matchesPath(location.pathname, item.path);
+					const Icon = item.icon;
 
-							return (
-								<>
-									{/* Active indicator line */}
-									{isActive && (
-										<motion.div
-											layoutId="activeMobileTab"
-											className="absolute top-0 left-0 right-0 h-0.5 bg-primary rounded-full"
-											transition={{
-												type: "spring",
-												stiffness: 500,
-												damping: 30,
-											}}
-										/>
-									)}
-
-									{/* Icon */}
-									<div className="relative">
-										<Icon
-											className={`w-6 h-6 transition-all ${
-												isActive
-													? "text-primary scale-110"
-													: "text-muted-foreground"
-											}`}
-										/>
-
-										{/* Streak indicator on dashboard */}
-										{item.path === "/dashboard" && streak > 0 && !isActive && (
-											<motion.div
-												className="absolute -top-2 -right-2"
-												animate={{
-													scale: [1, 1.2, 1],
-												}}
-												transition={{
-													duration: 2,
-													repeat: Infinity,
-													ease: "easeInOut",
-												}}
-											>
-												<Flame
-													className="w-3 h-3 text-accent"
-													fill={PHOENIX.ember}
-												/>
-											</motion.div>
-										)}
-									</div>
-
-									{/* Label */}
-									<motion.span
-										className={`text-xs transition-all ${
-											isActive
-												? "text-primary font-medium"
-												: "text-muted-foreground"
-										}`}
-										animate={{
-											opacity: isActive ? 1 : 0.8,
-											y: isActive ? 0 : 1,
-										}}
-									>
-										{item.label}
-									</motion.span>
-
-									{/* Active glow effect */}
-									{isActive && (
-										<motion.div
-											className="absolute inset-0 bg-primary/10 rounded-lg -z-10"
-											initial={{ opacity: 0 }}
-											animate={{ opacity: 1 }}
-											exit={{ opacity: 0 }}
-										/>
-									)}
-								</>
-							);
-						}}
-					</NavLink>
-				))}
-
-				{/* More button with drawer */}
-				<Drawer open={moreOpen} onOpenChange={handleDrawerChange}>
-					<DrawerTrigger asChild>
-						<button
-							type="button"
-							className="relative flex flex-col items-center gap-1 py-2 px-3 min-w-[60px] transition-colors"
+					return (
+						<NavLink
+							key={item.path}
+							to={item.path}
+							aria-current={isActive ? "page" : undefined}
+							className={tabClassName}
 						>
-							{/* Active indicator line when a "more" page is active */}
-							{isMoreActive && (
-								<motion.div
-									layoutId="activeMobileTab"
-									className="absolute top-0 left-0 right-0 h-0.5 bg-primary rounded-full"
-									transition={{ type: "spring", stiffness: 500, damping: 30 }}
-								/>
-							)}
-
+							{isActive && <TabIndicator />}
 							<div className="relative">
-								<MoreHorizontal
-									className={`w-6 h-6 transition-all ${
-										isMoreActive
+								<Icon
+									aria-hidden="true"
+									className={`w-6 h-6 transition-transform ${
+										isActive
 											? "text-primary scale-110"
 											: "text-muted-foreground"
 									}`}
 								/>
+								{item.path === "/dashboard" && streak > 0 && !isActive && (
+									<motion.div
+										className="absolute -top-2 -right-2"
+										animate={{ scale: [1, 1.2, 1] }}
+										transition={{
+											duration: 2,
+											repeat: Infinity,
+											ease: "easeInOut",
+										}}
+									>
+										<Flame
+											aria-hidden="true"
+											className="w-3 h-3 text-accent fill-primary"
+										/>
+									</motion.div>
+								)}
 							</div>
+							<TabLabel active={isActive}>{item.label}</TabLabel>
+						</NavLink>
+					);
+				})}
 
-							<motion.span
-								className={`text-xs transition-all ${
+				<Drawer open={moreOpen} onOpenChange={handleDrawerChange}>
+					<DrawerTrigger asChild>
+						<button type="button" className={tabClassName}>
+							{isMoreActive && <TabIndicator />}
+							<MoreHorizontal
+								aria-hidden="true"
+								className={`w-6 h-6 transition-transform ${
 									isMoreActive
-										? "text-primary font-medium"
+										? "text-primary scale-110"
 										: "text-muted-foreground"
 								}`}
-								animate={{
-									opacity: isMoreActive ? 1 : 0.8,
-									y: isMoreActive ? 0 : 1,
-								}}
-							>
-								More
-							</motion.span>
-
-							{isMoreActive && (
-								<motion.div
-									className="absolute inset-0 bg-primary/10 rounded-lg -z-10"
-									initial={{ opacity: 0 }}
-									animate={{ opacity: 1 }}
-									exit={{ opacity: 0 }}
-								/>
-							)}
+							/>
+							<TabLabel active={isMoreActive}>More</TabLabel>
 						</button>
 					</DrawerTrigger>
 
 					<DrawerContent className="bg-background border-secondary">
 						<DrawerHeader>
-							<DrawerTitle className="text-white">More</DrawerTitle>
+							<DrawerTitle className="text-foreground">More</DrawerTitle>
+							<DrawerDescription className="sr-only">
+								Other pages and appearance settings
+							</DrawerDescription>
 						</DrawerHeader>
-						<div className="pb-8">
+						<nav
+							aria-label="More pages"
+							className="max-h-[60vh] overflow-y-auto"
+						>
 							{moreGroups.map((group) => (
 								<div key={group.label}>
 									<p className="eyebrow text-muted-foreground px-4 pt-4 pb-1">
@@ -250,19 +228,24 @@ export function MobileBottomNav() {
 									</p>
 									{group.items.map((item) => {
 										const Icon = item.icon;
-										const isActive = location.pathname === item.path;
+										const isActive = matchesPath(location.pathname, item.path);
 										return (
 											<Link
 												key={item.path}
 												to={item.path}
+												// Replace the entry pushed for the open drawer, so Back
+												// from the destination returns to the page, not to a
+												// dead copy of it.
+												replace
 												onClick={closeDrawer}
-												className={`flex items-center gap-3 px-4 py-3 transition-colors ${
+												aria-current={isActive ? "page" : undefined}
+												className={`flex min-h-11 items-center gap-3 px-4 py-3 transition-colors ${
 													isActive
 														? "bg-primary/10 text-primary"
 														: "text-secondary-foreground hover:bg-secondary"
 												}`}
 											>
-												<Icon className="h-5 w-5" />
+												<Icon aria-hidden="true" className="h-5 w-5" />
 												<span className="text-sm font-medium">
 													{item.label}
 												</span>
@@ -271,12 +254,15 @@ export function MobileBottomNav() {
 									})}
 								</div>
 							))}
+						</nav>
+						<div className="flex items-center justify-between gap-3 border-t border-secondary px-4 pt-3 pb-8">
+							<span className="text-sm text-muted-foreground">Theme</span>
+							<ThemeToggle />
 						</div>
 					</DrawerContent>
 				</Drawer>
 			</div>
 
-			{/* Safe area for devices with notches/home indicators */}
 			<div className="h-safe-area-inset-bottom bg-background" />
 		</nav>
 	);

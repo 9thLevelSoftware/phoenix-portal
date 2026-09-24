@@ -29,6 +29,7 @@ import {
 	Tooltip as UiTooltip,
 } from "@/app/components/ui/tooltip";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { convertWeight } from "@/lib/units";
 import { perCableUnitLabel } from "@/lib/units/loadDisplay";
 import { profileOptions } from "@/queries/profile";
@@ -99,7 +100,7 @@ function DirectionIcon({ direction }: { direction: "up" | "down" | "flat" }) {
 
 // Distinct hue for the velocity (VBT) estimate so it never reads as the same
 // metric as the green rep-based estimate.
-const VELOCITY_COLOR = "#8B7CF6";
+const VELOCITY_COLOR = "var(--chart-5)";
 
 const VELOCITY_HELP =
 	"Velocity-based (VBT) estimate from cable speed (mean concentric velocity) captured by the trainer — distinct from the stored mobile estimated 1RM.";
@@ -113,7 +114,7 @@ function InfoTooltip({ text }: { text: string }) {
 					<button
 						type="button"
 						aria-label="More info"
-						className="text-muted-foreground hover:text-white focus:outline-none"
+						className="text-muted-foreground hover:text-foreground focus:outline-none"
 					>
 						<Info className="w-3.5 h-3.5" />
 					</button>
@@ -176,8 +177,8 @@ function StatCard({
 						<span
 							className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium ${
 								stat.changePercent > 0
-									? "bg-emerald-500/15 text-emerald-400"
-									: "bg-red-500/15 text-red-400"
+									? "bg-success/15 text-success"
+									: "bg-destructive/15 text-destructive"
 							}`}
 						>
 							{stat.changePercent > 0 ? "\u2191" : "\u2193"}{" "}
@@ -209,6 +210,8 @@ export function ExerciseProgress({
 	userId,
 	initialExercise,
 }: ExerciseProgressProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const [selectedExercise, setSelectedExercise] = useState<string>(
 		initialExercise ?? "",
 	);
@@ -330,7 +333,7 @@ export function ExerciseProgress({
 	if (exercisesError) {
 		return (
 			<div className="text-center py-16">
-				<h3 className="text-2xl font-semibold text-white mb-2">
+				<h3 className="text-2xl font-semibold text-foreground mb-2">
 					Couldn't load exercise progress
 				</h3>
 				<p className="text-muted-foreground max-w-md mx-auto">
@@ -346,7 +349,7 @@ export function ExerciseProgress({
 				<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
 					<TrendingUp className="w-12 h-12 text-primary" />
 				</div>
-				<h3 className="text-2xl font-semibold text-white mb-2">
+				<h3 className="text-2xl font-semibold text-foreground mb-2">
 					No progress data yet
 				</h3>
 				<p className="text-muted-foreground max-w-md mx-auto">
@@ -362,7 +365,7 @@ export function ExerciseProgress({
 			{/* Exercise selector + time range */}
 			<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 				<Select value={selectedExercise} onValueChange={setSelectedExercise}>
-					<SelectTrigger className="w-64 bg-surface-2 border-secondary text-white">
+					<SelectTrigger className="w-64 bg-surface-2 border-secondary text-foreground">
 						<SelectValue placeholder="Select an exercise" />
 					</SelectTrigger>
 					<SelectContent>
@@ -416,19 +419,19 @@ export function ExerciseProgress({
 						<StatCard
 							label="Overall Max Weight"
 							stat={weightTrend}
-							color={PHOENIX.ember}
+							color={PHOENIX().ember}
 							unit={perCableUnitLabel(unit)}
 						/>
 						<StatCard
 							label="Overall Volume"
 							stat={volumeTrend}
-							color={PHOENIX.gold}
+							color={PHOENIX().gold}
 							unit={perCableUnitLabel(unit)}
 						/>
 						<StatCard
 							label="Estimated 1RM (mobile)"
 							stat={oneRmTrend}
-							color={PHOENIX.forgeGreen}
+							color={PHOENIX().forgeGreen}
 							unit={perCableUnitLabel(unit)}
 							info="Stored from the mobile app (hybrid Brzycki ≤10 / Epley >10). Not recomputed here."
 						/>
@@ -465,12 +468,12 @@ export function ExerciseProgress({
 												>
 													<stop
 														offset="5%"
-														stopColor={PHOENIX.ember}
+														stopColor={PHOENIX().ember}
 														stopOpacity={0.3}
 													/>
 													<stop
 														offset="95%"
-														stopColor={PHOENIX.ember}
+														stopColor={PHOENIX().ember}
 														stopOpacity={0.05}
 													/>
 												</linearGradient>
@@ -478,13 +481,13 @@ export function ExerciseProgress({
 											<CartesianGrid strokeOpacity={0.3} vertical={false} />
 											<XAxis
 												dataKey="date"
-												stroke={PHOENIX.mutedForeground}
+												stroke={PHOENIX().mutedForeground}
 												tickLine={false}
 												axisLine={false}
 												tick={{ fontSize: 11, fontFamily: "Inter, sans-serif" }}
 											/>
 											<YAxis
-												stroke={PHOENIX.mutedForeground}
+												stroke={PHOENIX().mutedForeground}
 												tickLine={false}
 												axisLine={false}
 												tick={{ fontSize: 11, fontFamily: "Inter, sans-serif" }}
@@ -494,10 +497,10 @@ export function ExerciseProgress({
 												type="monotone"
 												dataKey="maxWeight"
 												name={`Max Weight (${perCableUnitLabel(unit)})`}
-												stroke={PHOENIX.ember}
+												stroke={PHOENIX().ember}
 												strokeWidth={2}
 												fill="url(#weightGradient)"
-												dot={{ fill: PHOENIX.ember, r: 3 }}
+												dot={{ fill: PHOENIX().ember, r: 3 }}
 												activeDot={{ r: 5 }}
 												animationDuration={800}
 												animationEasing="ease-out"
@@ -534,12 +537,12 @@ export function ExerciseProgress({
 												>
 													<stop
 														offset="5%"
-														stopColor={PHOENIX.gold}
+														stopColor={PHOENIX().gold}
 														stopOpacity={0.3}
 													/>
 													<stop
 														offset="95%"
-														stopColor={PHOENIX.gold}
+														stopColor={PHOENIX().gold}
 														stopOpacity={0.05}
 													/>
 												</linearGradient>
@@ -547,13 +550,13 @@ export function ExerciseProgress({
 											<CartesianGrid strokeOpacity={0.3} vertical={false} />
 											<XAxis
 												dataKey="date"
-												stroke={PHOENIX.mutedForeground}
+												stroke={PHOENIX().mutedForeground}
 												tickLine={false}
 												axisLine={false}
 												tick={{ fontSize: 11, fontFamily: "Inter, sans-serif" }}
 											/>
 											<YAxis
-												stroke={PHOENIX.mutedForeground}
+												stroke={PHOENIX().mutedForeground}
 												tickLine={false}
 												axisLine={false}
 												tick={{ fontSize: 11, fontFamily: "Inter, sans-serif" }}
@@ -563,10 +566,10 @@ export function ExerciseProgress({
 												type="monotone"
 												dataKey="totalVolume"
 												name={`Volume (${perCableUnitLabel(unit)})`}
-												stroke={PHOENIX.gold}
+												stroke={PHOENIX().gold}
 												strokeWidth={2}
 												fill="url(#volumeGradientProgress)"
-												dot={{ fill: PHOENIX.gold, r: 3 }}
+												dot={{ fill: PHOENIX().gold, r: 3 }}
 												activeDot={{ r: 5 }}
 												animationDuration={800}
 												animationEasing="ease-out"
@@ -603,12 +606,12 @@ export function ExerciseProgress({
 												>
 													<stop
 														offset="5%"
-														stopColor={PHOENIX.forgeGreen}
+														stopColor={PHOENIX().forgeGreen}
 														stopOpacity={0.3}
 													/>
 													<stop
 														offset="95%"
-														stopColor={PHOENIX.forgeGreen}
+														stopColor={PHOENIX().forgeGreen}
 														stopOpacity={0.05}
 													/>
 												</linearGradient>
@@ -616,13 +619,13 @@ export function ExerciseProgress({
 											<CartesianGrid strokeOpacity={0.3} vertical={false} />
 											<XAxis
 												dataKey="date"
-												stroke={PHOENIX.mutedForeground}
+												stroke={PHOENIX().mutedForeground}
 												tickLine={false}
 												axisLine={false}
 												tick={{ fontSize: 11, fontFamily: "Inter, sans-serif" }}
 											/>
 											<YAxis
-												stroke={PHOENIX.mutedForeground}
+												stroke={PHOENIX().mutedForeground}
 												tickLine={false}
 												axisLine={false}
 												tick={{ fontSize: 11, fontFamily: "Inter, sans-serif" }}
@@ -632,10 +635,10 @@ export function ExerciseProgress({
 												type="monotone"
 												dataKey="estimated1RM"
 												name={`Est. 1RM, mobile (${perCableUnitLabel(unit)})`}
-												stroke={PHOENIX.forgeGreen}
+												stroke={PHOENIX().forgeGreen}
 												strokeWidth={2}
 												fill="url(#oneRmGradient)"
-												dot={{ fill: PHOENIX.forgeGreen, r: 3 }}
+												dot={{ fill: PHOENIX().forgeGreen, r: 3 }}
 												activeDot={{ r: 5 }}
 												animationDuration={800}
 												animationEasing="ease-out"

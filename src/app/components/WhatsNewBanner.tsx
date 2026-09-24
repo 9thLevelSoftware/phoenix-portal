@@ -46,21 +46,21 @@ export function WhatsNewBanner({ onDismiss }: WhatsNewBannerProps) {
 					transition={{ duration: 0.3, ease: "easeInOut" }}
 					className="overflow-hidden"
 				>
-					<div className="mx-4 mt-4 mb-2 rounded-lg border border-[#FF6B35]/30 bg-gradient-to-r from-[#FF6B35]/10 via-[#DC2626]/10 to-[#F59E0B]/10 p-4">
+					<div className="mx-4 mt-4 mb-2 rounded-lg border border-[var(--primary)]/30 bg-gradient-to-r from-[var(--primary)]/10 via-[var(--destructive)]/10 to-[var(--accent)]/10 p-4">
 						<div className="flex items-start justify-between gap-4">
 							<div className="flex items-start gap-3">
-								<Sparkles className="size-5 shrink-0 text-[#F59E0B] mt-0.5" />
+								<Sparkles className="size-5 shrink-0 text-[var(--accent)] mt-0.5" />
 								<div>
-									<h3 className="text-sm font-semibold text-white mb-2">
+									<h3 className="text-sm font-semibold text-foreground mb-2">
 										What's New in v1.1
 									</h3>
 									<ul className="space-y-1">
 										{newFeatures.map((feature) => (
 											<li
 												key={feature}
-												className="text-xs text-[#9CA3AF] flex items-baseline gap-2"
+												className="text-xs text-[var(--muted-foreground)] flex items-baseline gap-2"
 											>
-												<span className="text-[#FF6B35]">-</span>
+												<span className="text-[var(--primary)]">-</span>
 												{feature}
 											</li>
 										))}
@@ -70,7 +70,7 @@ export function WhatsNewBanner({ onDismiss }: WhatsNewBannerProps) {
 							<Button
 								variant="ghost"
 								size="icon"
-								className="shrink-0 min-w-[44px] min-h-[44px] text-[#9CA3AF] hover:text-white"
+								className="shrink-0 min-w-[44px] min-h-[44px] text-[var(--muted-foreground)] hover:text-foreground"
 								onClick={handleDismiss}
 								aria-label="Dismiss what's new banner"
 							>

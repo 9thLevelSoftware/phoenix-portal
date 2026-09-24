@@ -10,6 +10,7 @@ import { FeaturedCreators } from "@/app/components/community/FeaturedCreators";
 import { PageShell } from "@/app/components/PageShell";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import {
 	Select,
 	SelectContent,
@@ -17,6 +18,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/app/components/ui/select";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import {
 	Tabs,
 	TabsContent,
@@ -109,6 +111,18 @@ export function Community() {
 	const hasActiveFilters = Boolean(
 		debouncedSearch || filters.muscleGroup || filters.difficulty,
 	);
+	const kind = activeTab === "routines" ? "routines" : "cycles";
+	const emptyStateTitle = hasActiveFilters
+		? `No ${kind} match your filters`
+		: `Discover shared ${kind}`;
+	const emptyStateDescription = hasActiveFilters
+		? "Try adjusting your search or filters."
+		: `No shared ${kind} yet. Create one and share it with the community.`;
+	const emptyStateAction = hasActiveFilters
+		? undefined
+		: `Create ${activeTab === "routines" ? "a routine" : "a cycle"}`;
+	const contentPath =
+		activeTab === "routines" ? "/routines/new" : "/cycles/new";
 
 	// When viewing a creator profile, the selected item may not be in the main
 	// feed. Hold the full item so the drawer can render it regardless of source.
@@ -150,7 +164,7 @@ export function Community() {
 			<div className="block md:hidden">
 				{/* Mobile Header */}
 				<header className="flex items-center justify-between px-4 py-4 border-b border-secondary">
-					<h1 className="text-2xl font-bold text-white">Community</h1>
+					<h1 className="text-2xl font-bold text-foreground">Community</h1>
 				</header>
 
 				{/* Mobile Tabs */}
@@ -195,7 +209,7 @@ export function Community() {
 										onClick={() => setSort(opt.value as "hot" | "top" | "new")}
 										className={
 											sort === opt.value
-												? "bg-primary text-white border-0 text-xs px-3 h-7"
+												? "bg-primary text-primary-foreground border-0 text-xs px-3 h-7"
 												: "border-secondary text-muted-foreground text-xs px-3 h-7"
 										}
 									>
@@ -215,10 +229,9 @@ export function Community() {
 						<div className="px-4 space-y-3">
 							{isLoading ? (
 								["s1", "s2", "s3", "s4"].map((id) => (
-									<Card
-										key={id}
-										className="p-5 bg-surface-2 border-secondary animate-pulse h-40"
-									/>
+									<Card key={id} className="p-5 bg-surface-2 border-secondary">
+										<Skeleton className="h-40 w-full" />
+									</Card>
 								))
 							) : isError ? (
 								<div className="text-center py-12 text-muted-foreground">
@@ -233,29 +246,13 @@ export function Community() {
 									</Button>
 								</div>
 							) : allItems.length === 0 ? (
-								<div className="text-center py-12 text-muted-foreground">
-									<Search className="w-10 h-10 mx-auto mb-2 opacity-50" />
-									{hasActiveFilters ? (
-										<p>
-											No {activeTab === "routines" ? "routines" : "cycles"}{" "}
-											found
-										</p>
-									) : (
-										<>
-											<p>
-												No shared{" "}
-												{activeTab === "routines" ? "routines" : "cycles"} yet
-											</p>
-											<p className="mt-1 text-sm text-muted-foreground">
-												Be the first to share{" "}
-												{activeTab === "routines"
-													? "a routine"
-													: "a training cycle"}{" "}
-												with the community.
-											</p>
-										</>
-									)}
-								</div>
+								<EmptyState
+									icon={Search}
+									title={emptyStateTitle}
+									description={emptyStateDescription}
+									actionLabel={emptyStateAction}
+									actionHref={contentPath}
+								/>
 							) : (
 								allItems.map((item) => (
 									<CommunityFeedCard
@@ -295,7 +292,9 @@ export function Community() {
 				<PageShell>
 					{/* Desktop Header */}
 					<div className="mb-8">
-						<h1 className="text-display-2 mb-2 text-white">Community Hub</h1>
+						<h1 className="text-display-2 mb-2 text-foreground">
+							Community Hub
+						</h1>
 						<p className="text-muted-foreground">
 							Discover, share, and connect with fellow athletes
 						</p>
@@ -334,7 +333,7 @@ export function Community() {
 								>
 									<SelectTrigger
 										aria-label="Sort order"
-										className="w-[120px] bg-surface-2 border-secondary text-white"
+										className="w-[120px] bg-surface-2 border-secondary text-foreground"
 									>
 										<SelectValue />
 									</SelectTrigger>
@@ -359,8 +358,10 @@ export function Community() {
 									{["d1", "d2", "d3", "d4", "d5", "d6"].map((id) => (
 										<Card
 											key={id}
-											className="p-5 bg-surface-2 border-secondary animate-pulse h-48"
-										/>
+											className="p-5 bg-surface-2 border-secondary"
+										>
+											<Skeleton className="h-48 w-full" />
+										</Card>
 									))}
 								</div>
 							) : isError ? (
@@ -372,33 +373,19 @@ export function Community() {
 									<button
 										type="button"
 										onClick={() => refetch()}
-										className="px-4 py-2 text-sm font-medium rounded-lg bg-primary hover:bg-primary/90 text-white transition-colors"
+										className="px-4 py-2 text-sm font-medium rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground transition-colors"
 									>
 										Retry
 									</button>
 								</div>
 							) : allItems.length === 0 ? (
-								<div className="text-center py-16 text-muted-foreground">
-									<Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
-									<p className="text-lg">
-										{hasActiveFilters
-											? `No ${activeTab === "routines" ? "routines" : "cycles"} found`
-											: `No shared ${activeTab === "routines" ? "routines" : "cycles"} yet`}
-									</p>
-									{hasActiveFilters ? (
-										<p className="text-sm mt-1">
-											Try adjusting your search or filters
-										</p>
-									) : (
-										<p className="mt-1 text-sm">
-											Be the first to share{" "}
-											{activeTab === "routines"
-												? "a routine"
-												: "a training cycle"}{" "}
-											with the community.
-										</p>
-									)}
-								</div>
+								<EmptyState
+									icon={Search}
+									title={emptyStateTitle}
+									description={emptyStateDescription}
+									actionLabel={emptyStateAction}
+									actionHref={contentPath}
+								/>
 							) : (
 								<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
 									{allItems.map((item) => (

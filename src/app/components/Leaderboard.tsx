@@ -1,5 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { Award, Crown, Medal, Shield, TrendingUp, Trophy } from "lucide-react";
+import {
+	AlertTriangle,
+	Award,
+	Crown,
+	Medal,
+	Shield,
+	TrendingUp,
+	Trophy,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
@@ -9,6 +17,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/app/components/ui/card";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import {
 	Tabs,
@@ -17,6 +26,7 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
+import { fadeUp } from "@/lib/animations";
 import { formatLeaderboardValue, type WeightUnit } from "@/lib/units";
 import { useAuth } from "@/providers/AuthProvider";
 import {
@@ -33,11 +43,11 @@ import {
 
 function getRankIcon(rank: number) {
 	if (rank === 1)
-		return <Crown className="size-5 text-[#F59E0B]" aria-label="1st place" />;
+		return <Crown className="size-5 text-rank-gold" aria-label="1st place" />;
 	if (rank === 2)
-		return <Medal className="size-5 text-[#9CA3AF]" aria-label="2nd place" />;
+		return <Medal className="size-5 text-rank-silver" aria-label="2nd place" />;
 	if (rank === 3)
-		return <Award className="size-5 text-[#CD7F32]" aria-label="3rd place" />;
+		return <Award className="size-5 text-rank-bronze" aria-label="3rd place" />;
 	return (
 		<span className="flex size-5 items-center justify-center text-xs font-bold text-muted-foreground">
 			{rank}
@@ -46,9 +56,9 @@ function getRankIcon(rank: number) {
 }
 
 function getRankBg(rank: number): string {
-	if (rank === 1) return "bg-[#F59E0B]/10 border-[#F59E0B]/30";
-	if (rank === 2) return "bg-[#9CA3AF]/10 border-[#9CA3AF]/30";
-	if (rank === 3) return "bg-[#CD7F32]/10 border-[#CD7F32]/30";
+	if (rank === 1) return "bg-rank-gold/10 border-rank-gold/30";
+	if (rank === 2) return "bg-rank-silver/10 border-rank-silver/30";
+	if (rank === 3) return "bg-rank-bronze/10 border-rank-bronze/30";
 	return "bg-card border-border";
 }
 
@@ -202,11 +212,29 @@ function RankingCardSkeleton() {
 	);
 }
 
+// ---- Load failure ----
+
+// compute-rankings throws on failure (it never resolves to null), so a failed
+// query is an outage, not an empty board: say so and offer a retry.
+function RankingsUnavailable({ onRetry }: { onRetry: () => void }) {
+	return (
+		<EmptyState
+			icon={AlertTriangle}
+			title="Rankings unavailable"
+			description="We couldn't load the rankings right now. Try again in a moment."
+			actionLabel="Try again"
+			onAction={onRetry}
+		/>
+	);
+}
+
 // ---- Global Rankings Tab ----
 
 interface GlobalRankingsProps {
 	data: GlobalLeaderboard | undefined;
 	isLoading: boolean;
+	isError: boolean;
+	onRetry: () => void;
 	unit: WeightUnit;
 	currentUserId: string | undefined;
 }
@@ -214,6 +242,8 @@ interface GlobalRankingsProps {
 function GlobalRankings({
 	data,
 	isLoading,
+	isError,
+	onRetry,
 	unit,
 	currentUserId,
 }: GlobalRankingsProps) {
@@ -228,12 +258,10 @@ function GlobalRankings({
 		);
 	}
 
+	// A failed background refetch keeps the last good data (TanStack Query
+	// sets isError but keeps data), so only a missing board is an outage.
 	if (data == null) {
-		return (
-			<Card className="border-border p-8 text-center text-sm text-muted-foreground">
-				Rankings data unavailable. Check back soon.
-			</Card>
-		);
+		return isError ? <RankingsUnavailable onRetry={onRetry} /> : null;
 	}
 
 	function findUserEntry(
@@ -259,31 +287,31 @@ function GlobalRankings({
 		{
 			key: "workoutCount",
 			title: "Most Workouts",
-			icon: <Trophy className="size-4 text-[#F59E0B]" />,
+			icon: <Trophy className="size-4 text-[var(--accent)]" />,
 			metricLabel: "count",
 		},
 		{
 			key: "longestStreak",
 			title: "Longest Streak",
-			icon: <Award className="size-4 text-[#FF6B35]" />,
+			icon: <Award className="size-4 text-[var(--primary)]" />,
 			metricLabel: "streak",
 		},
 		{
 			key: "currentStreak",
 			title: "Current Streak",
-			icon: <Shield className="size-4 text-[#10B981]" />,
+			icon: <Shield className="size-4 text-[var(--success)]" />,
 			metricLabel: "streak",
 		},
 		{
 			key: "prCount",
 			title: "Phase-Aware PRs",
-			icon: <Medal className="size-4 text-[#9CA3AF]" />,
+			icon: <Medal className="size-4 text-[var(--muted-foreground)]" />,
 			metricLabel: "count",
 		},
 		{
 			key: "exerciseMastery",
 			title: "Exercise Mastery",
-			icon: <Crown className="size-4 text-[#F59E0B]" />,
+			icon: <Crown className="size-4 text-[var(--accent)]" />,
 			metricLabel: "mastery",
 		},
 	];
@@ -311,6 +339,8 @@ function GlobalRankings({
 interface WeeklyChallengeProps {
 	data: WeeklyCompetition | undefined;
 	isLoading: boolean;
+	isError: boolean;
+	onRetry: () => void;
 	unit: WeightUnit;
 	currentUserId: string | undefined;
 }
@@ -318,6 +348,8 @@ interface WeeklyChallengeProps {
 function WeeklyChallengeTab({
 	data,
 	isLoading,
+	isError,
+	onRetry,
 	unit,
 	currentUserId,
 }: WeeklyChallengeProps) {
@@ -335,6 +367,10 @@ function WeeklyChallengeTab({
 				</Card>
 			</div>
 		);
+	}
+
+	if (isError && data == null) {
+		return <RankingsUnavailable onRetry={onRetry} />;
 	}
 
 	if (data == null) {
@@ -358,7 +394,7 @@ function WeeklyChallengeTab({
 			<motion.div
 				initial={{ opacity: 0, y: -8 }}
 				animate={{ opacity: 1, y: 0 }}
-				className="rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 to-[#F59E0B]/10 p-4"
+				className="rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 to-[var(--accent)]/10 p-4"
 			>
 				<div className="flex flex-wrap items-center justify-between gap-2">
 					<div>
@@ -424,6 +460,8 @@ function WeeklyChallengeTab({
 interface MyRankingsProps {
 	data: UserRanking[] | undefined;
 	isLoading: boolean;
+	isError: boolean;
+	onRetry: () => void;
 	isLoggedIn: boolean;
 	unit: WeightUnit;
 }
@@ -439,32 +477,39 @@ const METRIC_META: Record<
 	},
 	workoutCount: {
 		label: "Workout Count",
-		icon: <Trophy className="size-4 text-[#F59E0B]" />,
+		icon: <Trophy className="size-4 text-[var(--accent)]" />,
 		unit: "sessions",
 	},
 	longestStreak: {
 		label: "Longest Streak",
-		icon: <Award className="size-4 text-[#FF6B35]" />,
+		icon: <Award className="size-4 text-[var(--primary)]" />,
 		unit: "days",
 	},
 	currentStreak: {
 		label: "Current Streak",
-		icon: <Shield className="size-4 text-[#10B981]" />,
+		icon: <Shield className="size-4 text-[var(--success)]" />,
 		unit: "days",
 	},
 	prCount: {
 		label: "Phase-Aware PRs",
-		icon: <Medal className="size-4 text-[#9CA3AF]" />,
+		icon: <Medal className="size-4 text-[var(--muted-foreground)]" />,
 		unit: "PRs",
 	},
 	exerciseMastery: {
 		label: "Exercise Mastery",
-		icon: <Crown className="size-4 text-[#F59E0B]" />,
+		icon: <Crown className="size-4 text-[var(--accent)]" />,
 		unit: "score",
 	},
 };
 
-function MyRankingsTab({ data, isLoading, isLoggedIn, unit }: MyRankingsProps) {
+function MyRankingsTab({
+	data,
+	isLoading,
+	isError,
+	onRetry,
+	isLoggedIn,
+	unit,
+}: MyRankingsProps) {
 	if (!isLoggedIn) {
 		return (
 			<Card className="border-border p-8 text-center text-sm text-muted-foreground">
@@ -484,11 +529,23 @@ function MyRankingsTab({ data, isLoading, isLoggedIn, unit }: MyRankingsProps) {
 		);
 	}
 
-	if (data == null || data.length === 0) {
+	// A failed background refetch keeps the last good data (TanStack Query
+	// sets isError but keeps data), so only a missing board is an outage.
+	if (data == null) {
+		return isError ? <RankingsUnavailable onRetry={onRetry} /> : null;
+	}
+
+	if (data.length === 0) {
+		// Workouts are recorded on the Phoenix mobile app; the portal only
+		// plans routines, so the CTA points at planning, not "start a workout".
 		return (
-			<Card className="border-border p-8 text-center text-sm text-muted-foreground">
-				No ranking data yet. Complete workouts to appear on the leaderboard.
-			</Card>
+			<EmptyState
+				icon={Award}
+				title="Build your ranking"
+				description="Rankings update after you sync workouts from the Phoenix mobile app."
+				actionLabel="Plan a routine"
+				actionHref="/routines"
+			/>
 		);
 	}
 
@@ -550,26 +607,13 @@ export function Leaderboard() {
 	const { user } = useAuth();
 	const unit = usePreferredWeightUnit();
 
-	const { data: globalData, isLoading: globalLoading } = useQuery(
-		globalLeaderboardOptions(),
-	);
-
-	const { data: weeklyData, isLoading: weeklyLoading } = useQuery(
-		weeklyCompetitionOptions(),
-	);
-
-	const { data: userRankings, isLoading: userRankingsLoading } = useQuery(
-		userRankingOptions(user?.id ?? ""),
-	);
+	const globalQuery = useQuery(globalLeaderboardOptions());
+	const weeklyQuery = useQuery(weeklyCompetitionOptions());
+	const myRankingsQuery = useQuery(userRankingOptions(user?.id ?? ""));
 
 	return (
 		<PageShell>
-			<motion.div
-				initial={{ opacity: 0, y: 12 }}
-				animate={{ opacity: 1, y: 0 }}
-				transition={{ duration: 0.3 }}
-				className="flex flex-col gap-6"
-			>
+			<motion.div {...fadeUp} className="flex flex-col gap-6">
 				{/* Page header */}
 				<div className="flex items-center gap-3">
 					<div className="flex size-10 items-center justify-center rounded-xl bg-primary/10">
@@ -602,8 +646,10 @@ export function Leaderboard() {
 
 					<TabsContent value="global">
 						<GlobalRankings
-							data={globalData}
-							isLoading={globalLoading}
+							data={globalQuery.data}
+							isLoading={globalQuery.isLoading}
+							isError={globalQuery.isError}
+							onRetry={() => void globalQuery.refetch()}
 							unit={unit}
 							currentUserId={user?.id}
 						/>
@@ -611,8 +657,10 @@ export function Leaderboard() {
 
 					<TabsContent value="weekly">
 						<WeeklyChallengeTab
-							data={weeklyData}
-							isLoading={weeklyLoading}
+							data={weeklyQuery.data}
+							isLoading={weeklyQuery.isLoading}
+							isError={weeklyQuery.isError}
+							onRetry={() => void weeklyQuery.refetch()}
 							unit={unit}
 							currentUserId={user?.id}
 						/>
@@ -620,8 +668,10 @@ export function Leaderboard() {
 
 					<TabsContent value="mine">
 						<MyRankingsTab
-							data={userRankings}
-							isLoading={userRankingsLoading}
+							data={myRankingsQuery.data}
+							isLoading={myRankingsQuery.isLoading}
+							isError={myRankingsQuery.isError}
+							onRetry={() => void myRankingsQuery.refetch()}
 							isLoggedIn={user != null}
 							unit={unit}
 						/>

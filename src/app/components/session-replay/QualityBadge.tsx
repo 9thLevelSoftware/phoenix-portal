@@ -25,14 +25,14 @@ export function QualityBadge({ qualityResult, repNumber }: QualityBadgeProps) {
 					className={`
             flex flex-col items-center justify-center
             w-14 h-14 rounded-lg
-            text-white font-semibold
+            text-foreground font-semibold
             transition-colors cursor-pointer
-            ${isLowQuality ? "bg-amber-600/80 hover:bg-amber-600" : "bg-primary/90 hover:bg-primary"}
+            ${isLowQuality ? "bg-warning/80 hover:bg-amber-600" : "bg-primary/90 hover:bg-primary"}
           `}
 					aria-label={`Rep ${repNumber} quality: ${score}`}
 				>
 					<span className="text-lg leading-none">{score}</span>
-					<span className="text-[10px] text-white/70 mt-0.5">
+					<span className="text-[10px] text-foreground/70 mt-0.5">
 						Rep {repNumber}
 					</span>
 				</button>
@@ -66,7 +66,7 @@ export function QualityBadge({ qualityResult, repNumber }: QualityBadgeProps) {
 						<div className="flex justify-between items-center">
 							<span className="text-sm font-medium">Overall</span>
 							<span
-								className={`text-lg font-bold ${isLowQuality ? "text-amber-500" : "text-primary"}`}
+								className={`text-lg font-bold ${isLowQuality ? "text-warning" : "text-primary"}`}
 							>
 								{score}
 							</span>
@@ -91,7 +91,7 @@ function QualityFactorRow({ label, value, hint }: QualityFactorRowProps) {
 				{label}
 			</span>
 			<div className="flex items-center gap-1.5">
-				<span className={value < 60 ? "text-amber-500" : "text-foreground"}>
+				<span className={value < 60 ? "text-warning" : "text-foreground"}>
 					{value}%
 				</span>
 				{hint && (

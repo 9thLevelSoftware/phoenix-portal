@@ -28,8 +28,8 @@ interface PhasePoint {
 }
 
 const PHASE_COLORS: Record<ReplayPhase, string> = {
-	concentric: "#FF6B35",
-	eccentric: "#38BDF8",
+	concentric: "var(--cable-a)",
+	eccentric: "var(--chart-7)",
 };
 
 function formatEnergy(joules: number): string {
@@ -66,7 +66,7 @@ function EnergyCard({
 			<p className="text-[11px] uppercase tracking-wide text-muted-foreground">
 				{label}
 			</p>
-			<p className="mt-1 text-lg font-semibold text-white">
+			<p className="mt-1 text-lg font-semibold text-foreground">
 				{formatEnergy(value)}
 			</p>
 			{share != null && (
@@ -95,28 +95,28 @@ function PhaseScatter({
 			<p className="mb-2 text-xs font-medium text-muted-foreground">{title}</p>
 			<ResponsiveContainer width="100%" height={180}>
 				<ScatterChart margin={{ top: 8, right: 12, bottom: 12, left: 0 }}>
-					<CartesianGrid stroke="#2A2A35" strokeDasharray="3 3" />
+					<CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
 					<XAxis
 						type="number"
 						dataKey="positionMm"
 						name="Position"
 						unit=" mm"
-						tick={{ fill: "#888894", fontSize: 10 }}
-						axisLine={{ stroke: "#374151" }}
+						tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
+						axisLine={{ stroke: "var(--border)" }}
 					/>
 					<YAxis
 						type="number"
 						dataKey="value"
 						name={yLabel}
-						tick={{ fill: "#888894", fontSize: 10 }}
-						axisLine={{ stroke: "#374151" }}
+						tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
+						axisLine={{ stroke: "var(--border)" }}
 						width={42}
 					/>
 					<Tooltip
 						cursor={{ strokeDasharray: "3 3" }}
 						contentStyle={{
-							backgroundColor: "#0a0a10",
-							border: "1px solid #374151",
+							backgroundColor: "var(--popover)",
+							border: "1px solid var(--border)",
 							borderRadius: 6,
 							fontSize: 11,
 						}}
@@ -154,7 +154,9 @@ export function ReplayPhaseAnalyticsPanel({
 				data-testid="replay-phase-analytics-panel"
 			>
 				<div className="flex items-center justify-between gap-3">
-					<h3 className="text-sm font-semibold text-white">Phase Analytics</h3>
+					<h3 className="text-sm font-semibold text-foreground">
+						Phase Analytics
+					</h3>
 					{analytics.status === "partial" && (
 						<Badge variant="outline" className="text-[10px]">
 							Partial
@@ -176,7 +178,9 @@ export function ReplayPhaseAnalyticsPanel({
 		>
 			<div className="flex items-center justify-between gap-3">
 				<div>
-					<h3 className="text-sm font-semibold text-white">Phase Analytics</h3>
+					<h3 className="text-sm font-semibold text-foreground">
+						Phase Analytics
+					</h3>
 					<p className="text-xs text-muted-foreground">
 						Energy from average force across position change
 					</p>
@@ -188,7 +192,7 @@ export function ReplayPhaseAnalyticsPanel({
 				)}
 			</div>
 			{analytics.partialReason && (
-				<p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+				<p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
 					{analytics.partialReason}
 				</p>
 			)}

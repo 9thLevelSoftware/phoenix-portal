@@ -20,11 +20,11 @@ export interface VolumeLandmarksProps {
 // --- Constants ---
 
 const STATUS_COLORS: Record<VolumeStatus, string> = {
-	below_mev: "#F59E0B",
-	between_mev_mav: "#60A5FA",
-	in_mav: "#10B981",
-	above_mav: "#60A5FA",
-	above_mrv: "#DC2626",
+	below_mev: "var(--accent)",
+	between_mev_mav: "var(--cable-b)",
+	in_mav: "var(--success)",
+	above_mav: "var(--cable-b)",
+	above_mrv: "var(--destructive)",
 };
 
 const VOLUME_SIGNAL_TYPES = new Set(["volume_above_mrv", "volume_below_mev"]);
@@ -32,7 +32,7 @@ const VOLUME_SIGNAL_TYPES = new Set(["volume_above_mrv", "volume_below_mev"]);
 // --- Helpers ---
 
 function getBarColor(status: VolumeStatus | null): string {
-	if (!status) return "#60A5FA";
+	if (!status) return "var(--cable-b)";
 	return STATUS_COLORS[status];
 }
 
@@ -42,8 +42,10 @@ interface RecommendationCalloutProps {
 
 function RecommendationCallout({ recommendation }: RecommendationCalloutProps) {
 	const isCritical = recommendation.priority === "critical";
-	const borderColor = isCritical ? "#DC2626" : "#F59E0B";
-	const bgColor = isCritical ? "rgba(220,38,38,0.08)" : "rgba(245,158,11,0.08)";
+	const borderColor = isCritical ? "var(--destructive)" : "var(--accent)";
+	const bgColor = isCritical
+		? "color-mix(in srgb, var(--destructive) 8%, transparent)"
+		: "color-mix(in srgb, var(--accent) 8%, transparent)";
 
 	return (
 		<div
@@ -69,7 +71,7 @@ function RecommendationCallout({ recommendation }: RecommendationCalloutProps) {
 				)}
 			</span>
 			<div className="min-w-0">
-				<p className="font-medium text-white leading-snug">
+				<p className="font-medium text-foreground leading-snug">
 					{recommendation.title}
 				</p>
 				<p className="text-muted-foreground text-xs mt-0.5">
@@ -102,9 +104,9 @@ export function VolumeLandmarks({
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
 			<div className="flex items-center justify-between mb-5">
-				<h3 className="text-xl text-white">Weekly Volume Landmarks</h3>
+				<h3 className="text-xl text-foreground">Weekly Volume Landmarks</h3>
 				{typeof totalSessions === "number" && totalSessions < 3 && (
-					<span className="text-xs text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded px-2 py-1">
+					<span className="text-xs text-warning bg-warning/10 border border-warning/20 rounded px-2 py-1">
 						Accuracy improves with more training history
 					</span>
 				)}
@@ -121,28 +123,28 @@ export function VolumeLandmarks({
 						<span className="flex items-center gap-1.5">
 							<span
 								className="inline-block w-2 h-2 rounded-full"
-								style={{ backgroundColor: "#F59E0B" }}
+								style={{ backgroundColor: "var(--accent)" }}
 							/>
 							Below MEV
 						</span>
 						<span className="flex items-center gap-1.5">
 							<span
 								className="inline-block w-2 h-2 rounded-full"
-								style={{ backgroundColor: "#60A5FA" }}
+								style={{ backgroundColor: "var(--cable-b)" }}
 							/>
 							MEV → MAV
 						</span>
 						<span className="flex items-center gap-1.5">
 							<span
 								className="inline-block w-2 h-2 rounded-full"
-								style={{ backgroundColor: "#10B981" }}
+								style={{ backgroundColor: "var(--success)" }}
 							/>
 							In MAV (optimal)
 						</span>
 						<span className="flex items-center gap-1.5">
 							<span
 								className="inline-block w-2 h-2 rounded-full"
-								style={{ backgroundColor: "#DC2626" }}
+								style={{ backgroundColor: "var(--destructive)" }}
 							/>
 							Above MRV
 						</span>
@@ -174,7 +176,7 @@ export function VolumeLandmarks({
 								>
 									{/* Muscle group name */}
 									<span
-										className="text-sm text-white shrink-0 text-right"
+										className="text-sm text-foreground shrink-0 text-right"
 										style={{ width: 70 }}
 									>
 										{landmark.muscleGroup}
@@ -188,7 +190,8 @@ export function VolumeLandmarks({
 											style={{
 												left: `${pct(landmark.mavLow)}%`,
 												width: `${pct(landmark.mavHigh) - pct(landmark.mavLow)}%`,
-												backgroundColor: "rgba(16,185,129,0.15)",
+												backgroundColor:
+													"color-mix(in srgb, var(--success) 15%, transparent)",
 											}}
 											aria-hidden="true"
 										/>
@@ -202,7 +205,7 @@ export function VolumeLandmarks({
 										].map(({ value, label }) => (
 											<div
 												key={label}
-												className="absolute top-0 bottom-0 w-px bg-white/20"
+												className="absolute top-0 bottom-0 w-px bg-foreground/20"
 												style={{ left: `${pct(value)}%` }}
 												aria-hidden="true"
 												title={`${label}: ${value}`}
@@ -236,7 +239,7 @@ export function VolumeLandmarks({
 										{isOptimal && (
 											<CheckCircle
 												className="w-4 h-4"
-												style={{ color: "#10B981" }}
+												style={{ color: "var(--success)" }}
 												aria-label="Optimal volume"
 											/>
 										)}

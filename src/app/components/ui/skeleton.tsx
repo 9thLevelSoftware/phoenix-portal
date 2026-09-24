@@ -9,13 +9,13 @@ export function Skeleton({ className, ...props }: SkeletonProps) {
 	return (
 		<div
 			className={cn(
-				"relative overflow-hidden rounded-lg bg-[#1a1a1a]",
+				"relative overflow-hidden rounded-lg bg-[var(--surface-1)]",
 				className,
 			)}
 			{...props}
 		>
 			<motion.div
-				className="absolute inset-0 bg-gradient-to-r from-transparent via-[#374151]/30 to-transparent"
+				className="absolute inset-0 bg-gradient-to-r from-transparent via-[var(--border)]/30 to-transparent"
 				animate={{
 					x: ["-100%", "100%"],
 				}}
@@ -31,7 +31,7 @@ export function Skeleton({ className, ...props }: SkeletonProps) {
 
 export function CardSkeleton() {
 	return (
-		<div className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border border-[#374151] rounded-lg">
+		<div className="p-6 bg-gradient-to-br from-[var(--surface-1)] to-[var(--background)] border border-[var(--border)] rounded-lg">
 			<div className="space-y-3">
 				<Skeleton className="h-6 w-3/4" />
 				<Skeleton className="h-4 w-1/2" />
@@ -46,7 +46,7 @@ export function CardSkeleton() {
 
 export function RoutineCardSkeleton() {
 	return (
-		<div className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border border-[#374151] rounded-lg">
+		<div className="p-6 bg-gradient-to-br from-[var(--surface-1)] to-[var(--background)] border border-[var(--border)] rounded-lg">
 			<div className="space-y-4">
 				<div className="flex items-start justify-between">
 					<div className="flex-1 space-y-2">
@@ -67,7 +67,7 @@ export function RoutineCardSkeleton() {
 					<Skeleton className="h-6 w-16 rounded-full" />
 				</div>
 
-				<div className="flex gap-2 pt-4 border-t border-[#374151]">
+				<div className="flex gap-2 pt-4 border-t border-[var(--border)]">
 					<Skeleton className="h-9 flex-1" />
 					<Skeleton className="h-9 flex-1" />
 				</div>
@@ -78,7 +78,7 @@ export function RoutineCardSkeleton() {
 
 export function WorkoutCardSkeleton() {
 	return (
-		<div className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border border-[#374151] rounded-lg">
+		<div className="p-4 bg-gradient-to-br from-[var(--surface-1)] to-[var(--background)] border border-[var(--border)] rounded-lg">
 			<div className="space-y-3">
 				<div className="flex items-center justify-between">
 					<Skeleton className="h-5 w-32" />
@@ -97,7 +97,7 @@ export function WorkoutCardSkeleton() {
 
 export function StatCardSkeleton() {
 	return (
-		<div className="p-4 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border border-[#374151] rounded-lg">
+		<div className="p-4 bg-gradient-to-br from-[var(--surface-1)] to-[var(--background)] border border-[var(--border)] rounded-lg">
 			<Skeleton className="h-4 w-20 mb-3" />
 			<Skeleton className="h-8 w-24 mb-2" />
 			<Skeleton className="h-3 w-16" />
@@ -107,7 +107,7 @@ export function StatCardSkeleton() {
 
 export function ChartSkeleton() {
 	return (
-		<div className="p-6 bg-gradient-to-br from-[#1a1a1a] to-[#0D0D0D] border border-[#374151] rounded-lg">
+		<div className="p-6 bg-gradient-to-br from-[var(--surface-1)] to-[var(--background)] border border-[var(--border)] rounded-lg">
 			<Skeleton className="h-6 w-48 mb-6" />
 			<div className="space-y-2">
 				{Array.from({ length: 5 }).map((_, i) => (
@@ -130,8 +130,8 @@ export function ChartSkeleton() {
 
 export function TableSkeleton({ rows = 5 }: { rows?: number }) {
 	return (
-		<div className="border border-[#374151] rounded-lg overflow-hidden">
-			<div className="bg-[#1a1a1a] p-4 border-b border-[#374151]">
+		<div className="border border-[var(--border)] rounded-lg overflow-hidden">
+			<div className="bg-[var(--surface-1)] p-4 border-b border-[var(--border)]">
 				<div className="flex gap-4">
 					<Skeleton className="h-4 w-32" />
 					<Skeleton className="h-4 w-24" />
@@ -139,9 +139,11 @@ export function TableSkeleton({ rows = 5 }: { rows?: number }) {
 					<Skeleton className="h-4 w-20" />
 				</div>
 			</div>
-			{Array.from({ length: rows }).map((_, i) => (
-				// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
-				<div key={i} className="p-4 border-b border-[#374151] last:border-0">
+			{Array.from({ length: rows }, (_, index) => `row-${index}`).map((key) => (
+				<div
+					key={key}
+					className="p-4 border-b border-[var(--border)] last:border-0"
+				>
 					<div className="flex gap-4">
 						<Skeleton className="h-4 w-32" />
 						<Skeleton className="h-4 w-24" />

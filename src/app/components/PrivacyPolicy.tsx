@@ -2,12 +2,13 @@ import { ArrowLeft } from "lucide-react";
 import { motion } from "motion/react";
 import { useNavigate } from "react-router";
 import { Button } from "@/app/components/ui/button";
+import { fadeUp } from "@/lib/animations";
 import { PhoenixLogo } from "./PhoenixLogo";
 
 export function PrivacyPolicy() {
 	const navigate = useNavigate();
 	return (
-		<div className="min-h-screen bg-background text-white">
+		<div className="min-h-screen bg-background text-foreground">
 			{/* Header */}
 			<header className="sticky top-0 z-50 bg-surface-1 border-b border-secondary">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -31,12 +32,10 @@ export function PrivacyPolicy() {
 
 			{/* Content */}
 			<main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-				<motion.div
-					initial={{ opacity: 0, y: 20 }}
-					animate={{ opacity: 1, y: 0 }}
-					transition={{ duration: 0.5 }}
-				>
-					<h1 className="text-display-1 mb-4 text-white">Privacy Policy</h1>
+				<motion.div {...fadeUp}>
+					<h1 className="text-display-1 mb-4 text-foreground">
+						Privacy Policy
+					</h1>
 					<p className="text-xl text-muted-foreground mb-2">
 						Project Phoenix - Companion App
 					</p>
@@ -798,7 +797,7 @@ export function PrivacyPolicy() {
 
 					{/* Back Button */}
 					<div className="mt-12 text-center">
-						<Button onClick={() => navigate(-1)} variant="cta">
+						<Button onClick={() => navigate(-1)}>
 							<ArrowLeft className="w-4 h-4 mr-2" />
 							Back to Home
 						</Button>

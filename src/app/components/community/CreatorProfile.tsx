@@ -134,7 +134,7 @@ export function CreatorProfile({
 				variant="ghost"
 				size="sm"
 				onClick={onBack}
-				className="text-muted-foreground hover:text-white mb-4"
+				className="text-muted-foreground hover:text-foreground mb-4"
 			>
 				<ArrowLeft className="w-4 h-4 mr-1.5" />
 				Back to feed
@@ -162,14 +162,14 @@ export function CreatorProfile({
 							{stats.avatar_url && (
 								<AvatarImage src={stats.avatar_url} alt={stats.display_name} />
 							)}
-							<AvatarFallback className="bg-primary text-white text-lg">
+							<AvatarFallback className="bg-primary text-primary-foreground text-lg">
 								{getInitials(stats.display_name)}
 							</AvatarFallback>
 						</Avatar>
 
 						<div className="flex-1 min-w-0">
 							<div className="flex items-center gap-3 mb-3">
-								<h2 className="text-xl font-bold text-white truncate">
+								<h2 className="text-xl font-bold text-foreground truncate">
 									{stats.display_name}
 								</h2>
 								{user && !isSelf && (
@@ -179,7 +179,7 @@ export function CreatorProfile({
 											variant={isFollowing ? "outline" : "default"}
 											className={
 												isFollowing
-													? "border-secondary text-muted-foreground hover:text-white hover:border-destructive gap-1.5 h-8 text-xs"
+													? "border-secondary text-muted-foreground hover:text-foreground hover:border-destructive gap-1.5 h-8 text-xs"
 													: "bg-primary hover:bg-primary/90 gap-1.5 h-8 text-xs"
 											}
 											onClick={() =>
@@ -206,8 +206,8 @@ export function CreatorProfile({
 											variant="outline"
 											className={
 												isBlocked
-													? "border-secondary text-muted-foreground hover:text-white gap-1.5 h-8 text-xs"
-													: "border-red-500/30 text-red-400 hover:bg-red-500/10 gap-1.5 h-8 text-xs"
+													? "border-secondary text-muted-foreground hover:text-foreground gap-1.5 h-8 text-xs"
+													: "border-destructive/30 text-destructive hover:bg-destructive/10 gap-1.5 h-8 text-xs"
 											}
 											onClick={() =>
 												isBlocked
@@ -229,7 +229,7 @@ export function CreatorProfile({
 								<div className="flex items-center gap-2 bg-background rounded-lg px-3 py-2">
 									<Share2 className="w-4 h-4 text-primary" />
 									<div>
-										<p className="text-lg font-bold text-white leading-none">
+										<p className="text-lg font-bold text-foreground leading-none">
 											{stats.total_shares}
 										</p>
 										<p className="text-[10px] text-muted-foreground">Shares</p>
@@ -240,7 +240,7 @@ export function CreatorProfile({
 								<div className="flex items-center gap-2 bg-background rounded-lg px-3 py-2">
 									<ArrowBigUp className="w-4 h-4 text-accent" />
 									<div>
-										<p className="text-lg font-bold text-white leading-none">
+										<p className="text-lg font-bold text-foreground leading-none">
 											{stats.total_upvotes}
 										</p>
 										<p className="text-[10px] text-muted-foreground">Upvotes</p>
@@ -251,7 +251,7 @@ export function CreatorProfile({
 								<div className="flex items-center gap-2 bg-background rounded-lg px-3 py-2">
 									<Star className="w-4 h-4 text-success" />
 									<div>
-										<p className="text-lg font-bold text-white leading-none">
+										<p className="text-lg font-bold text-foreground leading-none">
 											{stats.featured_count}
 										</p>
 										<p className="text-[10px] text-muted-foreground">
@@ -331,7 +331,7 @@ export function CreatorProfile({
 			<AlertDialog open={showBlockConfirm} onOpenChange={setShowBlockConfirm}>
 				<AlertDialogContent className="bg-background border-secondary">
 					<AlertDialogHeader>
-						<AlertDialogTitle className="text-white">
+						<AlertDialogTitle className="text-foreground">
 							Block this user?
 						</AlertDialogTitle>
 						<AlertDialogDescription>

@@ -1,3 +1,4 @@
+import { withAlpha } from "@/lib/theme-tokens";
 import type { MannZoneInfo, SimplifiedZoneInfo } from "@/lib/vbt";
 import { cn } from "./utils";
 
@@ -59,8 +60,8 @@ export function ZoneBadge({
 				className,
 			)}
 			style={{
-				backgroundColor: `${zone.color}15`,
-				borderColor: `${zone.color}40`,
+				backgroundColor: withAlpha(zone.color, 0.08),
+				borderColor: withAlpha(zone.color, 0.25),
 				color: zone.color,
 			}}
 			title={`${zone.label} — ${systemLabel} classification`}
@@ -99,8 +100,8 @@ export interface ZoneIndicatorProps {
 // Using inline style (matching the ZoneBadge pattern) keeps these
 // colour-coded by data intent rather than by raw Tailwind palette.
 const SYSTEM_ACCENT: Record<ZoneSystem, string> = {
-	mann: "#60A5FA", // blue-400 equivalent — Dr. Mann VBT
-	simplified: "#F59E0B", // Phoenix Gold — mobile-matching zones
+	mann: "var(--chart-2)", // blue — Dr. Mann VBT
+	simplified: "var(--accent)", // Phoenix Gold — mobile-matching zones
 };
 
 export function ZoneIndicator({ system, className }: ZoneIndicatorProps) {
@@ -118,8 +119,8 @@ export function ZoneIndicator({ system, className }: ZoneIndicatorProps) {
 				className,
 			)}
 			style={{
-				backgroundColor: `${color}1a`,
-				borderColor: `${color}33`,
+				backgroundColor: withAlpha(color, 0.1),
+				borderColor: withAlpha(color, 0.2),
 				color,
 			}}
 			title={description}

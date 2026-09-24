@@ -67,7 +67,7 @@ export function DayCard({
 						}}
 						className="absolute -top-2 -right-2 p-1 bg-destructive hover:bg-chart-2 rounded-full transition-colors"
 					>
-						<X className="w-3 h-3 text-white" />
+						<X className="w-3 h-3 text-foreground" />
 					</button>
 				)}
 			</motion.div>
@@ -86,7 +86,7 @@ export function DayCard({
 			>
 				<Card
 					onClick={onClick}
-					className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/5 border-l-4 border-l-[#FF6B35] border-r border-t border-b border-secondary hover:border-primary/50 transition-all"
+					className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/5 border-l-4 border-l-[var(--primary)] border-r border-t border-b border-secondary hover:border-primary/50 transition-all"
 				>
 					<div className="text-center mb-3">
 						<div className="text-sm font-semibold text-muted-foreground">
@@ -96,7 +96,7 @@ export function DayCard({
 
 					<div className="text-center space-y-2">
 						<div className="text-3xl">🏋️</div>
-						<div className="font-semibold text-white text-sm line-clamp-2 min-h-[2.5rem]">
+						<div className="font-semibold text-foreground text-sm line-clamp-2 min-h-[2.5rem]">
 							{day.routineName}
 						</div>
 						<div className="text-xs text-muted-foreground space-y-1">
@@ -113,7 +113,7 @@ export function DayCard({
 								e.stopPropagation();
 								onClick();
 							}}
-							className="flex-1 text-xs text-muted-foreground hover:text-white h-7"
+							className="flex-1 text-xs text-muted-foreground hover:text-foreground h-7"
 						>
 							Change
 						</Button>
@@ -129,7 +129,7 @@ export function DayCard({
 						}}
 						className="absolute -top-2 -right-2 p-1 bg-destructive hover:bg-chart-2 rounded-full transition-colors"
 					>
-						<X className="w-3 h-3 text-white" />
+						<X className="w-3 h-3 text-foreground" />
 					</button>
 				)}
 			</motion.div>
@@ -184,7 +184,7 @@ export function DayCard({
 					}}
 					className="absolute -top-2 -right-2 p-1 bg-destructive hover:bg-chart-2 rounded-full transition-colors"
 				>
-					<X className="w-3 h-3 text-white" />
+					<X className="w-3 h-3 text-foreground" />
 				</button>
 			)}
 		</motion.div>

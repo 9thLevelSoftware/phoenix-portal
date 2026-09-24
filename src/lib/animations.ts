@@ -15,12 +15,24 @@ export const springs = {
 	quick: { type: "spring", damping: 35, stiffness: 600 } as const,
 } as const;
 
-// --- Variant presets (Framer Motion variants objects) ---
+// --- Motion recipes (spread directly into motion.* props) ---
 
-/** Single element entrance: opacity 0→1, y 8→0 (tighter than before) */
+/** Snappy opacity + translate entrance/exit for content and cards. */
 export const fadeUp = {
+	initial: { opacity: 0, y: 8 },
+	animate: { opacity: 1, y: 0 },
+	exit: { opacity: 0 },
+	transition: { duration: 0.18, ease: "easeOut" },
+} as const;
+
+/** Variants-shaped opacity + translate entrance for staggered children. */
+export const fadeUpVariants = {
 	hidden: { opacity: 0, y: 8 },
-	visible: { opacity: 1, y: 0, transition: springs.smooth },
+	visible: {
+		opacity: 1,
+		y: 0,
+		transition: { duration: 0.18, ease: "easeOut" },
+	},
 } as const;
 
 /** Simple opacity entrance */
@@ -29,15 +41,11 @@ export const fadeIn = {
 	visible: { opacity: 1, transition: { duration: 0.2 } },
 } as const;
 
-/** Parent variant for staggered children */
+/** Parent variants for staggered children. Use with `variants={staggerContainer}` and `initial="hidden" animate="visible"`. */
 export const staggerContainer = {
-	hidden: { opacity: 0 },
+	hidden: {},
 	visible: {
-		opacity: 1,
-		transition: {
-			staggerChildren: 0.04,
-			delayChildren: 0.05,
-		},
+		transition: { staggerChildren: 0.05 },
 	},
 } as const;
 
@@ -79,16 +87,13 @@ export const fadeUpDown = {
 	},
 } as const;
 
-// --- Hover & tap presets ---
+// --- Hover & tap recipes ---
 
-export const hover = {
-	/** Subtle lift — cards, interactive panels */
-	lift: { scale: 1.005, y: -1, transition: springs.snappy },
-} as const;
+/** Subtle scale lift for interactive cards and panels. */
+export const hover = { scale: 1.02 } as const;
 
-export const tap = {
-	press: { scale: 0.98 },
-} as const;
+/** Small press feedback for buttons and touch targets. */
+export const tap = { scale: 0.97 } as const;
 
 // --- Breathing animation (scroll indicator) ---
 

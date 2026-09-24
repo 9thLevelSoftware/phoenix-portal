@@ -51,7 +51,7 @@ export function VoteButton({
 				<ArrowBigUp
 					className={cn(
 						compact ? "h-4 w-4" : "h-5 w-5",
-						isVoted && "fill-[#FF6B35]",
+						isVoted && "fill-[var(--primary)]",
 					)}
 				/>
 				<span

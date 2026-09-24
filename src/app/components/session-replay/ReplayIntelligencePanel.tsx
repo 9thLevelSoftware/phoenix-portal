@@ -22,7 +22,7 @@ function MetricTile({
 				<Icon className="size-3.5" aria-hidden="true" />
 				<span>{label}</span>
 			</div>
-			<div className="text-xl font-semibold text-white">{value}</div>
+			<div className="text-xl font-semibold text-foreground">{value}</div>
 		</div>
 	);
 }
@@ -52,7 +52,7 @@ export function ReplayIntelligencePanel({
 		<Card className="space-y-4 border-secondary bg-surface-2 p-4">
 			<div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 				<div>
-					<h2 className="text-lg font-semibold text-white">
+					<h2 className="text-lg font-semibold text-foreground">
 						Replay Intelligence
 					</h2>
 					<p className="text-sm text-muted-foreground">
@@ -93,7 +93,7 @@ export function ReplayIntelligencePanel({
 			{selectedRep && (
 				<div className="rounded-lg border border-secondary bg-background/50 p-3">
 					<div className="mb-2 flex items-center justify-between gap-3">
-						<div className="font-semibold text-white">
+						<div className="font-semibold text-foreground">
 							Rep {selectedRep.repNumber}
 						</div>
 						<div className="text-xs text-muted-foreground">

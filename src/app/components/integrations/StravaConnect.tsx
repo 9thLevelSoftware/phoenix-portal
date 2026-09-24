@@ -40,7 +40,7 @@ export function StravaConnect({
 	if (isConnected) {
 		return (
 			<div className="flex items-center gap-3">
-				<div className="flex items-center gap-2 text-sm text-[var(--color-forge-green)]">
+				<div className="flex items-center gap-2 text-sm text-success">
 					<Activity className="size-4" />
 					<span>Connected to Strava</span>
 				</div>
@@ -57,7 +57,7 @@ export function StravaConnect({
 		<Button
 			onClick={handleConnect}
 			disabled={isRedirecting}
-			className="bg-[#FC4C02] hover:bg-[#FC4C02]/90 text-white"
+			className="bg-primary hover:bg-primary/90 text-primary-foreground"
 		>
 			{isRedirecting ? (
 				<>

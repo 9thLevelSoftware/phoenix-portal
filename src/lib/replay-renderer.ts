@@ -1,5 +1,6 @@
 import type { TelemetryPointRow } from "@/schemas/telemetry";
 import type { ReplayIntelligence } from "./replay-intelligence";
+import { getThemeTokens, type ThemeTokens, withAlpha } from "./theme-tokens";
 
 interface RenderOptions {
 	width: number;
@@ -8,15 +9,11 @@ interface RenderOptions {
 	currentTimeMs: number;
 	repBoundaries: number[];
 	intelligence?: ReplayIntelligence | null;
+	/** Theme snapshot; defaults to the active theme. */
+	tokens?: ThemeTokens;
 }
 
 const MARGIN = { top: 20, right: 20, bottom: 40, left: 50 };
-const BACKGROUND_COLOR = "#0D0D0D";
-const EMBER_COLOR = "#FF6B35";
-const REP_BAND_COLOR = "rgba(255, 107, 53, 0.08)";
-const PLAYHEAD_COLOR = "rgba(255, 255, 255, 0.7)";
-const VELOCITY_LOSS_COLOR = "rgba(220, 38, 38, 0.08)";
-const STICKING_POINT_COLOR = "#F59E0B";
 
 function getPlotArea(width: number, height: number) {
 	return {
@@ -32,18 +29,17 @@ function drawRepBands(
 	plotArea: ReturnType<typeof getPlotArea>,
 	repBoundaries: number[],
 	maxTime: number,
+	{ cableA }: ThemeTokens,
 ) {
 	if (repBoundaries.length === 0 || maxTime === 0) return;
 
 	const xScale = plotArea.width / maxTime;
 
-	// Draw alternating bands for each rep
 	for (let i = 0; i < repBoundaries.length; i++) {
-		// Only shade odd-indexed reps for alternating pattern
 		if (i % 2 === 1) {
 			const startX = plotArea.x + repBoundaries[i - 1] * xScale;
 			const endX = plotArea.x + repBoundaries[i] * xScale;
-			ctx.fillStyle = REP_BAND_COLOR;
+			ctx.fillStyle = withAlpha(cableA, 0.08);
 			ctx.fillRect(startX, plotArea.y, endX - startX, plotArea.height);
 		}
 	}
@@ -54,13 +50,14 @@ function drawPlayhead(
 	plotArea: ReturnType<typeof getPlotArea>,
 	currentTimeMs: number,
 	maxTime: number,
+	{ foreground }: ThemeTokens,
 ) {
 	if (maxTime === 0) return;
 
 	const xScale = plotArea.width / maxTime;
 	const x = plotArea.x + currentTimeMs * xScale;
 
-	ctx.strokeStyle = PLAYHEAD_COLOR;
+	ctx.strokeStyle = withAlpha(foreground, 0.7);
 	ctx.lineWidth = 1;
 	ctx.setLineDash([4, 4]);
 	ctx.beginPath();
@@ -76,6 +73,7 @@ function drawReplayIntelligence(
 	intelligence: ReplayIntelligence | null | undefined,
 	maxTime: number,
 	currentTimeMs: number,
+	{ danger, accent }: ThemeTokens,
 ) {
 	if (!intelligence || intelligence.status === "empty" || maxTime === 0) return;
 
@@ -88,14 +86,14 @@ function drawReplayIntelligence(
 		const startX = plotArea.x + clampTime(rep.startMs) * xScale;
 		const endX = plotArea.x + clampTime(rep.endMs) * xScale;
 		if (endX <= startX) continue;
-		ctx.fillStyle = VELOCITY_LOSS_COLOR;
+		ctx.fillStyle = withAlpha(danger, 0.08);
 		ctx.fillRect(startX, plotArea.y, endX - startX, plotArea.height);
 	}
 
 	for (const point of intelligence.stickingPoints) {
 		if (point.timestampMs > currentTimeMs) continue;
 		const x = plotArea.x + clampTime(point.timestampMs) * xScale;
-		ctx.fillStyle = STICKING_POINT_COLOR;
+		ctx.fillStyle = accent;
 		ctx.beginPath();
 		ctx.arc(x, plotArea.y + 12, 4, 0, Math.PI * 2);
 		ctx.fill();
@@ -109,14 +107,15 @@ export function renderForceCurve(
 	const { width, height, data, currentTimeMs, repBoundaries, intelligence } =
 		options;
 	const plotArea = getPlotArea(width, height);
+	// Resolved once per frame and handed to the helpers.
+	const tokens = options.tokens ?? getThemeTokens();
+	const { background, primary } = tokens;
 
-	// Clear canvas with dark background
-	ctx.fillStyle = BACKGROUND_COLOR;
+	ctx.fillStyle = background;
 	ctx.fillRect(0, 0, width, height);
 
 	if (data.length === 0) return;
 
-	// Calculate scales
 	const maxTime = Math.max(...data.map((d) => d.timestamp_ms));
 	const maxForce = Math.max(...data.map((d) => d.force_n)) * 1.1;
 
@@ -125,32 +124,35 @@ export function renderForceCurve(
 	const xScale = plotArea.width / maxTime;
 	const yScale = plotArea.height / maxForce;
 
-	// Draw rep background bands
-	drawRepBands(ctx, plotArea, repBoundaries, maxTime);
-	drawReplayIntelligence(ctx, plotArea, intelligence, maxTime, currentTimeMs);
+	drawRepBands(ctx, plotArea, repBoundaries, maxTime, tokens);
+	drawReplayIntelligence(
+		ctx,
+		plotArea,
+		intelligence,
+		maxTime,
+		currentTimeMs,
+		tokens,
+	);
 
-	// Filter data up to currentTimeMs
 	const visibleData = data.filter((d) => d.timestamp_ms <= currentTimeMs);
 
 	if (visibleData.length === 0) {
-		drawPlayhead(ctx, plotArea, currentTimeMs, maxTime);
+		drawPlayhead(ctx, plotArea, currentTimeMs, maxTime, tokens);
 		return;
 	}
 
-	// Build path points
 	const points = visibleData.map((d) => ({
 		x: plotArea.x + d.timestamp_ms * xScale,
 		y: plotArea.y + plotArea.height - d.force_n * yScale,
 	}));
 
-	// Draw gradient fill under curve
 	const gradient = ctx.createLinearGradient(
 		0,
 		plotArea.y,
 		0,
 		plotArea.y + plotArea.height,
 	);
-	gradient.addColorStop(0, "rgba(255, 107, 53, 0.3)");
+	gradient.addColorStop(0, withAlpha(primary, 0.3));
 	gradient.addColorStop(1, "transparent");
 
 	ctx.beginPath();
@@ -163,18 +165,16 @@ export function renderForceCurve(
 	ctx.fillStyle = gradient;
 	ctx.fill();
 
-	// Draw stroke line
 	ctx.beginPath();
 	ctx.moveTo(points[0].x, points[0].y);
 	points.slice(1).forEach((p) => {
 		ctx.lineTo(p.x, p.y);
 	});
-	ctx.strokeStyle = EMBER_COLOR;
+	ctx.strokeStyle = primary;
 	ctx.lineWidth = 2;
 	ctx.stroke();
 
-	// Draw playhead
-	drawPlayhead(ctx, plotArea, currentTimeMs, maxTime);
+	drawPlayhead(ctx, plotArea, currentTimeMs, maxTime, tokens);
 }
 
 export function renderVelocityBars(
@@ -184,14 +184,15 @@ export function renderVelocityBars(
 	const { width, height, data, currentTimeMs, repBoundaries, intelligence } =
 		options;
 	const plotArea = getPlotArea(width, height);
+	// Resolved once per frame and handed to the helpers.
+	const tokens = options.tokens ?? getThemeTokens();
+	const { background, primary } = tokens;
 
-	// Clear canvas with dark background
-	ctx.fillStyle = BACKGROUND_COLOR;
+	ctx.fillStyle = background;
 	ctx.fillRect(0, 0, width, height);
 
 	if (data.length === 0) return;
 
-	// Calculate scales
 	const maxTime = Math.max(...data.map((d) => d.timestamp_ms));
 	const maxVelocity = Math.max(...data.map((d) => d.velocity_mps)) * 1.1;
 
@@ -200,32 +201,35 @@ export function renderVelocityBars(
 	const xScale = plotArea.width / maxTime;
 	const yScale = plotArea.height / maxVelocity;
 
-	// Draw rep background bands
-	drawRepBands(ctx, plotArea, repBoundaries, maxTime);
-	drawReplayIntelligence(ctx, plotArea, intelligence, maxTime, currentTimeMs);
+	drawRepBands(ctx, plotArea, repBoundaries, maxTime, tokens);
+	drawReplayIntelligence(
+		ctx,
+		plotArea,
+		intelligence,
+		maxTime,
+		currentTimeMs,
+		tokens,
+	);
 
-	// Filter data up to currentTimeMs
 	const visibleData = data.filter((d) => d.timestamp_ms <= currentTimeMs);
 
 	if (visibleData.length === 0) {
-		drawPlayhead(ctx, plotArea, currentTimeMs, maxTime);
+		drawPlayhead(ctx, plotArea, currentTimeMs, maxTime, tokens);
 		return;
 	}
 
-	// Build path points for continuous line (consistent with force curve style)
 	const points = visibleData.map((d) => ({
 		x: plotArea.x + d.timestamp_ms * xScale,
 		y: plotArea.y + plotArea.height - d.velocity_mps * yScale,
 	}));
 
-	// Draw lighter opacity fill under the line
 	const gradient = ctx.createLinearGradient(
 		0,
 		plotArea.y,
 		0,
 		plotArea.y + plotArea.height,
 	);
-	gradient.addColorStop(0, "rgba(255, 107, 53, 0.2)");
+	gradient.addColorStop(0, withAlpha(primary, 0.2));
 	gradient.addColorStop(1, "transparent");
 
 	ctx.beginPath();
@@ -238,16 +242,14 @@ export function renderVelocityBars(
 	ctx.fillStyle = gradient;
 	ctx.fill();
 
-	// Draw stroke line at 2px width
 	ctx.beginPath();
 	ctx.moveTo(points[0].x, points[0].y);
 	points.slice(1).forEach((p) => {
 		ctx.lineTo(p.x, p.y);
 	});
-	ctx.strokeStyle = EMBER_COLOR;
+	ctx.strokeStyle = primary;
 	ctx.lineWidth = 2;
 	ctx.stroke();
 
-	// Draw playhead
-	drawPlayhead(ctx, plotArea, currentTimeMs, maxTime);
+	drawPlayhead(ctx, plotArea, currentTimeMs, maxTime, tokens);
 }

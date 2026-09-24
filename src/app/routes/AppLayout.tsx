@@ -10,7 +10,6 @@ import { OnboardingOverlay } from "@/app/components/OnboardingOverlay";
 import { PageLoading } from "@/app/components/PageLoading";
 import { SkipToContent } from "@/app/components/SkipToContent";
 import { SidebarInset, SidebarProvider } from "@/app/components/ui/sidebar";
-import { Toaster } from "@/app/components/ui/sonner";
 import { WhatsNewBanner } from "@/app/components/WhatsNewBanner";
 import { useNotificationSync } from "@/hooks/useNotificationSync";
 import { useOnboarding } from "@/hooks/useOnboarding";
@@ -20,7 +19,8 @@ import { pageTransition } from "@/lib/animations";
 
 /**
  * Authenticated shell layout.
- * Renders AppSidebar (desktop left nav) + page content (Outlet) + MobileBottomNav + Toaster.
+ * Renders AppSidebar (desktop left nav) + page content (Outlet) + MobileBottomNav.
+ * The Toaster is mounted once in App so public routes can toast too.
  * useRealtimeSync is mounted here so it only runs when authenticated
  * and persists across route changes.
  *
@@ -39,6 +39,7 @@ export function AppLayout() {
 	useStreakSync();
 	const outlet = useOutlet();
 	const location = useLocation();
+	const routeId = location.pathname;
 	const {
 		needsOnboarding,
 		needsWhatsNew,
@@ -75,7 +76,7 @@ export function AppLayout() {
 							<Suspense fallback={<PageLoading />}>
 								<AnimatePresence mode="wait">
 									<motion.main
-										key={location.pathname}
+										key={routeId}
 										id="main-content"
 										{...pageTransition}
 									>
@@ -89,8 +90,6 @@ export function AppLayout() {
 							<MobileBottomNav />
 						</div>
 					</SidebarInset>
-
-					<Toaster />
 				</div>
 			</MotionConfig>
 		</SidebarProvider>

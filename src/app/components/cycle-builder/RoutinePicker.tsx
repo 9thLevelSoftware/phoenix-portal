@@ -69,7 +69,7 @@ export function RoutinePicker({
 						<Card className="bg-surface-2 border-secondary">
 							{/* Header */}
 							<div className="flex items-center justify-between p-6 border-b border-secondary">
-								<h2 className="text-2xl font-semibold text-white">
+								<h2 className="text-2xl font-semibold text-foreground">
 									Select Routine
 								</h2>
 								<Button variant="ghost" size="sm" onClick={onClose}>
@@ -223,10 +223,12 @@ function RoutineItem({
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-3 flex-1">
 					<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-						<Dumbbell className="w-5 h-5 text-white" />
+						<Dumbbell className="w-5 h-5 text-foreground" />
 					</div>
 					<div className="flex-1 min-w-0">
-						<div className="font-semibold text-white mb-1">{routine.name}</div>
+						<div className="font-semibold text-foreground mb-1">
+							{routine.name}
+						</div>
 						<div className="text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
 							<span>{routine.exercises} exercises</span>
 							<span className="text-muted-foreground">•</span>

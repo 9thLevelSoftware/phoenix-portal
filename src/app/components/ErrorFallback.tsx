@@ -1,19 +1,26 @@
-import { AlertCircle, RefreshCw } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { AlertCircle, Copy, RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { FallbackProps } from "react-error-boundary";
+import { useNavigate } from "react-router";
+import { toast } from "sonner";
 import { Button } from "@/app/components/ui/button";
+import { lastReportedErrorId } from "@/lib/errorReporting";
 
 /**
  * Detects chunk/module load failures caused by a new deployment
  * invalidating previously-hashed asset filenames.
  */
-function isChunkLoadError(error: Error): boolean {
-	const msg = error.message?.toLowerCase() ?? "";
+function isChunkLoadError(error: unknown): boolean {
+	const msg =
+		error instanceof Error
+			? (error.message?.toLowerCase() ?? "")
+			: String(error).toLowerCase();
+	const errorName = error instanceof Error ? error.name : "";
 	return (
 		msg.includes("failed to fetch dynamically imported module") ||
 		msg.includes("loading chunk") ||
 		msg.includes("loading css chunk") ||
-		(error.name === "TypeError" && msg.includes("failed to fetch"))
+		(errorName === "TypeError" && msg.includes("failed to fetch"))
 	);
 }
 
@@ -49,11 +56,57 @@ function safeSessionRemove(key: string): void {
 	}
 }
 
+// crypto.randomUUID only exists in secure contexts (not plain-HTTP LAN
+// testing), and this screen must never throw while handling an error.
+function localErrorId(): string {
+	return typeof globalThis.crypto?.randomUUID === "function"
+		? globalThis.crypto.randomUUID()
+		: `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function PageErrorFallback({
 	error,
 	resetErrorBoundary,
 }: FallbackProps) {
+	const navigate = useNavigate();
+	const [localId] = useState(localErrorId);
+	const [reportedId, setReportedId] = useState<string>();
+	const errorId = reportedId ?? localId;
 	const hasAutoReloaded = useRef(false);
+	const errorMessage =
+		error instanceof Error ? error.message : "Unknown application error";
+
+	// React reports the error to the root callbacks during the commit, before
+	// effects run, so with Sentry on this picks up the id of that event: the
+	// id the user copies is the one support can look up. Without Sentry the
+	// local id is logged beside the error so the console run is searchable.
+	useEffect(() => {
+		const sentryId = lastReportedErrorId();
+		if (sentryId) {
+			setReportedId(sentryId);
+		} else {
+			// forwardReactError already logged the error itself.
+			console.error(
+				`[error id ${localId}] ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}, [error, localId]);
+
+	const copyErrorId = async () => {
+		try {
+			await navigator.clipboard.writeText(errorId);
+			toast.success("Error id copied");
+		} catch {
+			toast.error("Couldn't copy the error id — select it above instead");
+		}
+	};
+
+	const backToDashboard = () => {
+		navigate("/dashboard");
+		// The app-level boundary is not keyed by location, so navigating alone
+		// would leave this fallback on screen.
+		resetErrorBoundary();
+	};
 
 	useEffect(() => {
 		if (!isChunkLoadError(error)) return;
@@ -78,39 +131,51 @@ export function PageErrorFallback({
 		<div className="min-h-[50vh] flex items-center justify-center p-8">
 			<div className="text-center max-w-md">
 				<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
-				<h2 className="text-xl font-semibold text-white mb-2">
+				<h2 className="text-xl font-semibold text-foreground mb-2">
 					{offlineChunkError
 						? "You're offline"
 						: chunkError
 							? "New version available"
 							: "Something went wrong"}
 				</h2>
-				<p className="text-muted-foreground mb-6 text-sm">
+				<p className="text-muted-foreground mb-2 text-sm">
 					{offlineChunkError
 						? "This page hasn't been downloaded for offline use yet. Reconnect and try again."
 						: chunkError
 							? "The app has been updated. Reloading to get the latest version..."
-							: error.message}
+							: errorMessage}
 				</p>
-				<Button
-					onClick={() => {
-						if (chunkError) {
-							safeSessionRemove(RELOAD_KEY);
-							window.location.reload();
-						} else {
-							resetErrorBoundary();
-						}
-					}}
-				>
-					{chunkError ? (
-						<>
-							<RefreshCw className="w-4 h-4 mr-2" />
-							{offlineChunkError ? "Try again" : "Reload"}
-						</>
-					) : (
-						"Try Again"
-					)}
-				</Button>
+				<p className="text-muted-foreground mb-6 text-xs">
+					Error id: <span className="font-data select-all">{errorId}</span>
+				</p>
+				<div className="flex flex-wrap justify-center gap-2">
+					<Button
+						onClick={() => {
+							if (chunkError) {
+								safeSessionRemove(RELOAD_KEY);
+								window.location.reload();
+							} else {
+								resetErrorBoundary();
+							}
+						}}
+					>
+						{chunkError ? (
+							<>
+								<RefreshCw className="w-4 h-4 mr-2" />
+								{offlineChunkError ? "Try again" : "Reload"}
+							</>
+						) : (
+							"Try Again"
+						)}
+					</Button>
+					<Button variant="outline" onClick={() => void copyErrorId()}>
+						<Copy aria-hidden="true" className="w-4 h-4" />
+						Copy error id
+					</Button>
+					<Button variant="ghost" onClick={backToDashboard}>
+						Back to dashboard
+					</Button>
+				</div>
 			</div>
 		</div>
 	);

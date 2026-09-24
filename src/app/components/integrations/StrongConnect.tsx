@@ -278,7 +278,7 @@ export function StrongConnect({
 						onClick={() => onChange("kg")}
 						className={
 							value === "kg"
-								? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
+								? "bg-chart-5 hover:bg-chart-5/90 text-background border-0"
 								: ""
 						}
 					>
@@ -291,7 +291,7 @@ export function StrongConnect({
 						onClick={() => onChange("lbs")}
 						className={
 							value === "lbs"
-								? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
+								? "bg-chart-5 hover:bg-chart-5/90 text-background border-0"
 								: ""
 						}
 					>
@@ -311,8 +311,8 @@ export function StrongConnect({
 		<Card className="border-border/50">
 			<CardHeader>
 				<div className="flex items-center gap-3">
-					<div className="flex items-center justify-center size-10 rounded-lg bg-[#5856D6]/10">
-						<Dumbbell className="size-5 text-[#5856D6]" />
+					<div className="flex items-center justify-center size-10 rounded-lg bg-[var(--chart-5)]/10">
+						<Dumbbell className="size-5 text-[var(--chart-5)]" />
 					</div>
 					<div>
 						<CardTitle className="text-base">Strong</CardTitle>
@@ -322,7 +322,7 @@ export function StrongConnect({
 					</div>
 					{isConnected && (
 						<div className="flex items-center gap-2">
-							<span className="text-xs text-[var(--color-forge-green)] flex items-center gap-1">
+							<span className="text-xs text-success flex items-center gap-1">
 								<CheckCircle className="size-3" />
 								Connected
 							</span>
@@ -366,7 +366,7 @@ export function StrongConnect({
 							onClick={handleExport}
 							disabled={isExporting}
 							size="sm"
-							className="bg-[#5856D6] hover:bg-[#5856D6]/90 text-white"
+							className="bg-chart-5 hover:bg-chart-5/90 text-background"
 						>
 							{isExporting ? (
 								"Exporting..."
@@ -449,7 +449,7 @@ export function StrongConnect({
 						{parsedActivities && parsedActivities.length > 0 && (
 							<div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-3">
 								<div className="flex items-center gap-2 text-sm font-medium">
-									<FileText className="size-4 text-[var(--color-phoenix-primary)]" />
+									<FileText className="size-4 text-primary" />
 									Import Preview
 									{csvFileName && (
 										<span className="text-muted-foreground font-normal">
@@ -482,7 +482,7 @@ export function StrongConnect({
 										onClick={handleImport}
 										disabled={isImporting}
 										size="sm"
-										className="bg-[#5856D6] hover:bg-[#5856D6]/90 text-white"
+										className="bg-chart-5 hover:bg-chart-5/90 text-background"
 									>
 										{isImporting
 											? "Importing..."

@@ -6,6 +6,7 @@ import { BiomechanicsContent } from "@/app/components/Biomechanics";
 import { MuscleRadar } from "@/app/components/charts/MuscleRadar";
 import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
 import { Card } from "@/app/components/ui/card";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import type { BodyMuscleFocusModel } from "@/lib/body-muscle-analytics";
 import type { Recommendation } from "@/lib/recommendations";
 import type { MuscleRecovery } from "@/lib/sra-recovery";
@@ -129,14 +130,14 @@ export default function MobileBodyTab({
 					<div className="flex overflow-hidden rounded-lg bg-muted/20">
 						<button
 							type="button"
-							className={`px-3 py-1 text-xs ${bodySide === "front" ? "bg-primary text-white" : "text-muted-foreground"}`}
+							className={`px-3 py-1 text-xs ${bodySide === "front" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
 							onClick={() => setBodySide("front")}
 						>
 							Front
 						</button>
 						<button
 							type="button"
-							className={`px-3 py-1 text-xs ${bodySide === "back" ? "bg-primary text-white" : "text-muted-foreground"}`}
+							className={`px-3 py-1 text-xs ${bodySide === "back" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
 							onClick={() => setBodySide("back")}
 						>
 							Back
@@ -183,7 +184,9 @@ export default function MobileBodyTab({
 							onClick={() => setSelectedMuscleId(muscle.muscleId)}
 						>
 							<div className="flex items-center justify-between gap-3">
-								<span className="text-sm text-white">{muscle.muscleName}</span>
+								<span className="text-sm text-foreground">
+									{muscle.muscleName}
+								</span>
 								<span className="text-xs text-primary">
 									{muscle.loadShare}%
 								</span>
@@ -216,11 +219,7 @@ export default function MobileBodyTab({
 			</Card>
 
 			{/* Volume Landmarks */}
-			<Suspense
-				fallback={
-					<div className="h-48 animate-pulse bg-surface-2 rounded-lg" />
-				}
-			>
+			<Suspense fallback={<Skeleton className="h-48 w-full" />}>
 				<VolumeLandmarks
 					weeklyVolume={weeklyVolume}
 					selectedMuscleGroup={null}
@@ -230,11 +229,7 @@ export default function MobileBodyTab({
 			</Suspense>
 
 			{/* SRA Recovery Matrix (self-gates for INFERNO) */}
-			<Suspense
-				fallback={
-					<div className="h-48 animate-pulse bg-surface-2 rounded-lg" />
-				}
-			>
+			<Suspense fallback={<Skeleton className="h-48 w-full" />}>
 				<SraRecoveryMatrix
 					recoveries={muscleRecoveries}
 					recommendations={recommendations}
@@ -242,11 +237,7 @@ export default function MobileBodyTab({
 			</Suspense>
 
 			{/* Recommendations Panel (self-gates for INFERNO) */}
-			<Suspense
-				fallback={
-					<div className="h-24 animate-pulse bg-surface-2 rounded-lg" />
-				}
-			>
+			<Suspense fallback={<Skeleton className="h-24 w-full" />}>
 				<RecommendationsPanel recommendations={recommendations} />
 			</Suspense>
 		</>

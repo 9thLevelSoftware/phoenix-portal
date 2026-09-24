@@ -14,6 +14,7 @@ import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip"
 import { Button } from "@/app/components/ui/button";
 import { PHOENIX } from "@/lib/colors";
 import type { ProgressionWorkbenchModel } from "@/lib/progression-workbench";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import type { WeightUnit } from "@/lib/units";
 import { perCableUnitLabel } from "@/lib/units/loadDisplay";
 import {
@@ -56,6 +57,8 @@ export default function MobileProgressTab({
 	progressionModel,
 	onSelectProgressionExercise,
 }: MobileProgressTabProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const titlePhase =
 		phaseFilter === "all" ? "PHASE" : phaseFilter.toUpperCase();
 
@@ -139,7 +142,7 @@ export default function MobileProgressTab({
 						<BarChart data={mobileStrengthData} layout="vertical">
 							<XAxis
 								type="number"
-								stroke={PHOENIX.ashGray}
+								stroke={PHOENIX().ashGray}
 								tickLine={false}
 								axisLine={false}
 								tick={{
@@ -150,7 +153,7 @@ export default function MobileProgressTab({
 							<YAxis
 								type="category"
 								dataKey="exercise"
-								stroke={PHOENIX.ashGray}
+								stroke={PHOENIX().ashGray}
 								width={70}
 								tickLine={false}
 								axisLine={false}
@@ -163,7 +166,7 @@ export default function MobileProgressTab({
 							<Bar
 								dataKey="weight"
 								name={`Weight (${perCableUnitLabel(unit)})`}
-								fill={PHOENIX.ember}
+								fill={PHOENIX().ember}
 								radius={[0, 4, 4, 0]}
 								animationDuration={800}
 								animationEasing="ease-out"
@@ -191,19 +194,19 @@ export default function MobileProgressTab({
 								>
 									<stop
 										offset="5%"
-										stopColor={PHOENIX.ember}
+										stopColor={PHOENIX().ember}
 										stopOpacity={0.3}
 									/>
 									<stop
 										offset="95%"
-										stopColor={PHOENIX.ember}
+										stopColor={PHOENIX().ember}
 										stopOpacity={0}
 									/>
 								</linearGradient>
 							</defs>
 							<XAxis
 								dataKey="date"
-								stroke={PHOENIX.ashGray}
+								stroke={PHOENIX().ashGray}
 								tickLine={false}
 								axisLine={false}
 								tick={{
@@ -212,7 +215,7 @@ export default function MobileProgressTab({
 								}}
 							/>
 							<YAxis
-								stroke={PHOENIX.ashGray}
+								stroke={PHOENIX().ashGray}
 								tickFormatter={(value) =>
 									value >= 1000 ? `${value / 1000}k` : `${value}`
 								}
@@ -227,7 +230,7 @@ export default function MobileProgressTab({
 							<Area
 								type="monotone"
 								dataKey="volume"
-								stroke={PHOENIX.ember}
+								stroke={PHOENIX().ember}
 								strokeWidth={2}
 								fill="url(#mobileTrendGradient)"
 								animationDuration={800}
@@ -259,7 +262,7 @@ export default function MobileProgressTab({
 						</div>
 						{daysSinceLastPR != null && (
 							<div className="flex flex-col items-center justify-center rounded-lg bg-muted/30 px-4 py-3">
-								<span className="text-2xl font-bold text-white">
+								<span className="text-2xl font-bold text-foreground">
 									{daysSinceLastPR}
 								</span>
 								<span className="text-[10px] text-muted-foreground">

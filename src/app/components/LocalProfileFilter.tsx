@@ -9,7 +9,9 @@ import {
 import { localProfilesOptions } from "@/queries/localProfiles";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
-// Profile color palette (indexes 0-7 match mobile's ProfileSidePanel color array)
+// Profile color palette. Indexes 0-7 are synced data: they must match mobile's
+// ProfileSidePanel color array so a profile looks the same on both, so these
+// are fixed values rather than theme tokens (each is legible on both themes).
 const PROFILE_COLORS = [
 	"#FF6B35", // Ember (0)
 	"#3B82F6", // Blue (1)

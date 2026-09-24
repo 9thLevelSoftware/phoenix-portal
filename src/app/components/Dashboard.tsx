@@ -37,9 +37,10 @@ import {
 } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useStreak } from "@/hooks/useStreak";
-import { fadeUp, hover, staggerContainer } from "@/lib/animations";
+import { fadeUpVariants, hover, staggerContainer } from "@/lib/animations";
 import { formatChallengeValue } from "@/lib/challenges";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { convertWeight, formatVolume, type WeightUnit } from "@/lib/units";
 import { formatLoad } from "@/lib/units/loadDisplay";
 import {
@@ -136,14 +137,14 @@ function QuickStatCard({
 	gradient: string;
 }) {
 	return (
-		<motion.div whileHover={hover.lift}>
-			<Card className="p-4 signal-panel min-w-[120px] flex-shrink-0">
+		<motion.div whileHover={hover}>
+			<Card variant="stat" padding="sm" className="min-w-[120px] flex-shrink-0">
 				<div
 					className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mb-3 text-white`}
 				>
 					{icon}
 				</div>
-				<div className="text-2xl font-bold text-white mb-1 font-data">
+				<div className="text-2xl font-bold text-foreground mb-1 font-data">
 					{numericValue != null ? (
 						<NumberFlow value={numericValue} className="tabular-nums" />
 					) : (
@@ -172,7 +173,7 @@ function MobileRecentActivityCard({
 	return (
 		<Card className="p-4 signal-panel active:scale-[0.98] transition-transform">
 			<div className="flex items-center justify-between mb-2">
-				<h4 className="font-semibold text-white">{title}</h4>
+				<h4 className="font-semibold text-foreground">{title}</h4>
 				<span className="text-xs text-muted-foreground">{time}</span>
 			</div>
 			<div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -292,7 +293,7 @@ function ActiveChallengesSection({
 					>
 						<div className="mb-3 flex items-start justify-between gap-3">
 							<div>
-								<h4 className="text-sm font-semibold text-white">
+								<h4 className="text-sm font-semibold text-foreground">
 									{challenge.name}
 								</h4>
 								<p className="text-xs text-muted-foreground">
@@ -347,6 +348,8 @@ function ActiveChallengesSection({
 }
 
 export function Dashboard() {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
 	const { activeProfileId } = useProfileFilterStore();
@@ -419,7 +422,7 @@ export function Dashboard() {
 			<div className="min-h-screen pb-20 md:pb-8">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
 					<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
-					<h1 className="text-xl font-semibold text-white mb-2">
+					<h1 className="text-xl font-semibold text-foreground mb-2">
 						Couldn't load your workouts
 					</h1>
 					<p className="text-sm text-muted-foreground mb-6">
@@ -449,9 +452,9 @@ export function Dashboard() {
 						className="text-center mb-10"
 					>
 						<div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
-							<Flame className="w-8 h-8 text-primary" fill={PHOENIX.ember} />
+							<Flame className="w-8 h-8 text-primary" fill={PHOENIX().ember} />
 						</div>
-						<h1 className="text-display-2 mb-3 text-white">
+						<h1 className="text-h1 mb-3 text-foreground">
 							Welcome to Phoenix Portal
 						</h1>
 						<p className="text-muted-foreground max-w-xs mx-auto">
@@ -469,10 +472,10 @@ export function Dashboard() {
 							<Card className="p-5 signal-panel">
 								<div className="flex items-center gap-4">
 									<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-										<TrendingUp className="w-5 h-5 text-white" />
+										<TrendingUp className="w-5 h-5 text-foreground" />
 									</div>
 									<div>
-										<h3 className="font-semibold text-white">
+										<h3 className="text-h3 font-semibold text-foreground">
 											Track your progress
 										</h3>
 										<p className="text-xs text-muted-foreground">
@@ -495,7 +498,7 @@ export function Dashboard() {
 											<Target className="w-5 h-5 text-white" />
 										</div>
 										<div>
-											<h3 className="font-semibold text-white">
+											<h3 className="font-semibold text-foreground">
 												Set training goals
 											</h3>
 											<p className="text-xs text-muted-foreground">
@@ -520,7 +523,7 @@ export function Dashboard() {
 											<HeartPulse className="w-5 h-5 text-white" />
 										</div>
 										<div>
-											<h3 className="font-semibold text-white">
+											<h3 className="font-semibold text-foreground">
 												Check recovery
 											</h3>
 											<p className="text-xs text-muted-foreground">
@@ -545,7 +548,7 @@ export function Dashboard() {
 						<div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-chart-2/20 flex items-center justify-center">
 							<Flame className="w-10 h-10 text-primary" />
 						</div>
-						<h1 className="text-display-1 mb-4 text-white">
+						<h1 className="text-h1 mb-4 text-foreground">
 							Welcome to Phoenix Portal
 						</h1>
 						<p className="text-xl text-muted-foreground max-w-xl mx-auto">
@@ -555,17 +558,17 @@ export function Dashboard() {
 					</motion.div>
 
 					<motion.div
-						variants={staggerContainer}
 						initial="hidden"
 						animate="visible"
+						variants={staggerContainer}
 						className="grid grid-cols-1 md:grid-cols-3 gap-6"
 					>
-						<motion.div variants={fadeUp}>
+						<motion.div variants={fadeUpVariants}>
 							<Card className="p-6 signal-panel h-full">
 								<div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center mb-4">
-									<TrendingUp className="w-6 h-6 text-white" />
+									<TrendingUp className="w-6 h-6 text-foreground" />
 								</div>
-								<h3 className="text-lg font-semibold text-white mb-2">
+								<h3 className="text-h3 font-semibold text-foreground mb-2">
 									Track your progress
 								</h3>
 								<p className="text-sm text-muted-foreground">
@@ -575,13 +578,13 @@ export function Dashboard() {
 							</Card>
 						</motion.div>
 
-						<motion.div variants={fadeUp}>
+						<motion.div variants={fadeUpVariants}>
 							<Link to="/goals" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-gradient-to-br from-chart-2 to-accent flex items-center justify-center mb-4">
 										<Target className="w-6 h-6 text-white" />
 									</div>
-									<h3 className="text-lg font-semibold text-white mb-2">
+									<h3 className="text-lg font-semibold text-foreground mb-2">
 										Set training goals
 									</h3>
 									<p className="text-sm text-muted-foreground">
@@ -592,13 +595,13 @@ export function Dashboard() {
 							</Link>
 						</motion.div>
 
-						<motion.div variants={fadeUp}>
+						<motion.div variants={fadeUpVariants}>
 							<Link to="/recovery" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center mb-4">
 										<HeartPulse className="w-6 h-6 text-white" />
 									</div>
-									<h3 className="text-lg font-semibold text-white mb-2">
+									<h3 className="text-lg font-semibold text-foreground mb-2">
 										Check recovery
 									</h3>
 									<p className="text-sm text-muted-foreground">
@@ -621,7 +624,9 @@ export function Dashboard() {
 				<div className="sticky top-0 z-40 bg-surface-1 border-b border-secondary px-4 py-4">
 					<div className="flex items-center justify-between">
 						<div>
-							<h1 className="text-2xl font-bold text-white">Welcome back!</h1>
+							<h1 className="text-h1 font-bold text-foreground">
+								Welcome back!
+							</h1>
 							<p className="text-sm text-muted-foreground">Let's crush today</p>
 						</div>
 					</div>
@@ -640,9 +645,9 @@ export function Dashboard() {
 									animate={{
 										scale: [1, 1.1, 1],
 										filter: [
-											"drop-shadow(0 0 10px #FF6B35)",
-											"drop-shadow(0 0 20px #DC2626)",
-											"drop-shadow(0 0 10px #FF6B35)",
+											"drop-shadow(0 0 10px var(--primary))",
+											"drop-shadow(0 0 20px var(--destructive))",
+											"drop-shadow(0 0 10px var(--primary))",
 										],
 									}}
 									transition={{
@@ -653,11 +658,11 @@ export function Dashboard() {
 								>
 									<Flame
 										className="w-16 h-16 text-primary"
-										fill={PHOENIX.ember}
+										fill={PHOENIX().ember}
 									/>
 								</motion.div>
 								<div className="flex-1">
-									<div className="text-4xl font-bold text-white mb-1 font-data">
+									<div className="text-4xl font-bold text-foreground mb-1 font-data">
 										<NumberFlow value={streak ?? 0} className="tabular-nums" />{" "}
 										{streak === 1 ? "Day" : "Days"}
 									</div>
@@ -689,7 +694,7 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.2 }}
 					>
-						<h2 className="text-lg font-semibold text-white mb-3">
+						<h2 className="text-h2 font-semibold text-foreground mb-3">
 							Today's Workout
 						</h2>
 						{activeCycle ? (
@@ -704,7 +709,7 @@ export function Dashboard() {
 									<p className="text-sm text-muted-foreground mb-4">
 										Create a training cycle to see your next workout here
 									</p>
-									<Button variant="cta" asChild>
+									<Button asChild>
 										<Link to="/cycles">
 											<Calendar className="w-4 h-4 mr-2" />
 											Browse Training Cycles
@@ -721,7 +726,7 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.3 }}
 					>
-						<h2 className="text-lg font-semibold text-white mb-3">
+						<h2 className="text-h2 font-semibold text-foreground mb-3">
 							Quick Stats
 						</h2>
 						{workoutsLoading ? (
@@ -791,7 +796,9 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						transition={{ delay: 0.4 }}
 					>
-						<h2 className="text-lg font-semibold text-white mb-3">This Week</h2>
+						<h2 className="text-h2 font-semibold text-foreground mb-3">
+							This Week
+						</h2>
 						{statsLoading ? (
 							<Card className="p-5 signal-panel">
 								<Skeleton className="h-8 w-32 mb-1" />
@@ -813,7 +820,7 @@ export function Dashboard() {
 						) : (
 							<Card className="p-5 signal-panel">
 								<div className="mb-4">
-									<div className="text-3xl font-bold text-white mb-1 font-data">
+									<div className="text-3xl font-bold text-foreground mb-1 font-data">
 										{formatVolume(weeklyTotal, unit)}
 									</div>
 									<div className="text-sm text-success flex items-center gap-1">
@@ -871,7 +878,7 @@ export function Dashboard() {
 						transition={{ delay: 0.5 }}
 					>
 						<div className="flex items-center justify-between mb-3">
-							<h2 className="text-lg font-semibold text-white">
+							<h2 className="text-h2 font-semibold text-foreground">
 								Recent Activity
 							</h2>
 							<Link
@@ -929,7 +936,7 @@ export function Dashboard() {
 						animate={{ opacity: 1, y: 0 }}
 						className="mb-8 pb-8 border-b border-border"
 					>
-						<h1 className="text-display-1 mb-2">
+						<h1 className="text-h1 mb-2">
 							Welcome back,{" "}
 							<span className="text-primary">
 								{profile?.display_name ??
@@ -952,7 +959,7 @@ export function Dashboard() {
 							initial={{ opacity: 0, y: 20 }}
 							animate={{ opacity: 1, y: 0 }}
 							transition={{ delay: 0.1 }}
-							whileHover={hover.lift}
+							whileHover={hover}
 							className="col-span-1 lg:col-span-5"
 						>
 							<div className="signal-panel p-8 flex items-center justify-center relative overflow-hidden h-full">
@@ -962,9 +969,9 @@ export function Dashboard() {
 										animate={{
 											scale: [1, 1.1, 1],
 											filter: [
-												"drop-shadow(0 0 10px #FF6B35)",
-												"drop-shadow(0 0 20px #DC2626)",
-												"drop-shadow(0 0 10px #FF6B35)",
+												"drop-shadow(0 0 10px var(--primary))",
+												"drop-shadow(0 0 20px var(--destructive))",
+												"drop-shadow(0 0 10px var(--primary))",
 											],
 										}}
 										transition={{
@@ -975,11 +982,11 @@ export function Dashboard() {
 									>
 										<Flame
 											className="w-16 h-16 text-primary"
-											fill={PHOENIX.ember}
+											fill={PHOENIX().ember}
 										/>
 									</motion.div>
 									<div>
-										<h3 className="text-3xl font-bold mb-1 text-white font-data">
+										<h3 className="text-h2 font-bold mb-1 text-foreground font-data">
 											<NumberFlow
 												value={streak ?? 0}
 												className="tabular-nums"
@@ -1004,7 +1011,7 @@ export function Dashboard() {
 							className="col-span-1 lg:col-span-7"
 						>
 							<div className="signal-panel p-6 h-full">
-								<h3 className="text-lg font-medium mb-6 text-white">
+								<h3 className="text-h2 font-medium mb-6 text-foreground">
 									Quick Stats
 								</h3>
 								{workoutsLoading ? (
@@ -1022,14 +1029,14 @@ export function Dashboard() {
 								) : (
 									<div className="grid grid-cols-2 gap-y-6 gap-x-4">
 										<div className="flex items-center gap-4">
-											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-white/5">
+											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-foreground/5">
 												<Dumbbell className="w-5 h-5" />
 											</div>
 											<div>
 												<div className="text-sm text-muted-foreground mb-1">
 													Total Workouts
 												</div>
-												<div className="text-2xl font-semibold text-white font-data">
+												<div className="text-2xl font-semibold text-foreground font-data">
 													<NumberFlow
 														value={workouts?.length ?? 0}
 														className="tabular-nums"
@@ -1038,14 +1045,14 @@ export function Dashboard() {
 											</div>
 										</div>
 										<div className="flex items-center gap-4">
-											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-white/5">
+											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-foreground/5">
 												<Trophy className="w-5 h-5" />
 											</div>
 											<div>
 												<div className="text-sm text-muted-foreground mb-1">
 													Phase PRs
 												</div>
-												<div className="text-2xl font-semibold text-white font-data">
+												<div className="text-2xl font-semibold text-foreground font-data">
 													<NumberFlow
 														value={recentPRs?.length ?? 0}
 														className="tabular-nums"
@@ -1054,27 +1061,27 @@ export function Dashboard() {
 											</div>
 										</div>
 										<div className="flex items-center gap-4">
-											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-white/5">
+											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-foreground/5">
 												<Award className="w-5 h-5" />
 											</div>
 											<div>
 												<div className="text-sm text-muted-foreground mb-1">
 													Badges Earned
 												</div>
-												<div className="text-2xl font-semibold text-white font-data">
+												<div className="text-2xl font-semibold text-foreground font-data">
 													{badgesLoading ? "..." : (earnedBadges?.length ?? 0)}
 												</div>
 											</div>
 										</div>
 										<div className="flex items-center gap-4">
-											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-white/5">
+											<div className="w-12 h-12 rounded-xl bg-surface-3 flex items-center justify-center text-muted-foreground border border-foreground/5">
 												<TrendingUp className="w-5 h-5" />
 											</div>
 											<div>
 												<div className="text-sm text-muted-foreground mb-1">
 													Weekly Volume
 												</div>
-												<div className="text-2xl font-semibold text-white font-data">
+												<div className="text-2xl font-semibold text-foreground font-data">
 													{formatVolume(weeklyTotal, unit)}
 												</div>
 											</div>
@@ -1098,14 +1105,14 @@ export function Dashboard() {
 							) : (
 								<div className="signal-panel p-6 flex flex-col items-center justify-center text-center h-full">
 									<Calendar className="w-12 h-12 text-primary mb-4 opacity-80" />
-									<h3 className="text-xl font-medium text-white mb-6">
+									<h3 className="text-h2 font-medium text-foreground mb-6">
 										Scheduled
 										<br />
 										Workout
 									</h3>
 									<Button
 										variant="outline"
-										className="w-full border-white/10 hover:bg-surface-3"
+										className="w-full border-foreground/10 hover:bg-surface-3"
 										asChild
 									>
 										<Link to="/cycles">Browse Training Cycles</Link>
@@ -1124,7 +1131,7 @@ export function Dashboard() {
 								<ChartSkeleton />
 							) : (
 								<div className="signal-panel p-6 flex flex-col h-full">
-									<h3 className="text-lg font-medium mb-6 text-white">
+									<h3 className="text-h2 font-medium mb-6 text-foreground">
 										Weekly Volume
 									</h3>
 									{weeklyTotal === 0 ? (
@@ -1205,7 +1212,7 @@ export function Dashboard() {
 							>
 								<Card className="p-5 signal-panel">
 									<div className="flex items-center justify-between mb-4">
-										<h3 className="text-xl text-white">Recent Activity</h3>
+										<h3 className="text-h2 text-foreground">Recent Activity</h3>
 										<Button
 											variant="ghost"
 											className="text-primary hover:bg-primary/10"
@@ -1238,11 +1245,13 @@ export function Dashboard() {
 											{recentWorkouts.map((workout: WorkoutSession) => (
 												<div
 													key={workout.id}
-													className="flex items-center justify-between p-3 bg-background rounded-lg border border-white/5 hover:border-primary/50 transition-all cursor-pointer"
+													className="flex items-center justify-between p-3 bg-background rounded-lg border border-foreground/5 hover:border-primary/50 transition-all cursor-pointer"
 												>
 													<div className="flex-1">
 														<div className="flex items-center gap-2 mb-1">
-															<h4 className="text-white">{workout.name}</h4>
+															<h4 className="text-foreground">
+																{workout.name}
+															</h4>
 															{workout.pr_count > 0 && (
 																<Badge className="bg-accent text-background border-0 text-xs">
 																	{workout.pr_count} PR
@@ -1277,7 +1286,7 @@ export function Dashboard() {
 									transition={{ delay: 0.45 }}
 								>
 									<Card className="p-5 signal-panel">
-										<h3 className="text-xl text-white mb-6">
+										<h3 className="text-h2 text-foreground mb-6">
 											Volume Breakdown
 										</h3>
 										<ResponsiveContainer width="100%" height={200}>
@@ -1292,12 +1301,12 @@ export function Dashboard() {
 													>
 														<stop
 															offset="5%"
-															stopColor={PHOENIX.ember}
+															stopColor={PHOENIX().ember}
 															stopOpacity={0.8}
 														/>
 														<stop
 															offset="95%"
-															stopColor={PHOENIX.flameRed}
+															stopColor={PHOENIX().flameRed}
 															stopOpacity={0.1}
 														/>
 													</linearGradient>
@@ -1305,7 +1314,7 @@ export function Dashboard() {
 												<CartesianGrid strokeOpacity={0.3} vertical={false} />
 												<XAxis
 													dataKey="day"
-													stroke={PHOENIX.mutedForeground}
+													stroke={PHOENIX().mutedForeground}
 													tickLine={false}
 													axisLine={false}
 													tick={{
@@ -1314,7 +1323,7 @@ export function Dashboard() {
 													}}
 												/>
 												<YAxis
-													stroke={PHOENIX.mutedForeground}
+													stroke={PHOENIX().mutedForeground}
 													tickLine={false}
 													axisLine={false}
 													tick={{
@@ -1340,7 +1349,7 @@ export function Dashboard() {
 												<Area
 													type="monotone"
 													dataKey="volume"
-													stroke={PHOENIX.ember}
+													stroke={PHOENIX().ember}
 													strokeWidth={2}
 													fill="url(#volumeGradient)"
 													animationDuration={800}
@@ -1363,15 +1372,15 @@ export function Dashboard() {
 
 						{/* Right: PRs, Challenges, Badges */}
 						<motion.div
-							variants={staggerContainer}
 							initial="hidden"
 							animate="visible"
+							variants={staggerContainer}
 							className="space-y-6"
 						>
 							{/* Recent PRs */}
-							<motion.div variants={fadeUp}>
+							<motion.div variants={fadeUpVariants}>
 								<Card className="p-5 signal-panel">
-									<h3 className="text-xl text-white mb-4 flex items-center gap-2">
+									<h3 className="text-h2 text-foreground mb-4 flex items-center gap-2">
 										<Trophy className="w-5 h-5 text-accent" />
 										Recent PRs
 									</h3>
@@ -1380,7 +1389,7 @@ export function Dashboard() {
 											{["sk-a", "sk-b", "sk-c"].map((k) => (
 												<div
 													key={k}
-													className="p-3 rounded-lg border border-white/5"
+													className="p-3 rounded-lg border border-foreground/5"
 												>
 													<Skeleton className="h-4 w-24 mb-2" />
 													<Skeleton className="h-4 w-32" />
@@ -1402,7 +1411,9 @@ export function Dashboard() {
 													className="p-3 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg"
 												>
 													<div className="flex items-center justify-between mb-1">
-														<h4 className="text-white">{pr.exercise_name}</h4>
+														<h4 className="text-foreground">
+															{pr.exercise_name}
+														</h4>
 														<Badge className="bg-accent text-background border-0">
 															NEW
 														</Badge>
@@ -1428,9 +1439,11 @@ export function Dashboard() {
 							</motion.div>
 
 							{/* Active Challenges */}
-							<motion.div variants={fadeUp}>
+							<motion.div variants={fadeUpVariants}>
 								<Card className="p-5 signal-panel">
-									<h3 className="text-xl text-white mb-4">Active Challenges</h3>
+									<h3 className="text-xl text-foreground mb-4">
+										Active Challenges
+									</h3>
 									<ActiveChallengesSection
 										userId={user?.id ?? ""}
 										unit={unit}
@@ -1439,15 +1452,17 @@ export function Dashboard() {
 							</motion.div>
 
 							{/* Badge Showcase */}
-							<motion.div variants={fadeUp}>
+							<motion.div variants={fadeUpVariants}>
 								<Card className="p-5 signal-panel">
-									<h3 className="text-xl text-white mb-4">Recent Badges</h3>
+									<h3 className="text-xl text-foreground mb-4">
+										Recent Badges
+									</h3>
 									{badgesLoading ? (
 										<div className="space-y-3">
 											{["sk-a", "sk-b", "sk-c"].map((k) => (
 												<div
 													key={k}
-													className="p-3 rounded-lg border border-white/5"
+													className="p-3 rounded-lg border border-foreground/5"
 												>
 													<Skeleton className="h-4 w-24 mb-2" />
 													<Skeleton className="h-3 w-32" />
@@ -1474,7 +1489,7 @@ export function Dashboard() {
 												>
 													<div className="flex items-center justify-between gap-3">
 														<div>
-															<div className="text-white">
+															<div className="text-foreground">
 																{badge.badge_name}
 															</div>
 															<div className="text-xs text-muted-foreground">

@@ -96,7 +96,7 @@ function CommentItem({
 					className="w-8 h-8 rounded-full object-cover shrink-0"
 				/>
 			) : (
-				<div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs shrink-0">
+				<div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs shrink-0">
 					{authorName.charAt(0).toUpperCase()}
 				</div>
 			)}
@@ -105,7 +105,9 @@ function CommentItem({
 			<div className="flex-1 min-w-0">
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
-						<span className="text-sm text-white font-medium">{authorName}</span>
+						<span className="text-sm text-foreground font-medium">
+							{authorName}
+						</span>
 						<span className="text-xs text-muted-foreground">{timeAgo}</span>
 					</div>
 					{currentUserId && !isOwn && (
@@ -124,11 +126,11 @@ function CommentItem({
 							value={editBody}
 							onChange={(e) => setEditBody(e.target.value)}
 							maxLength={500}
-							className="text-sm bg-surface-2 border-secondary text-white min-h-12"
+							className="text-sm bg-surface-2 border-secondary text-foreground min-h-12"
 						/>
 						<div className="flex items-center justify-between">
 							<span
-								className={`text-xs ${editBody.length >= 480 ? "text-destructive font-medium" : editBody.length >= 400 ? "text-amber-400" : "text-muted-foreground"}`}
+								className={`text-xs ${editBody.length >= 480 ? "text-destructive font-medium" : editBody.length >= 400 ? "text-warning" : "text-muted-foreground"}`}
 							>
 								{editBody.length}/500
 							</span>
@@ -137,7 +139,7 @@ function CommentItem({
 									variant="ghost"
 									size="sm"
 									onClick={handleCancelEdit}
-									className="text-muted-foreground hover:text-white h-7 text-xs"
+									className="text-muted-foreground hover:text-foreground h-7 text-xs"
 								>
 									Cancel
 								</Button>
@@ -169,7 +171,7 @@ function CommentItem({
 							<button
 								type="button"
 								onClick={() => setIsEditing(true)}
-								className="flex items-center gap-1 text-xs text-muted-foreground hover:text-white transition-colors"
+								className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
 							>
 								<Pencil className="w-3 h-3" />
 								Edit
@@ -188,7 +190,7 @@ function CommentItem({
 							</AlertDialogTrigger>
 							<AlertDialogContent className="bg-background border-secondary">
 								<AlertDialogHeader>
-									<AlertDialogTitle className="text-white">
+									<AlertDialogTitle className="text-foreground">
 										Delete comment?
 									</AlertDialogTitle>
 									<AlertDialogDescription>
@@ -249,7 +251,7 @@ export function CommentThread({ itemId, itemType }: CommentThreadProps) {
 			{/* Header */}
 			<div className="flex items-center gap-2">
 				<MessageSquare className="w-4 h-4 text-muted-foreground" />
-				<h4 className="text-sm font-semibold text-white">
+				<h4 className="text-sm font-semibold text-foreground">
 					Comments
 					{comments && comments.length > 0 && (
 						<span className="text-muted-foreground font-normal ml-1">
@@ -292,11 +294,11 @@ export function CommentThread({ itemId, itemType }: CommentThreadProps) {
 						onChange={(e) => setNewComment(e.target.value)}
 						placeholder="Write a comment..."
 						maxLength={500}
-						className="text-sm bg-surface-2 border-secondary text-white min-h-12"
+						className="text-sm bg-surface-2 border-secondary text-foreground min-h-12"
 					/>
 					<div className="flex items-center justify-between">
 						<span
-							className={`text-xs ${newComment.length >= 480 ? "text-destructive font-medium" : newComment.length >= 400 ? "text-amber-400" : "text-muted-foreground"}`}
+							className={`text-xs ${newComment.length >= 480 ? "text-destructive font-medium" : newComment.length >= 400 ? "text-warning" : "text-muted-foreground"}`}
 						>
 							{newComment.length}/500
 						</span>

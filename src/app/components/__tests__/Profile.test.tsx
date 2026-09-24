@@ -1,4 +1,7 @@
-import { screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SubscriptionTier } from "@/hooks/useSubscription";
 import { renderWithProviders } from "@/test/test-utils";
@@ -98,6 +101,36 @@ describe("Profile", () => {
 		expect(container.firstChild).toBeTruthy();
 	});
 
+	it("opens the tab named in ?tab= (the sidebar's Settings link)", () => {
+		mockData.enabled = false;
+		render(
+			<QueryClientProvider client={new QueryClient()}>
+				<MemoryRouter initialEntries={["/profile?tab=settings"]}>
+					<Profile />
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+		expect(screen.getByRole("tab", { name: "Settings" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+	});
+
+	it("falls back to the stats tab for an unknown ?tab=", () => {
+		mockData.enabled = false;
+		render(
+			<QueryClientProvider client={new QueryClient()}>
+				<MemoryRouter initialEntries={["/profile?tab=nope"]}>
+					<Profile />
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+		expect(screen.getByRole("tab", { name: "Public Stats" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+	});
+
 	it("formats profile volume per cable", () => {
 		expect(formatProfileVolume(1500, "kg")).toBe("1.5K kg per cable");
 		expect(formatProfileVolume(null, "kg")).toBe("0 kg per cable");
@@ -163,5 +196,15 @@ describe("Profile", () => {
 		expect(
 			screen.getByRole("link", { name: /manage plan/i }),
 		).toBeInTheDocument();
+	});
+
+	it("associates the display name label with its input", async () => {
+		const user = userEvent.setup();
+		renderWithProviders(<Profile />);
+		await user.click(screen.getByRole("tab", { name: "Settings" }));
+		expect(screen.getByLabelText("Display Name")).toHaveAttribute(
+			"id",
+			"profile-display-name",
+		);
 	});
 });

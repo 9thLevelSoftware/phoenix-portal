@@ -98,7 +98,9 @@ describe("WorkoutHistory", () => {
 		expect(
 			screen.getByText(/couldn't load your workout history/i),
 		).toBeInTheDocument();
-		expect(screen.queryByText(/no workouts yet/i)).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/start tracking your workouts/i),
+		).not.toBeInTheDocument();
 	});
 
 	it("shows the empty state only after a successful zero-row fetch", () => {

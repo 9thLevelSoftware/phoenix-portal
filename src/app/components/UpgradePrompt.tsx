@@ -37,9 +37,9 @@ const TIER_COLORS: Record<
 	{ border: string; glow: string; accent: string }
 > = {
 	EMBER: {
-		border: "border-[var(--color-forge-green)]/40",
-		glow: "from-[var(--color-forge-green)]/10 to-primary/10",
-		accent: "text-[var(--color-forge-green)]",
+		border: "border-success/40",
+		glow: "from-success/10 to-primary/10",
+		accent: "text-success",
 	},
 	FLAME: {
 		border: "border-primary/40",
@@ -86,10 +86,10 @@ export function UpgradePrompt({
 
 				{/* Message */}
 				<div>
-					<h3 className="text-lg font-semibold text-zinc-100 mb-1">
+					<h3 className="text-lg font-semibold text-foreground mb-1">
 						Upgrade to <span className={colors.accent}>{requiredTier}</span>
 					</h3>
-					<p className="text-sm text-zinc-400">
+					<p className="text-sm text-muted-foreground">
 						Unlock {featureName ?? "this feature"} and more with a{" "}
 						{requiredTier} subscription.
 					</p>
@@ -100,7 +100,7 @@ export function UpgradePrompt({
 					{benefits.map((benefit) => (
 						<li
 							key={benefit.label}
-							className="flex items-center gap-3 text-sm text-zinc-300"
+							className="flex items-center gap-3 text-sm text-foreground"
 						>
 							<benefit.icon className={`w-4 h-4 ${colors.accent} shrink-0`} />
 							{benefit.label}
@@ -109,7 +109,7 @@ export function UpgradePrompt({
 				</ul>
 
 				{/* CTA */}
-				<Button asChild variant="cta" className="px-8">
+				<Button asChild className="px-8">
 					<Link to="/pricing">Compare Plans</Link>
 				</Button>
 			</div>

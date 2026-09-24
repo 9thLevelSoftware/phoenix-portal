@@ -57,7 +57,7 @@ function PhaseMetricPanel({
 }) {
 	return (
 		<div className="rounded-lg border border-secondary bg-muted/10 p-4">
-			<div className="text-sm font-semibold text-white mb-3">{title}</div>
+			<div className="text-sm font-semibold text-foreground mb-3">{title}</div>
 			<div className="grid grid-cols-2 gap-4">
 				<div>
 					<div className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -105,7 +105,9 @@ export default function ProgressTab({
 			<Card className="p-6 bg-surface-2 border-secondary">
 				<div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
 					<div>
-						<h3 className="text-xl text-white">Phase Load, Speed & Power</h3>
+						<h3 className="text-xl text-foreground">
+							Phase Load, Speed & Power
+						</h3>
 						<p className="text-sm text-muted-foreground mt-1">
 							{phaseMetricSummary.rowCount} sessions with phase samples
 						</p>
@@ -121,7 +123,7 @@ export default function ProgressTab({
 								className={
 									phaseFilter === phase
 										? ""
-										: "border-secondary text-muted-foreground hover:text-white"
+										: "border-secondary text-muted-foreground hover:text-foreground"
 								}
 							>
 								{phase === "all" ? "All" : phase}
@@ -164,7 +166,7 @@ export default function ProgressTab({
 
 			{/* 1RM Progression */}
 			<Card className="p-6 bg-surface-2 border-secondary">
-				<h3 className="text-xl text-white mb-6">
+				<h3 className="text-xl text-foreground mb-6">
 					Phase Strength Progression ({perCableUnitLabel(unit)})
 				</h3>
 				{strengthEChartsOption ? (
@@ -178,7 +180,9 @@ export default function ProgressTab({
 
 			{/* Volume & Frequency Trends */}
 			<Card className="p-6 bg-surface-2 border-secondary">
-				<h3 className="text-xl text-white mb-6">Volume & Frequency Trends</h3>
+				<h3 className="text-xl text-foreground mb-6">
+					Volume & Frequency Trends
+				</h3>
 				{volumeAreaOption ? (
 					<EChartsWrapper option={volumeAreaOption} height={300} />
 				) : (
@@ -192,7 +196,7 @@ export default function ProgressTab({
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 				{/* PR Timeline */}
 				<Card className="p-6 bg-surface-2 border-secondary">
-					<h3 className="text-xl text-white mb-4">Personal Records</h3>
+					<h3 className="text-xl text-foreground mb-4">Personal Records</h3>
 					<div className="flex items-center gap-6 mb-4">
 						<div className="flex flex-col items-center justify-center rounded-xl bg-primary/10 px-6 py-4">
 							<span className="text-3xl font-bold text-primary">{prCount}</span>
@@ -204,7 +208,7 @@ export default function ProgressTab({
 							<div className="flex flex-col items-center justify-center rounded-xl bg-muted/20 px-6 py-4">
 								<div className="flex items-center gap-1.5">
 									<Clock className="w-4 h-4 text-muted-foreground" />
-									<span className="text-3xl font-bold text-white">
+									<span className="text-3xl font-bold text-foreground">
 										{daysSinceLastPR}
 									</span>
 								</div>
@@ -223,7 +227,7 @@ export default function ProgressTab({
 
 				{/* Insight cards (legacy style) */}
 				<Card className="p-6 bg-surface-2 border-secondary">
-					<h3 className="text-xl text-white mb-4">Trend Insights</h3>
+					<h3 className="text-xl text-foreground mb-4">Trend Insights</h3>
 					<div className="flex flex-col gap-3">
 						{insights.map((insight) => (
 							<div
@@ -256,7 +260,7 @@ export default function ProgressTab({
 									/>
 								</div>
 								<div className="flex-1 min-w-0">
-									<h4 className="text-sm font-semibold text-white">
+									<h4 className="text-sm font-semibold text-foreground">
 										{insight.title}
 									</h4>
 									<p className="text-xs text-muted-foreground mt-0.5">

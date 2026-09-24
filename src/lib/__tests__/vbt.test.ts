@@ -11,17 +11,17 @@ import {
 
 describe("VBT_ZONES", () => {
 	it("contains exactly 5 zones", () => {
-		expect(VBT_ZONES).toHaveLength(5);
+		expect(VBT_ZONES()).toHaveLength(5);
 	});
 
 	it("zones are contiguous (each maxVelocity equals next minVelocity)", () => {
-		for (let i = 0; i < VBT_ZONES.length - 1; i++) {
-			expect(VBT_ZONES[i].maxVelocity).toBe(VBT_ZONES[i + 1].minVelocity);
+		for (let i = 0; i < VBT_ZONES().length - 1; i++) {
+			expect(VBT_ZONES()[i].maxVelocity).toBe(VBT_ZONES()[i + 1].minVelocity);
 		}
 	});
 
 	it("last zone has Infinity maxVelocity", () => {
-		expect(VBT_ZONES[VBT_ZONES.length - 1].maxVelocity).toBe(Infinity);
+		expect(VBT_ZONES()[VBT_ZONES().length - 1].maxVelocity).toBe(Infinity);
 	});
 });
 
@@ -31,26 +31,26 @@ describe("VBT_ZONES", () => {
 
 describe("SIMPLIFIED_ZONES", () => {
 	it("contains exactly 5 zones", () => {
-		expect(SIMPLIFIED_ZONES).toHaveLength(5);
+		expect(SIMPLIFIED_ZONES()).toHaveLength(5);
 	});
 
 	it("zones are contiguous", () => {
-		for (let i = 0; i < SIMPLIFIED_ZONES.length - 1; i++) {
-			expect(SIMPLIFIED_ZONES[i].maxVelocity).toBe(
-				SIMPLIFIED_ZONES[i + 1].minVelocity,
+		for (let i = 0; i < SIMPLIFIED_ZONES().length - 1; i++) {
+			expect(SIMPLIFIED_ZONES()[i].maxVelocity).toBe(
+				SIMPLIFIED_ZONES()[i + 1].minVelocity,
 			);
 		}
 	});
 
 	it("last zone has Infinity maxVelocity", () => {
-		expect(SIMPLIFIED_ZONES[SIMPLIFIED_ZONES.length - 1].maxVelocity).toBe(
+		expect(SIMPLIFIED_ZONES()[SIMPLIFIED_ZONES().length - 1].maxVelocity).toBe(
 			Infinity,
 		);
 	});
 
 	it("zones follow correct order: GRIND, SLOW, MODERATE, FAST, EXPLOSIVE", () => {
 		const expectedZones = ["GRIND", "SLOW", "MODERATE", "FAST", "EXPLOSIVE"];
-		SIMPLIFIED_ZONES.forEach((z, i) => {
+		SIMPLIFIED_ZONES().forEach((z, i) => {
 			expect(z.zone).toBe(expectedZones[i]);
 		});
 	});
@@ -147,17 +147,17 @@ describe("classifyVbtZone (Simplified System)", () => {
 
 describe("MANN_ZONES", () => {
 	it("contains exactly 5 zones", () => {
-		expect(MANN_ZONES).toHaveLength(5);
+		expect(MANN_ZONES()).toHaveLength(5);
 	});
 
 	it("zones are contiguous", () => {
-		for (let i = 0; i < MANN_ZONES.length - 1; i++) {
-			expect(MANN_ZONES[i].maxVelocity).toBe(MANN_ZONES[i + 1].minVelocity);
+		for (let i = 0; i < MANN_ZONES().length - 1; i++) {
+			expect(MANN_ZONES()[i].maxVelocity).toBe(MANN_ZONES()[i + 1].minVelocity);
 		}
 	});
 
 	it("last zone has Infinity maxVelocity", () => {
-		expect(MANN_ZONES[MANN_ZONES.length - 1].maxVelocity).toBe(Infinity);
+		expect(MANN_ZONES()[MANN_ZONES().length - 1].maxVelocity).toBe(Infinity);
 	});
 
 	it("zones follow correct order", () => {
@@ -168,7 +168,7 @@ describe("MANN_ZONES", () => {
 			"speed-strength",
 			"starting-strength",
 		];
-		MANN_ZONES.forEach((z, i) => {
+		MANN_ZONES().forEach((z, i) => {
 			expect(z.zone).toBe(expectedZones[i]);
 		});
 	});

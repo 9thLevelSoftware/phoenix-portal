@@ -1,20 +1,50 @@
 /**
- * Phoenix-themed chart constants for visx visualizations.
- * Shared across all premium analytics chart components.
+ * Phoenix-themed chart accessors for visx and ECharts visualizations.
+ * Theme values are resolved when an accessor is called, not at module load.
  */
 
-export const CHART_COLORS = {
-	primary: "#FF6B35", // Ember
-	secondary: "#F59E0B", // Gold
-	danger: "#DC2626", // Flame Red
-	success: "#10B981", // Forge Green
-	accent: "#3B82F6", // Blue
-	background: "#0D0D0D",
-	gridLine: "#1A1A2E",
-	axisText: "#9CA3AF",
-	tooltipBg: "#1A1A2E",
-	tooltipBorder: "#2D2D44",
-} as const;
+import {
+	memoByTheme,
+	type ThemeTokens,
+	useThemeTokens,
+} from "@/lib/theme-tokens";
+
+export type ChartColors = {
+	primary: string;
+	secondary: string;
+	danger: string;
+	success: string;
+	accent: string;
+	background: string;
+	gridLine: string;
+	axisText: string;
+	tooltipBg: string;
+	tooltipBorder: string;
+};
+
+const chartColors = memoByTheme(
+	(tokens): ChartColors => ({
+		primary: tokens.primary,
+		secondary: tokens.accent,
+		danger: tokens.danger,
+		success: tokens.success,
+		accent: tokens.cableB,
+		background: tokens.background,
+		gridLine: tokens.surface3,
+		axisText: tokens.mutedForeground,
+		tooltipBg: tokens.surface3,
+		tooltipBorder: tokens.border,
+	}),
+);
+
+/** Semantic chart colours for the active theme (stable until it changes). */
+export function CHART_COLORS(tokens?: ThemeTokens): ChartColors {
+	return chartColors(tokens);
+}
+
+export function useChartColors(): ChartColors {
+	return CHART_COLORS(useThemeTokens());
+}
 
 export const CHART_MARGINS = {
 	top: 20,
@@ -23,22 +53,28 @@ export const CHART_MARGINS = {
 	left: 50,
 } as const;
 
-/**
- * 10 distinguishable colors for multi-rep overlays.
- * Ordered by visual distinctiveness on dark backgrounds.
- */
-export const REP_COLORS: string[] = [
-	"#FF6B35", // Ember
-	"#F59E0B", // Gold
-	"#10B981", // Green
-	"#3B82F6", // Blue
-	"#8B5CF6", // Purple
-	"#EC4899", // Pink
-	"#06B6D4", // Cyan
-	"#FB923C", // Orange-light
-	"#F87171", // Red-light
-	"#14B8A6", // Teal
-];
+// Ten distinct colours, one per rep in a set; repeating the five-colour chart
+// palette made rep 1 and rep 6 indistinguishable.
+const repColors = memoByTheme((tokens): string[] => [
+	tokens.chart1,
+	tokens.chart3,
+	tokens.chart4,
+	tokens.chart2,
+	tokens.chart5,
+	tokens.chart6,
+	tokens.chart7,
+	tokens.chart8,
+	tokens.danger,
+	tokens.mutedForeground,
+]);
+
+export function REP_COLORS(tokens?: ThemeTokens): string[] {
+	return repColors(tokens);
+}
+
+export function useRepColors(): string[] {
+	return REP_COLORS(useThemeTokens());
+}
 
 export const FONT_SIZES = {
 	axis: 11,

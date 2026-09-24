@@ -32,7 +32,7 @@ export function GoalDashboardWidget() {
 				<div className="absolute inset-0 bg-primary/5 pointer-events-none" />
 				<div className="relative z-10">
 					<div className="flex items-center justify-between mb-3">
-						<h3 className="text-xl text-white flex items-center gap-2">
+						<h3 className="text-xl text-foreground flex items-center gap-2">
 							<Target className="w-5 h-5 text-primary" />
 							Goals
 						</h3>
@@ -58,7 +58,7 @@ export function GoalDashboardWidget() {
 	return (
 		<Card className="p-6 signal-panel">
 			<div className="flex items-center justify-between mb-4">
-				<h3 className="text-xl text-white flex items-center gap-2">
+				<h3 className="text-xl text-foreground flex items-center gap-2">
 					<Target className="w-5 h-5 text-primary" />
 					Goals
 				</h3>
@@ -102,7 +102,7 @@ export function GoalDashboardWidget() {
 									strokeWidth={4}
 								/>
 								<div className="flex-1 min-w-0">
-									<p className="text-sm text-white truncate">
+									<p className="text-sm text-foreground truncate">
 										{getGoalLabel(goal, unit)}
 									</p>
 									<p className="text-xs text-muted-foreground">

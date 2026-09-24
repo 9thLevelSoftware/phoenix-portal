@@ -5,6 +5,7 @@ import { scaleBand, scaleLinear } from "@visx/scale";
 import { Bar } from "@visx/shape";
 import { useMemo } from "react";
 import { ZoneBadge, ZoneIndicator } from "@/app/components/ui/ZoneBadge";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import {
 	classifyMannZone,
 	classifyVbtZone,
@@ -42,6 +43,8 @@ function VelocityProfileInner({
 	showDominantZone = true,
 	width,
 }: VelocityProfileProps & { width: number }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const {
 		showTooltip,
 		hideTooltip,
@@ -109,7 +112,7 @@ function VelocityProfileInner({
 	if (repSummaries.length === 0) {
 		return (
 			<div
-				className="flex items-center justify-center text-gray-500"
+				className="flex items-center justify-center text-muted-foreground"
 				style={{ height }}
 			>
 				No velocity data available
@@ -236,34 +239,34 @@ function VelocityProfileInner({
 						scale={xScale}
 						label="Rep"
 						labelProps={{
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.label,
 							textAnchor: "middle",
 						}}
 						tickLabelProps={() => ({
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.axis,
 							textAnchor: "middle" as const,
 						})}
-						stroke={CHART_COLORS.gridLine}
-						tickStroke={CHART_COLORS.gridLine}
+						stroke={CHART_COLORS().gridLine}
+						tickStroke={CHART_COLORS().gridLine}
 					/>
 
 					<AxisLeft
 						scale={yScale}
 						label="Velocity (m/s)"
 						labelProps={{
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.label,
 							textAnchor: "middle",
 						}}
 						tickLabelProps={() => ({
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.axis,
 							textAnchor: "end" as const,
 						})}
-						stroke={CHART_COLORS.gridLine}
-						tickStroke={CHART_COLORS.gridLine}
+						stroke={CHART_COLORS().gridLine}
+						tickStroke={CHART_COLORS().gridLine}
 						numTicks={5}
 					/>
 				</Group>
@@ -273,15 +276,17 @@ function VelocityProfileInner({
 				className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-2"
 				style={{ height: legendHeight }}
 			>
-				{(zoneSystem === "mann" ? MANN_ZONES : SIMPLIFIED_ZONES).map((z) => (
-					<div key={z.zone} className="flex items-center gap-1.5 text-xs">
-						<span
-							className="inline-block h-2.5 w-2.5 rounded-sm"
-							style={{ backgroundColor: z.color }}
-						/>
-						<span className="text-gray-400">{z.label}</span>
-					</div>
-				))}
+				{(zoneSystem === "mann" ? MANN_ZONES() : SIMPLIFIED_ZONES()).map(
+					(z) => (
+						<div key={z.zone} className="flex items-center gap-1.5 text-xs">
+							<span
+								className="inline-block h-2.5 w-2.5 rounded-sm"
+								style={{ backgroundColor: z.color }}
+							/>
+							<span className="text-muted-foreground">{z.label}</span>
+						</div>
+					),
+				)}
 			</div>
 			{tooltipOpen && tooltipData && (
 				<ChartTooltipContent

@@ -64,7 +64,7 @@ export function DayEditor({
 				className="fixed right-0 top-0 bottom-0 w-full md:w-[480px] bg-surface-2 border-l border-secondary z-50 overflow-y-auto"
 			>
 				<div className="sticky top-0 bg-surface-1 border-b border-secondary px-6 py-4 flex items-center justify-between">
-					<h3 className="text-lg font-semibold text-white">
+					<h3 className="text-lg font-semibold text-foreground">
 						Day {day.dayNumber}{" "}
 						{day.type === "rest" ? "- Rest Day" : "Configuration"}
 					</h3>
@@ -84,7 +84,7 @@ export function DayEditor({
 								{day.routineName ? (
 									<div className="flex items-center gap-2">
 										<div className="flex-1 p-3 bg-background border border-secondary rounded-lg">
-											<div className="font-semibold text-white">
+											<div className="font-semibold text-foreground">
 												{day.routineName}
 											</div>
 											<div className="text-sm text-muted-foreground">
@@ -122,7 +122,7 @@ export function DayEditor({
 
 							{/* Day-Specific Overrides */}
 							<div className="pt-6 border-t border-secondary">
-								<h4 className="font-semibold text-white mb-2">
+								<h4 className="font-semibold text-foreground mb-2">
 									Day-Specific Overrides
 								</h4>
 								<p className="text-xs text-muted-foreground mb-4">
@@ -323,14 +323,14 @@ export function DayEditor({
 								<Button
 									onClick={onConvertToRest}
 									variant="outline"
-									className="w-full border-secondary text-muted-foreground hover:border-primary hover:text-white"
+									className="w-full border-secondary text-muted-foreground hover:border-primary hover:text-foreground"
 								>
 									Convert to Rest Day
 								</Button>
 								<Button
 									onClick={onRemoveFromSchedule}
 									variant="outline"
-									className="w-full border-destructive text-destructive hover:bg-destructive hover:text-white"
+									className="w-full border-destructive text-destructive hover:bg-destructive hover:text-on-danger"
 								>
 									<Trash2 className="w-4 h-4 mr-2" />
 									Remove from Schedule
@@ -342,7 +342,7 @@ export function DayEditor({
 							{/* Rest Day Configuration */}
 							<div className="text-center py-4">
 								<div className="text-6xl mb-4">🛋️</div>
-								<h4 className="text-xl font-semibold text-white mb-2">
+								<h4 className="text-xl font-semibold text-foreground mb-2">
 									REST DAY
 								</h4>
 							</div>
@@ -362,7 +362,7 @@ export function DayEditor({
 											className="mt-1"
 										/>
 										<div className="flex-1">
-											<div className="font-semibold text-white">
+											<div className="font-semibold text-foreground">
 												Complete Rest
 											</div>
 											<div className="text-sm text-muted-foreground">
@@ -380,7 +380,7 @@ export function DayEditor({
 											className="mt-1"
 										/>
 										<div className="flex-1">
-											<div className="font-semibold text-white">
+											<div className="font-semibold text-foreground">
 												Active Recovery
 											</div>
 											<div className="text-sm text-muted-foreground">
@@ -398,7 +398,7 @@ export function DayEditor({
 											className="mt-1"
 										/>
 										<div className="flex-1">
-											<div className="font-semibold text-white">
+											<div className="font-semibold text-foreground">
 												Mobility & Stretching
 											</div>
 											<div className="text-sm text-muted-foreground">
@@ -432,7 +432,7 @@ export function DayEditor({
 								<Button
 									onClick={onRemoveFromSchedule}
 									variant="outline"
-									className="w-full border-destructive text-destructive hover:bg-destructive hover:text-white"
+									className="w-full border-destructive text-destructive hover:bg-destructive hover:text-on-danger"
 								>
 									<Trash2 className="w-4 h-4 mr-2" />
 									Remove from Schedule

@@ -36,7 +36,7 @@ export function PWAInstallPrompt({ workoutCount }: PWAInstallPromptProps) {
 						<Download className="w-5 h-5 text-primary" />
 					)}
 					<div>
-						<p className="text-sm font-medium text-white">
+						<p className="text-sm font-medium text-foreground">
 							Install Phoenix Portal
 						</p>
 						{isIOSSafari ? (

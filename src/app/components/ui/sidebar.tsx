@@ -13,12 +13,7 @@ import {
 	SheetTitle,
 } from "./sheet";
 import { Skeleton } from "./skeleton";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "./tooltip";
+import { type TooltipContent, TooltipProvider } from "./tooltip";
 import { useIsMobile } from "./use-mobile";
 import { cn } from "./utils";
 
@@ -290,7 +285,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
 			onClick={toggleSidebar}
 			title="Toggle Sidebar"
 			className={cn(
-				"hover:after:bg-sidebar-border absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] sm:flex",
+				"hover:after:bg-sidebar-border absolute inset-y-0 z-20 hidden w-4 -translate-x-1/2 transition-transform ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] sm:flex",
 				"in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
 				"[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
 				"hover:group-data-[collapsible=offcanvas]:bg-sidebar group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full",
@@ -513,7 +508,21 @@ function SidebarMenuButton({
 	const Comp = asChild ? Slot : "button";
 	const { isMobile, state } = useSidebar();
 
-	const button = (
+	// Icon mode names each button with a native title rather than a Radix
+	// Tooltip. With @radix-ui/react-compose-refs 1.1.1 under React 19, the
+	// asChild Tooltip trigger's composed ref re-attached on every render and
+	// its setState looped ("Maximum update depth exceeded"): collapsing the
+	// sidebar (trigger button or Ctrl/Cmd+B) unmounted the whole app. The
+	// buttons already carry an accessible name; the title is the hover hint.
+	const tooltipText =
+		typeof tooltip === "string"
+			? tooltip
+			: typeof tooltip?.children === "string"
+				? tooltip.children
+				: undefined;
+	const showTitle = state === "collapsed" && !isMobile && tooltipText;
+
+	return (
 		<Comp
 			data-slot="sidebar-menu-button"
 			data-sidebar="menu-button"
@@ -521,30 +530,9 @@ function SidebarMenuButton({
 			data-active={isActive}
 			type={asChild ? type : (type ?? "button")}
 			className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
+			title={showTitle ? tooltipText : undefined}
 			{...props}
 		/>
-	);
-
-	if (!tooltip) {
-		return button;
-	}
-
-	if (typeof tooltip === "string") {
-		tooltip = {
-			children: tooltip,
-		};
-	}
-
-	return (
-		<Tooltip>
-			<TooltipTrigger asChild>{button}</TooltipTrigger>
-			<TooltipContent
-				side="right"
-				align="center"
-				hidden={state !== "collapsed" || isMobile}
-				{...tooltip}
-			/>
-		</Tooltip>
 	);
 }
 

@@ -1,6 +1,7 @@
 import { AlertTriangle, Info, TrendingUp, Trophy } from "lucide-react";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
+import { withAlpha } from "@/lib/theme-tokens";
 import { isWeightUnit } from "@/lib/units";
 
 export interface InsightItem {
@@ -29,19 +30,19 @@ export const LOCAL_INSIGHTS_LABEL = "Calculated on this device";
 
 const TYPE_CONFIG = {
 	success: {
-		color: "#10B981",
+		color: "var(--success)",
 		Icon: TrendingUp,
 	},
 	warning: {
-		color: "#F59E0B",
+		color: "var(--accent)",
 		Icon: AlertTriangle,
 	},
 	info: {
-		color: "#3B82F6",
+		color: "var(--cable-b)",
 		Icon: Info,
 	},
 	achievement: {
-		color: "#FF6B35",
+		color: "var(--primary)",
 		Icon: Trophy,
 	},
 } as const;
@@ -114,7 +115,7 @@ export function InsightsFeed({
 							{/* Icon */}
 							<div
 								className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full"
-								style={{ backgroundColor: `${color}22` }}
+								style={{ backgroundColor: withAlpha(color, 0.13) }}
 							>
 								<Icon size={16} style={{ color }} />
 							</div>
@@ -147,7 +148,9 @@ export function InsightsFeed({
 												className="text-xs font-medium"
 												style={{
 													color:
-														insight.metric.delta >= 0 ? "#10B981" : "#EF4444",
+														insight.metric.delta >= 0
+															? "var(--success)"
+															: "var(--destructive)",
 												}}
 											>
 												{insight.metric.delta >= 0 ? "+" : ""}

@@ -22,6 +22,7 @@ import {
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { EmptyState } from "@/app/components/ui/empty-state";
 import { Progress } from "@/app/components/ui/progress";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import {
@@ -47,13 +48,13 @@ import {
 function getDifficultyColor(difficulty: string) {
 	switch (difficulty) {
 		case "easy":
-			return "bg-success";
+			return "bg-success text-background";
 		case "medium":
-			return "bg-accent";
+			return "bg-accent text-background";
 		case "hard":
-			return "bg-primary";
+			return "bg-primary text-background";
 		case "extreme":
-			return "bg-chart-2";
+			return "bg-chart-2 text-background";
 		default:
 			return "from-muted to-muted";
 	}
@@ -120,7 +121,7 @@ function ChallengeProgressBar({
 		<div>
 			<div className="flex items-center justify-between mb-2 text-sm">
 				<span className="text-muted-foreground">Your Progress</span>
-				<span className="text-white font-data">{percentage}%</span>
+				<span className="text-foreground font-data">{percentage}%</span>
 			</div>
 			<Progress value={percentage} className="h-3" />
 			{progress && (
@@ -180,17 +181,19 @@ function ChallengeCard({
 									<div
 										className={`w-12 h-12 rounded-lg bg-gradient-to-br ${getDifficultyColor(challenge.difficulty)} flex items-center justify-center`}
 									>
-										<Flame className="w-6 h-6 text-white" />
+										<Flame className="w-6 h-6" />
 									</div>
 									<div>
-										<h3 className="text-xl text-white">{challenge.name}</h3>
+										<h3 className="text-xl text-foreground">
+											{challenge.name}
+										</h3>
 										<p className="text-sm text-muted-foreground">
 											{challenge.description}
 										</p>
 									</div>
 								</div>
 								<Badge
-									className={`${getDifficultyColor(challenge.difficulty)} text-white border-0`}
+									className={`${getDifficultyColor(challenge.difficulty)} border-0`}
 								>
 									{challenge.difficulty.toUpperCase()}
 								</Badge>
@@ -214,7 +217,7 @@ function ChallengeCard({
 						<div className="grid grid-cols-2 md:grid-cols-3 gap-4">
 							<div>
 								<div className="text-xs text-muted-foreground mb-1">Target</div>
-								<div className="text-xl text-white font-data">
+								<div className="text-xl text-foreground font-data">
 									{formatChallengeValue(
 										challenge.target_value,
 										challenge.challenge_type,
@@ -233,7 +236,7 @@ function ChallengeCard({
 							</div>
 							<div>
 								<div className="text-xs text-muted-foreground mb-1">Type</div>
-								<div className="text-xl text-white capitalize">
+								<div className="text-xl text-foreground capitalize">
 									{challenge.challenge_type}
 								</div>
 							</div>
@@ -245,16 +248,12 @@ function ChallengeCard({
 						{challenge.prize && (
 							<div className="p-4 bg-gradient-to-br from-primary/10 to-chart-2/10 border border-primary/30 rounded-lg">
 								<div className="text-xs text-muted-foreground mb-2">Prize</div>
-								<div className="text-white">{challenge.prize}</div>
+								<div className="text-foreground">{challenge.prize}</div>
 							</div>
 						)}
 						{isJoined ? (
 							<div className="space-y-2">
-								<Button
-									variant="cta"
-									className="w-full"
-									onClick={onToggleExpand}
-								>
+								<Button className="w-full" onClick={onToggleExpand}>
 									{isExpanded ? "Hide Details" : "View Details"}
 								</Button>
 								<Button
@@ -271,7 +270,6 @@ function ChallengeCard({
 							</div>
 						) : (
 							<Button
-								variant="cta"
 								className="w-full"
 								onClick={onJoin}
 								disabled={joinPending}
@@ -431,7 +429,7 @@ function MobileChallengeCard({
 								: "🎯"}
 				</div>
 				<div className="flex-1 min-w-0">
-					<h3 className="text-white font-semibold mb-2 truncate">
+					<h3 className="text-foreground font-semibold mb-2 truncate">
 						{challenge.name}
 					</h3>
 
@@ -480,6 +478,10 @@ export function Challenges() {
 
 	// Desktop state
 	const [expandedId, setExpandedId] = useState<string | null>(null);
+	// Controlled so the empty-state CTAs can switch to Discover; linking to
+	// /challenges would land back on the same tab.
+	const [tab, setTab] = useState("active");
+	const showDiscover = () => setTab("discover");
 
 	// Mobile state
 	const [mobileExpandedId, setMobileExpandedId] = useState<string | null>(null);
@@ -551,11 +553,11 @@ export function Challenges() {
 			<div className="block md:hidden">
 				{/* Mobile Header */}
 				<header className="px-4 py-4 border-b border-secondary">
-					<h1 className="text-2xl font-bold text-white">Challenges</h1>
+					<h1 className="text-2xl font-bold text-foreground">Challenges</h1>
 				</header>
 
 				{/* Mobile Tabs */}
-				<Tabs defaultValue="active">
+				<Tabs value={tab} onValueChange={setTab}>
 					<div className="overflow-x-auto scrollbar-hide">
 						<TabsList variant="underline" className="px-4">
 							<TabsTrigger variant="underline" value="active">
@@ -574,13 +576,13 @@ export function Challenges() {
 					<TabsContent value="active" className="px-4 py-4 space-y-4 mt-0">
 						{activeChallenges.filter((c) => joinedIds.has(c.id)).length ===
 						0 ? (
-							<div className="text-center py-12 text-muted-foreground">
-								<Trophy className="w-12 h-12 mx-auto mb-3 opacity-50" />
-								<p>No active challenges right now</p>
-								<p className="text-xs mt-1">
-									Join a challenge from the Discover tab
-								</p>
-							</div>
+							<EmptyState
+								icon={Trophy}
+								title="Join an active challenge"
+								description="Open Discover to choose a challenge and start tracking progress."
+								actionLabel="Discover challenges"
+								onAction={showDiscover}
+							/>
 						) : (
 							<>
 								<div className="text-xs text-muted-foreground mb-2">
@@ -646,7 +648,7 @@ export function Challenges() {
 					>
 						<AlertDialogContent className="bg-background border-secondary">
 							<AlertDialogHeader>
-								<AlertDialogTitle className="text-white">
+								<AlertDialogTitle className="text-foreground">
 									Leave challenge?
 								</AlertDialogTitle>
 								<AlertDialogDescription>
@@ -694,7 +696,7 @@ export function Challenges() {
 											key={challenge.id}
 											className="p-4 bg-surface-2 border-secondary"
 										>
-											<h3 className="text-white font-semibold mb-1">
+											<h3 className="text-foreground font-semibold mb-1">
 												{challenge.name}
 											</h3>
 											<p className="text-xs text-muted-foreground mb-2">
@@ -726,7 +728,7 @@ export function Challenges() {
 										key={challenge.id}
 										className="p-4 bg-surface-2 border-secondary"
 									>
-										<h3 className="text-white font-semibold mb-1">
+										<h3 className="text-foreground font-semibold mb-1">
 											{challenge.name}
 										</h3>
 										<p className="text-xs text-muted-foreground mb-3">
@@ -740,7 +742,7 @@ export function Challenges() {
 												type="button"
 												onClick={() => joinMutation.mutate(challenge.id)}
 												disabled={joinMutation.isPending}
-												className="px-4 py-1.5 text-sm font-medium rounded-lg bg-primary text-white"
+												className="px-4 py-1.5 text-sm font-medium rounded-lg bg-primary text-primary-foreground"
 											>
 												{joinMutation.isPending ? (
 													<Loader2 className="w-4 h-4 animate-spin" />
@@ -762,13 +764,19 @@ export function Challenges() {
 				<PageShell>
 					{/* Desktop Header */}
 					<div className="mb-8">
-						<h1 className="text-display-2 mb-2 text-white">Challenges</h1>
+						<h1 className="text-display-2 mb-2 text-foreground">Challenges</h1>
 						<p className="text-muted-foreground">
 							Compete, conquer, and claim your glory
 						</p>
 					</div>
 
-					<Tabs defaultValue="active" className="space-y-6">
+					{/* Desktop has no separate Discover tab: its Active tab lists
+					    every active challenge, so "discover" shows Active here. */}
+					<Tabs
+						value={tab === "discover" ? "active" : tab}
+						onValueChange={setTab}
+						className="space-y-6"
+					>
 						<TabsList variant="panel">
 							<TabsTrigger value="active">Active Challenges</TabsTrigger>
 							<TabsTrigger value="past">Past Challenges</TabsTrigger>
@@ -779,7 +787,7 @@ export function Challenges() {
 							{activeChallenges.length === 0 ? (
 								<div className="text-center py-16">
 									<Trophy className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-									<h3 className="text-xl font-semibold text-white mb-2">
+									<h3 className="text-xl font-semibold text-foreground mb-2">
 										No active challenges right now
 									</h3>
 									<p className="text-muted-foreground">
@@ -851,12 +859,13 @@ export function Challenges() {
 						{/* Desktop Past Challenges Tab */}
 						<TabsContent value="past" className="space-y-6">
 							{pastChallenges.length === 0 ? (
-								<div className="text-center py-16">
-									<Trophy className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-									<p className="text-muted-foreground">
-										Complete your first challenge to see it here
-									</p>
-								</div>
+								<EmptyState
+									icon={Trophy}
+									title="Complete your first challenge"
+									description="Join an active challenge to build a result worth celebrating here."
+									actionLabel="Discover challenges"
+									onAction={showDiscover}
+								/>
 							) : (
 								<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 									{pastChallenges.map((challenge, index) => (
@@ -868,10 +877,10 @@ export function Challenges() {
 										>
 											<Card className="p-6 bg-surface-2 border-secondary h-full">
 												<div className="mb-4">
-													<h3 className="text-lg text-white mb-2">
+													<h3 className="text-lg text-foreground mb-2">
 														{challenge.name}
 													</h3>
-													<Badge className="bg-success text-white border-0">
+													<Badge className="bg-success text-success-foreground border-0">
 														Completed
 													</Badge>
 												</div>
@@ -883,7 +892,9 @@ export function Challenges() {
 														<div className="text-xs text-muted-foreground mb-1">
 															Reward Earned
 														</div>
-														<div className="text-white">{challenge.prize}</div>
+														<div className="text-foreground">
+															{challenge.prize}
+														</div>
 													</div>
 												)}
 											</Card>

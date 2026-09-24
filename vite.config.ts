@@ -95,6 +95,15 @@ export default defineConfig({
 		sourcemap: productionSourcemapSetting(process.env),
 		chunkSizeWarningLimit: 700,
 		rollupOptions: {
+			onwarn(warning, warn) {
+				if (warning.message.startsWith("Circular chunk")) {
+					// Log first: aborting here makes the PWA precache plugin fail
+					// in its close hook, and Rollup reports that error instead.
+					console.error(`\n[vendor chunks] ${warning.message}\n`);
+					throw new Error(warning.message);
+				}
+				warn(warning);
+			},
 			output: {
 				manualChunks: {
 					"vendor-react": [
@@ -103,6 +112,7 @@ export default defineConfig({
 						"react-dom/client",
 						"react-router",
 						"react-is",
+						"sonner",
 						"@radix-ui/react-dialog",
 						"@radix-ui/react-dropdown-menu",
 						"@radix-ui/react-select",
@@ -133,16 +143,13 @@ export default defineConfig({
 					"vendor-motion": ["motion"],
 					"vendor-supabase": ["@supabase/supabase-js"],
 					"vendor-query": ["@tanstack/react-query"],
-					"vendor-ui": [
-						"class-variance-authority",
-						"clsx",
-						"tailwind-merge",
-						"cmdk",
-						"sonner",
-						"vaul",
-						"input-otp",
-						"embla-carousel-react",
-					],
+					// React-free helpers only. A React-dependent library here
+					// (sonner, vaul, cmdk, …) can pull React internals into this
+					// chunk, so vendor-react imports vendor-ui and vendor-ui imports
+					// vendor-react: a circular chunk that leaves the production
+					// bundle unable to boot. `onwarn` below turns that into a
+					// build failure.
+					"vendor-ui": ["class-variance-authority", "clsx", "tailwind-merge"],
 					"vendor-zod": ["zod"],
 					"vendor-zustand": ["zustand"],
 					"vendor-recharts": ["recharts"],

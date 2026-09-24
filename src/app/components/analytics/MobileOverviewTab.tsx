@@ -12,6 +12,7 @@ import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip"
 import { TrainingLoadGauge } from "@/app/components/charts/TrainingLoadGauge";
 import { type InsightItem, InsightsFeed } from "@/app/components/InsightsFeed";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 
 interface ConsistencyData {
 	weeklyData: {
@@ -45,6 +46,8 @@ export default function MobileOverviewTab({
 	insightsError = false,
 	insightsSource = "server",
 }: MobileOverviewTabProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	return (
 		<>
 			<MobileChartCard title="VOLUME OVER TIME">
@@ -61,19 +64,19 @@ export default function MobileOverviewTab({
 								>
 									<stop
 										offset="5%"
-										stopColor={PHOENIX.ember}
+										stopColor={PHOENIX().ember}
 										stopOpacity={0.3}
 									/>
 									<stop
 										offset="95%"
-										stopColor={PHOENIX.ember}
+										stopColor={PHOENIX().ember}
 										stopOpacity={0}
 									/>
 								</linearGradient>
 							</defs>
 							<XAxis
 								dataKey="date"
-								stroke={PHOENIX.ashGray}
+								stroke={PHOENIX().ashGray}
 								tickLine={false}
 								axisLine={false}
 								tick={{
@@ -82,7 +85,7 @@ export default function MobileOverviewTab({
 								}}
 							/>
 							<YAxis
-								stroke={PHOENIX.ashGray}
+								stroke={PHOENIX().ashGray}
 								tickFormatter={(value) => `${value / 1000}k`}
 								tickLine={false}
 								axisLine={false}
@@ -95,7 +98,7 @@ export default function MobileOverviewTab({
 							<Area
 								type="monotone"
 								dataKey="volume"
-								stroke={PHOENIX.ember}
+								stroke={PHOENIX().ember}
 								strokeWidth={2}
 								fill="url(#mobileVolumeGradient)"
 								animationDuration={800}

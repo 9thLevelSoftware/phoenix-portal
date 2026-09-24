@@ -30,7 +30,7 @@ const METRIC_META: Record<
 	{
 		label: string;
 		unit: string;
-		color: string;
+		color: () => string;
 		aliases: string[];
 		convertWeight?: boolean;
 	}
@@ -38,38 +38,38 @@ const METRIC_META: Record<
 	totalVolume: {
 		label: "Total Volume",
 		unit: "kg",
-		color: PHOENIX.ember,
+		color: () => PHOENIX().ember,
 		aliases: ["totalvolume", "total_volume", "total_volume_kg", "volume"],
 		convertWeight: true,
 	},
 	workoutCount: {
 		label: "Workout Count",
 		unit: "sessions",
-		color: PHOENIX.gold,
+		color: () => PHOENIX().gold,
 		aliases: ["workoutcount", "workout_count", "total_workouts", "workouts"],
 	},
 	longestStreak: {
 		label: "Longest Streak",
 		unit: "days",
-		color: PHOENIX.flameRed,
+		color: () => PHOENIX().flameRed,
 		aliases: ["longeststreak", "longest_streak", "best_streak"],
 	},
 	currentStreak: {
 		label: "Current Streak",
 		unit: "days",
-		color: PHOENIX.forgeGreen,
+		color: () => PHOENIX().forgeGreen,
 		aliases: ["currentstreak", "current_streak"],
 	},
 	prCount: {
 		label: "Phase PRs",
 		unit: "PRs",
-		color: PHOENIX.ashGray,
+		color: () => PHOENIX().ashGray,
 		aliases: ["prcount", "pr_count", "personal_records", "prs"],
 	},
 	exerciseMastery: {
 		label: "Exercise Mastery",
 		unit: "exercises",
-		color: PHOENIX.flameYellow,
+		color: () => PHOENIX().flameYellow,
 		aliases: ["exercisemastery", "exercise_mastery", "mastered_count"],
 	},
 };
@@ -205,7 +205,7 @@ export function buildCommunityPercentileRankings({
 				unit: shouldConvert ? unit : meta.unit,
 				rank: ranking.rank,
 				totalUsers: ranking.totalUsers || benchmark.total_users,
-				color: meta.color,
+				color: meta.color(),
 				percentiles: convertPercentiles(
 					normalizedPercentiles,
 					unit,
@@ -261,7 +261,7 @@ export function buildEstimatedCommunityPercentileRankings({
 				unit: shouldConvert ? unit : meta.unit,
 				rank: Math.max(1, Math.round((topPercent / 100) * totalUsers)),
 				totalUsers,
-				color: meta.color,
+				color: meta.color(),
 				percentiles: convertPercentiles(
 					normalizedPercentiles,
 					unit,

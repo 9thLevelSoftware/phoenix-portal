@@ -85,7 +85,7 @@ export function TrainingCycles() {
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 							<div>
-								<h1 className="text-display-2 mb-2 text-white">
+								<h1 className="text-display-2 mb-2 text-foreground">
 									Training Cycles
 								</h1>
 								<p className="text-muted-foreground">Periodize your progress</p>
@@ -115,7 +115,7 @@ export function TrainingCycles() {
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 							<div>
-								<h1 className="text-display-2 mb-2 text-white">
+								<h1 className="text-display-2 mb-2 text-foreground">
 									Training Cycles
 								</h1>
 								<p className="text-muted-foreground">Periodize your progress</p>
@@ -125,7 +125,7 @@ export function TrainingCycles() {
 				</div>
 				<PageShell>
 					<div className="text-center py-16">
-						<p className="text-lg text-white mb-2">
+						<p className="text-lg text-foreground mb-2">
 							Couldn't load your training cycles
 						</p>
 						<p className="text-sm text-muted-foreground mb-6">
@@ -151,12 +151,12 @@ export function TrainingCycles() {
 							className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 						>
 							<div>
-								<h1 className="text-display-2 mb-2 text-white">
+								<h1 className="text-display-2 mb-2 text-foreground">
 									Training Cycles
 								</h1>
 								<p className="text-muted-foreground">Periodize your progress</p>
 							</div>
-							<Button onClick={() => navigate("/cycles/new")} variant="cta">
+							<Button onClick={() => navigate("/cycles/new")}>
 								<Plus className="w-4 h-4 mr-2" />
 								Create Cycle
 							</Button>
@@ -166,8 +166,8 @@ export function TrainingCycles() {
 				<PageShell>
 					<EmptyState
 						icon={Calendar}
-						title="Plan your training cycle"
-						description="Design a structured training program with progressive overload and scheduled deload weeks."
+						title="Create your training cycle"
+						description="Set workout and rest days to build a structured program with progressive overload."
 						actionLabel="Create Cycle"
 						actionHref="/cycles/new"
 					/>
@@ -187,13 +187,13 @@ export function TrainingCycles() {
 						className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 					>
 						<div>
-							<h1 className="text-display-2 mb-2 text-white">
+							<h1 className="text-display-2 mb-2 text-foreground">
 								Training Cycles
 							</h1>
 							<p className="text-muted-foreground">Periodize your progress</p>
 						</div>
 
-						<Button onClick={() => navigate("/cycles/new")} variant="cta">
+						<Button onClick={() => navigate("/cycles/new")}>
 							<Plus className="w-4 h-4 mr-2" />
 							Create Cycle
 						</Button>
@@ -211,13 +211,13 @@ export function TrainingCycles() {
 					>
 						<Card className="p-6 sm:p-8 bg-gradient-to-br from-primary/10 to-chart-2/10 border-2 border-primary/50 relative overflow-hidden">
 							<div className="absolute top-4 right-4">
-								<Badge className="bg-primary/80 text-white border-0">
+								<Badge className="bg-primary/80 text-foreground border-0">
 									Active on mobile
 								</Badge>
 							</div>
 
 							<div className="mb-4">
-								<h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
+								<h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
 									{activeCycle.name}
 								</h2>
 								<p className="text-sm text-muted-foreground">
@@ -253,7 +253,9 @@ export function TrainingCycles() {
 
 				{/* My Cycles */}
 				<div>
-					<h2 className="text-2xl font-semibold text-white mb-6">My Cycles</h2>
+					<h2 className="text-2xl font-semibold text-foreground mb-6">
+						My Cycles
+					</h2>
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 						{allCycles.map((cycle, index) => {
 							const lastUsedText = cycle.last_used_at
@@ -273,16 +275,16 @@ export function TrainingCycles() {
 									<Card className="p-6 bg-surface-2 border-secondary hover:border-primary/50 transition-all">
 										<div className="flex items-start justify-between mb-4">
 											<div className="flex-1">
-												<h3 className="text-lg font-semibold text-white mb-2">
+												<h3 className="text-lg font-semibold text-foreground mb-2">
 													{cycle.name}
 												</h3>
 												<Badge
 													className={
 														cycle.status === "active"
-															? "bg-primary/80 text-white border-0"
+															? "bg-primary/80 text-foreground border-0"
 															: cycle.status === "completed"
-																? "bg-muted text-white border-0"
-																: "bg-accent text-white border-0"
+																? "bg-muted text-foreground border-0"
+																: "bg-accent text-accent-foreground border-0"
 													}
 												>
 													{cycle.status === "active"
@@ -296,7 +298,7 @@ export function TrainingCycles() {
 												<DropdownMenuTrigger asChild>
 													<button
 														type="button"
-														className="text-muted-foreground hover:text-white transition-colors"
+														className="text-muted-foreground hover:text-foreground transition-colors"
 													>
 														<MoreVertical className="w-5 h-5" />
 													</button>
@@ -317,7 +319,7 @@ export function TrainingCycles() {
 														Share to Community
 													</DropdownMenuItem>
 													<DropdownMenuItem
-														className="text-red-400 hover:bg-red-900/20 cursor-pointer"
+														className="text-destructive hover:bg-destructive/10 cursor-pointer"
 														onClick={() =>
 															handleDeleteClick({
 																id: cycle.id,
@@ -336,7 +338,7 @@ export function TrainingCycles() {
 										<div className="space-y-3 mb-4">
 											<div className="flex items-center justify-between text-sm">
 												<span className="text-muted-foreground">Duration</span>
-												<span className="text-white font-medium font-data">
+												<span className="text-foreground font-medium font-data">
 													{cycle.duration_weeks} weeks
 												</span>
 											</div>
@@ -346,7 +348,7 @@ export function TrainingCycles() {
 												</span>
 												<div className="flex items-center gap-2">
 													<Dumbbell className="w-4 h-4 text-primary" />
-													<span className="text-white font-medium font-data">
+													<span className="text-foreground font-medium font-data">
 														{cycle.workout_days}
 													</span>
 													<span className="text-muted-foreground">/</span>
@@ -361,7 +363,7 @@ export function TrainingCycles() {
 													<span className="text-muted-foreground">
 														Last used
 													</span>
-													<span className="text-white font-medium">
+													<span className="text-foreground font-medium">
 														{lastUsedText}
 													</span>
 												</div>
