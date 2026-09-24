@@ -55,6 +55,46 @@ describe("AppSidebar", () => {
 		);
 	});
 
+	it("marks only Profile current on the bare profile route", () => {
+		render(
+			<QueryClientProvider client={new QueryClient()}>
+				<MemoryRouter initialEntries={["/profile"]}>
+					<SidebarProvider>
+						<AppSidebar />
+					</SidebarProvider>
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+
+		const current = screen
+			.getAllByRole("link")
+			.filter((link) => link.getAttribute("aria-current") === "page");
+		expect(current).toHaveLength(1);
+		expect(current[0]).toHaveAccessibleName("Profile");
+	});
+
+	it("links every account destination, including integrations and billing", () => {
+		render(
+			<QueryClientProvider client={new QueryClient()}>
+				<MemoryRouter initialEntries={["/dashboard"]}>
+					<SidebarProvider>
+						<AppSidebar />
+					</SidebarProvider>
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+
+		expect(screen.getByRole("link", { name: "Integrations" })).toHaveAttribute(
+			"href",
+			"/integrations",
+		);
+		expect(screen.getByRole("link", { name: "Subscription" })).toHaveAttribute(
+			"href",
+			"/pricing",
+		);
+		expect(screen.getByRole("button", { name: "Sign out" })).toBeVisible();
+	});
+
 	it("marks only Settings current when viewing profile settings", () => {
 		render(
 			<QueryClientProvider client={new QueryClient()}>

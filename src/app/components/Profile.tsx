@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { PageShell } from "@/app/components/PageShell";
 import { DangerZone } from "@/app/components/profile/DangerZone";
@@ -110,8 +110,35 @@ export function formatProfileVolume(
 	return `${formatVolume(perCableKg ?? 0, unit)} per cable`;
 }
 
+const PROFILE_TABS = ["stats", "badges", "integrations", "settings"] as const;
+type ProfileTab = (typeof PROFILE_TABS)[number];
+
+function isProfileTab(value: string | null): value is ProfileTab {
+	return PROFILE_TABS.includes(value as ProfileTab);
+}
+
 export function Profile() {
 	const { user, signOut } = useAuth();
+	// The sidebar's Settings link is /profile?tab=settings, so the active tab
+	// follows the query string (and writes back to it) instead of always
+	// opening on stats.
+	const [searchParams, setSearchParams] = useSearchParams();
+	const requestedTab = searchParams.get("tab");
+	const activeTab: ProfileTab = isProfileTab(requestedTab)
+		? requestedTab
+		: "stats";
+	const handleTabChange = (value: string) => {
+		if (!isProfileTab(value)) return;
+		setSearchParams(
+			(previous) => {
+				const next = new URLSearchParams(previous);
+				if (value === "stats") next.delete("tab");
+				else next.set("tab", value);
+				return next;
+			},
+			{ replace: true },
+		);
+	};
 	const userId = user?.id ?? "";
 	const {
 		tier,
@@ -519,7 +546,11 @@ export function Profile() {
 				</motion.div>
 
 				{/* Main Content */}
-				<Tabs defaultValue="stats" className="space-y-6">
+				<Tabs
+					value={activeTab}
+					onValueChange={handleTabChange}
+					className="space-y-6"
+				>
 					<TabsList variant="panel">
 						<TabsTrigger value="stats">Public Stats</TabsTrigger>
 						<TabsTrigger value="badges">Badges</TabsTrigger>

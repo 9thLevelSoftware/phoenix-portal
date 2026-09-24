@@ -1,10 +1,16 @@
+import { useQuery } from "@tanstack/react-query";
 import {
+	Award,
 	BarChart3,
 	ChevronDown,
+	CreditCard,
 	Dumbbell,
+	Flame,
 	HeartPulse,
 	History,
 	LayoutDashboard,
+	Link2,
+	LogOut,
 	Repeat,
 	Settings,
 	Target,
@@ -14,6 +20,7 @@ import {
 } from "lucide-react";
 import * as React from "react";
 import { Link, NavLink, useLocation } from "react-router";
+import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -34,9 +41,12 @@ import {
 	useSidebar,
 } from "@/app/components/ui/sidebar";
 import { useAuth } from "@/app/hooks/useAuth";
+import { profileOptions } from "@/queries/profile";
+import { useUIStore } from "@/stores/useUIStore";
 import { LocalProfileFilter } from "./LocalProfileFilter";
 import { PhoenixLogo } from "./PhoenixLogo";
 import { ThemeToggle } from "./ThemeToggle";
+import { TierBadge } from "./TierBadge";
 
 // ---------------------------------------------------------------------------
 // Nav group definitions
@@ -71,11 +81,18 @@ const navGroups: NavGroup[] = [
 		label: "Explore",
 		items: [
 			{ path: "/analytics", label: "Analytics", icon: BarChart3 },
-			{ path: "/leaderboard", label: "Leaderboard", icon: Trophy },
+			{ path: "/leaderboard", label: "Leaderboard", icon: Award },
 			{ path: "/community", label: "Community", icon: Users },
 			{ path: "/challenges", label: "Challenges", icon: Trophy },
 		],
 	},
+];
+
+const accountItems: NavItem[] = [
+	{ path: "/profile", label: "Profile", icon: User },
+	{ path: "/profile?tab=settings", label: "Settings", icon: Settings },
+	{ path: "/integrations", label: "Integrations", icon: Link2 },
+	{ path: "/pricing", label: "Subscription", icon: CreditCard },
 ];
 
 // ---------------------------------------------------------------------------
@@ -143,12 +160,26 @@ function useAutoCollapse() {
 export function AppSidebar() {
 	const location = useLocation();
 	const { user, signOut } = useAuth();
+	const streak = useUIStore((s) => s.streak);
 	const { state } = useSidebar();
 	const isCollapsed = state === "collapsed";
+	const [trainOpen, setTrainOpen] = React.useState(true);
 
 	useAutoCollapse();
 
 	const userId = user?.id ?? "";
+	const { data: profile } = useQuery({
+		...profileOptions(userId),
+		enabled: !!userId,
+	});
+	const displayName =
+		profile?.display_name ?? user?.email?.split("@")[0] ?? "User";
+	const initials = displayName
+		.split(" ")
+		.map((part: string) => part[0])
+		.join("")
+		.toUpperCase()
+		.slice(0, 2);
 	const isNavItemActive = (item: NavItem) => {
 		const fullPath = `${location.pathname}${location.search}`;
 
@@ -189,20 +220,23 @@ export function AppSidebar() {
 								: undefined
 						}
 					>
-						<NavLink
+						{/* Link, not NavLink: NavLink ignores the query string and sets
+						    aria-current itself when passed undefined, so /profile and
+						    /profile?tab=settings would both claim the current page. */}
+						<Link
 							to={item.path}
 							className="relative"
 							aria-label={item.label}
 							aria-current={isActive ? "page" : undefined}
 						>
-							<item.icon className="shrink-0" />
+							<item.icon aria-hidden="true" className="shrink-0" />
 							<span className="group-data-[collapsible=icon]:hidden">
 								{item.label}
 							</span>
 							{isActive && (
 								<span className="absolute left-0 top-1 bottom-1 w-[3px] bg-primary rounded-full group-data-[collapsible=icon]:hidden" />
 							)}
-						</NavLink>
+						</Link>
 					</SidebarMenuButton>
 				</SidebarMenuItem>
 			);
@@ -246,7 +280,13 @@ export function AppSidebar() {
 							<SidebarSeparator className="sidebar-separator-phoenix" />
 						)}
 						{group.collapsible ? (
-							<Collapsible defaultOpen>
+							// In icon mode the label (and its toggle) is hidden, so the
+							// group is forced open or its links would be unreachable.
+							<Collapsible
+								open={isCollapsed || trainOpen}
+								onOpenChange={setTrainOpen}
+								className="group/collapsible"
+							>
 								<SidebarGroup>
 									<SidebarGroupLabel
 										asChild
@@ -254,7 +294,10 @@ export function AppSidebar() {
 									>
 										<CollapsibleTrigger className="w-full justify-between">
 											{group.label}
-											<ChevronDown className="transition-transform group-data-[state=open]:rotate-180" />
+											<ChevronDown
+												aria-hidden="true"
+												className="transition-transform group-data-[state=open]/collapsible:rotate-180"
+											/>
 										</CollapsibleTrigger>
 									</SidebarGroupLabel>
 									<CollapsibleContent>
@@ -280,71 +323,40 @@ export function AppSidebar() {
 			<SidebarFooter className="gap-1 pb-3 group-data-[collapsible=icon]:px-0">
 				<SidebarSeparator className="sidebar-separator-phoenix" />
 				<SidebarGroup className="p-2">
-					<SidebarMenu>
-						<SidebarMenuItem>
-							<SidebarMenuButton
-								asChild
-								isActive={isNavItemActive({
-									path: "/profile",
-									label: "Profile",
-									icon: User,
-								})}
-								tooltip="Profile"
-								size="lg"
-							>
-								<Link
-									to="/profile"
-									aria-label="Profile"
-									aria-current={
-										isNavItemActive({
-											path: "/profile",
-											label: "Profile",
-											icon: User,
-										})
-											? "page"
-											: undefined
-									}
-								>
-									<User className="shrink-0" />
-									<span className="group-data-[collapsible=icon]:hidden">
-										Profile
-									</span>
-								</Link>
-							</SidebarMenuButton>
-						</SidebarMenuItem>
-						<SidebarMenuItem>
-							<SidebarMenuButton
-								asChild
-								isActive={isNavItemActive({
-									path: "/profile?tab=settings",
-									label: "Settings",
-									icon: Settings,
-								})}
-								tooltip="Settings"
-								size="lg"
-							>
-								<NavLink
-									to="/profile?tab=settings"
-									aria-label="Settings"
-									aria-current={
-										isNavItemActive({
-											path: "/profile?tab=settings",
-											label: "Settings",
-											icon: Settings,
-										})
-											? "page"
-											: undefined
-									}
-								>
-									<Settings className="shrink-0" />
-									<span className="group-data-[collapsible=icon]:hidden">
-										Settings
-									</span>
-								</NavLink>
-							</SidebarMenuButton>
-						</SidebarMenuItem>
-					</SidebarMenu>
+					<SidebarGroupLabel className="eyebrow text-muted-foreground">
+						Account
+					</SidebarGroupLabel>
+					<SidebarMenu>{renderNavItems(accountItems)}</SidebarMenu>
 				</SidebarGroup>
+				<Link
+					to="/profile"
+					aria-label={`${displayName} profile`}
+					className="mx-2 flex items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:mx-0 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+				>
+					<Avatar className="h-8 w-8 shrink-0 ring-2 ring-primary/40">
+						<AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+							{initials}
+						</AvatarFallback>
+					</Avatar>
+					<div className="flex min-w-0 flex-1 flex-col items-start gap-0.5 group-data-[collapsible=icon]:hidden">
+						<span className="truncate font-medium text-sidebar-foreground">
+							{displayName}
+						</span>
+						<div className="flex items-center gap-2">
+							<TierBadge className="text-[10px] py-0 h-4" />
+							{streak > 0 && (
+								<span className="flex items-center gap-1 text-xs text-muted-foreground">
+									<Flame
+										aria-hidden="true"
+										className="h-3 w-3 text-primary fill-primary"
+									/>
+									{streak}
+									<span className="sr-only">day streak</span>
+								</span>
+							)}
+						</div>
+					</div>
+				</Link>
 				<div className="flex items-center justify-between px-2 py-1 group-data-[collapsible=icon]:hidden">
 					<span className="text-sm text-muted-foreground">Theme</span>
 					<ThemeToggle />
@@ -358,6 +370,7 @@ export function AppSidebar() {
 							tooltip="Sign out"
 							className="text-destructive hover:text-destructive"
 						>
+							<LogOut aria-hidden="true" className="shrink-0" />
 							<span className="group-data-[collapsible=icon]:hidden">
 								Sign out
 							</span>
