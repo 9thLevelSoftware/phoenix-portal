@@ -86,13 +86,17 @@ const navGroups: NavGroup[] = [
 			{ path: "/challenges", label: "Challenges", icon: Trophy },
 		],
 	},
-];
-
-const accountItems: NavItem[] = [
-	{ path: "/profile", label: "Profile", icon: User },
-	{ path: "/profile?tab=settings", label: "Settings", icon: Settings },
-	{ path: "/integrations", label: "Integrations", icon: Link2 },
-	{ path: "/pricing", label: "Subscription", icon: CreditCard },
+	{
+		// In the scrollable content, not the footer: a tall footer squeezed
+		// the nav into a scroll area on short (720px) viewports.
+		label: "Account",
+		items: [
+			{ path: "/profile", label: "Profile", icon: User },
+			{ path: "/profile?tab=settings", label: "Settings", icon: Settings },
+			{ path: "/integrations", label: "Integrations", icon: Link2 },
+			{ path: "/pricing", label: "Subscription", icon: CreditCard },
+		],
+	},
 ];
 
 // ---------------------------------------------------------------------------
@@ -100,56 +104,66 @@ const accountItems: NavItem[] = [
 // ---------------------------------------------------------------------------
 
 const SIDEBAR_PREF_KEY = "phoenix-sidebar-preferred-open";
+const NARROW_VIEWPORT = "(max-width: 1279px)";
 
+function readOpenPreference(): boolean {
+	try {
+		return localStorage.getItem(SIDEBAR_PREF_KEY) !== "false"; // default open
+	} catch {
+		return true;
+	}
+}
+
+function writeOpenPreference(open: boolean) {
+	try {
+		localStorage.setItem(SIDEBAR_PREF_KEY, String(open));
+	} catch {
+		// Storage blocked: the preference just isn't remembered.
+	}
+}
+
+/**
+ * Collapse below 1280px and restore the user's own choice above it.
+ *
+ * The viewport logic runs on mount and on breakpoint changes only. It used to
+ * be an effect keyed on shadcn's `setOpen`, whose identity changes with every
+ * open/close, so each toggle re-applied the (not yet updated) stored
+ * preference and the sidebar flipped back and forth: below 1280px it could
+ * never be expanded, and above it Ctrl/Cmd+B oscillated.
+ */
 function useAutoCollapse() {
 	const { open, setOpen } = useSidebar();
-	const isAutoCollapsingRef = React.useRef(false);
+	const setOpenRef = React.useRef(setOpen);
+	const openRef = React.useRef(open);
+	// Set when the viewport, not the user, changed `open`, so that change is
+	// not persisted as the user's preference.
+	const autoChangeRef = React.useRef(false);
 
-	// On mount: read stored preference and apply viewport-driven override
 	React.useEffect(() => {
-		const storedPref = localStorage.getItem(SIDEBAR_PREF_KEY);
-		const userPrefersOpen = storedPref !== "false"; // default true
+		setOpenRef.current = setOpen;
+		openRef.current = open;
+	});
 
-		const belowBreakpoint = window.matchMedia("(max-width: 1279px)").matches;
-		if (belowBreakpoint) {
-			isAutoCollapsingRef.current = true;
-			setOpen(false);
-			isAutoCollapsingRef.current = false;
-		} else {
-			// Restore user preference on large viewports
-			isAutoCollapsingRef.current = true;
-			setOpen(userPrefersOpen);
-			isAutoCollapsingRef.current = false;
-		}
-	}, [setOpen]);
-
-	// Watch viewport changes crossing 1280px boundary
 	React.useEffect(() => {
-		const mql = window.matchMedia("(max-width: 1279px)");
-		const handleChange = (e: MediaQueryListEvent) => {
-			if (e.matches) {
-				// Dropped below 1280px — auto-collapse
-				isAutoCollapsingRef.current = true;
-				setOpen(false);
-				isAutoCollapsingRef.current = false;
-			} else {
-				// Crossed above 1280px — restore preference
-				const storedPref = localStorage.getItem(SIDEBAR_PREF_KEY);
-				const userPrefersOpen = storedPref !== "false";
-				isAutoCollapsingRef.current = true;
-				setOpen(userPrefersOpen);
-				isAutoCollapsingRef.current = false;
-			}
+		const mql = window.matchMedia(NARROW_VIEWPORT);
+		const apply = (narrow: boolean) => {
+			const next = narrow ? false : readOpenPreference();
+			if (next === openRef.current) return;
+			autoChangeRef.current = true;
+			setOpenRef.current(next);
 		};
+		apply(mql.matches);
+		const handleChange = (event: MediaQueryListEvent) => apply(event.matches);
 		mql.addEventListener("change", handleChange);
 		return () => mql.removeEventListener("change", handleChange);
-	}, [setOpen]);
+	}, []);
 
-	// Persist user preference when `open` changes — but NOT during auto-collapse
 	React.useEffect(() => {
-		if (!isAutoCollapsingRef.current) {
-			localStorage.setItem(SIDEBAR_PREF_KEY, String(open));
+		if (autoChangeRef.current) {
+			autoChangeRef.current = false;
+			return;
 		}
+		writeOpenPreference(open);
 	}, [open]);
 }
 
@@ -322,12 +336,6 @@ export function AppSidebar() {
 			{/* ----------------------------------------------------------------- */}
 			<SidebarFooter className="gap-1 pb-3 group-data-[collapsible=icon]:px-0">
 				<SidebarSeparator className="sidebar-separator-phoenix" />
-				<SidebarGroup className="p-2">
-					<SidebarGroupLabel className="eyebrow text-muted-foreground">
-						Account
-					</SidebarGroupLabel>
-					<SidebarMenu>{renderNavItems(accountItems)}</SidebarMenu>
-				</SidebarGroup>
 				<Link
 					to="/profile"
 					aria-label={`${displayName} profile`}

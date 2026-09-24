@@ -2,62 +2,80 @@ import { expect, test } from "@playwright/test";
 import { mockAuthenticatedApp } from "./support/mockSupabase";
 
 test.describe("Keyboard navigation", () => {
-	test("sidebar is fully keyboard-navigable with visible focus", async ({
+	test.beforeEach(async ({ page }) => {
+		// FLAME so /dashboard renders the app shell, not the upgrade prompt.
+		await mockAuthenticatedApp(page, { tier: "FLAME" });
+		await page.goto("/dashboard");
+		await expect(page.locator("#main-content")).toBeVisible();
+	});
+
+	test("every sidebar link is reachable by Tab and shows a visible focus indicator", async ({
 		page,
 	}) => {
-		await mockAuthenticatedApp(page);
-		await page.goto("/dashboard");
-
-		// Focus SkipToContent first, then tab through the shell controls.
+		// The skip link is the first stop.
 		await page.keyboard.press("Tab");
-		const firstFocused = await page.evaluate(
-			() =>
-				document.activeElement?.tagName +
-				" " +
-				document.activeElement?.textContent,
-		);
-		expect(firstFocused.toLowerCase()).toContain("skip");
+		await expect(page.locator(":focus")).toHaveText(/skip/i);
 
-		const navLinks = page.locator('[data-sidebar="menu"] a[href]');
-		const count = await navLinks.count();
+		const links = page.locator('[data-sidebar="menu"] a[href]');
+		const count = await links.count();
 		expect(count).toBeGreaterThan(5);
 
-		for (let i = 0; i < count; i++) {
-			await page.keyboard.press("Tab");
-			const focused = page.locator(":focus");
-			await expect(focused).toBeVisible();
-
-			// Tailwind focus-visible rings are rendered as a box shadow by the
-			// browser; keep outline as a fallback for native focus indicators.
-			const focusIndicator = await focused.evaluate((element) => {
+		// Each link's appearance before it is focused, to prove focus changes it.
+		const focusStyle = (element: Element) => {
+			const styles = window.getComputedStyle(element);
+			return `${styles.outlineStyle} ${styles.outlineWidth} ${styles.boxShadow}`;
+		};
+		const unfocused = await links.evaluateAll((elements) =>
+			elements.map((element) => {
 				const styles = window.getComputedStyle(element);
-				return {
-					outlineStyle: styles.outlineStyle,
-					boxShadow: styles.boxShadow,
-				};
-			});
+				return `${styles.outlineStyle} ${styles.outlineWidth} ${styles.boxShadow}`;
+			}),
+		);
+
+		for (let i = 0; i < count; i++) {
+			const link = links.nth(i);
+			// Tab forward (bounded) until this link has focus, so the test fails
+			// if a link is skipped or unreachable instead of passing on whatever
+			// happens to be focused.
+			for (let presses = 0; presses < 15; presses++) {
+				if (
+					await link.evaluate((element) => element === document.activeElement)
+				)
+					break;
+				await page.keyboard.press("Tab");
+			}
+			await expect(link).toBeFocused();
 			expect(
-				focusIndicator.outlineStyle !== "none" ||
-					focusIndicator.boxShadow !== "none",
+				await link.evaluate((element) => element.matches(":focus-visible")),
 			).toBe(true);
+			expect(
+				await link.evaluate(focusStyle),
+				`link ${i} looks the same focused and unfocused`,
+			).not.toBe(unfocused[i]);
 		}
 	});
 
-	test("command palette or dialogs are keyboard reachable", async ({
-		page,
-	}) => {
-		await mockAuthenticatedApp(page);
-		await page.goto("/dashboard");
+	test("Ctrl/Cmd+B collapses and expands the sidebar", async ({ page }) => {
+		const sidebar = page.locator('[data-slot="sidebar"][data-state]');
+		await expect(sidebar).toHaveAttribute("data-state", "expanded");
 
-		// The shell currently exposes Ctrl/Cmd+B for the sidebar. Keep this
-		// check tolerant of builds that do not provide a command palette.
-		const isMac = process.platform === "darwin";
-		await page.keyboard.press(isMac ? "Meta+K" : "Control+K");
-		const palette = page.locator("[role='dialog'], [cmdk-root]");
-		if (await palette.count()) {
-			await expect(palette).toBeVisible();
-			await page.keyboard.press("Escape");
-			await expect(palette).not.toBeVisible();
-		}
+		// The handler compares event.key with "b", so the key must be lowercase.
+		await page.keyboard.press("ControlOrMeta+b");
+		await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+		// Regressions: collapsing used to flip straight back (useAutoCollapse
+		// re-applied the stored preference) and to crash the app through a
+		// Radix tooltip ref loop, unmounting everything.
+		await page.waitForTimeout(500);
+		await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+		await expect(page.locator("#main-content")).toBeVisible();
+		await expect(page.getByRole("link", { name: "Workouts" })).toHaveAttribute(
+			"title",
+			"Workouts",
+		);
+
+		await page.keyboard.press("ControlOrMeta+b");
+		await expect(sidebar).toHaveAttribute("data-state", "expanded");
+		await page.waitForTimeout(500);
+		await expect(sidebar).toHaveAttribute("data-state", "expanded");
 	});
 });
