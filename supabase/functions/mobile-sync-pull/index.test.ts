@@ -1036,6 +1036,172 @@ Deno.test("identical-microsecond personal records produce a distinct nextCursor"
   );
 });
 
+function exactPageBadges(count: number): Array<Record<string, unknown>> {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `00000000-0000-4000-8000-b${String(index).padStart(11, "0")}`,
+    user_id: VALID_USER_ID,
+    badge_id: `badge-${index}`,
+    badge_name: `Badge ${index}`,
+    badge_description: null,
+    badge_tier: "bronze",
+    earned_at: `2026-07-08T14:24:${String(index % 60).padStart(2, "0")}.000000+00:00`,
+  }));
+}
+
+function exactPagePersonalRecords(count: number): Array<Record<string, unknown>> {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `00000000-0000-4000-8000-c${String(index).padStart(11, "0")}`,
+    user_id: VALID_USER_ID,
+    local_profile_id: VALID_PROFILE_ID,
+    exercise_id: null,
+    exercise_name: `Lift ${index}`,
+    muscle_group: "Chest",
+    record_type: "MAX_WEIGHT",
+    value: 100,
+    weight_kg: 100,
+    reps: 1,
+    workout_phase: "COMBINED",
+    session_id: null,
+    achieved_at: "2026-07-08T14:24:09.648091+00:00",
+    updated_at: `2026-07-08T14:25:${String(index % 60).padStart(2, "0")}.000000+00:00`,
+    deleted_at: null,
+  }));
+}
+
+function applyBadgeCursor(
+  rows: Array<Record<string, unknown>>,
+  args: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const cursorAt = typeof args.p_cursor_earned_at === "string"
+    ? args.p_cursor_earned_at
+    : null;
+  const cursorId = typeof args.p_cursor_id === "string" ? args.p_cursor_id : "";
+  const limit = typeof args.p_limit === "number" ? args.p_limit : 76;
+  const key = (row: Record<string, unknown>) =>
+    `${timestampSortKey(String(row.earned_at))}|${String(row.id)}`;
+  const sorted = [...rows].sort((left, right) => key(left).localeCompare(key(right)));
+  const filtered = cursorAt
+    ? sorted.filter((row) => key(row) > `${timestampSortKey(cursorAt)}|${cursorId}`)
+    : sorted;
+  return filtered.slice(0, limit);
+}
+
+function exactPageHarness(options: {
+  badges: Array<Record<string, unknown>>;
+  personalRecords: Array<Record<string, unknown>>;
+  customExercises: Array<Record<string, unknown>>;
+}) {
+  return makeHarness(undefined, {
+    rpcImpl: (name, args) => {
+      if (name === "get_badges_excluding_ids") {
+        return { data: applyBadgeCursor(options.badges, args), error: null };
+      }
+      if (name === "get_personal_records_excluding_ids") {
+        return {
+          data: applyPersonalRecordCursor(options.personalRecords, args),
+          error: null,
+        };
+      }
+      return undefined;
+    },
+    fromImpl: (name) =>
+      name === "exercise_catalog"
+        ? { data: options.customExercises, error: null }
+        : undefined,
+  });
+}
+
+const EXACT_PAGE_CUSTOM_EXERCISE = {
+  id: "custom-exercise-1",
+  name: "cable_fly",
+  display_name: "Cable Fly",
+  muscle_group: "Chest",
+  equipment: ["cable"],
+  default_cable_config: "DOUBLE",
+  updated_at: "2026-07-08T14:26:00.000000+00:00",
+};
+
+// Codex P1 on PR 218: a section that returned exactly the remaining page
+// budget left hasMore false, so every later pageable entity was skipped and
+// the client stopped paging. The page must hand back a continuation instead.
+Deno.test("a page exactly filled by one entity continues into the next entity", async () => {
+  const pageSize = 75;
+  const harness = exactPageHarness({
+    badges: exactPageBadges(pageSize),
+    personalRecords: exactPagePersonalRecords(3),
+    customExercises: [],
+  });
+
+  const first = await harness.handler(requestFromBody({ ...validPullBody(), pageSize }));
+  const firstBody = await json(first);
+  assertEquals(first.status, 200, JSON.stringify(firstBody));
+  assertEquals((firstBody.badges as unknown[]).length, pageSize);
+  assertEquals((firstBody.personalRecords as unknown[]).length, 0);
+  assertEquals(firstBody.hasMore, true, "an exactly-full page must not end the sync");
+  assert(typeof firstBody.nextCursor === "string");
+
+  const second = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    pageSize,
+    cursor: firstBody.nextCursor,
+  }));
+  const secondBody = await json(second);
+  assertEquals(second.status, 200, JSON.stringify(secondBody));
+  assertEquals((secondBody.badges as unknown[]).length, 0, "badges must not replay");
+  assertEquals((secondBody.personalRecords as unknown[]).length, 3);
+  assertEquals(secondBody.hasMore, false);
+});
+
+Deno.test("a page exactly filled across two entities continues into the rest", async () => {
+  const pageSize = 75;
+  const harness = exactPageHarness({
+    badges: exactPageBadges(50),
+    personalRecords: exactPagePersonalRecords(25),
+    customExercises: [EXACT_PAGE_CUSTOM_EXERCISE],
+  });
+
+  const first = await harness.handler(requestFromBody({ ...validPullBody(), pageSize }));
+  const firstBody = await json(first);
+  assertEquals(first.status, 200, JSON.stringify(firstBody));
+  assertEquals((firstBody.badges as unknown[]).length, 50);
+  assertEquals((firstBody.personalRecords as unknown[]).length, 25);
+  assertEquals((firstBody.customExercises as unknown[]).length, 0);
+  assertEquals(firstBody.hasMore, true);
+
+  const second = await harness.handler(requestFromBody({
+    ...validPullBody(),
+    pageSize,
+    cursor: firstBody.nextCursor,
+  }));
+  const secondBody = await json(second);
+  assertEquals(second.status, 200, JSON.stringify(secondBody));
+  assertEquals((secondBody.personalRecords as unknown[]).length, 0);
+  assertEquals(
+    (secondBody.customExercises as Array<{ clientId: string }>).map((row) => row.clientId),
+    ["custom-exercise-1"],
+  );
+  assertEquals(secondBody.hasMore, false);
+});
+
+Deno.test("the final entity filling the page exactly ends the sync", async () => {
+  const pageSize = 3;
+  const harness = exactPageHarness({
+    badges: [],
+    personalRecords: [],
+    customExercises: [
+      EXACT_PAGE_CUSTOM_EXERCISE,
+      { ...EXACT_PAGE_CUSTOM_EXERCISE, id: "custom-exercise-2" },
+      { ...EXACT_PAGE_CUSTOM_EXERCISE, id: "custom-exercise-3" },
+    ],
+  });
+
+  const response = await harness.handler(requestFromBody({ ...validPullBody(), pageSize }));
+  const body = await json(response);
+  assertEquals(response.status, 200, JSON.stringify(body));
+  assertEquals((body.customExercises as unknown[]).length, 3);
+  assertEquals(body.hasMore, false, "nothing follows custom exercises");
+});
+
 Deno.test("first-page pull queries exact owner and profile and maps all five canonicals", async () => {
   const harness = makeHarness(undefined, {
     preferenceResult: { data: validPreferenceRow(), error: null },
@@ -2964,7 +3130,10 @@ Deno.test("identical-timestamp sessions are each returned exactly once when page
 
   const collected: string[] = [];
   let cursor: string | undefined;
-  for (let page = 0; page < ids.length; page++) {
+  // One page per session, then one empty page: every session page is exactly
+  // full, and an exactly full page always hands back a continuation because
+  // later entity types may still have rows.
+  for (let page = 0; page <= ids.length; page++) {
     const response = await harness.handler(requestFromBody({
       ...validPullBody(),
       pageSize: 1,
@@ -2973,15 +3142,15 @@ Deno.test("identical-timestamp sessions are each returned exactly once when page
     const body = await json(response);
     assertEquals(response.status, 200, JSON.stringify(body));
     const pageSessions = body.sessions as Array<{ id: string }>;
-    assertEquals(pageSessions.length, 1, `page ${page}`);
-    collected.push(pageSessions[0].id);
     const next = body.nextCursor;
-    const isLastPage = page === ids.length - 1;
-    if (isLastPage) {
+    if (page === ids.length) {
       // Nothing left in any bucket, so the run ends rather than cursoring on.
+      assertEquals(pageSessions.length, 0, "the closing page replays nothing");
       assertEquals(body.hasMore, false);
       break;
     }
+    assertEquals(pageSessions.length, 1, `page ${page}`);
+    collected.push(pageSessions[0].id);
     assertEquals(body.hasMore, true, `page ${page} must report more`);
     assert(
       typeof next === "string" && next.length > 0,
