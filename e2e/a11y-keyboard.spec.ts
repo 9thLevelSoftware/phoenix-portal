@@ -43,7 +43,9 @@ test.describe("Keyboard navigation", () => {
 		}
 	});
 
-	test("command palette or dialogs are keyboard reachable", async ({ page }) => {
+	test("command palette or dialogs are keyboard reachable", async ({
+		page,
+	}) => {
 		await mockAuthenticatedApp(page);
 		await page.goto("/dashboard");
 

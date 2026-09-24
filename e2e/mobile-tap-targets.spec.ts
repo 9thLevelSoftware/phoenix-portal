@@ -14,8 +14,9 @@ for (const path of ["/dashboard", "/history", "/routines"]) {
 		await page.goto(path);
 		await page.waitForLoadState("networkidle");
 
-		const undersized = await page.locator(INTERACTIVE_SELECTOR).evaluateAll(
-			(elements) =>
+		const undersized = await page
+			.locator(INTERACTIVE_SELECTOR)
+			.evaluateAll((elements) =>
 				elements
 					.map((element) => {
 						const rect = element.getBoundingClientRect();
@@ -29,11 +30,13 @@ for (const path of ["/dashboard", "/history", "/routines"]) {
 						};
 					})
 					.filter(({ height }) => height < 44),
-		);
+			);
 
-		test.expect(
-			undersized,
-			`${path} has interactive elements shorter than 44px: ${JSON.stringify(undersized)}`,
-		).toEqual([]);
+		test
+			.expect(
+				undersized,
+				`${path} has interactive elements shorter than 44px: ${JSON.stringify(undersized)}`,
+			)
+			.toEqual([]);
 	});
 }
