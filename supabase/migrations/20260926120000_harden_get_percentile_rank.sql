@@ -9,7 +9,7 @@ RETURNS TABLE(user_value NUMERIC, percentile INTEGER, rank_description TEXT)
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = ''
+SET search_path = 'public', 'pg_temp'
 AS $$
 DECLARE
   v_user_value NUMERIC;
@@ -92,7 +92,12 @@ BEGIN
 END;
 $$;
 
+-- Service-role-only: this function reads cross-user aggregates from
+-- community_benchmarks and is deliberately NOT on the browser allow-list in
+-- supabase/tests/database/definer_function_grants.test.sql. The explicit
+-- authenticated revoke is required because CREATE OR REPLACE FUNCTION
+-- preserves existing privileges.
 REVOKE ALL ON FUNCTION public.get_percentile_rank(UUID, TEXT, TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.get_percentile_rank(UUID, TEXT, TEXT) FROM anon;
-GRANT EXECUTE ON FUNCTION public.get_percentile_rank(UUID, TEXT, TEXT) TO authenticated;
+REVOKE ALL ON FUNCTION public.get_percentile_rank(UUID, TEXT, TEXT) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.get_percentile_rank(UUID, TEXT, TEXT) TO service_role;
