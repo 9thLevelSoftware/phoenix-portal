@@ -22,10 +22,6 @@
       "src/app/components/RoutineBuilder.tsx": {
         "TS2345": 1
       },
-      "src/app/components/SummaryReport.tsx": {
-        "TS2339": 1,
-        "TS2769": 1
-      },
       "src/app/components/TrainingCycles.tsx": {
         "TS2345": 1
       },
@@ -89,10 +85,6 @@
       },
       "src/app/components/RoutineBuilder.tsx": {
         "TS2345": 1
-      },
-      "src/app/components/SummaryReport.tsx": {
-        "TS2339": 1,
-        "TS2769": 1
       },
       "src/app/components/TrainingCycles.tsx": {
         "TS2345": 1
