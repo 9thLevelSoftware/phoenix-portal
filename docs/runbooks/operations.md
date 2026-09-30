@@ -1,6 +1,6 @@
 # Phoenix Portal Operational Runbook
 
-> Last updated: 2026-09-20
+> Last updated: 2026-09-30
 > Audience: On-call operators, backend engineers
 
 This document covers day-to-day operational troubleshooting for Phoenix Portal.
@@ -968,6 +968,15 @@ WHERE user_id = '<uuid>'
 **Note:** Sentry is only initialized if `VITE_SENTRY_DSN` is set and the app is
 running in production mode (`import.meta.env.PROD`). It is not initialized in
 development.
+
+**Cookie consent:** The SDK is not loaded until the user accepts cookies.
+`src/main.tsx` calls `enableErrorReporting()` only when the
+`phoenix-cookie-consent` value is `accepted` (a storage read that throws is
+treated as not consented). Accepting in `CookieConsentBanner` uses that same
+path for the rest of the session; Reject, or no choice, never fetches the
+Sentry chunk, and those errors stay on the console. A quiet Issues dashboard
+can therefore mean the visitor declined cookies. This does not set or change
+`VITE_SENTRY_DSN`.
 
 ### Supabase Dashboard
 
