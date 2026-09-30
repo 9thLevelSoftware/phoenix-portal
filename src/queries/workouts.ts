@@ -44,39 +44,6 @@ export function workoutListOptions(userId: string, profileId?: string | null) {
 }
 
 /**
- * Fetch the next page of workout sessions, offset by the number already loaded.
- */
-export function workoutListPageOptions(
-	userId: string,
-	offset: number,
-	profileId?: string | null,
-) {
-	return queryOptions({
-		queryKey: [
-			...queryKeys.workouts.list(userId, profileId),
-			"page",
-			offset,
-		] as const,
-		queryFn: async () => {
-			let query = supabase
-				.from("workout_sessions")
-				.select("*")
-				.eq("user_id", userId);
-
-			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
-			}
-
-			const { data, error } = await query
-				.order("started_at", { ascending: false })
-				.range(offset, offset + WORKOUTS_PAGE_SIZE - 1);
-			if (error) throw error;
-			return workoutListSchema.parse(data);
-		},
-	});
-}
-
-/**
  * Infinite workout history. Query key sits under `queryKeys.workouts.all` so
  * realtime invalidation drops extra pages instead of leaving a shadow list.
  */

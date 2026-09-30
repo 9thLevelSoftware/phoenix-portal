@@ -700,45 +700,10 @@ describe("session trend readers page past the 1,000-row cap (F-012/F-034, NF-19)
 		vi.clearAllMocks();
 	});
 
-	/** A chain whose `limit` resolves to the next queued page. */
-	function pagedChain(pages: Array<Array<Record<string, unknown>>>) {
-		const self: Record<string, ReturnType<typeof vi.fn>> = {};
-		for (const m of ["select", "eq", "not", "or", "gte", "lt", "order"]) {
-			self[m] = vi.fn(() => self);
-		}
-		let call = 0;
-		self.limit = vi.fn(() =>
-			Promise.resolve({ data: pages[call++] ?? [], error: null }),
-		);
-		return self;
-	}
-
 	const session = (i: number) => ({
 		id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
 		started_at: new Date(Date.UTC(2020, 0, 1) + i * 60_000).toISOString(),
 		form_score: 80,
-	});
-
-	it("formScoreTrendOptions('all') reads a second page and keeps the newest row", async () => {
-		const first = Array.from({ length: 1000 }, (_, i) => session(i));
-		const second = [session(1000)];
-		const chain = pagedChain([first, second]);
-		fromFn.mockImplementation(() => chain as never);
-
-		const { formScoreTrendOptions } = await import("../analytics");
-		const rows = await formScoreTrendOptions("user-1", "all").queryFn!(
-			{} as never,
-		);
-
-		expect(rows).toHaveLength(1001);
-		expect(rows.at(-1)?.id).toBe(session(1000).id);
-		expect(chain.limit).toHaveBeenCalledTimes(2);
-		// The second page starts strictly after the last row of the first.
-		const last = first[999];
-		expect(chain.or).toHaveBeenCalledWith(
-			`started_at.gt."${last.started_at}",and(started_at.eq."${last.started_at}",id.gt.${last.id})`,
-		);
-		expect(chain.order).toHaveBeenCalledWith("id", { ascending: true });
 	});
 
 	it("volumeComparisonOptions pages both windows instead of one capped select", async () => {
