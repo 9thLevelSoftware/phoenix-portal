@@ -17,7 +17,7 @@ Use design tokens from `src/styles/theme.css` only. Never inline hex colors, raw
 
 ## Anti-slop rules (hard constraints)
 
-1. No hex colors, and no raw Tailwind palette classes (`text-amber-400`, `bg-zinc-800`, …), outside `src/styles/theme.css`, `src/lib/theme-tokens.ts`, tests and `src/lib/database.types.ts`. The only exceptions are values that must not follow the theme, each with a comment saying why: third-party brand marks (the Google/Apple sign-in buttons), synced data that must match the mobile app (`LocalProfileFilter` profile colours), fixed danger buttons (`bg-red-600` with white text), print-only styles, the muscle heatmap legend (it must match the heatmap's own scale), the Strong import brand purple, and decorative effects that animate colour strings (`EmberParticles`, the Challenges swipe hint, the replay annotation overlay).
+1. No hex colors, and no raw Tailwind palette classes (`text-amber-400`, `bg-zinc-800`, …), outside `src/styles/theme.css`, `src/lib/theme-tokens.ts`, tests and `src/lib/database.types.ts`. The only exceptions are values that must not follow the theme, each with a comment saying why: third-party brand marks (the Google/Apple sign-in buttons), synced data that must match the mobile app (`LocalProfileFilter` profile colours), fixed danger buttons (`bg-red-600` with white text), print-only styles, the muscle heatmap legend (it must match the heatmap's own scale), the Strong import brand purple, and decorative effects that animate colour strings (the Challenges swipe hint and the replay annotation overlay).
 2. No `!important` outside `@media print`.
 3. No `rounded-*` doubling on a parent and child for the same edge.
 4. No `bg-gradient-*` combined with `shadow-*` on the same element.

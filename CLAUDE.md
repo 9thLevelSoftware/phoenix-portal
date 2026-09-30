@@ -133,7 +133,7 @@ src/
 │   │   ├── [Feature]Mobile.tsx    # Mobile variants
 │   │   ├── ui/                    # shadcn/ui primitives
 │   │   ├── analytics/ charts/ community/ integrations/ landing/
-│   │   ├── modals/ profile/ figma/
+│   │   ├── modals/ profile/
 │   │   ├── routine-builder/       # Routine creation subcomponents
 │   │   ├── cycle-builder/         # Training cycle subcomponents
 │   │   ├── session-replay/        # Session replay components
