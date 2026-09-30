@@ -116,10 +116,8 @@ npm run test:sync
 npm run check:edge-functions
 npm run test:edge
 
-# Type checking. NOTE: the root tsconfig.json is a solution file with
-# "files": [], so `tsc --noEmit` over it checks nothing and always passes.
-# Use `npx tsc -b --force` for real coverage (it reports a known backlog).
-# Type checking (all tsconfig projects; fails on errors not in typecheck-baseline.json)
+# Type checking (scripts/typecheck.mjs runs tsc -p --noEmit on the app, node,
+# test, and e2e tsconfigs; fails on errors not in typecheck-baseline.json)
 npm run typecheck
 
 # Re-record the pre-existing type errors after fixing some (review the diff)
