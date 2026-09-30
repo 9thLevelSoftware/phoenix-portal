@@ -485,9 +485,9 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
   anon/authenticated outside the allow-list in
   `20260920000100_lockdown_definer_function_grants.sql`.
   **Detector only — it gates nothing;** `deploy-edge-functions.yml` runs its own
-  copy of the migration check as the actual gate. The drift class it surfaces is
-  the one demonstrated by `9thLevelSoftware/Project-Phoenix-MP#602`; pushing the
-  missing migration and verifying the reporter path stay operator work.
+  copy of the migration check as the actual gate. When the run reports drift,
+  applying the missing migration and verifying the affected client path stay
+  operator work.
   Required `production` environment secrets (shared with the deploy workflow):
   `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROD_PROJECT_REF`,
   `SUPABASE_PROD_DB_PASSWORD`. Protect that environment with main-only branch
