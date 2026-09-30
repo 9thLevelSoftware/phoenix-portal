@@ -60,9 +60,6 @@
       "src/app/hooks/useButtonSuccess.ts": {
         "TS2554": 1
       },
-      "src/hooks/useNotificationSync.ts": {
-        "TS2345": 4
-      },
       "src/lib/community-atlas.ts": {
         "TS2538": 1
       },
@@ -130,9 +127,6 @@
       },
       "src/hooks/__tests__/useRealtimeSync.test.tsx": {
         "TS2493": 1
-      },
-      "src/hooks/useNotificationSync.ts": {
-        "TS2345": 4
       },
       "src/lib/__tests__/node-localstorage-options.test.ts": {
         "TS7016": 1
