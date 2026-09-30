@@ -14,9 +14,6 @@ import {
 import { convertWeight, getUnitLabel, type WeightUnit } from "@/lib/units";
 import { normalizeCableCount } from "@/lib/units/loadDisplay";
 
-// Re-exported for existing callers; the helpers now live in supabasePaging.ts.
-export { fetchAllSupabasePages, fetchAllSupabasePagesForChunks };
-
 type ProgressCallback = (step: string, current: number, total: number) => void;
 
 export interface AnalyticsWorkoutExerciseSummaryRow {

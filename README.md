@@ -5,7 +5,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-7-purple)](https://vite.dev)
 
-Web companion dashboard for [Project Phoenix](https://github.com/DasBluEyedDevil/Project-Phoenix-MP), an open-source companion for Phoenix-compatible fitness machines. View workouts, build routines and training cycles, analyze biomechanics, and replay 50Hz session telemetry synced from the Kotlin Multiplatform mobile app.
+Web companion dashboard for [Project Phoenix](https://github.com/9thLevelSoftware/Project-Phoenix-MP), an open-source companion for Phoenix-compatible fitness machines. View workouts, build routines and training cycles, analyze biomechanics, and replay 50Hz session telemetry synced from the Kotlin Multiplatform mobile app.
 
 ![Phoenix Portal Dashboard](https://img.shields.io/badge/theme-dark-0D0D0D?style=flat&labelColor=FF6B35)
 
@@ -203,7 +203,7 @@ Hosted as a **Cloudflare Worker with static assets** (`wrangler.toml`: the `phoe
 
 ## Related Projects
 
-- [Project Phoenix Mobile](https://github.com/DasBluEyedDevil/Project-Phoenix-MP) — Kotlin Multiplatform app (iOS/Android)
+- [Project Phoenix Mobile](https://github.com/9thLevelSoftware/Project-Phoenix-MP) — Kotlin Multiplatform app (iOS/Android)
 
 ## License
 

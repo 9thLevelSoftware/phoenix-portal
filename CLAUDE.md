@@ -454,9 +454,9 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
   sync-queue backlog triage (which re-applies `20260920003100` and then
   restores the production shape with a second `db reset --no-seed`, because
   re-applying individual migrations would clobber later definitions), the
-  pgTAP suite plus a test-count floor
-  (`PGTAP_TEST_FLOOR`), the types check, the definer-grant guard on its own,
-  and the `scripts/migration-gating/run.sh` checks for `20260920007600`.
+  pgTAP suite (including the definer-grant guard) plus a test-count floor
+  (`PGTAP_TEST_FLOOR`), the types check, and the
+  `scripts/migration-gating/run.sh` checks for `20260920007600`.
 - **`edge-integration.yml`** — the real-SQL Deno tests. `pull_request` has no
   `paths:` filter (so it always reports and is safe as a required check); a
   `changes` job decides whether the heavy job runs. It starts a local stack,

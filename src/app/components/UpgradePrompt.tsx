@@ -2,7 +2,6 @@ import { Crown, Flame, Lock, Zap } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
-import type { SubscriptionTier } from "@/hooks/useSubscription";
 import { TIER_PRICING } from "@/lib/pricing";
 
 type PaidTier = "EMBER" | "FLAME" | "INFERNO";
@@ -55,13 +54,11 @@ const TIER_COLORS: Record<
 
 interface UpgradePromptProps {
 	requiredTier: PaidTier;
-	currentTier: SubscriptionTier;
 	featureName?: string;
 }
 
 export function UpgradePrompt({
 	requiredTier,
-	currentTier: _currentTier,
 	featureName,
 }: UpgradePromptProps) {
 	const colors = TIER_COLORS[requiredTier];

@@ -141,7 +141,6 @@ function ChallengeCard({
 	index,
 	isJoined,
 	isExpanded,
-	daysRemaining: _daysRemaining,
 	userId,
 	unit,
 	onToggleExpand,
@@ -154,7 +153,6 @@ function ChallengeCard({
 	index: number;
 	isJoined: boolean;
 	isExpanded: boolean;
-	daysRemaining: number;
 	userId: string;
 	unit: WeightUnit;
 	onToggleExpand: () => void;
@@ -806,7 +804,6 @@ export function Challenges() {
 													index={index}
 													isJoined
 													isExpanded={expandedId === challenge.id}
-													daysRemaining={getDaysRemaining(challenge.end_date)}
 													userId={userId}
 													unit={unit}
 													onToggleExpand={() =>
@@ -836,7 +833,6 @@ export function Challenges() {
 													index={index}
 													isJoined={false}
 													isExpanded={expandedId === challenge.id}
-													daysRemaining={getDaysRemaining(challenge.end_date)}
 													userId={userId}
 													unit={unit}
 													onToggleExpand={() =>

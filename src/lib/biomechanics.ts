@@ -42,12 +42,3 @@ export function calculatePower(
 ): number {
 	return Math.round(forceNewtons * velocityMps);
 }
-
-/**
- * Calculate range of motion from position readings.
- * Returns max - min in millimeters.
- */
-export function calculateRom(positions: number[]): number {
-	if (positions.length === 0) return 0;
-	return Math.round(Math.max(...positions) - Math.min(...positions));
-}
