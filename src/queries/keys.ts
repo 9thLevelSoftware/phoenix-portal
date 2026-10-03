@@ -65,6 +65,16 @@ export const queryKeys = {
 				period,
 				profileId ?? "all",
 			] as const,
+		// Profile top exercises and the analytics muscle chart share this entry.
+		// It stays under `analytics` so the existing sync invalidation of
+		// `queryKeys.analytics.all` refreshes both screens.
+		exerciseFrequency: (userId: string, profileId?: string | null) =>
+			[
+				...queryKeys.analytics.all,
+				"exercise-frequency",
+				userId,
+				profileId ?? "all",
+			] as const,
 	},
 	routines: {
 		all: ["routines"] as const,
@@ -204,13 +214,6 @@ export const queryKeys = {
 		byUser: (userId: string) => [...queryKeys.profile.all, userId] as const,
 		stats: (userId: string, profileId?: string | null) =>
 			[...queryKeys.profile.all, "stats", userId, profileId ?? "all"] as const,
-		topExercises: (userId: string, profileId?: string | null) =>
-			[
-				...queryKeys.profile.all,
-				"top-exercises",
-				userId,
-				profileId ?? "all",
-			] as const,
 		badges: (userId: string) =>
 			[...queryKeys.profile.all, "badges", userId] as const,
 		rpg: (userId: string) => [...queryKeys.profile.all, "rpg", userId] as const,

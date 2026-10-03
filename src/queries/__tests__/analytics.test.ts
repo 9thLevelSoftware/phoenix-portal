@@ -152,6 +152,14 @@ describe("volumeTrendOptions", () => {
 	});
 });
 
+async function readMuscleGroups(userId: string, profileId?: string | null) {
+	const { muscleGroupOptions } = await import("../analytics");
+	const opts = muscleGroupOptions(userId, profileId);
+	const rows = await opts.queryFn!({} as never);
+	if (!opts.select) throw new Error("muscleGroupOptions select missing");
+	return opts.select(rows);
+}
+
 describe("muscleGroupOptions", () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
@@ -159,12 +167,12 @@ describe("muscleGroupOptions", () => {
 		fromFn.mockImplementation(() => chain);
 	});
 
-	it("uses analytics.summary query key with muscle-groups", async () => {
+	it("shares the exercise frequency query key", async () => {
 		mockRpc({ data: [], error: null });
 		const { muscleGroupOptions } = await import("../analytics");
 		const opts = muscleGroupOptions("user-1");
 		expect(opts.queryKey).toEqual(
-			queryKeys.analytics.summary("user-1", "muscle-groups"),
+			queryKeys.analytics.exerciseFrequency("user-1"),
 		);
 	});
 
@@ -193,9 +201,7 @@ describe("muscleGroupOptions", () => {
 			error: null,
 		});
 
-		const { muscleGroupOptions } = await import("../analytics");
-		const opts = muscleGroupOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await readMuscleGroups("user-1");
 
 		// Must NOT collapse to a single "General" bucket
 		expect(result.some((r: { name: string }) => r.name === "General")).toBe(
@@ -223,9 +229,7 @@ describe("muscleGroupOptions", () => {
 			error: null,
 		});
 
-		const { muscleGroupOptions } = await import("../analytics");
-		const opts = muscleGroupOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await readMuscleGroups("user-1");
 
 		expect(result).toEqual(
 			expect.arrayContaining([
@@ -256,9 +260,7 @@ describe("muscleGroupOptions", () => {
 			error: null,
 		});
 
-		const { muscleGroupOptions } = await import("../analytics");
-		const opts = muscleGroupOptions("user-1", "profile-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await readMuscleGroups("user-1", "profile-1");
 
 		expect(rpcFn).toHaveBeenCalledTimes(1);
 		expect(rpcFn).toHaveBeenCalledWith("exercise_frequency", {
@@ -290,9 +292,7 @@ describe("muscleGroupOptions", () => {
 
 	it("returns empty array when user has no sessions", async () => {
 		mockRpc({ data: [], error: null });
-		const { muscleGroupOptions } = await import("../analytics");
-		const opts = muscleGroupOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await readMuscleGroups("user-1");
 		expect(result).toEqual([]);
 	});
 });

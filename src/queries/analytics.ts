@@ -2,7 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { classifyMuscleGroup } from "@/lib/exercise-muscles";
 import { supabase } from "@/lib/supabase";
 import { fetchAllKeysetPages } from "@/lib/supabasePaging";
-import { exerciseFrequencySchema } from "./exercise-frequency";
+import { exerciseFrequencyOptions } from "./exercise-frequency";
 import { queryKeys } from "./keys";
 import {
 	resolvePersonalRecordDisplayNames,
@@ -100,23 +100,16 @@ export function volumeTrendOptions(
 	});
 }
 
-/** Muscle group distribution (for pie/donut chart) */
+/**
+ * Muscle group distribution (for pie/donut chart).
+ *
+ * Projects the shared `exerciseFrequencyOptions` rows. Classification stays
+ * here; the RPC itself is owned by that query.
+ */
 export function muscleGroupOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, "muscle-groups", profileId),
-		queryFn: async () => {
-			// One RPC, grouped in SQL. The previous "select every session id, then
-			// .in(session_id, ids)" round trip put every UUID in the GET URL and
-			// started failing at ~200 sessions (F-035), and the exercise rows it
-			// fetched were themselves capped at 1,000 rows.
-			// `sessions` counts an exercise once per session it appears in.
-			const { data: exercises, error } = await supabase.rpc(
-				"exercise_frequency",
-				profileId ? { p_profile_id: profileId } : {},
-			);
-			if (error) throw error;
-			const exerciseFrequency = exerciseFrequencySchema.parse(exercises ?? []);
-
+		...exerciseFrequencyOptions(userId, profileId),
+		select: (rows) => {
 			// Classify by exercise NAME (canonical 6 groups), falling back to a
 			// real muscle_group hint only when the name is unclassifiable. The DB
 			// muscle_group column is unreliable — historically it was hardcoded to
@@ -124,7 +117,7 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 			// collapsed the entire distribution into a single "General" bucket.
 			// Genuinely unclassifiable rows are dropped from the distribution.
 			const counts: Record<string, number> = {};
-			for (const ex of exerciseFrequency) {
+			for (const ex of rows) {
 				const group = classifyMuscleGroup(
 					ex.exercise_name ?? "",
 					ex.muscle_group,
