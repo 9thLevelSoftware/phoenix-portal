@@ -78,7 +78,7 @@ export function normalizeFitbitActivity(raw: unknown): NormalizedActivity {
  * A refusal from that function is forwarded (`oauthInitiateError`). Fitbit
  * is unlaunched, so the refusal is `provider_unavailable` and no state is
  * minted. The disabled `fitbit-oauth` callback does not check `state`; it
- * answers 410 Gone for every request (auth #5).
+ * answers 410 Gone for every request (NF-46).
  *
  * @param accessToken - The authenticated user's Supabase JWT access token
  */
