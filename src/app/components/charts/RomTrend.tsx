@@ -17,7 +17,6 @@ import { CHART_COLORS, CHART_MARGINS } from "./shared/ChartTheme";
 export interface RomTrendProps {
 	repSummaries: RepSummary[];
 	height?: number;
-	showAverage?: boolean;
 }
 
 interface RomPoint {
@@ -37,13 +36,11 @@ const GRADIENT_ID = "rom-area-gradient";
 function RomChart({
 	data,
 	average,
-	showAverage,
 	width,
 	height,
 }: {
 	data: RomPoint[];
 	average: number;
-	showAverage: boolean;
 	width: number;
 	height: number;
 }) {
@@ -127,28 +124,24 @@ function RomChart({
 					/>
 
 					{/* Average line */}
-					{showAverage && (
-						<>
-							<Line
-								from={{ x: 0, y: yScale(average) }}
-								to={{ x: innerWidth, y: yScale(average) }}
-								stroke={colors.axisText}
-								strokeWidth={1}
-								strokeDasharray="6,4"
-								opacity={0.7}
-							/>
-							<Text
-								x={innerWidth + 4}
-								y={yScale(average)}
-								fill={colors.axisText}
-								fontSize={10}
-								verticalAnchor="middle"
-								fontFamily="Inter, system-ui, sans-serif"
-							>
-								Avg: {average.toFixed(0)}mm
-							</Text>
-						</>
-					)}
+					<Line
+						from={{ x: 0, y: yScale(average) }}
+						to={{ x: innerWidth, y: yScale(average) }}
+						stroke={colors.axisText}
+						strokeWidth={1}
+						strokeDasharray="6,4"
+						opacity={0.7}
+					/>
+					<Text
+						x={innerWidth + 4}
+						y={yScale(average)}
+						fill={colors.axisText}
+						fontSize={10}
+						verticalAnchor="middle"
+						fontFamily="Inter, system-ui, sans-serif"
+					>
+						Avg: {average.toFixed(0)}mm
+					</Text>
 
 					{/* Data point circles + invisible hit areas */}
 					{data.map((d) => (
@@ -268,7 +261,6 @@ function RomChart({
 export function RomTrend({
 	repSummaries,
 	height = 250,
-	showAverage = true,
 }: RomTrendProps) {
 	// Colours below come from the theme helpers; re-read them on a switch.
 	useRerenderOnThemeChange();
@@ -303,7 +295,6 @@ export function RomTrend({
 							<RomChart
 								data={data}
 								average={average}
-								showAverage={showAverage}
 								width={width}
 								height={height}
 							/>
