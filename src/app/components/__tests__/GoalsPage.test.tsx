@@ -1,8 +1,11 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createGoalSchema } from "@/schemas/goals";
 import { renderWithProviders } from "@/test/test-utils";
 import { Goals } from "../Goals";
+
+const createGoalMutate = vi.hoisted(() => vi.fn());
 
 const mockAuth = vi.hoisted(() => ({
 	useAuth: () => ({
@@ -35,7 +38,7 @@ vi.mock("@/hooks/useSubscription", () => ({
 	}),
 }));
 vi.mock("@/mutations/goals", () => ({
-	useCreateGoal: () => ({ mutate: vi.fn(), isPending: false }),
+	useCreateGoal: () => ({ mutate: createGoalMutate, isPending: false }),
 	useUpdateGoal: () => ({ mutate: vi.fn(), isPending: false }),
 	useArchiveGoal: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -58,8 +61,16 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 	};
 });
 
+async function openFrequencyGoalDialog(target = "4") {
+	const user = userEvent.setup();
+	await user.click(screen.getByRole("button", { name: /new goal/i }));
+	await user.type(screen.getByLabelText(/target workouts per week/i), target);
+	return user;
+}
+
 describe("Goals page", () => {
 	beforeEach(() => {
+		createGoalMutate.mockClear();
 		mockQuery.goals = {
 			data: undefined,
 			isPending: true,
@@ -117,6 +128,56 @@ describe("Goals page", () => {
 		expect(
 			screen.getByLabelText("Target weight (per cable, kg)"),
 		).toBeInTheDocument();
+	});
+
+	it("parses the goal dialog with createGoalSchema before creating", async () => {
+		mockQuery.goals = {
+			data: [],
+			isPending: false,
+			isError: false,
+			refetch: () => Promise.resolve(),
+		};
+		const spy = vi.spyOn(createGoalSchema, "safeParse");
+		renderWithProviders(<Goals />);
+		const user = await openFrequencyGoalDialog();
+		await user.click(screen.getByRole("button", { name: "Create Goal" }));
+
+		expect(spy).toHaveBeenCalled();
+		expect(createGoalMutate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				goal_type: "frequency",
+				target_value: 4,
+				target_unit: "workouts/week",
+				period: "weekly",
+			}),
+		);
+		spy.mockRestore();
+	});
+
+	it("does not create a goal when createGoalSchema rejects the dialog", async () => {
+		mockQuery.goals = {
+			data: [],
+			isPending: false,
+			isError: false,
+			refetch: () => Promise.resolve(),
+		};
+		const rejected = createGoalSchema.safeParse({
+			goal_type: "frequency",
+			target_value: 0,
+			target_unit: "workouts/week",
+		});
+		if (rejected.success) {
+			throw new Error("expected createGoalSchema to reject a zero target");
+		}
+		const spy = vi
+			.spyOn(createGoalSchema, "safeParse")
+			.mockReturnValue(rejected);
+		renderWithProviders(<Goals />);
+		const user = await openFrequencyGoalDialog();
+		await user.click(screen.getByRole("button", { name: "Create Goal" }));
+
+		expect(createGoalMutate).not.toHaveBeenCalled();
+		spy.mockRestore();
 	});
 
 	it("shows the empty state only after a successful zero-row fetch", () => {

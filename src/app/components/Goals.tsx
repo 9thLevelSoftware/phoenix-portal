@@ -70,7 +70,7 @@ import {
 	goalsOptions,
 } from "@/queries/goals";
 import { personalRecordsOptions } from "@/queries/records";
-import type { Goal } from "@/schemas/goals";
+import { createGoalSchema, type Goal } from "@/schemas/goals";
 import type { PersonalRecord } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { GoalProgressRing } from "./GoalProgressRing";
@@ -884,16 +884,23 @@ function GoalFormDialog({
 			goalType === "volume" || goalType === "pr"
 				? weightInputToKg(targetValue, unit)
 				: parsedValue;
-		if (Number.isNaN(value) || value <= 0) return;
-		if (goalType === "pr" && !exerciseName.trim()) return;
-
-		onSubmit({
+		const parsed = createGoalSchema.safeParse({
 			goal_type: goalType,
 			target_value: value,
 			target_unit: getTargetUnit(),
-			exercise_name: goalType === "pr" ? exerciseName.trim() : null,
-			deadline: goalType === "pr" && deadline ? deadline : null,
+			exercise_name: goalType === "pr" ? exerciseName.trim() : undefined,
+			deadline: goalType === "pr" && deadline ? deadline : undefined,
 			period,
+		});
+		if (!parsed.success) return;
+
+		onSubmit({
+			goal_type: parsed.data.goal_type,
+			target_value: parsed.data.target_value,
+			target_unit: parsed.data.target_unit,
+			exercise_name: parsed.data.exercise_name ?? null,
+			deadline: parsed.data.deadline ? parsed.data.deadline : null,
+			period: parsed.data.period,
 		});
 	};
 
