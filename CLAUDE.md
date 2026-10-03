@@ -283,9 +283,11 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
   activities, custom exercises) subtracts `STALE_OVERLAP_MS` = 2 minutes, so a
   write that committed after the previous `syncTime` is re-delivered. Mobile
   merges duplicates idempotently.
-- Cursor pagination, 75 entities per page (max 300), composite cursor
-  `(updated_at, id)`. Workout deletions page on `(recorded_at, mutation_id)`
-  and ownership events on `(transferred_at, mutation_id)`. `ENTITY_ORDER` is
+- Cursor pagination, 75 entities per page (max 300). Sessions, routines,
+  cycles, personal records and custom exercises use `(updated_at, id)`;
+  badges use `(earned_at, id)` and external activities use `(synced_at, id)`.
+  Workout deletions page on `(recorded_at, mutation_id)` and ownership
+  events on `(transferred_at, mutation_id)`. `ENTITY_ORDER` is
   `sessions → routines → cycles → workoutDeletions → ownershipEvents → badges → stats → externalActivities → personalRecords → customExercises`.
 - Deletes come back in two different shapes, so do not generalise:
   - routines and cycles are hard-deleted and reported as id lists
