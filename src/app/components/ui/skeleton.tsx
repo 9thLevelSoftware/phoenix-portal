@@ -127,31 +127,3 @@ export function ChartSkeleton() {
 		</div>
 	);
 }
-
-export function TableSkeleton({ rows = 5 }: { rows?: number }) {
-	return (
-		<div className="border border-[var(--border)] rounded-lg overflow-hidden">
-			<div className="bg-[var(--surface-1)] p-4 border-b border-[var(--border)]">
-				<div className="flex gap-4">
-					<Skeleton className="h-4 w-32" />
-					<Skeleton className="h-4 w-24" />
-					<Skeleton className="h-4 w-28" />
-					<Skeleton className="h-4 w-20" />
-				</div>
-			</div>
-			{Array.from({ length: rows }, (_, index) => `row-${index}`).map((key) => (
-				<div
-					key={key}
-					className="p-4 border-b border-[var(--border)] last:border-0"
-				>
-					<div className="flex gap-4">
-						<Skeleton className="h-4 w-32" />
-						<Skeleton className="h-4 w-24" />
-						<Skeleton className="h-4 w-28" />
-						<Skeleton className="h-4 w-20" />
-					</div>
-				</div>
-			))}
-		</div>
-	);
-}
