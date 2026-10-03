@@ -4,7 +4,7 @@
  * the Portal repo.
  *
  * This script scans the surface that ships to production -- `package.json`
- * (executable scripts), `public/_headers` (Cloudflare Pages CSP), and the
+ * (executable scripts), `public/_headers` (Cloudflare Workers CSP), and the
  * built `dist/` directory if present -- and fails the build if any of those
  * files reference a ref listed in `STALE_SUPABASE_REFS` (comma-separated).
  *
@@ -121,7 +121,7 @@ export function assertNoDeadSupabaseRefs(
 /** Files that ship to production and therefore must not contain stale refs. */
 const SCAN_TARGETS = [
 	{ relativePath: "package.json", description: "executable npm scripts" },
-	{ relativePath: "public/_headers", description: "Cloudflare Pages CSP" },
+	{ relativePath: "public/_headers", description: "Cloudflare Workers CSP" },
 ];
 
 /** Dist directory is scanned only if it exists (post-build). */
