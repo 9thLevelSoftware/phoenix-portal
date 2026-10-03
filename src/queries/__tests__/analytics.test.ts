@@ -718,12 +718,17 @@ describe("session trend readers page past the 1,000-row cap (F-012/F-034, NF-19)
 			previous: [[]],
 		};
 		const limits: string[] = [];
+		const ors: string[] = [];
 		fromFn.mockImplementation(() => {
 			let window = "current";
 			const self: Record<string, ReturnType<typeof vi.fn>> = {};
-			for (const m of ["select", "eq", "not", "or", "gte", "order"]) {
+			for (const m of ["select", "eq", "not", "gte", "order"]) {
 				self[m] = vi.fn(() => self);
 			}
+			self.or = vi.fn((filter: string) => {
+				ors.push(filter);
+				return self;
+			});
 			self.lt = vi.fn(() => {
 				window = "previous";
 				return self;
@@ -746,6 +751,11 @@ describe("session trend readers page past the 1,000-row cap (F-012/F-034, NF-19)
 		expect(result.current).toHaveLength(1001);
 		expect(result.previous).toEqual([]);
 		expect(limits.filter((w) => w === "current")).toHaveLength(2);
+		// The second page starts strictly after the last row of the first.
+		const last = first[999];
+		expect(ors).toEqual([
+			`started_at.gt."${last.started_at}",and(started_at.eq."${last.started_at}",id.gt.${last.id})`,
+		]);
 	});
 });
 
