@@ -1133,19 +1133,31 @@ npm run auth:social:push
 
 ### Stale Supabase project ref guard (issue #68)
 
-The build refuses to ship a known-dead Supabase project ref (currently
-`ilzlswmatadlnsuxatcv`) in executable scripts, `public/_headers`, or
-`dist/`. The check is wired into `npm run verify` as
-`assert:supabase-config` and can also be run standalone:
+`npm run assert:supabase-config` (also run by `npm run verify`) scans
+executable scripts, `public/_headers`, and `dist/` for Supabase project refs
+on a denylist. `DEFAULT_STALE_REFS` in
+`scripts/assert-live-supabase-config.mjs` is `[]`. The denylist stays empty
+unless `STALE_SUPABASE_REFS` is set to a comma-separated list of
+20-character refs. Neither CI nor `wrangler.toml` sets `STALE_SUPABASE_REFS`;
+while it is unset, the guard refuses no project ref.
 
 ```bash
 npm run assert:supabase-config
 ```
 
-If the guard fails on a ref you believe is live, override the denylist via
-`STALE_SUPABASE_REFS` (comma-separated) and re-run, or replace the
-hardcoded ref with the env-neutral `https://*.supabase.co` CSP pattern
-(see `public/_headers`).
+`ilzlswmatadlnsuxatcv` is the live production project. Preview and cleanup
+tools refuse to target it: `scripts/resolve-sync-preview.mjs` and
+`scripts/cleanup-sync-preview-users.mjs` reject the hosts
+`ilzlswmatadlnsuxatcv.supabase.co`, `ilzlswmatadlnsuxatcv.supabase.in`, and
+`api.phoenix-portal.com`. Leave that ref off `DEFAULT_STALE_REFS` and off
+`STALE_SUPABASE_REFS` for any build that ships the portal. The production
+bundle contains `VITE_SUPABASE_URL` for that host, and listing the ref
+would fail the guard.
+
+When `STALE_SUPABASE_REFS` is set and the guard fails on a ref that should
+ship, remove it from the variable and re-run, or replace a hardcoded
+hostname with the env-neutral `https://*.supabase.co` CSP pattern (see
+`public/_headers`).
 
 The committed `src/lib/database.types.ts` is generated from the migrated
 local schema (`npm run gen:types:local`) and CI (`gen:types:check` in
@@ -1158,8 +1170,8 @@ and run:
 npm run gen:types
 ```
 
-The script will refuse to run with a hardcoded fallback, so the build
-never accidentally targets a deleted project.
+The script has no hardcoded project-ref fallback. It refuses to run unless
+`SUPABASE_PROJECT_REF` is set. That value may be the production ref above.
 
 ---
 
