@@ -16,4 +16,4 @@ Disallow: /recovery
 Disallow: /pricing
 Disallow: /auth/
 
-Sitemap: https://portal.phoenixproject.app/sitemap.xml
+Sitemap: https://phoenix-portal.com/sitemap.xml

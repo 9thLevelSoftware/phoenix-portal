@@ -5,75 +5,44 @@ import { EChartsWrapper } from "./shared/EChartsWrapper";
 
 export interface MuscleRadarProps {
 	currentData: Record<string, number>;
-	previousData?: Record<string, number>;
 }
 
 const MUSCLE_GROUPS = ["Chest", "Back", "Arms", "Legs", "Core", "Shoulders"];
 
-export function MuscleRadar({ currentData, previousData }: MuscleRadarProps) {
+export function MuscleRadar({ currentData }: MuscleRadarProps) {
 	const themeTokens = useThemeTokens();
 	const chartColors = CHART_COLORS(themeTokens);
-	const { border, mutedForeground } = themeTokens;
+	const { border } = themeTokens;
 	const option = useMemo(() => {
 		const currentValues = MUSCLE_GROUPS.map((m) => currentData[m] ?? 0);
-		const maxValue =
-			Math.max(
-				...currentValues,
-				...(previousData
-					? MUSCLE_GROUPS.map((m) => previousData[m] ?? 0)
-					: [0]),
-				1,
-			) * 1.2;
+		const maxValue = Math.max(...currentValues, 1) * 1.2;
 
 		const indicator = MUSCLE_GROUPS.map((name) => ({
 			name,
 			max: Math.ceil(maxValue),
 		}));
 
-		const series = [];
-
-		if (previousData) {
-			series.push({
+		const series = [
+			{
 				type: "radar",
 				data: [
 					{
-						value: MUSCLE_GROUPS.map((m) => previousData[m] ?? 0),
-						name: "Previous Period",
+						value: currentValues,
+						name: "Current Period",
 						lineStyle: {
-							color: mutedForeground,
-							type: "dashed",
-							width: 1.5,
+							color: chartColors.primary,
+							width: 2,
 						},
 						areaStyle: {
-							color: "transparent",
+							color: withAlpha(chartColors.primary, 0.3),
 						},
 						itemStyle: {
-							color: mutedForeground,
+							color: chartColors.primary,
 						},
 					},
 				],
-			});
-		}
-
-		series.push({
-			type: "radar",
-			data: [
-				{
-					value: currentValues,
-					name: "Current Period",
-					lineStyle: {
-						color: chartColors.primary,
-						width: 2,
-					},
-					areaStyle: {
-						color: withAlpha(chartColors.primary, 0.3),
-					},
-					itemStyle: {
-						color: chartColors.primary,
-					},
-				},
-			],
-		});
+			},
+		];
 
 		return {
 			tooltip: {
@@ -85,18 +54,10 @@ export function MuscleRadar({ currentData, previousData }: MuscleRadarProps) {
 					return `<div style="font-weight:600;margin-bottom:4px">${params.name}</div>${lines.join("<br/>")}`;
 				},
 			},
-			legend:
-				previousData != null
-					? {
-							data: ["Current Period", "Previous Period"],
-							bottom: 0,
-							textStyle: { color: chartColors.axisText, fontSize: 11 },
-						}
-					: undefined,
 			radar: {
 				indicator,
 				radius: "65%",
-				center: previousData != null ? ["50%", "48%"] : ["50%", "50%"],
+				center: ["50%", "50%"],
 				axisName: {
 					color: chartColors.axisText,
 					fontSize: 11,
@@ -107,14 +68,7 @@ export function MuscleRadar({ currentData, previousData }: MuscleRadarProps) {
 			},
 			series,
 		};
-	}, [
-		currentData,
-		previousData,
-		chartColors.axisText,
-		chartColors.primary,
-		border,
-		mutedForeground,
-	]);
+	}, [currentData, chartColors.axisText, chartColors.primary, border]);
 
 	return <EChartsWrapper option={option} height={300} />;
 }
