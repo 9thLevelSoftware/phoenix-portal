@@ -25,7 +25,7 @@ export function buildAllowedOrigins(
 ): string[] {
   const origins: string[] = appUrl ? [appUrl] : [];
   if (shouldAllowLocalhostOrigins(environment, supabaseUrl)) {
-    origins.push("http://localhost:5173", "http://localhost:3000");
+    origins.push("http://localhost:5173");
   }
   return origins;
 }
