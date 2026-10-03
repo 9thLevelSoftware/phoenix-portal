@@ -265,17 +265,14 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
     transaction, so a partial child write cannot lose data.
 - A `user_id` transition on `workout_sessions` / `routines` / `training_cycles`
   raises 42501 from a DB trigger (`20260920002102`), whichever path writes it.
-- Deletes are explicit: `deletedRoutineIds` / `deletedCycleIds` are tombstoned,
-  and a push that tries to re-create a tombstoned id gets it back under
-  `skippedDeleted` instead of resurrecting the row.
+- Deletes are explicit: `deletedRoutineIds` are tombstoned, and a push that
+  tries to re-create a tombstoned id gets it back under `skippedDeleted`
+  instead of resurrecting the row. Cycle resurrection is stopped by clocked
+  `deletedCycles` together with the tombstone gate
+  (`apply_sync_tombstone_gate`). Legacy `deletedCycleIds` do not tombstone.
 - Broadcasts `sync_complete` on the private channel `sync:{userId}`.
 
 **mobile-sync-pull** (`supabase/functions/mobile-sync-pull/index.ts`):
-- Parity sync: sessions, routines, cycles, badges and PRs always go through the `*_excluding_ids` RPCs (rows not in `knownEntityIds`; sessions/routines/cycles also re-send known rows changed since `lastSync - 2 min`; empty known ids = whole profile; `lastSync: 0` = everything). Other `lastSync` filters also use `lastSync - 2 min`
-- Cursor-based pagination with 75 entities per page (max 300)
-- Entity order: sessions -> routines -> cycles -> badges -> stats
-- Uses composite cursor (updated_at, id) for stable ordering across pages
-- Child entities fetched based on parent presence, not their own timestamps
 - **Parity only — the legacy timestamp-mode pull is gone.** Sessions, routines,
   cycles, badges and PRs always go through the `*_excluding_ids` RPCs: rows not
   in `knownEntityIds`, plus (for sessions/routines/cycles) known rows changed
@@ -286,9 +283,12 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
   activities, custom exercises) subtracts `STALE_OVERLAP_MS` = 2 minutes, so a
   write that committed after the previous `syncTime` is re-delivered. Mobile
   merges duplicates idempotently.
-- Cursor pagination, 75 entities per page (max 300), composite cursor
-  `(updated_at, id)`. `ENTITY_ORDER` is
-  `sessions → routines → cycles → badges → stats → personalRecords → customExercises`.
+- Cursor pagination, 75 entities per page (max 300). Sessions, routines,
+  cycles, personal records and custom exercises use `(updated_at, id)`;
+  badges use `(earned_at, id)` and external activities use `(synced_at, id)`.
+  Workout deletions page on `(recorded_at, mutation_id)` and ownership
+  events on `(transferred_at, mutation_id)`. `ENTITY_ORDER` is
+  `sessions → routines → cycles → workoutDeletions → ownershipEvents → badges → stats → externalActivities → personalRecords → customExercises`.
 - Deletes come back in two different shapes, so do not generalise:
   - routines and cycles are hard-deleted and reported as id lists
     (`deletedRoutineIds` / `deletedCycleIds`) on the **first page only**
