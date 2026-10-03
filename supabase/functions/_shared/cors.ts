@@ -46,8 +46,8 @@ export function getCorsHeaders(req: Request): Record<string, string> {
     ...(isAllowed ? { 'Access-Control-Allow-Origin': origin } : {}),
     'Access-Control-Allow-Headers':
       'authorization, x-client-info, apikey, content-type',
-    // Handlers serve POST, preflight OPTIONS, and garmin-webhook GET.
-    // Nothing accepts PUT or DELETE.
+    // Browser callers send only POST (plus the OPTIONS preflight), and
+    // garmin-webhook also serves GET. No caller sends PUT or DELETE.
     'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
     // Lets browser clients read the wait on a 429/503 (PR 37 R-1).
     'Access-Control-Expose-Headers': 'Retry-After',
