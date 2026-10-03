@@ -220,7 +220,8 @@ export function HevyConnect({
 	const handleExport = useCallback(async () => {
 		setIsExporting(true);
 		try {
-			// Hevy uses lbs internally, so export in lbs for Hevy import
+			// Hevy's workout CSV column is weight_lbs, so this Strong-format export
+			// uses pounds. The Hevy API stores kilograms and is not this path.
 			const result = await exportWorkoutsAsCSV(userId, { weightUnit: "lbs" });
 
 			if (result.sessionCount === 0) {
@@ -316,7 +317,8 @@ export function HevyConnect({
 					<TabsContent value="export" className="space-y-4 mt-4">
 						<p className="text-sm text-muted-foreground">
 							Download your Phoenix workouts as a CSV file that can be imported
-							directly into Hevy. Weights are exported in lbs (Hevy's default).
+							directly into Hevy. Weights are exported in lbs (Hevy's weight_lbs
+							column).
 						</p>
 
 						<Button

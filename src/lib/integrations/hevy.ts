@@ -1,6 +1,6 @@
 import Papa from "papaparse";
 import { z } from "zod";
-import { supabase } from "@/lib/supabase";
+import { upsertExternalActivities } from "./externalActivities";
 import type { NormalizedActivity } from "./types";
 
 // =============================================================================
@@ -57,10 +57,9 @@ function groupBy<T>(
  *
  * CSV rows represent individual sets -- multiple rows share the same workout
  * (identified by title + start_time). This function groups rows by workout
- * and produces one NormalizedActivity per workout.
- *
- * Weight values are converted from lbs to kg (Hevy exports in lbs).
- * Distance values are converted from miles to meters.
+ * and produces one NormalizedActivity per workout. Set loads are not imported:
+ * the `weight_lbs` column is ignored here. Distance values are converted from
+ * miles to meters.
  */
 export function parseHevyCSV(csvContent: string): NormalizedActivity[] {
 	const result = Papa.parse<HevyCSVRow>(csvContent, {
@@ -197,30 +196,7 @@ export async function importHevyActivities(
 	userId: string,
 	activities: NormalizedActivity[],
 ): Promise<number> {
-	if (activities.length === 0) return 0;
-
-	const rows = activities.map((a) => ({
-		user_id: userId,
-		external_id: a.external_id,
-		provider: "hevy",
-		name: a.name,
-		activity_type: a.activity_type,
-		started_at: a.started_at,
-		duration_seconds: a.duration_seconds,
-		distance_meters: a.distance_meters,
-		calories: a.calories,
-		avg_heart_rate: a.avg_heart_rate,
-		max_heart_rate: a.max_heart_rate,
-		elevation_gain_meters: a.elevation_gain_meters,
-	}));
-
-	const { error } = await supabase
-		.from("external_activities")
-		.upsert(rows, { onConflict: "user_id,provider,external_id" });
-
-	if (error) throw error;
-
-	return activities.length;
+	return upsertExternalActivities(userId, "hevy", activities);
 }
 
 // =============================================================================

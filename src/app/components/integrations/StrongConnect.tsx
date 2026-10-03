@@ -61,7 +61,6 @@ export function StrongConnect({
 	const [isImporting, setIsImporting] = useState(false);
 	const [csvFileName, setCsvFileName] = useState<string | null>(null);
 	const [rawCsv, setRawCsv] = useState<string | null>(null);
-	const [importWeightUnit, setImportWeightUnit] = useState<"kg" | "lbs">("kg");
 	const [importDistanceUnit, setImportDistanceUnit] = useState<"km" | "miles">(
 		"km",
 	);
@@ -76,12 +75,8 @@ export function StrongConnect({
 	// =========================================================================
 
 	const reparseImportPreview = useCallback(
-		(
-			csvContent: string,
-			weightUnit: "kg" | "lbs",
-			distanceUnit: "km" | "miles",
-		) => {
-			const activities = parseStrongCSV(csvContent, weightUnit, distanceUnit);
+		(csvContent: string, distanceUnit: "km" | "miles") => {
+			const activities = parseStrongCSV(csvContent, distanceUnit);
 			setParsedActivities(activities.length > 0 ? activities : null);
 			return activities;
 		},
@@ -106,7 +101,6 @@ export function StrongConnect({
 					const csvContent = e.target?.result as string;
 					const activities = reparseImportPreview(
 						csvContent,
-						importWeightUnit,
 						importDistanceUnit,
 					);
 
@@ -119,7 +113,7 @@ export function StrongConnect({
 						return;
 					}
 
-					// Keep the raw CSV so we can reparse if the user changes the unit.
+					// Keep the raw CSV so we can reparse if the user changes the distance unit.
 					setRawCsv(csvContent);
 					setParsedActivities(activities);
 				} catch (_err) {
@@ -135,22 +129,7 @@ export function StrongConnect({
 			};
 			reader.readAsText(file);
 		},
-		[importWeightUnit, importDistanceUnit, reparseImportPreview],
-	);
-
-	// Reparse the already-loaded CSV when the import unit changes, so the preview
-	// and the imported values reflect the currently-selected unit.
-	const handleImportUnitChange = useCallback(
-		(unit: "kg" | "lbs") => {
-			setImportWeightUnit(unit);
-			if (!rawCsv) return;
-			try {
-				reparseImportPreview(rawCsv, unit, importDistanceUnit);
-			} catch {
-				setParsedActivities(null);
-			}
-		},
-		[importDistanceUnit, rawCsv, reparseImportPreview],
+		[importDistanceUnit, reparseImportPreview],
 	);
 
 	const handleImportDistanceUnitChange = useCallback(
@@ -158,12 +137,12 @@ export function StrongConnect({
 			setImportDistanceUnit(unit);
 			if (!rawCsv) return;
 			try {
-				reparseImportPreview(rawCsv, importWeightUnit, unit);
+				reparseImportPreview(rawCsv, unit);
 			} catch {
 				setParsedActivities(null);
 			}
 		},
-		[importWeightUnit, rawCsv, reparseImportPreview],
+		[rawCsv, reparseImportPreview],
 	);
 
 	const handleImport = useCallback(async () => {
@@ -385,12 +364,6 @@ export function StrongConnect({
 							Export your workouts from Strong (Settings &rarr; Export Workout
 							Data) and upload the CSV file here.
 						</p>
-
-						<WeightUnitToggle
-							value={importWeightUnit}
-							onChange={handleImportUnitChange}
-							description="Strong exports weights in your app's unit setting. Select the unit your Strong app uses so we can store values correctly."
-						/>
 
 						{/* Distance Unit Toggle */}
 						<div className="space-y-2">
