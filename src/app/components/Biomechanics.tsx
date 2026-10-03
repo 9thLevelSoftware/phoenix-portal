@@ -428,10 +428,7 @@ export function BiomechanicsContent({
 									<Skeleton className="h-[300px] w-full" />
 								) : (
 									<>
-										<AsymmetryGauge
-											repSummaries={repSummaries ?? []}
-											mode="per-rep"
-										/>
+										<AsymmetryGauge repSummaries={repSummaries ?? []} />
 										{avgAsymmetry !== null && (
 											<div className="mt-4 flex justify-center">
 												<span
