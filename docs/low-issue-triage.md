@@ -1,5 +1,7 @@
 # LOW Issue Triage - Sync Layer Audit
 
+> Source `sync-layer-audit.md` is not in this repo; the decision table below is a 2026-04-12 snapshot (ci #10).
+
 **Date**: 2026-04-12
 **Purpose**: Triage all 11 LOW severity issues from sync-layer-audit.md for beta readiness
 
