@@ -416,9 +416,34 @@ describe("useShareContent", () => {
 // useReportContent
 // ---------------------------------------------------------------------------
 
+const REPORT_CONTENT_ID = "11111111-1111-4111-8111-111111111111";
+const BLOCKED_USER_ID = "22222222-2222-4222-8222-222222222222";
+
 describe("useReportContent", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+	});
+
+	it("rejects a report that fails reportContentSchema before insert", async () => {
+		const { useReportContent } = await import("../community");
+
+		mockChain.insert.mockResolvedValue({ error: null });
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useReportContent(), { wrapper });
+
+		result.current.mutate({
+			contentId: "not-a-uuid",
+			contentType: "routine",
+			category: "spam",
+		});
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockChain.insert).not.toHaveBeenCalled();
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Failed to submit report. Please try again.",
+		);
 	});
 
 	it("submits a report and shows success toast", async () => {
@@ -430,7 +455,7 @@ describe("useReportContent", () => {
 		const { result } = renderHook(() => useReportContent(), { wrapper });
 
 		result.current.mutate({
-			contentId: "content-1",
+			contentId: REPORT_CONTENT_ID,
 			contentType: "routine",
 			category: "spam",
 			description: "This is spam",
@@ -458,7 +483,7 @@ describe("useReportContent", () => {
 		const { result } = renderHook(() => useReportContent(), { wrapper });
 
 		result.current.mutate({
-			contentId: "content-1",
+			contentId: REPORT_CONTENT_ID,
 			contentType: "routine",
 			category: "spam",
 		});
@@ -481,7 +506,7 @@ describe("useReportContent", () => {
 		const { result } = renderHook(() => useReportContent(), { wrapper });
 
 		result.current.mutate({
-			contentId: "content-1",
+			contentId: REPORT_CONTENT_ID,
 			contentType: "comment",
 			category: "harmful_content",
 		});
@@ -503,6 +528,24 @@ describe("useBlockUser", () => {
 		vi.clearAllMocks();
 	});
 
+	it("rejects a blockedId that fails blockUserSchema before insert", async () => {
+		const { useBlockUser } = await import("../community");
+
+		mockChain.insert.mockResolvedValue({ error: null });
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useBlockUser(), { wrapper });
+
+		result.current.mutate({ blockedId: "not-a-uuid" });
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockChain.insert).not.toHaveBeenCalled();
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Failed to block user. Please try again.",
+		);
+	});
+
 	it("inserts block record and invalidates community, comments, and blocks caches", async () => {
 		const { useBlockUser } = await import("../community");
 
@@ -513,11 +556,14 @@ describe("useBlockUser", () => {
 
 		const { result } = renderHook(() => useBlockUser(), { wrapper });
 
-		result.current.mutate({ blockedId: "other-user-id" });
+		result.current.mutate({ blockedId: BLOCKED_USER_ID });
 
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
 		expect(from).toHaveBeenCalledWith("user_blocks");
+		expect(mockChain.insert).toHaveBeenCalledWith(
+			expect.objectContaining({ blocked_id: BLOCKED_USER_ID }),
+		);
 		expect(mockToast.success).toHaveBeenCalledWith("User blocked");
 		// Should invalidate three cache families
 		expect(invalidateSpy).toHaveBeenCalledWith({
@@ -556,7 +602,7 @@ describe("useBlockUser", () => {
 		const { wrapper } = createWrapper();
 		const { result } = renderHook(() => useBlockUser(), { wrapper });
 
-		result.current.mutate({ blockedId: "other-user-id" });
+		result.current.mutate({ blockedId: BLOCKED_USER_ID });
 
 		await waitFor(() => expect(result.current.isError).toBe(true));
 

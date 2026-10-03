@@ -5,6 +5,11 @@ import { supabase } from "@/lib/supabase";
 import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
+import {
+	blockUserSchema,
+	type ReportCategory,
+	reportContentSchema,
+} from "@/schemas/community";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import {
 	normalizeEccentricLoad,
@@ -383,7 +388,7 @@ export function useFollowCreator() {
 interface ReportContentArgs {
 	contentId: string;
 	contentType: "routine" | "cycle" | "comment";
-	category: "harmful_content" | "impersonation" | "spam" | "malware" | "other";
+	category: ReportCategory;
 	description?: string;
 }
 
@@ -391,13 +396,14 @@ export function useReportContent() {
 	const { user } = useAuth();
 
 	return useMutation({
-		mutationFn: async ({
-			contentId,
-			contentType,
-			category,
-			description,
-		}: ReportContentArgs) => {
+		mutationFn: async (args: ReportContentArgs) => {
 			if (!user) throw new Error("Must be logged in to report content");
+
+			const parsed = reportContentSchema.safeParse(args);
+			if (!parsed.success) {
+				throw new Error("Invalid report");
+			}
+			const { contentId, contentType, category, description } = parsed.data;
 
 			// TODO: `content_reports` is not in the generated Supabase types (database.types.ts).
 			// Run `npm run gen:types` after adding the table to the schema to remove these casts.
@@ -449,9 +455,13 @@ export function useBlockUser() {
 			if (!user) throw new Error("Must be logged in to block a user");
 			if (blockedId === user.id) throw new Error("You cannot block yourself");
 
+			const { blockedId: parsedBlockedId } = blockUserSchema.parse({
+				blockedId,
+			});
+
 			const { error } = await supabase.from("user_blocks" as never).insert({
 				blocker_id: user.id,
-				blocked_id: blockedId,
+				blocked_id: parsedBlockedId,
 			} as never);
 
 			if (error) throw error;
