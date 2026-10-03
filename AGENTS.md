@@ -54,13 +54,12 @@ npm run test:db     # migrations or pgTAP (needs a local Supabase stack)
 `npm run check:edge-functions` type-checks the Edge Functions and is the
 cheapest first signal after touching one.
 
-Caveat: `npm run typecheck` runs `tsc --noEmit` over a solution `tsconfig.json`
-with `"files": []`, so it compiles an empty program and always passes. Use
-`npx tsc -b --force` when you need real coverage, and compare against the
-pre-existing backlog rather than expecting zero.
-
-For migrations, commit idempotent SQL files under `supabase/migrations/`; do
-not use the Supabase dashboard SQL editor for schema changes.
+`npm run typecheck` runs `scripts/typecheck.mjs`, which runs `tsc -p --noEmit`
+on `tsconfig.app.json`, `tsconfig.node.json`, `tsconfig.test.json`, and
+`tsconfig.e2e.json`, then fails on errors not recorded in
+`typecheck-baseline.json`. The pre-existing backlog does not block a change.
+When you fix errors, shrink the baseline with `npm run typecheck:baseline` and
+commit it; never regenerate it to absorb a new error.
 
 ## Release order
 

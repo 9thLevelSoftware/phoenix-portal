@@ -167,7 +167,14 @@ export function mockPushEndpoint(
 	acknowledgedWorkoutSessionIds?: string[];
 	acknowledgedCycleIds?: string[];
 }> {
-	// Check for injected batch failure first (simulates server-side batch processing)
+	// Uniform fault injection (network / auth / server). Runs before validation
+	// and store writes so setMockErrorMode is visible on every push.
+	const injectedError = checkMockError();
+	if (injectedError) {
+		return injectedError;
+	}
+
+	// Check for injected batch failure (simulates server-side batch processing)
 	const sessionCount = payload.sessions?.length ?? 0;
 	const batchError = checkBatchFailure(sessionCount);
 	if (batchError) {
@@ -420,6 +427,12 @@ export function mockPullEndpoint(
 	authToken: string,
 	_options?: { deviceId?: string; profileId?: string },
 ): EdgeFunctionResult<PullResponse> {
+	// Same fault injection as push, before auth and store reads.
+	const injectedError = checkMockError();
+	if (injectedError) {
+		return injectedError;
+	}
+
 	// Validate auth token
 	if (!authToken || authToken === "") {
 		return {

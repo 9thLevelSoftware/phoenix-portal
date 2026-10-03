@@ -31,7 +31,6 @@ export interface ForceCurveProps {
 	width?: number;
 	height?: number;
 	normalized?: boolean;
-	showTooltip?: boolean;
 	selectedRep?: number | null;
 }
 
@@ -51,7 +50,6 @@ function ForceCurveInner({
 	width,
 	height = 300,
 	normalized = false,
-	showTooltip: showTooltipProp = true,
 	selectedRep = null,
 }: ForceCurveProps & { width: number }) {
 	const {
@@ -136,8 +134,6 @@ function ForceCurveInner({
 	// Tooltip handler: find nearest point across all reps
 	const handleMouseMove = useCallback(
 		(event: React.MouseEvent<SVGSVGElement>) => {
-			if (!showTooltipProp) return;
-
 			const point = localPoint(event);
 			if (!point) return;
 
@@ -181,15 +177,7 @@ function ForceCurveInner({
 				});
 			}
 		},
-		[
-			processedReps,
-			xScale,
-			yScale,
-			showTooltipProp,
-			normalized,
-			showTooltip,
-			repColors,
-		],
+		[processedReps, xScale, yScale, normalized, showTooltip, repColors],
 	);
 
 	const getX = (d: { x: number }) => d.x;
