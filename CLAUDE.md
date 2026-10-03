@@ -135,7 +135,6 @@ src/
 │   │   ├── analytics/ charts/ community/ integrations/ landing/
 │   │   ├── modals/ profile/ figma/
 │   │   ├── routine-builder/       # Routine creation subcomponents
-│   │   ├── cycle-builder/         # Training cycle subcomponents
 │   │   ├── session-replay/        # Session replay components
 │   │   └── __tests__/             # Component unit tests
 │   ├── routes/                    # index.tsx, AppLayout, ProtectedRoute, SubscribedRoute
