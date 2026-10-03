@@ -99,22 +99,33 @@ minimally scoped runtime identity.
 
 ## Validation Bar
 
-Before a Symphony-run agent moves an issue to `Human Review`, the default bar is:
+Before a Symphony-run agent moves an issue to `Human Review`, it must clear the
+[Validation Policy](../../WORKFLOW.md#validation-policy) in `WORKFLOW.md`. Use
+the commands below.
+
+Default validation before handoff:
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+npm run verify:full
 ```
 
-Additional validation:
+Run the surface tests that apply:
 
-- Run `npm run test:e2e` for UI, route, auth, browser-visible, or interaction
-  changes.
-- Run `npm run test:sync` for sync, Edge Function, or DTO changes.
-- For Supabase migrations, use idempotent migration files under
-  `supabase/migrations/` and validate locally when Supabase services and
-  credentials are available.
+```bash
+npm run test:sync   # sync, schema, or DTO changes
+npm run test:edge   # any change under supabase/functions/
+npm run test:db     # migrations
+```
+
+If E2E cannot run in the current environment, record the exact blocker and do
+not move the issue to `Human Review` unless the issue is explicitly
+non-browser-visible and CI coverage is sufficient.
+
+For Supabase migrations, write idempotent SQL under `supabase/migrations/`,
+do not use the Supabase dashboard SQL editor for schema changes, and validate
+locally when the required Supabase services and credentials are available. If
+required credentials are missing, use mocks where the repo supports them and
+record the missing live validation separately.
 
 ## Operator Checklist
 
