@@ -86,13 +86,12 @@ export function normalizeGarminActivity(raw: unknown): NormalizedActivity {
 
 /**
  * Initiate Garmin Connect OAuth 1.0a connection via the initiate-oauth Edge Function.
- * The server generates a cryptographic CSRF state token and returns
- * the Garmin OAuth initiation URL.
+ * A refusal from that function is forwarded (`oauthInitiateError`). Garmin
+ * is unlaunched, so the refusal is `provider_unavailable` and no state is
+ * minted. The disabled `garmin-oauth` callback does not check `state`; it
+ * answers 410 Gone for every request (NF-46).
  *
  * @param accessToken - The authenticated user's Supabase JWT access token
- *
- * NOTE: Garmin developer program approval may be pending.
- * This function is ready but untested until credentials are available.
  */
 export async function initiateGarminConnect(
 	accessToken: string,
