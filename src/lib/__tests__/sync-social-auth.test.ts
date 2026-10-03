@@ -17,7 +17,7 @@ import {
 	MANAGED_BLOCK_START,
 } from "../../../scripts/sync-social-auth.mjs";
 
-describe("Cloudflare Pages build guard", () => {
+describe("Cloudflare Workers build guard", () => {
 	const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 	it("runs the stale Supabase config guard after building deploy artifacts", () => {
