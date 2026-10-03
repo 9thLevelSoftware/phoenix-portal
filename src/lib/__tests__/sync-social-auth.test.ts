@@ -66,16 +66,18 @@ describe("sync-social-auth", () => {
 		);
 	});
 
-	it("builds exact callback allow-list entries and deduplicates extras", () => {
+	it("allow-lists reset-password URLs and deduplicates extras", () => {
 		expect(
 			buildAllowedRedirectUrls({
 				siteUrl: "https://portal.projectphoenix.app",
 				additionalRedirectUrls:
-					"http://localhost:5173/auth/callback, https://preview.projectphoenix.app/auth/callback",
+					"http://localhost:5173/auth/callback, http://localhost:5173/auth/reset-password, https://preview.projectphoenix.app/auth/callback",
 			}),
 		).toEqual([
 			"http://localhost:5173/auth/callback",
 			"https://portal.projectphoenix.app/auth/callback",
+			"http://localhost:5173/auth/reset-password",
+			"https://portal.projectphoenix.app/auth/reset-password",
 			"https://preview.projectphoenix.app/auth/callback",
 		]);
 	});

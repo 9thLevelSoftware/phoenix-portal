@@ -1092,7 +1092,7 @@ SUPABASE_AUTH_ADDITIONAL_REDIRECT_URLS=https://preview.example.com/auth/callback
 The repo now provides an env-driven command that:
 
 1. Generates the Google/Apple auth block in a temporary `supabase/config.toml`
-2. Runs `supabase config push` against the linked hosted project
+2. Runs `supabase config push --project-ref <project-ref>` against the hosted project
 3. Verifies the public auth settings endpoint afterward
 
 ```bash
@@ -1111,8 +1111,9 @@ npm run auth:social:check
 The helper command prints the exact values again, but the critical ones are:
 
 - Supabase OAuth callback URL: `https://<project-ref>.supabase.co/auth/v1/callback`
-- Portal redirect URL allow-list entries: `http://localhost:5173/auth/callback`
-  and your production `/auth/callback`
+- Portal redirect URL allow-list entries: `http://localhost:5173/auth/callback`,
+  `http://localhost:5173/auth/reset-password`, and those same paths on the
+  production site URL
 - Google web app:
   - Authorized JavaScript origins: `http://localhost:5173` and your portal
     origin
