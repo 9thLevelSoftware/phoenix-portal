@@ -181,7 +181,7 @@ Portal ← useRealtimeSync hook ← Channel sync:{userId}
 
 - **Push**: Workouts → `mobile-sync-push` Edge upsert (realtime broadcast on private `sync:{userId}` invalidates portal cache)
 - **Pull**: Parity-based — the device sends the ids it already holds and the server returns the rest, plus rows changed since `lastSync - 2 min`. Cursor-based, **75** entities/page (max **300**). There is no timestamp-only pull mode. `rep_telemetry` is **not** pulled — session replay restores telemetry in the portal only.
-- **Conflict Resolution**: `client_updated_at` is the last-write-wins key and `updated_at` is the server-owned pull cursor; they are not interchangeable. Sessions and routines are last-push-wins unless `SYNC_LWW_ENABLED` is set (a hosted, cold-start flag); training cycles always go through `merge_training_cycles_from_push`, which preserves portal-only configuration and refuses a stale structure. Routine and cycle deletes are tombstoned, so a stale device cannot resurrect them. See `CLAUDE.md` → "The mobile sync contract".
+- **Conflict Resolution**: `client_updated_at` is the last-write-wins key and `updated_at` is the server-owned pull cursor; they are not interchangeable. Sessions and routines are last-push-wins unless `SYNC_LWW_ENABLED` is set (a hosted, cold-start flag); training cycles always go through `merge_training_cycles_from_push`, which preserves portal-only configuration and refuses a stale structure. Routine deletes (`deletedRoutineIds`) are tombstoned, so a stale device cannot resurrect them. Cycle resurrection is stopped by clocked `deletedCycles` and the tombstone gate; legacy `deletedCycleIds` do not tombstone. See `CLAUDE.md` → "The mobile sync contract".
 
 ## Phoenix Theme
 
