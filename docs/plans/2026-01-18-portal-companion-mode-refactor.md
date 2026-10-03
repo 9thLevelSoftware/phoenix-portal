@@ -1,6 +1,9 @@
 # Phoenix Portal Companion Mode Refactor Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **HISTORICAL — finished January 2026.** This companion-mode refactor shipped
+> in January 2026 (`PortalBanner`, view-only actions). Do not execute it.
+> File paths and line numbers below, including `Dashboard.tsx`, are stale and
+> must not be used to edit the tree. The tasks and checklist are a record.
 
 **Goal:** Transform the Phoenix Portal from a workout control interface to a pure analytics/community companion site that displays synced data without implying machine control.
 
@@ -373,9 +376,11 @@ Portal now clearly functions as a companion analytics site."
 
 ## Testing Checklist
 
-- [ ] Dashboard renders without "Start Workout" button
-- [ ] Routines page shows "View" instead of "Start"
-- [ ] Community import buttons have clarified text
-- [ ] Portal banner appears and can be dismissed
-- [ ] No TypeScript/build errors
-- [ ] Mobile views still work correctly
+Historical acceptance list from the finished January 2026 plan. Not open work.
+
+- Dashboard renders without "Start Workout" button
+- Routines page shows "View" instead of "Start"
+- Community import buttons have clarified text
+- Portal banner appears and can be dismissed
+- No TypeScript/build errors
+- Mobile views still work correctly
