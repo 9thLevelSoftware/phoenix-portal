@@ -8,8 +8,8 @@
 --     index the way a bare `sync_type = 'initial'` expression would);
 --   * pending <-> processing transitions keep the same key and never trip it.
 --
--- The seeded-backlog dedupe itself (the migration's `superseded` pass, applied
--- twice) is asserted in CI by scripts/ci/sync-queue-dedupe.
+-- The one-time backlog supersede is the migration's own write. The indexes
+-- it leaves behind are what this file asserts.
 --
 -- Run locally with `supabase test db`.
 

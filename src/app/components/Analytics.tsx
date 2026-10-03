@@ -1572,10 +1572,7 @@ export function Analytics() {
 										totalSessions={totalSessions}
 										muscleRecoveries={muscleRecoveries}
 										recommendations={recommendations}
-										exercisesByMuscle={exercisesByMuscle}
-										userId={userId}
 										unit={unit}
-										profileId={activeProfileId}
 									/>
 								</Suspense>
 							)}
