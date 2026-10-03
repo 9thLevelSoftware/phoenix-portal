@@ -1,10 +1,11 @@
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import {
-	totalLoadVolumeKg,
-	type VolumeExerciseRow,
-	type VolumeSetRow,
-} from "@/lib/units/loadDisplay";
+	fetchAllKeysetPages,
+	fetchAllSupabasePagesForChunks,
+	SUPABASE_FILTER_CHUNK_SIZE,
+} from "@/lib/supabasePaging";
+import { totalLoadVolumeKg } from "@/lib/units/loadDisplay";
 import { queryKeys } from "./keys";
 
 /** Fetch all active challenges */
@@ -68,67 +69,70 @@ export function challengeProgressOptions(
 					// Volume challenges count TOTAL load (KD-8): each session's
 					// per-cable total_volume x the cables actually used, per cable
 					// only where the cable count is unknown (never assume 2).
-					const { data, error } = await supabase
-						.from("workout_sessions")
-						.select("id, total_volume")
-						.eq("user_id", userId)
-						.gte("started_at", startDate)
-						.lte("started_at", endDate);
-					if (error) throw error;
-					const sessions = (data ?? []) as {
-						id: string;
-						total_volume: number | null;
-					}[];
-					const exercises = await fetchInChunks<VolumeExerciseRow>(
-						"exercises",
-						"id, session_id, cable_count",
-						"session_id",
-						sessions.map((s) => s.id),
+					// Sessions are keyset-paged; exercise and set reads are chunked
+					// and range-paged so neither stops at PostgREST's max_rows.
+					const sessions = await fetchVolumeSessions(
+						userId,
+						startDate,
+						endDate,
 					);
-					const sets = await fetchInChunks<VolumeSetRow>(
-						"sets",
-						"exercise_id, weight_kg, actual_reps",
-						"exercise_id",
+					const exercises = await fetchAllSupabasePagesForChunks(
+						sessions.map((s) => s.id),
+						(chunk, from, to) =>
+							supabase
+								.from("exercises")
+								.select("id, session_id, cable_count")
+								.in("session_id", chunk)
+								.order("id", { ascending: true })
+								.range(from, to),
+						{ chunkSize: SUPABASE_FILTER_CHUNK_SIZE },
+					);
+					const sets = await fetchAllSupabasePagesForChunks(
 						exercises.map((e) => e.id),
+						(chunk, from, to) =>
+							supabase
+								.from("sets")
+								.select("exercise_id, weight_kg, actual_reps")
+								.in("exercise_id", chunk)
+								.order("id", { ascending: true })
+								.range(from, to),
+						{ chunkSize: SUPABASE_FILTER_CHUNK_SIZE },
 					);
 					current = Math.round(totalLoadVolumeKg(sessions, exercises, sets));
 					break;
 				}
 				case "frequency": {
-					const { data, error } = await supabase
+					const { count, error } = await supabase
 						.from("workout_sessions")
-						.select("id")
+						.select("id", { count: "exact", head: true })
 						.eq("user_id", userId)
 						.gte("started_at", startDate)
 						.lte("started_at", endDate);
 					if (error) throw error;
-					current = (data ?? []).length;
+					current = count ?? 0;
 					break;
 				}
 				case "streak": {
-					const { data, error } = await supabase
-						.from("workout_sessions")
-						.select("started_at")
-						.eq("user_id", userId)
-						.gte("started_at", startDate)
-						.lte("started_at", endDate)
-						.order("started_at", { ascending: false });
-					if (error) throw error;
-					current = computeStreak(data ?? []);
+					const sessions = await fetchStreakSessions(
+						userId,
+						startDate,
+						endDate,
+					);
+					current = computeStreak(sessions);
 					break;
 				}
 				case "pr_count": {
 					// Phase-specific records are distinct rows in personal_records and
 					// intentionally count separately for PR-count challenges.
-					const { data, error } = await supabase
+					const { count, error } = await supabase
 						.from("personal_records")
-						.select("id")
+						.select("id", { count: "exact", head: true })
 						.eq("user_id", userId)
 						.is("deleted_at", null)
 						.gte("achieved_at", startDate)
 						.lte("achieved_at", endDate);
 					if (error) throw error;
-					current = (data ?? []).length;
+					current = count ?? 0;
 					break;
 				}
 				default:
@@ -145,24 +149,71 @@ export function challengeProgressOptions(
 	});
 }
 
-const IN_FILTER_CHUNK = 200;
+/** Position of the last session row a keyset page returned. */
+interface SessionCursor {
+	started_at: string;
+	id: string;
+}
 
-async function fetchInChunks<T>(
-	table: "exercises" | "sets",
-	columns: string,
-	column: string,
-	ids: string[],
-): Promise<T[]> {
-	const rows: T[] = [];
-	for (let i = 0; i < ids.length; i += IN_FILTER_CHUNK) {
-		const { data, error } = await supabase
-			.from(table)
-			.select(columns)
-			.in(column, ids.slice(i, i + IN_FILTER_CHUNK));
-		if (error) throw error;
-		rows.push(...((data ?? []) as T[]));
-	}
-	return rows;
+function sessionCursorOf(row: {
+	started_at: string;
+	id: string;
+}): SessionCursor {
+	return { started_at: row.started_at, id: row.id };
+}
+
+/**
+ * PostgREST `or` filter for "strictly after this (started_at, id)". The
+ * timestamp is quoted because an ISO value carries `.` and `:`, which the
+ * filter grammar reserves.
+ */
+function afterSessionFilter(after: SessionCursor): string {
+	return `started_at.gt."${after.started_at}",and(started_at.eq."${after.started_at}",id.gt.${after.id})`;
+}
+
+/**
+ * Sessions in the challenge window, keyset-paged on (started_at, id).
+ * One select is silently capped at PostgREST's max_rows. The leading
+ * `gte` keeps each page index-sargable; `or` drops the cursor row itself.
+ */
+function fetchVolumeSessions(
+	userId: string,
+	startDate: string,
+	endDate: string,
+) {
+	return fetchAllKeysetPages((after: SessionCursor | null, limit) => {
+		let query = supabase
+			.from("workout_sessions")
+			.select("id, started_at, total_volume")
+			.eq("user_id", userId)
+			.gte("started_at", after?.started_at ?? startDate)
+			.lte("started_at", endDate);
+		if (after) query = query.or(afterSessionFilter(after));
+		return query
+			.order("started_at", { ascending: true })
+			.order("id", { ascending: true })
+			.limit(limit);
+	}, sessionCursorOf);
+}
+
+function fetchStreakSessions(
+	userId: string,
+	startDate: string,
+	endDate: string,
+) {
+	return fetchAllKeysetPages((after: SessionCursor | null, limit) => {
+		let query = supabase
+			.from("workout_sessions")
+			.select("id, started_at")
+			.eq("user_id", userId)
+			.gte("started_at", after?.started_at ?? startDate)
+			.lte("started_at", endDate);
+		if (after) query = query.or(afterSessionFilter(after));
+		return query
+			.order("started_at", { ascending: true })
+			.order("id", { ascending: true })
+			.limit(limit);
+	}, sessionCursorOf);
 }
 
 function computeStreak(sessions: Array<{ started_at: string }>): number {
