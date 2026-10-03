@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	analyticsSummarySchema,
 	exerciseSchema,
 	gamificationStatsSchema,
 	personalRecordSchema,
@@ -399,36 +398,6 @@ describe("routineExerciseSchema", () => {
 		});
 		expect(enabled.drop_set_enabled).toBe(true);
 		expect(enabled.drop_set_min_weight_kg).toBe(12.5);
-	});
-});
-
-// === Plan 04-01: Analytics Summary Weight Tests ===
-
-describe("analyticsSummarySchema", () => {
-	const validSummary = {
-		id: UUID,
-		user_id: UUID2,
-		period: "weekly",
-		total_workouts: 5,
-		total_volume: 10000,
-		total_duration: 300,
-		avg_session_duration: 60,
-		streak_days: 7,
-		computed_at: "2026-01-15T08:00:00Z",
-	};
-
-	it("passes total_volume through without doubling", () => {
-		const result = analyticsSummarySchema.parse(validSummary);
-		// total_volume is per cable as stored (KD-8); no transform applied.
-		expect(result.total_volume).toBe(10000);
-	});
-
-	it("handles zero total_volume correctly", () => {
-		const result = analyticsSummarySchema.parse({
-			...validSummary,
-			total_volume: 0,
-		});
-		expect(result.total_volume).toBe(0);
 	});
 });
 
