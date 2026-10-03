@@ -7,8 +7,7 @@ type PaidTier = Exclude<SubscriptionTier, "FREE">;
  * reads every route gate from this map, the session-replay gate
  * (`session-replay/SessionReplay.tsx`) and the INFERNO biomechanics gates
  * inside Analytics (`analytics/PerformanceTab.tsx`,
- * `analytics/MobilePerformanceTab.tsx`) and the `/biomechanics` page
- * (`Biomechanics.tsx`) read from it, and
+ * `analytics/MobilePerformanceTab.tsx`) read from it, and
  * `src/lib/__tests__/pricing-tier-matrix.test.ts` checks they all agree.
  *
  * Most route gates are UX only. What the server enforces:

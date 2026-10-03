@@ -6,24 +6,20 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
 /**
  * Complete OAuth Edge Function (KD-13).
  *
- * Live since PR 48: `strava-oauth` no longer exchanges anything, it relays the
- * provider's response to `/integrations/callback` in the portal, and that page
- * posts it here inside the user's own session.
- * Complete OAuth Edge Function (KD-13, part 1 — DORMANT in this PR).
- * The provider callbacks still exchange the code themselves; PR 48 does the
- * cutover that points them at the portal route which calls this function.
+ * The portal route `/integrations/callback` posts the provider response here
+ * inside the user's own session.
  *
  * Request: `POST {provider, code, state}` with the user's Supabase JWT
  * (`verify_jwt = true` in supabase/config.toml).
  *
- * F-046: the existing provider callbacks are `verify_jwt=false` GETs that trust
- * the `oauth_states` row alone, so the browser completing the flow is never
- * checked against the account the state was minted for. Here the state row must
- * belong to the *authenticated caller* or nothing happens.
- *
- * State discipline matches `initiate-oauth` / the provider callbacks exactly:
- * expired rows are swept, `expires_at` is re-checked, and the row is deleted on
- * use. The delete is the atomic single-use gate (see `consumeState`).
+ * F-046: provider callbacks were `verify_jwt=false` GETs that trusted the
+ * `oauth_states` row alone, so the browser completing the flow was never
+ * checked against the account the state was minted for. `strava-oauth` now
+ * only relays: it checks the provider and expiry and does not delete the state
+ * row. `fitbit-oauth` and `garmin-oauth` answer 410. This handler binds the
+ * caller session — the state row must belong to the authenticated caller — and
+ * performs the single-use state delete. Expired rows are swept and
+ * `expires_at` is re-checked before that delete.
  *
  * Nothing in a response body, redirect or log line carries `code`, `state` or a
  * token value (PR 63).
@@ -45,7 +41,6 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
  * exist any more. The provider is launched or withdrawn by editing
  * `UNAVAILABLE_OAUTH_PROVIDERS` in `initiate-oauth`, not this list.
  */
-/** Providers whose authorization-code grant this endpoint can complete. */
 export const COMPLETABLE_PROVIDERS = ['strava', 'fitbit'] as const;
 export type CompletableProvider = (typeof COMPLETABLE_PROVIDERS)[number];
 
@@ -419,12 +414,11 @@ async function completeOAuthHandler(
       );
     }
 
-    // Single-use gate. The DELETE — not the SELECT above — decides: it re-states
-    // every condition, so a replay or a concurrent request deletes zero rows and
-    // is refused. It runs BEFORE the code exchange, which deliberately departs
-    // from strava-oauth's "delete after exchange": the user is already in the
-    // portal and can restart with one click, whereas a state that stays live
-    // across a multi-second network call is replayable.
+    // Single-use gate, owned by this handler. The DELETE — not the SELECT
+    // above — decides: it re-states every condition, so a replay or a concurrent
+    // request deletes zero rows and is refused. It runs before the code
+    // exchange so the state cannot be replayed across that call. The user is
+    // already in the portal and can restart with one click.
     const { data: consumed, error: consumeError } = await supabase
       .from('oauth_states')
       .delete()

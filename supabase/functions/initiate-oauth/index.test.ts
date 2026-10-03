@@ -217,7 +217,9 @@ Deno.test("initiate-oauth prefers SUPABASE_PUBLIC_URL for the redirect_uri", asy
 });
 
 // ---------------------------------------------------------------------------
-// Unlaunched providers (F-046): refuse before any state exists
+// Unlaunched providers (F-046): refuse before any state exists.
+// Client helpers forward that refusal. Disabled callbacks do not check
+// state (NF-46); they answer 410 for every request.
 // ---------------------------------------------------------------------------
 
 for (const provider of UNAVAILABLE_OAUTH_PROVIDERS) {
@@ -228,8 +230,8 @@ for (const provider of UNAVAILABLE_OAUTH_PROVIDERS) {
 
     assertEquals(response.status, 400);
     assertEquals((await json(response)).error, "provider_unavailable");
-    // No state row, so the provider's own verify_jwt=false callback has
-    // nothing it can ever validate.
+    // No state row. Helpers forward the refusal; disabled callbacks do
+    // not check state (NF-46).
     assertEquals(harness.inserts, []);
     // Refused before the database is touched at all.
     assertEquals(harness.rpcCalls, []);
