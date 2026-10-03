@@ -1503,10 +1503,10 @@ webhook and price mapping expect the other, and a paying customer lands on no
 tier at all.
 **The trap, stated plainly:**
 - The client treats only the exact string `sandbox` as sandbox
-  (`src/lib/paddle-client.ts:148-153`). Empty or unset means **production**.
+  (`initializePaddle` in `src/lib/paddle-client.ts`). Empty or unset means **production**.
 - Server functions default `PADDLE_ENVIRONMENT` to `"production"` when unset
-  (for example `paddle-cancel-subscription/index.ts:90`,
-  `delete-account/index.ts:16`).
+  (for example `paddle-cancel-subscription`, and `paddleBaseUrl` in
+  `_shared/accountPurge.ts`, which `delete-account` uses).
 So "I didn't set it" means production on both sides, and nothing warns you.
 ### The four groups
 Names only. Never record a value in this repo or in a ticket; a value that must
@@ -1522,7 +1522,7 @@ be shown in an example is written `[REDACTED]`.
 `PADDLE_<TIER>_ANNUAL_PRICE_ID`, so tier mapping works with either shape. The
 singles are separately required by
 `getConfiguredPriceIdForTierInterval`, whose only caller is
-`paddle-update-subscription/index.ts:116` -- **a plan change to a
+`paddle-update-subscription` -- **a plan change to a
 tier/interval whose single is unset fails there even though webhooks map that
 price correctly.** Set both shapes.
 **On `PADDLE_CUSTOM_DATA_SECRET`.** This one is **self-issued**, not obtained
