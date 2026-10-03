@@ -258,10 +258,7 @@ function RomChart({
 }
 
 // -- Exported Component --
-export function RomTrend({
-	repSummaries,
-	height = 250,
-}: RomTrendProps) {
+export function RomTrend({ repSummaries, height = 250 }: RomTrendProps) {
 	// Colours below come from the theme helpers; re-read them on a switch.
 	useRerenderOnThemeChange();
 	if (!repSummaries || repSummaries.length === 0) {
