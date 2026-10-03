@@ -30,8 +30,8 @@ function parseBoolFlag(name: string): boolean {
  *   4. After ≥70% mobile rollout has the Phase 3.3 LWW pull merge, remove
  *      the flag entirely and inline the LWW path.
  *
- * Resolves audit item #1 when combined with Phases 3.3 and 3.4. See
- * phoenix-portal/docs/dto-drift-matrix.md.
+ * Resolves audit item #1 when combined with Phases 3.3 and 3.4. The
+ * 2026-04-19 matrix is historical; read mobile-sync-push and CLAUDE.md.
  */
 export const SYNC_LWW_ENABLED = parseBoolFlag("SYNC_LWW_ENABLED");
 
