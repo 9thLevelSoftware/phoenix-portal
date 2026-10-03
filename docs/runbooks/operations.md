@@ -975,8 +975,7 @@ development.
 treated as not consented). Accepting in `CookieConsentBanner` uses that same
 path for the rest of the session; Reject, or no choice, never fetches the
 Sentry chunk, and those errors stay on the console. A quiet Issues dashboard
-can therefore mean the visitor declined cookies. This does not set or change
-`VITE_SENTRY_DSN`.
+can therefore mean the visitor declined cookies.
 
 ### Supabase Dashboard
 
