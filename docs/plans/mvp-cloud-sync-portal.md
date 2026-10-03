@@ -1,5 +1,12 @@
 # MVP Cloud Sync — Web Portal Plan
 
+> **HISTORICAL — superseded.** This plan is the Vercel / RevenueCat launch
+> write-up. It is not the current deploy or billing path. Hosting is a
+> Cloudflare Worker with static assets (`README.md` → Deployment,
+> `wrangler.toml`). Billing is Paddle (`README.md` tech stack, `CLAUDE.md` →
+> Environment Variables, `docs/axioms.md` FP-2). The steps below are kept as
+> a record; do not follow them.
+
 **Repo:** `phoenix-portal`
 **Current State:** Code-complete, never publicly deployed
 **Stack:** React 19 + Vite 7 + Supabase + shadcn/ui + Tailwind v4
@@ -8,6 +15,8 @@
 ---
 
 ## Table of Contents
+
+> §3 Vercel Deployment and §4 RevenueCat Webhook Setup are the superseded path named in the banner.
 
 1. [Hard Blockers (Fix Before Anything Else)](#1-hard-blockers)
 2. [Supabase Environment Setup](#2-supabase-environment-setup)
