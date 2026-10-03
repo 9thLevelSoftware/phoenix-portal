@@ -1,10 +1,5 @@
 import { getThemeTokens, type ThemeTokens } from "@/lib/theme-tokens";
-import {
-	CHART_COLORS,
-	CHART_MARGINS,
-	FONT_SIZES,
-	REP_COLORS,
-} from "./ChartTheme";
+import { CHART_COLORS, CHART_MARGINS, FONT_SIZES } from "./ChartTheme";
 
 /** Build the ECharts theme from the active token snapshot. */
 export function getPhoenixEchartsTheme(tokens: ThemeTokens = getThemeTokens()) {
@@ -80,5 +75,3 @@ export const ECHARTS_GRID = {
 	left: CHART_MARGINS.left,
 	containLabel: true,
 } as const;
-
-export { CHART_COLORS, CHART_MARGINS, FONT_SIZES, REP_COLORS };

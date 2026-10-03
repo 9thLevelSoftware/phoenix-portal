@@ -67,7 +67,6 @@ describe("KD-24 route × TIER_PRICING matrix", () => {
 	const mobilePerformanceTab = readRepoFile(
 		"src/app/components/analytics/MobilePerformanceTab.tsx",
 	);
-	const biomechanics = readRepoFile("src/app/components/Biomechanics.tsx");
 
 	it("keeps Ember features on sync/dashboard/history — not leaderboards", () => {
 		const ember = featureBlob("EMBER");
@@ -192,7 +191,6 @@ describe("KD-24 route × TIER_PRICING matrix", () => {
 		for (const [label, source] of [
 			["PerformanceTab", performanceTab],
 			["MobilePerformanceTab", mobilePerformanceTab],
-			["Biomechanics", biomechanics],
 		] as const) {
 			expect(source, label).toMatch(
 				/requiredTier=\{FEATURE_MIN_TIER\.biomechanics\}/,

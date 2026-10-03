@@ -16,10 +16,16 @@
  *
  * 2. Project ref (legacy, reads a hosted project, NOT what CI checks):
  *      SUPABASE_PROJECT_REF=abcdefghijklmnopqrst npm run gen:types
- *    Issue #68: the previous `gen:types` script hardcoded a stale Supabase
- *    project ref (`ilzlswmatadlnsuxatcv`) that has since been deleted. To
- *    prevent recurrence the ref must come from `SUPABASE_PROJECT_REF`
- *    (loaded from `.env` / `.env.local`, or exported by the operator).
+ *    There is no hardcoded project-ref fallback. The ref must come from
+ *    `SUPABASE_PROJECT_REF` (loaded from `.env` / `.env.local`, or exported
+ *    by the operator). `ilzlswmatadlnsuxatcv` is the live production
+ *    project. Preview and cleanup tools (`scripts/resolve-sync-preview.mjs`,
+ *    `scripts/cleanup-sync-preview-users.mjs`) refuse to target that host.
+ *    The build denylist (`DEFAULT_STALE_REFS` in
+ *    `scripts/assert-live-supabase-config.mjs`) is empty unless
+ *    `STALE_SUPABASE_REFS` is set; CI does not set it. Leave the production
+ *    ref off that denylist: a production bundle contains `VITE_SUPABASE_URL`
+ *    for that project, and the guard would fail.
  *
  * Normalization (both sources): the CLI output is piped through
  * `biome format --stdin-file-path=src/lib/database.types.ts` so it matches
