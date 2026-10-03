@@ -2,7 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { classifyMuscleGroup } from "@/lib/exercise-muscles";
 import { supabase } from "@/lib/supabase";
 import { fetchAllKeysetPages } from "@/lib/supabasePaging";
-import { exerciseFrequencySchema } from "./exercise-frequency";
+import { exerciseFrequencyOptions } from "./exercise-frequency";
 import { queryKeys } from "./keys";
 import {
 	resolvePersonalRecordDisplayNames,
@@ -100,23 +100,16 @@ export function volumeTrendOptions(
 	});
 }
 
-/** Muscle group distribution (for pie/donut chart) */
+/**
+ * Muscle group distribution (for pie/donut chart).
+ *
+ * Projects the shared `exerciseFrequencyOptions` rows. Classification stays
+ * here; the RPC itself is owned by that query.
+ */
 export function muscleGroupOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, "muscle-groups", profileId),
-		queryFn: async () => {
-			// One RPC, grouped in SQL. The previous "select every session id, then
-			// .in(session_id, ids)" round trip put every UUID in the GET URL and
-			// started failing at ~200 sessions (F-035), and the exercise rows it
-			// fetched were themselves capped at 1,000 rows.
-			// `sessions` counts an exercise once per session it appears in.
-			const { data: exercises, error } = await supabase.rpc(
-				"exercise_frequency",
-				profileId ? { p_profile_id: profileId } : {},
-			);
-			if (error) throw error;
-			const exerciseFrequency = exerciseFrequencySchema.parse(exercises ?? []);
-
+		...exerciseFrequencyOptions(userId, profileId),
+		select: (rows) => {
 			// Classify by exercise NAME (canonical 6 groups), falling back to a
 			// real muscle_group hint only when the name is unclassifiable. The DB
 			// muscle_group column is unreliable — historically it was hardcoded to
@@ -124,7 +117,7 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 			// collapsed the entire distribution into a single "General" bucket.
 			// Genuinely unclassifiable rows are dropped from the distribution.
 			const counts: Record<string, number> = {};
-			for (const ex of exerciseFrequency) {
+			for (const ex of rows) {
 				const group = classifyMuscleGroup(
 					ex.exercise_name ?? "",
 					ex.muscle_group,
@@ -282,118 +275,6 @@ function periodCutoffISO(period: string): string | null {
 	const since = new Date();
 	since.setDate(since.getDate() - periodToDays(period));
 	return since.toISOString();
-}
-
-/** Form score trend over time (GAP 4) */
-export function formScoreTrendOptions(
-	userId: string,
-	period: string = "4w",
-	profileId?: string | null,
-) {
-	return queryOptions({
-		queryKey: queryKeys.analytics.summary(
-			userId,
-			`form-score-${period}`,
-			profileId,
-		),
-		queryFn: async () => {
-			const cutoff = periodCutoffISO(period);
-
-			return fetchAllKeysetPages((after: SessionCursor | null, limit) => {
-				let query = supabase
-					.from("workout_sessions")
-					.select("id, started_at, form_score")
-					.eq("user_id", userId)
-					.not("form_score", "is", null);
-				if (profileId) query = query.eq("local_profile_id", profileId);
-				const since = after?.started_at ?? cutoff;
-				if (since) query = query.gte("started_at", since);
-				if (after) query = query.or(afterSessionFilter(after));
-				return query
-					.order("started_at", { ascending: true })
-					.order("id", { ascending: true })
-					.limit(limit);
-			}, sessionCursorOf);
-		},
-	});
-}
-
-/** Safety events trend (deload warnings, ROM violations, spotter activations) (GAP 4) */
-export function safetyTrendOptions(
-	userId: string,
-	period: string = "4w",
-	profileId?: string | null,
-) {
-	return queryOptions({
-		queryKey: queryKeys.analytics.summary(
-			userId,
-			`safety-${period}`,
-			profileId,
-		),
-		queryFn: async () => {
-			const cutoff = periodCutoffISO(period);
-
-			const rows = await fetchAllKeysetPages(
-				(after: SessionCursor | null, limit) => {
-					let query = supabase
-						.from("workout_sessions")
-						.select(
-							"id, started_at, deload_warnings, rom_violations, spotter_activations",
-						)
-						.eq("user_id", userId);
-					if (profileId) query = query.eq("local_profile_id", profileId);
-					const since = after?.started_at ?? cutoff;
-					if (since) query = query.gte("started_at", since);
-					if (after) query = query.or(afterSessionFilter(after));
-					return query
-						.order("started_at", { ascending: true })
-						.order("id", { ascending: true })
-						.limit(limit);
-				},
-				sessionCursorOf,
-			);
-			return rows.filter(
-				(r) =>
-					(r.deload_warnings ?? 0) > 0 ||
-					(r.rom_violations ?? 0) > 0 ||
-					(r.spotter_activations ?? 0) > 0,
-			);
-		},
-	});
-}
-
-/** Calorie burn history (GAP 5) */
-export function calorieHistoryOptions(
-	userId: string,
-	period: string = "4w",
-	profileId?: string | null,
-) {
-	return queryOptions({
-		queryKey: queryKeys.analytics.summary(
-			userId,
-			`calories-${period}`,
-			profileId,
-		),
-		queryFn: async () => {
-			const cutoff = periodCutoffISO(period);
-
-			return fetchAllKeysetPages((after: SessionCursor | null, limit) => {
-				let query = supabase
-					.from("workout_sessions")
-					.select("id, started_at, estimated_calories")
-					.eq("user_id", userId)
-					.not("estimated_calories", "is", null);
-				if (profileId) query = query.eq("local_profile_id", profileId);
-				const since = after?.started_at ?? cutoff;
-				if (since) query = query.gte("started_at", since);
-				if (after) query = query.or(afterSessionFilter(after));
-				return query
-					.order("started_at", { ascending: true })
-					.order("id", { ascending: true })
-					.limit(limit);
-			}, sessionCursorOf);
-		},
-	});
 }
 
 /** Phase statistics over time for concentric/eccentric analytics */

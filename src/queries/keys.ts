@@ -3,7 +3,6 @@ export const queryKeys = {
 		all: ["exercises"] as const,
 		catalog: (filters?: { muscleGroup?: string; search?: string }) =>
 			[...queryKeys.exercises.all, "catalog", filters] as const,
-		byId: (id: string) => [...queryKeys.exercises.all, "detail", id] as const,
 	},
 	workouts: {
 		all: ["workouts"] as const,
@@ -55,14 +54,22 @@ export const queryKeys = {
 				String(days),
 				profileId ?? "all",
 			] as const,
-		sessionSetWeights: (sessionId: string) =>
-			[...queryKeys.analytics.all, "session-set-weights", sessionId] as const,
 		phaseStats: (userId: string, period: string, profileId?: string | null) =>
 			[
 				...queryKeys.analytics.all,
 				"phase-stats",
 				userId,
 				period,
+				profileId ?? "all",
+			] as const,
+		// Profile top exercises and the analytics muscle chart share this entry.
+		// It stays under `analytics` so the existing sync invalidation of
+		// `queryKeys.analytics.all` refreshes both screens.
+		exerciseFrequency: (userId: string, profileId?: string | null) =>
+			[
+				...queryKeys.analytics.all,
+				"exercise-frequency",
+				userId,
 				profileId ?? "all",
 			] as const,
 	},
@@ -94,10 +101,6 @@ export const queryKeys = {
 	},
 	biomechanics: {
 		all: ["biomechanics"] as const,
-		asymmetry: (sessionId: string) =>
-			[...queryKeys.biomechanics.all, "asymmetry", sessionId] as const,
-		rom: (exerciseId: string) =>
-			[...queryKeys.biomechanics.all, "rom", exerciseId] as const,
 	},
 	progress: {
 		all: ["progress"] as const,
@@ -143,6 +146,10 @@ export const queryKeys = {
 			[...queryKeys.integrations.all, "external", userId] as const,
 		syncQueue: (userId: string) =>
 			[...queryKeys.integrations.all, "sync-queue", userId] as const,
+		// Nested under `syncQueue` so invalidating the activity list also
+		// refreshes the status-filtered active count.
+		syncQueueActive: (userId: string) =>
+			[...queryKeys.integrations.syncQueue(userId), "active"] as const,
 	},
 	comments: {
 		all: ["comments"] as const,
@@ -168,8 +175,6 @@ export const queryKeys = {
 		},
 		blocks: (userId: string) =>
 			[...queryKeys.community.all, "blocks", userId] as const,
-		reports: (userId: string) =>
-			[...queryKeys.community.all, "reports", userId] as const,
 		saves: (userId: string) =>
 			[...queryKeys.community.all, "saves", userId] as const,
 		votes: (userId: string) =>
@@ -189,8 +194,6 @@ export const queryKeys = {
 	goals: {
 		all: ["goals"] as const,
 		byUser: (userId: string) => [...queryKeys.goals.all, userId] as const,
-		progress: (userId: string) =>
-			[...queryKeys.goals.all, "progress", userId] as const,
 	},
 	recovery: {
 		all: ["recovery"] as const,
@@ -204,13 +207,6 @@ export const queryKeys = {
 		byUser: (userId: string) => [...queryKeys.profile.all, userId] as const,
 		stats: (userId: string, profileId?: string | null) =>
 			[...queryKeys.profile.all, "stats", userId, profileId ?? "all"] as const,
-		topExercises: (userId: string, profileId?: string | null) =>
-			[
-				...queryKeys.profile.all,
-				"top-exercises",
-				userId,
-				profileId ?? "all",
-			] as const,
 		badges: (userId: string) =>
 			[...queryKeys.profile.all, "badges", userId] as const,
 		rpg: (userId: string) => [...queryKeys.profile.all, "rpg", userId] as const,
@@ -224,8 +220,6 @@ export const queryKeys = {
 	},
 	benchmarks: {
 		all: ["benchmarks"] as const,
-		distribution: (metricType: string, metricKey?: string) =>
-			[...queryKeys.benchmarks.all, metricType, metricKey] as const,
 	},
 	leaderboard: {
 		all: ["leaderboard"] as const,

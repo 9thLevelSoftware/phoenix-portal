@@ -6,7 +6,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const srcDir = path.join(__dirname, '..', 'src', 'assets');
 const sourcePng = path.join(srcDir, '4aa483a986255912b80c24338a4e7f563d95eabd.png');
 
-const sizes = [64, 96, 192, 512];
+// PhoenixLogo renders a fixed 32px mark, so only the 64w/96w WebP
+// candidates (2x/3x) are needed. The PNG fallback stays at 192px.
+const sizes = [64, 96];
 
 async function optimize() {
   // Generate WebP at each size

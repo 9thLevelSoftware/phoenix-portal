@@ -263,6 +263,14 @@ describe("profileStatsOptions", () => {
 	});
 });
 
+async function readTopExercises(userId: string, profileId?: string | null) {
+	const { topExercisesOptions } = await import("../profile");
+	const opts = topExercisesOptions(userId, profileId);
+	const rows = await opts.queryFn!({} as never);
+	if (!opts.select) throw new Error("topExercisesOptions select missing");
+	return opts.select(rows);
+}
+
 describe("topExercisesOptions", () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
@@ -270,11 +278,13 @@ describe("topExercisesOptions", () => {
 		fromFn.mockImplementation(() => chain);
 	});
 
-	it("uses profile.topExercises query key", async () => {
+	it("shares the exercise frequency query key", async () => {
 		mockRpc({ data: [], error: null });
 		const { topExercisesOptions } = await import("../profile");
 		const opts = topExercisesOptions("user-1");
-		expect(opts.queryKey).toEqual(queryKeys.profile.topExercises("user-1"));
+		expect(opts.queryKey).toEqual(
+			queryKeys.analytics.exerciseFrequency("user-1"),
+		);
 	});
 
 	it("returns the top 5 exercises from one RPC with no session id list", async () => {
@@ -293,10 +303,7 @@ describe("topExercisesOptions", () => {
 			error: null,
 		});
 
-		const { topExercisesOptions } = await import("../profile");
-		const result = await topExercisesOptions("user-1", "profile-1").queryFn!(
-			{} as never,
-		);
+		const result = await readTopExercises("user-1", "profile-1");
 
 		expect(rpcFn).toHaveBeenCalledTimes(1);
 		expect(rpcFn).toHaveBeenCalledWith("exercise_frequency", {
@@ -318,9 +325,7 @@ describe("topExercisesOptions", () => {
 
 	it("returns empty array when no sessions exist", async () => {
 		mockRpc({ data: [], error: null });
-		const { topExercisesOptions } = await import("../profile");
-		const opts = topExercisesOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await readTopExercises("user-1");
 		expect(result).toEqual([]);
 	});
 

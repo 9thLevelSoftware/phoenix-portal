@@ -80,7 +80,7 @@ interface ExternalActivityRow {
 	synced_at: string;
 }
 
-interface SyncQueueRow {
+type SyncQueueRow = {
 	id: string;
 	user_id: string;
 	provider: IntegrationProvider;
@@ -91,7 +91,7 @@ interface SyncQueueRow {
 	started_at: string | null;
 	completed_at: string | null;
 	retry_count: number;
-}
+};
 
 interface MockSupabaseOptions {
 	userId?: string;
@@ -837,10 +837,32 @@ export async function installMockSupabase(
 					return;
 				}
 
+				// Honor status/user filters and the activity-list limit. The portal
+				// counts pending/processing with a status filter and loads the
+				// latest 10 rows separately; returning the whole queue for both
+				// would make the active count include finished rows.
+				let rows = filterRows(state.syncQueue, url);
+				const order = url.searchParams.get("order");
+				if (order) {
+					const [column, direction] = order.split(",")[0].split(".");
+					const sign = direction === "desc" ? -1 : 1;
+					rows = [...rows].sort((a, b) => {
+						const av = String(a[column as keyof SyncQueueRow] ?? "");
+						const bv = String(b[column as keyof SyncQueueRow] ?? "");
+						return sign * av.localeCompare(bv);
+					});
+				}
+				const limitParam = url.searchParams.get("limit");
+				if (limitParam !== null) {
+					const limit = Number(limitParam);
+					if (Number.isFinite(limit) && limit >= 0) {
+						rows = rows.slice(0, limit);
+					}
+				}
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
-					body: JSON.stringify(state.syncQueue),
+					body: JSON.stringify(rows),
 				});
 				return;
 			}

@@ -75,12 +75,10 @@ Important commands:
 - Install dependencies: `npm ci`
 - Standard validation: `npm run verify`
 - Full validation with E2E: `npm run verify:full`
-- Typecheck: `npm run typecheck` (note: the root `tsconfig.json` is a solution
-  file with `"files": []`, so this checks nothing and always passes — use
-  `npx tsc -b --force` for real coverage)
-- Typecheck: `npm run typecheck` (runs `tsc -p` over every tsconfig project and
-  fails on any error not recorded in `typecheck-baseline.json`; shrink the
-  baseline with `npm run typecheck:baseline` after fixing errors)
+- Typecheck: `npm run typecheck` (runs `scripts/typecheck.mjs`: `tsc -p --noEmit`
+  on the app, node, test, and e2e tsconfigs, and fails on any error not recorded
+  in `typecheck-baseline.json`; shrink the baseline with
+  `npm run typecheck:baseline` after fixing errors)
 - Unit and integration tests: `npm test`
 - Sync tests: `npm run test:sync`
 - Edge Function type-check and handler tests: `npm run check:edge-functions`,

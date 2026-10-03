@@ -1,5 +1,9 @@
 import { escapeCSVField } from "@/lib/export/csv-security";
 import { supabase } from "@/lib/supabase";
+import {
+	fetchAllSupabasePages,
+	fetchAllSupabasePagesForChunks,
+} from "@/lib/supabasePaging";
 import { toLoadDisplay } from "@/lib/units/loadDisplay";
 
 // =============================================================================
@@ -112,53 +116,62 @@ export async function exportWorkoutsAsCSV(
 ): Promise<ExportResult> {
 	const { weightUnit = "kg" } = options;
 
-	// 1. Fetch all sessions
-	const { data: sessions, error: sessionError } = await supabase
-		.from("workout_sessions")
-		.select("id, name, started_at, duration_seconds, notes")
-		.eq("user_id", userId)
-		.order("started_at", { ascending: true });
-	if (sessionError) throw sessionError;
-	if (!sessions || sessions.length === 0) {
+	// PostgREST silently caps each response at max_rows (1,000). Page until a
+	// short page, and order every read by `id` after the display order so
+	// `.range()` cannot skip or repeat rows. Exercise and set id lists are
+	// chunked: one unbounded `.in()` blows the GET URL limit (F-035 / NF-18).
+	const sessions = await fetchAllSupabasePages<RawSession>((from, to) =>
+		supabase
+			.from("workout_sessions")
+			.select("id, name, started_at, duration_seconds, notes")
+			.eq("user_id", userId)
+			.order("started_at", { ascending: true })
+			.order("id")
+			.range(from, to),
+	);
+	if (sessions.length === 0) {
 		return { csv: "", sessionCount: 0, setCount: 0 };
 	}
 
-	const sessionIds = sessions.map((s: RawSession) => s.id);
+	const sessionIds = sessions.map((s) => s.id);
 
-	// 2. Fetch all exercises for those sessions
-	const { data: exercises, error: exerciseError } = await supabase
-		.from("exercises")
-		.select("id, session_id, name, order_index, cable_count")
-		.in("session_id", sessionIds)
-		.order("order_index", { ascending: true });
-	if (exerciseError) throw exerciseError;
+	const exercises = await fetchAllSupabasePagesForChunks<RawExercise, string>(
+		sessionIds,
+		(ids, from, to) =>
+			supabase
+				.from("exercises")
+				.select("id, session_id, name, order_index, cable_count")
+				.in("session_id", ids)
+				.order("order_index", { ascending: true })
+				.order("id")
+				.range(from, to),
+	);
 
-	// 3. Fetch all sets for those exercises
-	const exerciseIds = (exercises ?? []).map((e: RawExercise) => e.id);
-	let allSets: RawSet[] = [];
-	if (exerciseIds.length > 0) {
-		// Supabase .in() has a limit; batch if necessary
-		const BATCH_SIZE = 500;
-		for (let i = 0; i < exerciseIds.length; i += BATCH_SIZE) {
-			const batch = exerciseIds.slice(i, i + BATCH_SIZE);
-			const { data: sets, error: setError } = await supabase
-				.from("sets")
-				.select("exercise_id, set_number, actual_reps, weight_kg, rpe, notes")
-				.in("exercise_id", batch)
-				.order("set_number", { ascending: true });
-			if (setError) throw setError;
-			if (sets) allSets = allSets.concat(sets as RawSet[]);
-		}
-	}
+	const exerciseIds = exercises.map((e) => e.id);
+	const allSets =
+		exerciseIds.length > 0
+			? await fetchAllSupabasePagesForChunks<RawSet, string>(
+					exerciseIds,
+					(ids, from, to) =>
+						supabase
+							.from("sets")
+							.select(
+								"exercise_id, set_number, actual_reps, weight_kg, rpe, notes",
+							)
+							.in("exercise_id", ids)
+							.order("set_number", { ascending: true })
+							.order("id")
+							.range(from, to),
+				)
+			: [];
 
 	// 4. Build lookup maps
-	const sessionMap = new Map(sessions.map((s: RawSession) => [s.id, s]));
+	const sessionMap = new Map(sessions.map((s) => [s.id, s]));
 	const exercisesBySession = new Map<string, RawExercise[]>();
-	for (const ex of exercises ?? []) {
-		const typed = ex as RawExercise;
-		const list = exercisesBySession.get(typed.session_id) ?? [];
-		list.push(typed);
-		exercisesBySession.set(typed.session_id, list);
+	for (const exercise of exercises) {
+		const list = exercisesBySession.get(exercise.session_id) ?? [];
+		list.push(exercise);
+		exercisesBySession.set(exercise.session_id, list);
 	}
 	const setsByExercise = new Map<string, RawSet[]>();
 	for (const s of allSets) {

@@ -24,9 +24,6 @@ interface StrongCSVRow {
 	"Workout Notes": string;
 }
 
-/** Pounds to kilograms conversion factor */
-const LBS_TO_KG = 0.453592;
-
 /** Miles to meters conversion factor */
 const MILES_TO_METERS = 1609.344;
 
@@ -135,8 +132,6 @@ export function parseStrongCSV(
 		// Generate a deterministic external_id from workout name + timestamp
 		const externalId = `strong-${first["Workout Name"]}-${startTime.getTime()}`;
 
-		// Weight is already in the user's chosen unit -- convert if lbs
-		// (We don't aggregate weight into the activity, but we note the unit for set detail)
 		// Distance aggregation for cardio exercises.
 		// Strong exports distance in the user's locale unit (km or miles) so we
 		// must convert to meters before storing. The caller supplies distanceUnit.
@@ -168,61 +163,6 @@ export function parseStrongCSV(
 		});
 	}
 	return activities;
-}
-
-/**
- * Detailed exercise/set information from parsed Strong CSV rows for preview.
- */
-export interface StrongExerciseDetail {
-	name: string;
-	sets: Array<{
-		setOrder: number;
-		weightKg: number;
-		reps: number;
-		durationSeconds: number;
-		notes: string;
-	}>;
-}
-
-/**
- * Parse exercise-level detail from Strong CSV for a specific workout.
- * Used for import preview with set-level detail.
- */
-export function parseStrongExercises(
-	csvContent: string,
-	workoutName: string,
-	date: string,
-	weightUnit: "kg" | "lbs" = "kg",
-): StrongExerciseDetail[] {
-	const result = Papa.parse<StrongCSVRow>(csvContent, {
-		header: true,
-		skipEmptyLines: true,
-	});
-
-	const workoutRows = result.data.filter(
-		(row) => row["Workout Name"] === workoutName && row.Date === date,
-	);
-
-	const exerciseGroups = groupBy(workoutRows, (row) => row["Exercise Name"]);
-
-	return Object.entries(exerciseGroups).map(([name, rows]) => ({
-		name,
-		sets: rows.map((row) => {
-			const rawWeight = parseFloat(row.Weight) || 0;
-			const weightKg =
-				weightUnit === "lbs"
-					? Math.round(rawWeight * LBS_TO_KG * 100) / 100
-					: rawWeight;
-
-			return {
-				setOrder: parseInt(row["Set Order"], 10) || 0,
-				weightKg,
-				reps: parseInt(row.Reps, 10) || 0,
-				durationSeconds: parseInt(row.Seconds, 10) || 0,
-				notes: row.Notes || "",
-			};
-		}),
-	}));
 }
 
 // =============================================================================
