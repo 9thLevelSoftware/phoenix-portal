@@ -75,8 +75,10 @@ export function normalizeFitbitActivity(raw: unknown): NormalizedActivity {
 
 /**
  * Initiate Fitbit OAuth 2.0 connection via the initiate-oauth Edge Function.
- * The server generates a cryptographic CSRF state token and returns
- * the Fitbit authorization URL.
+ * A refusal from that function is forwarded (`oauthInitiateError`). Fitbit
+ * is unlaunched, so the refusal is `provider_unavailable` and no state is
+ * minted. The disabled `fitbit-oauth` callback does not check `state`; it
+ * answers 410 Gone for every request (auth #5).
  *
  * @param accessToken - The authenticated user's Supabase JWT access token
  */
