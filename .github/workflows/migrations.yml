@@ -7,10 +7,11 @@ name: Migrations
 # Then runs the full pgTAP suite and checks that the generated
 # src/lib/database.types.ts matches the migrated schema.
 #
-# Out of scope here: diff vs live prod. That check is
-# prod-migration-drift.yml (daily, workflow_dispatch, and main pushes of
-# that file). It needs prod credentials that PR forks cannot reach. See
-# CLAUDE.md -> "Migration Workflow Discipline".
+# Out of scope here: checks against live prod. prod-migration-drift.yml
+# compares prod's applied migration versions with these files (daily,
+# workflow_dispatch, and main pushes of that file). It needs prod
+# credentials that PR forks cannot reach. See CLAUDE.md -> "Migration
+# Workflow Discipline".
 
 # Keep the two path lists identical: everything the apply, the pgTAP suite
 # or the types check depends on.
