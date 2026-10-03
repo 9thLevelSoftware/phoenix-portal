@@ -40,7 +40,7 @@ describe("CORS localhost fail-closed", () => {
 		).toBe(true);
 		expect(
 			buildAllowedOrigins(undefined, undefined, "http://127.0.0.1:54321"),
-		).toEqual(["http://localhost:5173", "http://localhost:3000"]);
+		).toEqual(["http://localhost:5173"]);
 	});
 
 	it("denies localhost when ENVIRONMENT is development against a hosted project", () => {

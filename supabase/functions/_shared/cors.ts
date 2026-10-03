@@ -30,7 +30,13 @@ function getAllowedOrigins(): string[] {
  *
  * Security headers added:
  * - X-Frame-Options: DENY (clickjacking protection)
- * - Content-Security-Policy: default-src 'self' (XSS mitigation)
+ * - Content-Security-Policy (XSS mitigation). The header value sent is
+ *   `default-src 'self'; connect-src 'self' https://*.paddle.com
+ *   https://*.supabase.co https://api.phoenix-portal.com
+ *   wss://api.phoenix-portal.com; script-src 'self' 'unsafe-inline';
+ *   style-src 'self' 'unsafe-inline'`.
+ *   The SPA Content-Security-Policy is a separate header and lives in
+ *   `public/_headers`.
  * - Strict-Transport-Security: max-age=31536000 (HSTS for HTTPS enforcement)
  * - X-Content-Type-Options: nosniff (MIME sniffing protection)
  * - Referrer-Policy: strict-origin-when-cross-origin (privacy)

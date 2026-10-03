@@ -15,7 +15,6 @@ interface CalendarWidgetMobileProps {
 	workoutDates: Set<string>;
 	selectedDate: Date | null;
 	onDateSelect: (date: Date) => void;
-	isDateLocked?: (date: Date) => boolean;
 }
 
 const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -26,7 +25,6 @@ export function CalendarWidgetMobile({
 	workoutDates,
 	selectedDate,
 	onDateSelect,
-	isDateLocked,
 }: CalendarWidgetMobileProps) {
 	const { daysInMonth, startingDayOfWeek, year, month } =
 		useCalendarState(currentMonth);
@@ -103,7 +101,6 @@ export function CalendarWidgetMobile({
 				{Array.from({ length: daysInMonth }).map((_, i) => {
 					const day = i + 1;
 					const date = new Date(year, month, day);
-					const locked = isDateLocked?.(date) ?? false;
 					const workout = hasWorkout(day);
 					const selected = isSelected(day);
 					const today = isToday(day);
@@ -112,8 +109,7 @@ export function CalendarWidgetMobile({
 						<button
 							type="button"
 							key={day}
-							onClick={() => !locked && onDateSelect(date)}
-							disabled={locked}
+							onClick={() => onDateSelect(date)}
 							aria-pressed={selected}
 							aria-current={today ? "date" : undefined}
 							className={cn(
@@ -123,7 +119,6 @@ export function CalendarWidgetMobile({
 								!selected && !today && "hover:bg-secondary text-foreground",
 								selected && "bg-primary text-on-primary",
 								today && !selected && "ring-2 ring-primary/50 text-foreground",
-								locked && "opacity-40 cursor-not-allowed",
 							)}
 						>
 							{day}

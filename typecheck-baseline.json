@@ -22,10 +22,6 @@
       "src/app/components/RoutineBuilder.tsx": {
         "TS2345": 1
       },
-      "src/app/components/SummaryReport.tsx": {
-        "TS2339": 1,
-        "TS2769": 1
-      },
       "src/app/components/TrainingCycles.tsx": {
         "TS2345": 1
       },
@@ -53,9 +49,6 @@
       },
       "src/app/components/session-replay/ReplayPhaseAnalyticsPanel.tsx": {
         "TS2322": 1
-      },
-      "src/app/hooks/useButtonSuccess.ts": {
-        "TS2554": 1
       },
       "src/hooks/useNotificationSync.ts": {
         "TS2345": 4
@@ -87,10 +80,6 @@
       "src/app/components/RoutineBuilder.tsx": {
         "TS2345": 1
       },
-      "src/app/components/SummaryReport.tsx": {
-        "TS2339": 1,
-        "TS2769": 1
-      },
       "src/app/components/TrainingCycles.tsx": {
         "TS2345": 1
       },
@@ -118,9 +107,6 @@
       },
       "src/app/components/session-replay/ReplayPhaseAnalyticsPanel.tsx": {
         "TS2322": 1
-      },
-      "src/app/hooks/useButtonSuccess.ts": {
-        "TS2554": 1
       },
       "src/hooks/__tests__/useRealtimeSync.test.tsx": {
         "TS2493": 1

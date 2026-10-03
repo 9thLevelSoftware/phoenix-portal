@@ -17,6 +17,7 @@ loadDotenv({ path: path.join(repoRoot, ".env.local"), override: true });
 
 export const DEFAULT_LOCAL_SITE_URL = "http://localhost:5173";
 export const OAUTH_CALLBACK_PATH = "/auth/callback";
+export const RESET_PASSWORD_PATH = "/auth/reset-password";
 export const SUPABASE_CALLBACK_PATH = "/auth/v1/callback";
 export const MANAGED_BLOCK_START = "# BEGIN_MANAGED_SOCIAL_AUTH";
 export const MANAGED_BLOCK_END = "# END_MANAGED_SOCIAL_AUTH";
@@ -72,6 +73,10 @@ export function buildPortalCallbackUrl(siteUrl) {
 	return new URL(OAUTH_CALLBACK_PATH, siteUrl).toString();
 }
 
+export function buildPortalResetPasswordUrl(siteUrl) {
+	return new URL(RESET_PASSWORD_PATH, siteUrl).toString();
+}
+
 export function buildAllowedRedirectUrls({
 	siteUrl,
 	additionalRedirectUrls = "",
@@ -79,6 +84,8 @@ export function buildAllowedRedirectUrls({
 	const allowedRedirectUrls = new Set([
 		buildPortalCallbackUrl(DEFAULT_LOCAL_SITE_URL),
 		buildPortalCallbackUrl(siteUrl),
+		buildPortalResetPasswordUrl(DEFAULT_LOCAL_SITE_URL),
+		buildPortalResetPasswordUrl(siteUrl),
 	]);
 
 	for (const redirectUrl of parseCsvUrls(additionalRedirectUrls)) {
