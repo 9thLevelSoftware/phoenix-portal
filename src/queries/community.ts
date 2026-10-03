@@ -255,7 +255,7 @@ export function isFollowingOptions(followerId: string, followedId: string) {
 		queryKey: queryKeys.community.follows(followerId, followedId),
 		queryFn: async () => {
 			const { data, error } = await supabase
-				.from("creator_follows" as never)
+				.from("creator_follows")
 				.select("id")
 				.eq("follower_id", followerId)
 				.eq("followed_id", followedId)
@@ -272,11 +272,11 @@ export function blockedUsersOptions(userId: string) {
 		queryKey: queryKeys.community.blocks(userId),
 		queryFn: async () => {
 			const { data, error } = await supabase
-				.from("user_blocks" as never)
+				.from("user_blocks")
 				.select("blocked_id")
 				.eq("blocker_id", userId);
 			if (error) throw error;
-			return (data as { blocked_id: string }[]).map((row) => row.blocked_id);
+			return (data ?? []).map((row) => row.blocked_id);
 		},
 	});
 }

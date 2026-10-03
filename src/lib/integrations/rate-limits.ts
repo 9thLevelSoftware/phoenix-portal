@@ -53,33 +53,3 @@ export const DAILY_RATE_LIMITS: Record<
 > = {
 	strava: { requests: 800, windowMs: 24 * 60 * 60 * 1000 }, // reserve 20% of 1,000
 };
-
-/**
- * Check if a provider is currently rate-limited based on tracking data.
- * Returns true if requests in current window have reached the limit.
- */
-export function isRateLimited(
-	tracking: {
-		requests_this_window: number | null;
-		window_started_at: string | null;
-	} | null,
-	limit: { requests: number; windowMs: number },
-): boolean {
-	if (!tracking) return false;
-
-	const windowStart = tracking.window_started_at
-		? new Date(tracking.window_started_at).getTime()
-		: Number.NaN;
-
-	// Corrupt/missing timestamp -> treat as an expired/reset window (fail open
-	// rather than relying on JavaScript date coercion of an invalid value).
-	if (!Number.isFinite(windowStart)) return false;
-
-	const now = Date.now();
-
-	// Window expired, not rate limited
-	if (now - windowStart > limit.windowMs) return false;
-
-	// Within window, check count (missing count coerces to 0).
-	return (tracking.requests_this_window ?? 0) >= limit.requests;
-}
