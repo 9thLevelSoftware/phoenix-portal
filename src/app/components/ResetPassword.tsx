@@ -52,7 +52,7 @@ export function ResetPassword() {
 		<div className="min-h-screen bg-background flex items-center justify-center px-4">
 			<Card className="w-full max-w-md p-8 bg-surface-2 border-secondary">
 				<div className="flex items-center justify-center gap-2 mb-8">
-					<PhoenixLogo size="sm" animated={false} />
+					<PhoenixLogo />
 					<span className="text-xl text-primary font-semibold">
 						Project Phoenix
 					</span>

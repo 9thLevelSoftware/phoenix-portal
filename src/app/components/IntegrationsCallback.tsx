@@ -127,7 +127,7 @@ export function IntegrationsCallback() {
 		<div className="flex min-h-[60vh] items-center justify-center px-4">
 			<Card className="w-full max-w-md bg-surface-2 border-secondary p-8 text-center">
 				<div className="mb-8 flex items-center justify-center gap-2">
-					<PhoenixLogo size="sm" animated={false} />
+					<PhoenixLogo />
 					<span className="text-xl font-semibold text-primary">
 						Phoenix Portal
 					</span>
