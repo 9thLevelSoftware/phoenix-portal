@@ -8,11 +8,6 @@ export type SocialAuthProvider = "google" | "apple";
 
 export type SocialAuthAvailability = Record<SocialAuthProvider, boolean>;
 
-export const DEFAULT_SOCIAL_AUTH_AVAILABILITY: SocialAuthAvailability = {
-	google: false,
-	apple: false,
-};
-
 export const OAUTH_CALLBACK_PATH = "/auth/callback";
 export const GOOGLE_OAUTH_SCOPES =
 	"https://www.googleapis.com/auth/userinfo.email";

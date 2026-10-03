@@ -10,14 +10,14 @@ Use design tokens from `src/styles/theme.css` only. Never inline hex colors, raw
 - **Text on a filled colour:** use the matching foreground (`text-primary-foreground`, `text-accent-foreground`, `text-success-foreground`, `text-on-danger`, …), never `text-white` or `text-foreground` on `bg-primary` and friends.
 - **Charts:** `--chart-1` … `--chart-8`, all at least 3:1 on the page background in both themes. Use a new slot rather than repeating a colour inside one chart.
 - **Podium:** `--rank-gold`, `--rank-silver`, `--rank-bronze`.
-- **Typography:** `text-display`, `text-h1`, `text-h2`, `text-h3`, `text-body`, `text-small`, and `text-micro`, applied through Tailwind utilities.
-- **Spacing:** `--space-1` through `--space-12` for page-level rhythm. Prefer Tailwind built-ins inside components.
+- **Typography:** `text-display`, `text-h1`, `text-h2`, and `text-h3`, applied through Tailwind utilities.
+- **Spacing:** `--space-6` for the page stack. Prefer Tailwind spacing utilities inside components.
 - **Radii:** `--radius`, `--radius-sm`, `--radius-md`, and `--radius-lg`.
 - **Shadows:** the `shadow-sm|md|lg` utilities, backed by the per-theme `--elevation-sm|md|lg` values.
 
 ## Anti-slop rules (hard constraints)
 
-1. No hex colors, and no raw Tailwind palette classes (`text-amber-400`, `bg-zinc-800`, …), outside `src/styles/theme.css`, `src/lib/theme-tokens.ts`, tests and `src/lib/database.types.ts`. The only exceptions are values that must not follow the theme, each with a comment saying why: third-party brand marks (the Google/Apple sign-in buttons), synced data that must match the mobile app (`LocalProfileFilter` profile colours), fixed danger buttons (`bg-red-600` with white text), print-only styles, the muscle heatmap legend (it must match the heatmap's own scale), the Strong import brand purple, and decorative effects that animate colour strings (`EmberParticles`, the Challenges swipe hint, the replay annotation overlay).
+1. No hex colors, and no raw Tailwind palette classes (`text-amber-400`, `bg-zinc-800`, …), outside `src/styles/theme.css`, `src/lib/theme-tokens.ts`, tests and `src/lib/database.types.ts`. The only exceptions are values that must not follow the theme, each with a comment saying why: third-party brand marks (the Google/Apple sign-in buttons), synced data that must match the mobile app (`LocalProfileFilter` profile colours), fixed danger buttons (`bg-red-600` with white text), print-only styles, the muscle heatmap legend (it must match the heatmap's own scale), the Strong import brand purple, and decorative effects that animate colour strings (the Challenges swipe hint and the replay annotation overlay).
 2. No `!important` outside `@media print`.
 3. No `rounded-*` doubling on a parent and child for the same edge.
 4. No `bg-gradient-*` combined with `shadow-*` on the same element.
