@@ -13,7 +13,6 @@ import { ChartTooltipContent, useChartTooltip } from "./shared/ChartTooltip";
 export interface PowerOutputProps {
 	repSummaries: RepSummary[];
 	height?: number;
-	highlightPeak?: boolean;
 }
 
 interface PowerRep {
@@ -26,7 +25,6 @@ interface PowerRep {
 function PowerOutputInner({
 	repSummaries,
 	height = 250,
-	highlightPeak = true,
 	width,
 }: PowerOutputProps & { width: number }) {
 	// Colours below come from the theme helpers; re-read them on a switch.
@@ -129,11 +127,11 @@ function PowerOutputInner({
 						const barHeight = innerHeight - (yScale(d.watts) ?? 0);
 						const barY = yScale(d.watts) ?? 0;
 
-						const isPeak = highlightPeak && i === peakIndex;
+						const isPeak = i === peakIndex;
 						const barColor = isPeak
 							? CHART_COLORS().secondary
 							: CHART_COLORS().primary;
-						const barOpacity = highlightPeak && !isPeak ? 0.6 : 1;
+						const barOpacity = isPeak ? 1 : 0.6;
 
 						return (
 							// biome-ignore lint/suspicious/noArrayIndexKey: derived sequential chart data with no unique ID

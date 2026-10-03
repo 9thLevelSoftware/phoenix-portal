@@ -135,3 +135,4 @@ jobs:
           VITE_SUPABASE_ANON_KEY: "placeholder-anon-key"
       - run: npm run assert:no-sourcemaps
       - run: npm run assert:bundle-budget
+      - run: npm run assert:supabase-config

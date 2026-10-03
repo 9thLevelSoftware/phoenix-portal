@@ -35,6 +35,21 @@ interface ProviderCardProps {
 	comingSoon?: boolean;
 }
 
+function attentionFallback(
+	providerName: string,
+	isTokenExpired: boolean,
+	comingSoon: boolean,
+): string {
+	if (comingSoon) {
+		return isTokenExpired
+			? `Your ${providerName} authorization has expired. Disconnect to remove this connection.`
+			: `${providerName} syncing stopped after an error. Disconnect to remove this connection.`;
+	}
+	return isTokenExpired
+		? `Your ${providerName} authorization has expired. Reconnect to resume syncing.`
+		: `${providerName} syncing stopped after an error. Reconnect to try again.`;
+}
+
 export function ProviderCard({
 	provider,
 	integration,
@@ -51,8 +66,9 @@ export function ProviderCard({
 
 	// A lapsed connection is distinct from never having connected. `token_expired`
 	// means the provider revoked or aged out our grant; `error` means syncing hit
-	// a failure the sync function could not recover from. Both need a reconnect
-	// prompt rather than the first-run Connect button.
+	// a failure the sync function could not recover from. A launched provider
+	// gets a reconnect prompt. A coming-soon provider cannot start OAuth, so the
+	// card offers Disconnect instead of Reconnect.
 	const isTokenExpired = integration?.status === "token_expired";
 	const needsAttention = isTokenExpired || integration?.status === "error";
 
@@ -120,26 +136,36 @@ export function ProviderCard({
 									: "bg-destructive/20 text-destructive border-destructive/30"
 							}
 						>
-							{isTokenExpired ? "Reconnection needed" : "Sync error"}
+							{isTokenExpired
+								? comingSoon
+									? "Authorization expired"
+									: "Reconnection needed"
+								: "Sync error"}
 						</Badge>
 						<Alert variant="destructive">
 							<AlertDescription>
 								{integration?.error_message ??
-									(isTokenExpired
-										? `Your ${meta.name} authorization has expired. Reconnect to resume syncing.`
-										: `${meta.name} syncing stopped after an error. Reconnect to try again.`)}
+									attentionFallback(meta.name, isTokenExpired, !!comingSoon)}
 							</AlertDescription>
 						</Alert>
 						<p className="text-sm text-muted-foreground">
 							Last synced: {formatRelative(integration?.last_sync_at ?? null)}
 						</p>
 						<div className="flex gap-2">
-							<Button onClick={onConnect} size="sm" disabled={isLoading}>
-								Reconnect {meta.name}
-							</Button>
-							<Button onClick={onDisconnect} variant="outline" size="sm">
-								Disconnect
-							</Button>
+							{comingSoon ? (
+								<Button onClick={onDisconnect} variant="outline" size="sm">
+									Disconnect
+								</Button>
+							) : (
+								<>
+									<Button onClick={onConnect} size="sm" disabled={isLoading}>
+										Reconnect {meta.name}
+									</Button>
+									<Button onClick={onDisconnect} variant="outline" size="sm">
+										Disconnect
+									</Button>
+								</>
+							)}
 						</div>
 					</div>
 				) : comingSoon ? (
