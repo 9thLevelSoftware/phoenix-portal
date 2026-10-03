@@ -47,9 +47,6 @@
       "src/app/components/community/CommunityDetailDrawer.tsx": {
         "TS2322": 1
       },
-      "src/app/components/integrations/SyncStatus.tsx": {
-        "TS2538": 1
-      },
       "src/app/components/session-replay/ReplayPhaseAnalyticsPanel.tsx": {
         "TS2322": 1
       },
@@ -107,9 +104,6 @@
       },
       "src/app/components/community/CommunityDetailDrawer.tsx": {
         "TS2322": 1
-      },
-      "src/app/components/integrations/SyncStatus.tsx": {
-        "TS2538": 1
       },
       "src/app/components/session-replay/ReplayPhaseAnalyticsPanel.tsx": {
         "TS2322": 1

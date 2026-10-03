@@ -146,6 +146,10 @@ export const queryKeys = {
 			[...queryKeys.integrations.all, "external", userId] as const,
 		syncQueue: (userId: string) =>
 			[...queryKeys.integrations.all, "sync-queue", userId] as const,
+		// Nested under `syncQueue` so invalidating the activity list also
+		// refreshes the status-filtered active count.
+		syncQueueActive: (userId: string) =>
+			[...queryKeys.integrations.syncQueue(userId), "active"] as const,
 	},
 	comments: {
 		all: ["comments"] as const,

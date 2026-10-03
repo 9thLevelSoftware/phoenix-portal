@@ -5,7 +5,7 @@ import { queryKeys } from "@/queries/keys";
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	const methods = ["select", "eq", "order", "limit"];
+	const methods = ["select", "eq", "order", "limit", "in"];
 	for (const m of methods) {
 		self[m] = vi.fn();
 	}
@@ -163,5 +163,94 @@ describe("externalActivitiesOptions", () => {
 		const opts = externalActivitiesOptions("user-1");
 		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
+	});
+});
+
+describe("syncQueueOptions", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("uses the sync-queue query key and keeps the latest 10", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { SYNC_QUEUE_ACTIVITY_LIMIT, syncQueueOptions } = await import(
+			"../integrations"
+		);
+		const opts = syncQueueOptions("user-1");
+		expect(opts.queryKey).toEqual(queryKeys.integrations.syncQueue("user-1"));
+
+		await opts.queryFn?.({} as never);
+
+		expect(fromFn).toHaveBeenCalledWith("sync_queue");
+		expect(chain.order).toHaveBeenCalledWith("created_at", {
+			ascending: false,
+		});
+		expect(chain.limit).toHaveBeenCalledWith(SYNC_QUEUE_ACTIVITY_LIMIT);
+		expect(chain.in).not.toHaveBeenCalled();
+	});
+
+	it("throws on Supabase error instead of an empty activity list", async () => {
+		chain = buildChain({ data: null, error: { message: "rls" } });
+		const { syncQueueOptions } = await import("../integrations");
+		const opts = syncQueueOptions("user-1");
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
+			expect.objectContaining({ message: "rls" }),
+		);
+	});
+});
+
+describe("syncQueueActiveCountOptions", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("counts pending and processing by status, not a recency window", async () => {
+		chain = buildChain({
+			data: [
+				{ provider: "strava", status: "pending" },
+				{ provider: "hevy", status: "pending" },
+				{ provider: "fitbit", status: "processing" },
+				{ provider: "garmin", status: "completed" },
+			],
+			error: null,
+		});
+		const { syncQueueActiveCountOptions } = await import("../integrations");
+		const opts = syncQueueActiveCountOptions("user-1");
+		expect(opts.queryKey).toEqual(
+			queryKeys.integrations.syncQueueActive("user-1"),
+		);
+		expect(
+			queryKeys.integrations.syncQueueActive("user-1").slice(0, -1),
+		).toEqual(queryKeys.integrations.syncQueue("user-1"));
+
+		const result = await opts.queryFn?.({} as never);
+
+		expect(fromFn).toHaveBeenCalledWith("sync_queue");
+		expect(chain.select).toHaveBeenCalledWith("provider, status");
+		expect(chain.in).toHaveBeenCalledWith("status", ["pending", "processing"]);
+		expect(chain.limit).not.toHaveBeenCalled();
+		expect(result).toEqual({
+			pending: 2,
+			processingProvider: "fitbit",
+		});
+	});
+
+	it("reports no active work when the status filter matches nothing", async () => {
+		chain = buildChain({ data: null, error: null });
+		const { syncQueueActiveCountOptions } = await import("../integrations");
+		const opts = syncQueueActiveCountOptions("user-1");
+		await expect(opts.queryFn?.({} as never)).resolves.toEqual({
+			pending: 0,
+			processingProvider: null,
+		});
+	});
+
+	it("throws on Supabase error", async () => {
+		chain = buildChain({ data: null, error: { message: "unavailable" } });
+		const { syncQueueActiveCountOptions } = await import("../integrations");
+		const opts = syncQueueActiveCountOptions("user-1");
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
+			expect.objectContaining({ message: "unavailable" }),
+		);
 	});
 });
