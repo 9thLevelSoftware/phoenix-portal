@@ -1,62 +1,24 @@
 import { withAlpha } from "@/lib/theme-tokens";
-import type { MannZoneInfo, SimplifiedZoneInfo } from "@/lib/vbt";
+import type { SimplifiedZoneInfo } from "@/lib/vbt";
 import { cn } from "./utils";
 
-export type ZoneSystem = "mann" | "simplified";
-
 export interface ZoneBadgeProps {
-	zone: MannZoneInfo | SimplifiedZoneInfo;
-	system: ZoneSystem;
-	showLabel?: boolean;
-	showDot?: boolean;
-	size?: "sm" | "md" | "lg";
+	zone: SimplifiedZoneInfo;
 	className?: string;
 }
 
-const sizeClasses = {
-	sm: {
-		badge: "text-xs px-2 py-0.5 gap-1",
-		dot: "w-1.5 h-1.5",
-	},
-	md: {
-		badge: "text-sm px-2.5 py-1 gap-1.5",
-		dot: "w-2 h-2",
-	},
-	lg: {
-		badge: "text-base px-3 py-1.5 gap-2",
-		dot: "w-2.5 h-2.5",
-	},
-};
-
 /**
- * ZoneBadge - Visual indicator showing which velocity zone classification
- * is active and the current zone classification.
- *
- * Used across velocity profile charts and workout detail views.
+ * ZoneBadge - Visual indicator for the simplified velocity zone
+ * classification (mobile-matching).
  *
  * @example
- * // Dr. Mann zone badge
- * <ZoneBadge zone={mannZone} system="mann" />
- *
- * // Simplified zone badge (mobile-matching)
- * <ZoneBadge zone={simplifiedZone} system="simplified" size="sm" />
+ * <ZoneBadge zone={simplifiedZone} />
  */
-export function ZoneBadge({
-	zone,
-	system,
-	showLabel = true,
-	showDot = true,
-	size = "md",
-	className,
-}: ZoneBadgeProps) {
-	const sizes = sizeClasses[size];
-	const systemLabel = system === "mann" ? "Dr. Mann VBT" : "Simplified";
-
+export function ZoneBadge({ zone, className }: ZoneBadgeProps) {
 	return (
 		<div
 			className={cn(
-				"inline-flex items-center rounded-full border font-medium",
-				sizes.badge,
+				"inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium",
 				className,
 			)}
 			style={{
@@ -64,54 +26,34 @@ export function ZoneBadge({
 				borderColor: withAlpha(zone.color, 0.25),
 				color: zone.color,
 			}}
-			title={`${zone.label} — ${systemLabel} classification`}
+			title={`${zone.label} — Simplified classification`}
 		>
-			{showDot && (
-				<span
-					className={cn("rounded-full", sizes.dot)}
-					style={{ backgroundColor: zone.color }}
-				/>
-			)}
-			{showLabel ? (
-				<span>{zone.label}</span>
-			) : (
-				// Without a visible label the badge is only a color dot; expose the
-				// classification as visually-hidden text for screen-reader users.
-				<span className="sr-only">{`${zone.label} — ${systemLabel} classification`}</span>
-			)}
+			<span
+				className="h-1.5 w-1.5 rounded-full"
+				style={{ backgroundColor: zone.color }}
+			/>
+			<span>{zone.label}</span>
 		</div>
 	);
 }
 
 export interface ZoneIndicatorProps {
-	system: ZoneSystem;
 	className?: string;
 }
 
 /**
- * ZoneIndicator - Small badge indicating which zone classification system
- * is currently active. Shows as a subtle pill badge.
+ * ZoneIndicator - Small badge for the simplified zone classification.
+ * Shows as a subtle pill badge.
  *
  * @example
- * <ZoneIndicator system="mann" />
- * <ZoneIndicator system="simplified" />
+ * <ZoneIndicator />
  */
-// Fixed accent colours for each zone classification system.
-// Using inline style (matching the ZoneBadge pattern) keeps these
+// Fixed accent for the simplified zone classification.
+// Using inline style (matching the ZoneBadge pattern) keeps this
 // colour-coded by data intent rather than by raw Tailwind palette.
-const SYSTEM_ACCENT: Record<ZoneSystem, string> = {
-	mann: "var(--chart-2)", // blue — Dr. Mann VBT
-	simplified: "var(--accent)", // Phoenix Gold — mobile-matching zones
-};
+const SIMPLIFIED_ACCENT = "var(--accent)"; // Phoenix Gold — mobile-matching zones
 
-export function ZoneIndicator({ system, className }: ZoneIndicatorProps) {
-	const label = system === "mann" ? "Dr. Mann VBT" : "Simplified";
-	const description =
-		system === "mann"
-			? "Advanced velocity-based training zones"
-			: "Mobile-matching simplified zones";
-	const color = SYSTEM_ACCENT[system];
-
+export function ZoneIndicator({ className }: ZoneIndicatorProps) {
 	return (
 		<span
 			className={cn(
@@ -119,13 +61,13 @@ export function ZoneIndicator({ system, className }: ZoneIndicatorProps) {
 				className,
 			)}
 			style={{
-				backgroundColor: withAlpha(color, 0.1),
-				borderColor: withAlpha(color, 0.2),
-				color,
+				backgroundColor: withAlpha(SIMPLIFIED_ACCENT, 0.1),
+				borderColor: withAlpha(SIMPLIFIED_ACCENT, 0.2),
+				color: SIMPLIFIED_ACCENT,
 			}}
-			title={description}
+			title="Mobile-matching simplified zones"
 		>
-			{label}
+			Simplified
 		</span>
 	);
 }

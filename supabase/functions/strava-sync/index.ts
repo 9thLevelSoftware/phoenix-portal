@@ -71,8 +71,9 @@ const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
  */
 
 // ---------------------------------------------------------------------------
-// Strava activity normalization (mirrors src/lib/integrations/normalize.ts)
-// Duplicated here because Edge Functions run in Deno, not the Vite app.
+// Strava activity normalization.
+// This Edge Function is the mapper that writes external_activities. The
+// client mirror in src/lib/integrations/normalize.ts has been removed.
 // ---------------------------------------------------------------------------
 
 const SPORT_TYPE_MAP: Record<string, string> = {

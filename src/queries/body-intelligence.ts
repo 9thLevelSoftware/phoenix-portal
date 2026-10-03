@@ -1,6 +1,15 @@
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { fetchAllSupabasePages } from "@/lib/supabasePaging";
 import { queryKeys } from "./keys";
+
+/**
+ * Exercises per page for the body-intelligence window.
+ *
+ * Below PostgREST `max_rows` (1,000) so a short page is the end of the
+ * window. The only caller asks for 7 days.
+ */
+export const BODY_INTELLIGENCE_PAGE_SIZE = 500;
 
 /**
  * Fetches exercises with set details for sessions in the last N days.
@@ -22,48 +31,28 @@ export function bodyIntelligenceOptions(
 			const since = new Date();
 			since.setDate(since.getDate() - safeDays);
 
-			let query = supabase
-				.from("exercises")
-				.select(
-					"id, exercise_id, name, muscle_group, session_id, sets(id, actual_reps, weight_kg), workout_sessions!inner(id, started_at, user_id)",
-				)
-				.eq("workout_sessions.user_id", userId)
-				.gte("workout_sessions.started_at", since.toISOString());
+			const rows = await fetchAllSupabasePages((from, to) => {
+				let query = supabase
+					.from("exercises")
+					.select(
+						"id, exercise_id, name, muscle_group, session_id, sets(id, actual_reps, weight_kg), workout_sessions!inner(id, started_at, user_id)",
+					)
+					.eq("workout_sessions.user_id", userId)
+					.gte("workout_sessions.started_at", since.toISOString());
 
-			if (profileId) {
-				query = query.eq("workout_sessions.local_profile_id", profileId);
-			}
+				if (profileId) {
+					query = query.eq("workout_sessions.local_profile_id", profileId);
+				}
 
-			const { data, error } = await query;
-			if (error) throw error;
-			return (data ?? []).map((row) => ({
+				// `id` is unique, so offset pages neither skip nor repeat rows.
+				return query.order("id", { ascending: true }).range(from, to);
+			}, BODY_INTELLIGENCE_PAGE_SIZE);
+
+			return rows.map((row) => ({
 				...row,
 				setCount: Array.isArray(row.sets) ? row.sets.length : 0,
 			}));
 		},
 		enabled: !!userId,
-	});
-}
-
-/**
- * Fetches per-set weight data for a specific session.
- * Used by: SRA intensity calculation.
- */
-export function sessionSetWeightsOptions(sessionId: string) {
-	return queryOptions({
-		queryKey: queryKeys.analytics.sessionSetWeights(sessionId),
-		staleTime: 30 * 60 * 1000, // 30 minutes (session data doesn't change)
-		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("sets")
-				.select(
-					"id, exercise_id, weight_kg, actual_reps, exercises!inner(name, muscle_group, session_id)",
-				)
-				.eq("exercises.session_id", sessionId);
-
-			if (error) throw error;
-			return data ?? [];
-		},
-		enabled: !!sessionId,
 	});
 }

@@ -22,10 +22,6 @@
       "src/app/components/RoutineBuilder.tsx": {
         "TS2345": 1
       },
-      "src/app/components/SummaryReport.tsx": {
-        "TS2339": 1,
-        "TS2769": 1
-      },
       "src/app/components/TrainingCycles.tsx": {
         "TS2345": 1
       },
@@ -51,17 +47,8 @@
       "src/app/components/community/CommunityDetailDrawer.tsx": {
         "TS2322": 1
       },
-      "src/app/components/integrations/SyncStatus.tsx": {
-        "TS2538": 1
-      },
       "src/app/components/session-replay/ReplayPhaseAnalyticsPanel.tsx": {
         "TS2322": 1
-      },
-      "src/app/hooks/useButtonSuccess.ts": {
-        "TS2554": 1
-      },
-      "src/hooks/useNotificationSync.ts": {
-        "TS2345": 4
       },
       "src/lib/community-atlas.ts": {
         "TS2538": 1
@@ -90,10 +77,6 @@
       "src/app/components/RoutineBuilder.tsx": {
         "TS2345": 1
       },
-      "src/app/components/SummaryReport.tsx": {
-        "TS2339": 1,
-        "TS2769": 1
-      },
       "src/app/components/TrainingCycles.tsx": {
         "TS2345": 1
       },
@@ -119,20 +102,11 @@
       "src/app/components/community/CommunityDetailDrawer.tsx": {
         "TS2322": 1
       },
-      "src/app/components/integrations/SyncStatus.tsx": {
-        "TS2538": 1
-      },
       "src/app/components/session-replay/ReplayPhaseAnalyticsPanel.tsx": {
         "TS2322": 1
       },
-      "src/app/hooks/useButtonSuccess.ts": {
-        "TS2554": 1
-      },
       "src/hooks/__tests__/useRealtimeSync.test.tsx": {
         "TS2493": 1
-      },
-      "src/hooks/useNotificationSync.ts": {
-        "TS2345": 4
       },
       "src/lib/__tests__/node-localstorage-options.test.ts": {
         "TS7016": 1

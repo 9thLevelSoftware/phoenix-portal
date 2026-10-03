@@ -276,7 +276,7 @@ export function AppSidebar() {
 						to="/dashboard"
 						className="flex items-center gap-3 cursor-pointer"
 					>
-						<PhoenixLogo size="sm" animated={false} />
+						<PhoenixLogo />
 						<span className="text-base font-semibold text-primary group-data-[collapsible=icon]:hidden whitespace-nowrap">
 							Phoenix Portal
 						</span>

@@ -11,7 +11,6 @@ import { PageLoading } from "@/app/components/PageLoading";
 import { SkipToContent } from "@/app/components/SkipToContent";
 import { SidebarInset, SidebarProvider } from "@/app/components/ui/sidebar";
 import { WhatsNewBanner } from "@/app/components/WhatsNewBanner";
-import { useNotificationSync } from "@/hooks/useNotificationSync";
 import { useOnboarding } from "@/hooks/useOnboarding";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useStreakSync } from "@/hooks/useStreakSync";
@@ -35,7 +34,6 @@ import { pageTransition } from "@/lib/animations";
  */
 export function AppLayout() {
 	useRealtimeSync();
-	useNotificationSync();
 	useStreakSync();
 	const outlet = useOutlet();
 	const location = useLocation();

@@ -62,9 +62,14 @@ import {
 	useCreateGoal,
 	useUpdateGoal,
 } from "@/mutations/goals";
-import { goalPrBestsOptions, goalsOptions } from "@/queries/goals";
+import {
+	earliestGoalPeriodStart,
+	goalPeriodSessionsOptions,
+	goalPeriodStart,
+	goalPrBestsOptions,
+	goalsOptions,
+} from "@/queries/goals";
 import { personalRecordsOptions } from "@/queries/records";
-import { workoutListOptions } from "@/queries/workouts";
 import type { Goal } from "@/schemas/goals";
 import type { PersonalRecord } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
@@ -103,8 +108,9 @@ export function useGoalProgress(
 ): Map<string, number> {
 	const { user } = useAuth();
 	const { data: goals } = useQuery(goalsOptions(user?.id ?? ""));
+	const sessionWindowStart = earliestGoalPeriodStart(goals ?? [], new Date());
 	const { data: workouts } = useQuery(
-		workoutListOptions(user?.id ?? "", profileId),
+		goalPeriodSessionsOptions(user?.id ?? "", profileId, sessionWindowStart),
 	);
 	const { data: records } = useQuery(
 		goalPrBestsOptions(user?.id ?? "", profileId),
@@ -121,7 +127,7 @@ export function useGoalProgress(
 			let progress = 0;
 
 			if (goal.goal_type === "frequency" && workouts) {
-				const periodStart = getPeriodStart(now, goal.period);
+				const periodStart = goalPeriodStart(now, goal.period);
 				const workoutsInPeriod = workouts.filter(
 					(w) => w.started_at >= periodStart,
 				);
@@ -131,7 +137,7 @@ export function useGoalProgress(
 				);
 				progress = (distinctDays.size / goal.target_value) * 100;
 			} else if (goal.goal_type === "volume" && workouts) {
-				const periodStart = getPeriodStart(now, goal.period);
+				const periodStart = goalPeriodStart(now, goal.period);
 				const workoutsInPeriod = workouts.filter(
 					(w) => w.started_at >= periodStart,
 				);
@@ -150,21 +156,6 @@ export function useGoalProgress(
 
 		return map;
 	}, [goals, workouts, records]);
-}
-
-function getPeriodStart(now: Date, period: string): Date {
-	const start = new Date(now);
-	if (period === "monthly") {
-		start.setDate(1);
-		start.setHours(0, 0, 0, 0);
-	} else {
-		// weekly: start of current week (Monday)
-		const day = start.getDay();
-		const diff = day === 0 ? 6 : day - 1; // Monday = 0
-		start.setDate(start.getDate() - diff);
-		start.setHours(0, 0, 0, 0);
-	}
-	return start;
 }
 
 // ---------- Goal type labels ----------

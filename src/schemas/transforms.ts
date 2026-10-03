@@ -243,22 +243,6 @@ export const trainingCycleListSchema = z.array(trainingCycleSchema);
 
 export type TrainingCycle = z.infer<typeof trainingCycleSchema>;
 
-// --- Analytics Summary ---
-
-export const analyticsSummarySchema = z.object({
-	id: z.string().uuid(),
-	user_id: z.string().uuid(),
-	period: z.string(),
-	total_workouts: z.number(),
-	total_volume: z.number(), // Volume in kg, per cable as stored (KD-8).
-	total_duration: z.number(),
-	avg_session_duration: z.number(),
-	streak_days: z.number(),
-	computed_at: z.coerce.date(),
-});
-
-export type AnalyticsSummary = z.infer<typeof analyticsSummarySchema>;
-
 // --- Routine Exercise ---
 
 export const routineExerciseSchema = z.object({
@@ -569,43 +553,6 @@ export function readCycleProgressionSettings(
 	return out;
 }
 
-// --- Challenge ---
-
-export const challengeSchema = z.object({
-	id: z.string().uuid(),
-	name: z.string(),
-	description: z.string().nullable(),
-	challenge_type: z.enum(["volume", "frequency", "streak", "pr_count"]),
-	target_value: z.number(),
-	target_unit: z.string().nullable(),
-	start_date: nullableDate,
-	end_date: nullableDate,
-	difficulty: z.string(),
-	prize: z.string().nullable(),
-	created_at: z.coerce.date(),
-	is_active: z.boolean(),
-});
-
-export const challengeListSchema = z.array(challengeSchema);
-
-export type Challenge = z.infer<typeof challengeSchema>;
-
-// --- Challenge Participant ---
-
-export const challengeParticipantSchema = z.object({
-	id: z.string().uuid(),
-	challenge_id: z.string().uuid(),
-	user_id: z.string().uuid(),
-	joined_at: z.coerce.date(),
-	completed_at: nullableDate,
-});
-
-export const challengeParticipantListSchema = z.array(
-	challengeParticipantSchema,
-);
-
-export type ChallengeParticipant = z.infer<typeof challengeParticipantSchema>;
-
 // --- Body Intelligence ---
 
 export const bodyIntelligenceRowSchema = z.object({
@@ -630,8 +577,6 @@ export const bodyIntelligenceRowSchema = z.object({
 		user_id: z.string().uuid(),
 	}),
 });
-
-export const bodyIntelligenceSchema = z.array(bodyIntelligenceRowSchema);
 
 // --- Exercise Catalog ---
 
@@ -665,7 +610,3 @@ export const catalogExerciseSchema = z.object({
 export const catalogExerciseListSchema = z.array(catalogExerciseSchema);
 
 export type CatalogExercise = z.infer<typeof catalogExerciseSchema>;
-
-export function getExerciseDisplayName(exercise: CatalogExercise): string {
-	return exercise.display_name;
-}

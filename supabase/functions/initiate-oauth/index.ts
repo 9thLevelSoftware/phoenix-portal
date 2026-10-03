@@ -28,11 +28,11 @@ export const LAUNCHED_OAUTH_PROVIDERS = ['strava'] as const;
 
 /**
  * Providers whose UI card says "coming soon" because their developer-program
- * application is still pending. The handlers exist, but minting a state token
- * for them would send the user to a consent screen that cannot succeed — and,
- * for Fitbit, would leave a live `fitbit` state row that the (still
- * `verify_jwt = false`) `fitbit-oauth` callback would honour. Refusing here is
- * what takes that path out of service.
+ * application is still pending. Minting a state token for them would send the
+ * user to a consent screen that cannot succeed. `fitbit-oauth` does not honour
+ * `state`: that callback, like `garmin-oauth`, returns 410 Gone for every
+ * request. Refusing to mint state here is what keeps those providers out of
+ * service.
  *
  * `complete-oauth` still lists `fitbit` in `COMPLETABLE_PROVIDERS` (and the
  * client in `COMPLETABLE_OAUTH_PROVIDERS`) on purpose: those stay in step with

@@ -711,7 +711,7 @@ export function LandingPage() {
 			>
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16 relative">
 					<div className="flex items-center gap-2">
-						<PhoenixLogo size="sm" animated={false} />
+						<PhoenixLogo />
 						<span className="text-lg font-semibold text-primary">
 							Phoenix Portal
 						</span>
@@ -1122,7 +1122,7 @@ export function LandingPage() {
 					<div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
 						<div>
 							<div className="flex items-center gap-2 mb-4">
-								<PhoenixLogo size="sm" animated={false} />
+								<PhoenixLogo />
 								<span className="text-xl text-primary">Phoenix Portal</span>
 							</div>
 							<p className="text-muted-foreground text-sm">
