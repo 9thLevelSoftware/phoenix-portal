@@ -1138,8 +1138,8 @@ executable scripts, `public/_headers`, and `dist/` for Supabase project refs
 on a denylist. `DEFAULT_STALE_REFS` in
 `scripts/assert-live-supabase-config.mjs` is `[]`. The denylist stays empty
 unless `STALE_SUPABASE_REFS` is set to a comma-separated list of
-20-character refs. CI does not set `STALE_SUPABASE_REFS`, so a normal
-production build does not refuse any project ref.
+20-character refs. Neither CI nor `wrangler.toml` sets `STALE_SUPABASE_REFS`;
+while it is unset, the guard refuses no project ref.
 
 ```bash
 npm run assert:supabase-config
