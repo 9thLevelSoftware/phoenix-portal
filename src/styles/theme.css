@@ -844,8 +844,7 @@
   [data-print-hide],
   .print\:hidden,
   button:not([data-print-show]),
-  .toaster,
-  .sonner-toast {
+  .toaster {
     display: none !important;
   }
 
