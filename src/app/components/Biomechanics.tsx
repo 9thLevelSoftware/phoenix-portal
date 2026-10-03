@@ -9,18 +9,13 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
-import { ConsistencyCalendar } from "@/app/components/ConsistencyCalendar";
 import { AsymmetryGauge } from "@/app/components/charts/AsymmetryGauge";
 import { ForceCurve } from "@/app/components/charts/ForceCurve";
 import { PowerOutput } from "@/app/components/charts/PowerOutput";
 import { RomTrend } from "@/app/components/charts/RomTrend";
 import { VelocityProfile } from "@/app/components/charts/VelocityProfile";
-import { ExerciseProgress } from "@/app/components/ExerciseProgress";
 import { FormAnalysis } from "@/app/components/FormAnalysis";
 import { MuscleHeatmap } from "@/app/components/MuscleHeatmap";
-import { PageShell } from "@/app/components/PageShell";
-import { SubscriptionGate } from "@/app/components/SubscriptionGate";
-import { SummaryReport } from "@/app/components/SummaryReport";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Label } from "@/app/components/ui/label";
@@ -39,7 +34,6 @@ import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { fadeUp } from "@/lib/animations";
 import { PHOENIX } from "@/lib/colors";
 import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
-import { FEATURE_MIN_TIER } from "@/lib/tierMatrix";
 import { repSummariesOptions, repTelemetryOptions } from "@/queries/telemetry";
 import { sessionDetailOptions, workoutListOptions } from "@/queries/workouts";
 
@@ -118,7 +112,6 @@ export function BiomechanicsContent({
 	const unit = usePreferredWeightUnit();
 	const showBiomechanics = view === "all" || view === "biomechanics";
 	const showPerformance = view === "all" || view === "performance";
-	const showExpandedSections = view === "all";
 
 	// ---- Session/exercise selectors ----
 	const [selectedSessionId, setSelectedSessionId] = useState<string>("");
@@ -233,12 +226,6 @@ export function BiomechanicsContent({
 		}
 		return volumes;
 	}, [exercises]);
-
-	// Workout dates for consistency calendar
-	const workoutDates = useMemo(
-		() => (workouts ?? []).map((w) => new Date(w.started_at)),
-		[workouts],
-	);
 
 	// Asymmetry session average
 	const avgAsymmetry = useMemo(() => {
@@ -560,57 +547,8 @@ export function BiomechanicsContent({
 							</Section>
 						</>
 					)}
-
-					{showExpandedSections && (
-						<>
-							<Section
-								title="Exercise Progress"
-								icon={Activity}
-								className="col-span-full"
-							>
-								<ExerciseProgress
-									userId={userId}
-									initialExercise={selectedExercise?.name}
-								/>
-							</Section>
-
-							<Section
-								title="Summary Report"
-								icon={Activity}
-								className="col-span-full"
-							>
-								<SummaryReport userId={userId} unit={unit} />
-							</Section>
-
-							<Section
-								title="Workout Consistency"
-								icon={Activity}
-								className="col-span-full"
-							>
-								<ConsistencyCalendar workoutDates={workoutDates} />
-							</Section>
-						</>
-					)}
 				</>
 			)}
 		</div>
-	);
-}
-
-// -- Exported page component with subscription gate --
-export function Biomechanics() {
-	return (
-		<PageShell className="min-h-screen">
-			<div className="mb-8">
-				<h1 className="text-display-2 text-foreground">Biomechanics</h1>
-				<p className="text-muted-foreground mt-1">
-					Advanced training analytics
-				</p>
-			</div>
-
-			<SubscriptionGate requiredTier={FEATURE_MIN_TIER.biomechanics}>
-				<BiomechanicsContent />
-			</SubscriptionGate>
-		</PageShell>
 	);
 }
