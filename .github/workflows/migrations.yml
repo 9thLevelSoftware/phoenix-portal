@@ -161,8 +161,12 @@ jobs:
       # Full pgTAP suite (every file in supabase/tests/database/): definer
       # grant guard, dashboard capture, cross-user RLS isolation, trust plane,
       # profile preferences. Locally: `npm run test:db`.
+      # The log is captured so the test-count floor step can read Tests=
+      # without running the suite again.
       - name: pgTAP suite
-        run: supabase test db
+        run: |
+          set -euo pipefail
+          supabase test db 2>&1 | tee "${RUNNER_TEMP}/pgtap-suite.log"
 
       # Test-count floor (PR 25 review R-21). `supabase test db` only checks
       # the exit code. The suite is every *.test.sql under
@@ -181,7 +185,8 @@ jobs:
           PGTAP_TEST_FLOOR: "2058"
         run: |
           set -euo pipefail
-          summary="$(supabase test db 2>&1 | tee /dev/stderr | grep -oE 'Tests=[0-9]+' | tail -1 || true)"
+          log="${RUNNER_TEMP}/pgtap-suite.log"
+          summary="$(grep -oE 'Tests=[0-9]+' "$log" | tail -1 || true)"
           if [ -z "$summary" ]; then
             echo "::error::Could not parse the pg_prove 'Tests=<n>' summary. The CLI output shape changed — fix this step rather than removing it."
             exit 1
