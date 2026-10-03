@@ -234,11 +234,4 @@ export const queryKeys = {
 		byUser: (userId: string) =>
 			[...queryKeys.localProfiles.all, userId] as const,
 	},
-	notifications: {
-		all: ["notifications"] as const,
-		challenges: (userId: string) =>
-			["notifications", "challenges", userId] as const,
-		community: (userId: string) =>
-			["notifications", "community", userId] as const,
-	},
 } as const;

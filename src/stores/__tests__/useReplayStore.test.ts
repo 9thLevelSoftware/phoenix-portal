@@ -10,7 +10,6 @@ describe("useReplayStore", () => {
 			viewMode: "set",
 			currentSetIndex: 0,
 			activeChart: "force",
-			currentRepIndex: 0,
 		});
 	});
 
@@ -22,7 +21,6 @@ describe("useReplayStore", () => {
 		expect(state.viewMode).toBe("set");
 		expect(state.currentSetIndex).toBe(0);
 		expect(state.activeChart).toBe("force");
-		expect(state.currentRepIndex).toBe(0);
 	});
 
 	it("play() sets isPlaying to true", () => {
@@ -83,11 +81,6 @@ describe("useReplayStore", () => {
 		expect(useReplayStore.getState().activeChart).toBe("velocity");
 	});
 
-	it("setCurrentRepIndex() updates currentRepIndex", () => {
-		useReplayStore.getState().setCurrentRepIndex(5);
-		expect(useReplayStore.getState().currentRepIndex).toBe(5);
-	});
-
 	it("reset() restores the full initial state (including currentSetIndex)", () => {
 		useReplayStore.setState({
 			isPlaying: true,
@@ -96,14 +89,12 @@ describe("useReplayStore", () => {
 			viewMode: "session",
 			currentSetIndex: 3,
 			activeChart: "velocity",
-			currentRepIndex: 7,
 		});
 
 		useReplayStore.getState().reset();
 		const state = useReplayStore.getState();
 		expect(state.isPlaying).toBe(false);
 		expect(state.currentTimeMs).toBe(0);
-		expect(state.currentRepIndex).toBe(0);
 		// Full reset: session/playback fields all return to their initial values so
 		// a shorter follow-up session starts at set 0.
 		expect(state.speed).toBe(1);
@@ -117,12 +108,5 @@ describe("useReplayStore", () => {
 		expect(useReplayStore.getState().currentTimeMs).toBe(0);
 		useReplayStore.getState().seek(Number.NaN);
 		expect(useReplayStore.getState().currentTimeMs).toBe(0);
-	});
-
-	it("setCurrentRepIndex() normalizes to a non-negative integer", () => {
-		useReplayStore.getState().setCurrentRepIndex(-3);
-		expect(useReplayStore.getState().currentRepIndex).toBe(0);
-		useReplayStore.getState().setCurrentRepIndex(2.9);
-		expect(useReplayStore.getState().currentRepIndex).toBe(2);
 	});
 });

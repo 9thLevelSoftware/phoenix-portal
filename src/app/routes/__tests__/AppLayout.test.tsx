@@ -49,10 +49,6 @@ vi.mock("@/hooks/useRealtimeSync", () => ({
 	useRealtimeSync: vi.fn(),
 }));
 
-vi.mock("@/hooks/useNotificationSync", () => ({
-	useNotificationSync: vi.fn(),
-}));
-
 vi.mock("@/hooks/useStreakSync", () => ({
 	useStreakSync: vi.fn(),
 }));

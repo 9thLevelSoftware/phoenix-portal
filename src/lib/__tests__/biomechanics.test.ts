@@ -4,7 +4,6 @@ import {
 	ASYMMETRY_THRESHOLD,
 	calculateAsymmetry,
 	calculatePower,
-	calculateRom,
 	estimateOneRepMax,
 } from "../biomechanics";
 import {
@@ -132,31 +131,5 @@ describe("calculatePower", () => {
 	it("rounds to nearest integer", () => {
 		// 333 * 0.7 = 233.1 -> 233
 		expect(calculatePower(333, 0.7)).toBe(233);
-	});
-});
-
-describe("calculateRom", () => {
-	it("returns 0 for empty array", () => {
-		expect(calculateRom([])).toBe(0);
-	});
-
-	it("returns 0 for single position", () => {
-		expect(calculateRom([150])).toBe(0);
-	});
-
-	it("returns max - min for multiple positions", () => {
-		expect(calculateRom([100, 200, 300])).toBe(200);
-	});
-
-	it("handles negative positions", () => {
-		expect(calculateRom([-50, 0, 50])).toBe(100);
-	});
-
-	it("handles unordered positions", () => {
-		expect(calculateRom([300, 100, 200, 400, 150])).toBe(300);
-	});
-
-	it("rounds to nearest integer", () => {
-		expect(calculateRom([0.1, 0.9])).toBe(1);
 	});
 });

@@ -60,11 +60,7 @@ export function SubscriptionGate({
 	return (
 		<>
 			{fallback ?? (
-				<UpgradePrompt
-					requiredTier={requiredTier}
-					currentTier={tier}
-					featureName={featureName}
-				/>
+				<UpgradePrompt requiredTier={requiredTier} featureName={featureName} />
 			)}
 		</>
 	);

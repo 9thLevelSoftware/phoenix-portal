@@ -10,7 +10,7 @@
  * Row/Insert/Update helpers (Tables<>, Json, ...) stay in database.types.ts;
  * import `Database` from this module when typing a Supabase client.
  */
-import type { Database as GeneratedDatabase, Json } from "./database.types";
+import type { Database as GeneratedDatabase } from "./database.types";
 
 type GeneratedPublic = GeneratedDatabase["public"];
 type GeneratedFunctions = GeneratedPublic["Functions"];
@@ -104,5 +104,3 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
 			FunctionOverrides;
 	};
 };
-
-export type { Json };

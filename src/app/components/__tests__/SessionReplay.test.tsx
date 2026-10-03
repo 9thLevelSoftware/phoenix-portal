@@ -142,7 +142,6 @@ vi.mock("@/app/components/UpgradePrompt", () => ({
 		requiredTier,
 	}: {
 		requiredTier: string;
-		currentTier: string;
 		featureName?: string;
 	}) => <div data-testid="upgrade-prompt">{requiredTier}</div>,
 }));

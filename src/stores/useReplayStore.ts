@@ -11,7 +11,6 @@ interface ReplayState {
 	viewMode: ViewMode;
 	currentSetIndex: number;
 	activeChart: ActiveChart;
-	currentRepIndex: number;
 	play: () => void;
 	pause: () => void;
 	togglePlayPause: () => void;
@@ -21,7 +20,6 @@ interface ReplayState {
 	nextSet: () => void;
 	prevSet: () => void;
 	setActiveChart: (chart: ActiveChart) => void;
-	setCurrentRepIndex: (index: number) => void;
 	reset: () => void;
 }
 
@@ -32,7 +30,6 @@ const initialState = {
 	viewMode: "set" as ViewMode,
 	currentSetIndex: 0,
 	activeChart: "force" as ActiveChart,
-	currentRepIndex: 0,
 };
 
 export const useReplayStore = create<ReplayState>()((set) => ({
@@ -53,12 +50,6 @@ export const useReplayStore = create<ReplayState>()((set) => ({
 			currentSetIndex: Math.max(0, state.currentSetIndex - 1),
 		})),
 	setActiveChart: (activeChart) => set({ activeChart }),
-	setCurrentRepIndex: (currentRepIndex) =>
-		set({
-			currentRepIndex: Number.isFinite(currentRepIndex)
-				? Math.max(0, Math.floor(currentRepIndex))
-				: 0,
-		}),
 	// Full reset (used on session/page mount). Restores currentSetIndex to 0 so
 	// navigating from a high set index to a shorter session starts at set 1.
 	reset: () => set({ ...initialState }),
