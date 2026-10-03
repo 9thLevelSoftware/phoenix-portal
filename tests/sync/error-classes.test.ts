@@ -58,28 +58,18 @@ describe("Sync wire-level error class signals", () => {
 
 		it("mock server-error mode returns status 500 (transient wire signal)", async () => {
 			setMockErrorMode("server");
-			// The mock's `checkMockError` returns a 500 at every call (see
-			// mock-edge-functions.ts lines 364-372). Even though the default
-			// mockPushEndpoint path doesn't invoke checkMockError, we can still
-			// assert the flag round-trips via a pull to exercise shape.
-			//
-			// NOTE: setMockErrorMode only affects functions that call
-			// checkMockError. Neither mockPushEndpoint nor mockPullEndpoint
-			// invoke it directly today — this is an observable gap. Flag for
-			// follow-up so the mock stays useful for classifier testing.
-			//
-			// Regression marker until the mock wires in checkMockError at the
-			// top of push/pull: expect a successful call (current behavior),
-			// not the injected 500. When the wiring lands, flip these
-			// expectations.
-			const result = await callPushEndpoint(
+			const push = await callPushEndpoint(
 				createMinimalPushPayload(testUser.id),
 				testUser.accessToken,
 			);
-			// Current mock behavior: succeeds despite setMockErrorMode('server')
-			// TODO(mock): wire checkMockError into mockPushEndpoint, then flip
-			// this to expect result.status === 500.
-			expect(result.status).toBe(200);
+			expect(push.success).toBe(false);
+			expect(push.status).toBe(500);
+			expect(push.error?.code).toBe("SERVER_ERROR");
+
+			const pull = await callPullEndpoint(0, testUser.accessToken);
+			expect(pull.success).toBe(false);
+			expect(pull.status).toBe(500);
+			expect(pull.error?.code).toBe("SERVER_ERROR");
 		});
 	});
 
@@ -114,6 +104,24 @@ describe("Sync wire-level error class signals", () => {
 			expect(result.status).toBe(401);
 			expect(result.error?.code).toBe("UNAUTHORIZED");
 		});
+
+		it("mock auth-error mode returns 401 with a bearer token present", async () => {
+			setMockErrorMode("auth");
+			const push = await callPushEndpoint(
+				createMinimalPushPayload(testUser.id),
+				testUser.accessToken,
+			);
+			expect(push.success).toBe(false);
+			expect(push.status).toBe(401);
+			expect(push.error?.code).toBe("UNAUTHORIZED");
+			expect(push.error?.message).toBe("Invalid token");
+
+			const pull = await callPullEndpoint(0, testUser.accessToken);
+			expect(pull.success).toBe(false);
+			expect(pull.status).toBe(401);
+			expect(pull.error?.code).toBe("UNAUTHORIZED");
+			expect(pull.error?.message).toBe("Invalid token");
+		});
 	});
 
 	describe("NETWORK (fetch throw / abort)", () => {
@@ -131,13 +139,19 @@ describe("Sync wire-level error class signals", () => {
 		});
 
 		it("mock network-error mode exposes NETWORK_ERROR code on affected paths", async () => {
-			// Mirrors the TRANSIENT mock-wiring gap above. setMockErrorMode is
-			// honoured only by functions that call checkMockError. We assert the
-			// setter doesn't throw and document the gap so classifier-dependent
-			// tests don't silently pass.
 			setMockErrorMode("network");
-			expect(() => setMockErrorMode("network")).not.toThrow();
-			setMockErrorMode("none");
+			const push = await callPushEndpoint(
+				createMinimalPushPayload(testUser.id),
+				testUser.accessToken,
+			);
+			expect(push.success).toBe(false);
+			expect(push.status).toBe(0);
+			expect(push.error?.code).toBe("NETWORK_ERROR");
+
+			const pull = await callPullEndpoint(0, testUser.accessToken);
+			expect(pull.success).toBe(false);
+			expect(pull.status).toBe(0);
+			expect(pull.error?.code).toBe("NETWORK_ERROR");
 		});
 	});
 });

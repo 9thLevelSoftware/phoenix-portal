@@ -3,7 +3,6 @@ export const queryKeys = {
 		all: ["exercises"] as const,
 		catalog: (filters?: { muscleGroup?: string; search?: string }) =>
 			[...queryKeys.exercises.all, "catalog", filters] as const,
-		byId: (id: string) => [...queryKeys.exercises.all, "detail", id] as const,
 	},
 	workouts: {
 		all: ["workouts"] as const,
@@ -55,8 +54,6 @@ export const queryKeys = {
 				String(days),
 				profileId ?? "all",
 			] as const,
-		sessionSetWeights: (sessionId: string) =>
-			[...queryKeys.analytics.all, "session-set-weights", sessionId] as const,
 		phaseStats: (userId: string, period: string, profileId?: string | null) =>
 			[
 				...queryKeys.analytics.all,
@@ -94,10 +91,6 @@ export const queryKeys = {
 	},
 	biomechanics: {
 		all: ["biomechanics"] as const,
-		asymmetry: (sessionId: string) =>
-			[...queryKeys.biomechanics.all, "asymmetry", sessionId] as const,
-		rom: (exerciseId: string) =>
-			[...queryKeys.biomechanics.all, "rom", exerciseId] as const,
 	},
 	progress: {
 		all: ["progress"] as const,
@@ -168,8 +161,6 @@ export const queryKeys = {
 		},
 		blocks: (userId: string) =>
 			[...queryKeys.community.all, "blocks", userId] as const,
-		reports: (userId: string) =>
-			[...queryKeys.community.all, "reports", userId] as const,
 		saves: (userId: string) =>
 			[...queryKeys.community.all, "saves", userId] as const,
 		votes: (userId: string) =>
@@ -189,8 +180,6 @@ export const queryKeys = {
 	goals: {
 		all: ["goals"] as const,
 		byUser: (userId: string) => [...queryKeys.goals.all, userId] as const,
-		progress: (userId: string) =>
-			[...queryKeys.goals.all, "progress", userId] as const,
 	},
 	recovery: {
 		all: ["recovery"] as const,
@@ -224,8 +213,6 @@ export const queryKeys = {
 	},
 	benchmarks: {
 		all: ["benchmarks"] as const,
-		distribution: (metricType: string, metricKey?: string) =>
-			[...queryKeys.benchmarks.all, metricType, metricKey] as const,
 	},
 	leaderboard: {
 		all: ["leaderboard"] as const,

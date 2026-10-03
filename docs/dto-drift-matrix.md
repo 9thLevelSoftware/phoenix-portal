@@ -1,5 +1,12 @@
 # DTO Drift Matrix — Portal ⇄ Mobile
 
+> **HISTORICAL (marked 2026-10-03).** This is the 2026-04-19 DTO audit. It
+> describes the push before tombstones, the two-clock LWW model and
+> `merge_training_cycles_from_push`. It is not the current contract: read
+> `supabase/functions/mobile-sync-push/index.ts`,
+> `supabase/functions/mobile-sync-pull/index.ts` and the "mobile sync contract"
+> section of `CLAUDE.md` instead. The 2026-04-19 body below is left as written.
+
 **Generated:** 2026-04-19  
 **Status:** COMPREHENSIVE AUDIT  
 **Coverage:** 18 push DTOs, 8 pull DTOs, invariants, conflict-resolution semantics
