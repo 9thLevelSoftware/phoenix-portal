@@ -84,8 +84,8 @@ Edge Function secrets (Supabase Dashboard → Edge Functions → Secrets; read w
 `Deno.env.get`, never `VITE_`):
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ENVIRONMENT`
 - `SUPABASE_PUBLIC_URL` — the externally reachable functions origin. `initiate-oauth`, `complete-oauth` and `strava-oauth` build their redirect URI from it and fall back to `SUPABASE_URL`; `_shared/oauthTokenCrypto.ts` also mixes it into key derivation. (`fitbit-oauth` and `garmin-oauth` are disabled and read no env; see Edge Functions.)
-- `APP_URL` — the portal origin the OAuth callbacks redirect back to (`${APP_URL}/integrations?…`, default `http://localhost:5173`) and one of the allowed CORS origins in `_shared/cors.ts`. There is no `PORTAL_URL`.
-- `PADDLE_API_KEY` (server API calls from `delete-account` and the three `paddle-*-subscription` functions), `PADDLE_WEBHOOK_SECRET`, `PADDLE_CUSTOM_DATA_SECRET`, `PADDLE_ENVIRONMENT`, `PADDLE_EMBER_PRICE_IDS` / `PADDLE_FLAME_PRICE_IDS` / `PADDLE_INFERNO_PRICE_IDS`
+- `APP_URL` — the portal origin the OAuth callbacks redirect back to (success is `${APP_URL}/integrations/callback`, failure is `${APP_URL}/integrations?error=`; default `http://localhost:5173`) and one of the allowed CORS origins in `_shared/cors.ts`. There is no `PORTAL_URL`.
+- `PADDLE_API_KEY` (server API calls from `paddle-webhooks`, `delete-account`, and the three `paddle-*-subscription` functions), `PADDLE_WEBHOOK_SECRET`, `PADDLE_CUSTOM_DATA_SECRET`, `PADDLE_ENVIRONMENT`, `PADDLE_EMBER_PRICE_IDS` / `PADDLE_FLAME_PRICE_IDS` / `PADDLE_INFERNO_PRICE_IDS`
 - `CRON_SECRET` — the shared secret for pg_cron-invoked functions, compared in constant time against the `x-cron-secret` header by `_shared/cronSecret.ts`. `process-sync-queue` still accepts the legacy names `PROCESS_SYNC_QUEUE_SECRET` and `CRON_SYNC_QUEUE_SECRET`, but only when `CRON_SECRET` is unset; nothing else does. The DB half is the Vault secret `edge_cron_secret` used by `private.invoke_edge_function` (KD-10).
 - `SYNC_LWW_ENABLED` — cold-start flag in `supabase/functions/_shared/flags.ts`, `"false"` unless the secret is exactly `true`. Flipping it requires a redeploy; there is no runtime refresh. Its production value is not recorded in this repo — ask the operator rather than assuming.
 - `SYNC_PUSH_TRANSACTION` — cold-start flag in the same file, `"false"` unless exactly `true`. When on, `mobile-sync-push` runs its whole write sequence in one Postgres transaction (F-014, `_shared/pushTransaction.ts`): a failure part-way commits nothing, and the `sync_complete` broadcast happens only after COMMIT. It connects with `SUPABASE_DB_URL` (provided by Supabase to Edge Functions); if that connection cannot be opened the push falls back to per-call writes and logs `PushTransactionUnavailable`. The response contract is identical either way.
@@ -133,9 +133,8 @@ src/
 │   │   ├── [Feature]Mobile.tsx    # Mobile variants
 │   │   ├── ui/                    # shadcn/ui primitives
 │   │   ├── analytics/ charts/ community/ integrations/ landing/
-│   │   ├── modals/ profile/ figma/
+│   │   ├── modals/ profile/
 │   │   ├── routine-builder/       # Routine creation subcomponents
-│   │   ├── cycle-builder/         # Training cycle subcomponents
 │   │   ├── session-replay/        # Session replay components
 │   │   └── __tests__/             # Component unit tests
 │   ├── routes/                    # index.tsx, AppLayout, ProtectedRoute, SubscribedRoute
@@ -265,17 +264,14 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
     transaction, so a partial child write cannot lose data.
 - A `user_id` transition on `workout_sessions` / `routines` / `training_cycles`
   raises 42501 from a DB trigger (`20260920002102`), whichever path writes it.
-- Deletes are explicit: `deletedRoutineIds` / `deletedCycleIds` are tombstoned,
-  and a push that tries to re-create a tombstoned id gets it back under
-  `skippedDeleted` instead of resurrecting the row.
+- Deletes are explicit: `deletedRoutineIds` are tombstoned, and a push that
+  tries to re-create a tombstoned id gets it back under `skippedDeleted`
+  instead of resurrecting the row. Cycle resurrection is stopped by clocked
+  `deletedCycles` together with the tombstone gate
+  (`apply_sync_tombstone_gate`). Legacy `deletedCycleIds` do not tombstone.
 - Broadcasts `sync_complete` on the private channel `sync:{userId}`.
 
 **mobile-sync-pull** (`supabase/functions/mobile-sync-pull/index.ts`):
-- Parity sync: sessions, routines, cycles, badges and PRs always go through the `*_excluding_ids` RPCs (rows not in `knownEntityIds`; sessions/routines/cycles also re-send known rows changed since `lastSync - 2 min`; empty known ids = whole profile; `lastSync: 0` = everything). Other `lastSync` filters also use `lastSync - 2 min`
-- Cursor-based pagination with 75 entities per page (max 300)
-- Entity order: sessions -> routines -> cycles -> badges -> stats
-- Uses composite cursor (updated_at, id) for stable ordering across pages
-- Child entities fetched based on parent presence, not their own timestamps
 - **Parity only — the legacy timestamp-mode pull is gone.** Sessions, routines,
   cycles, badges and PRs always go through the `*_excluding_ids` RPCs: rows not
   in `knownEntityIds`, plus (for sessions/routines/cycles) known rows changed
@@ -286,9 +282,12 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
   activities, custom exercises) subtracts `STALE_OVERLAP_MS` = 2 minutes, so a
   write that committed after the previous `syncTime` is re-delivered. Mobile
   merges duplicates idempotently.
-- Cursor pagination, 75 entities per page (max 300), composite cursor
-  `(updated_at, id)`. `ENTITY_ORDER` is
-  `sessions → routines → cycles → badges → stats → personalRecords → customExercises`.
+- Cursor pagination, 75 entities per page (max 300). Sessions, routines,
+  cycles, personal records and custom exercises use `(updated_at, id)`;
+  badges use `(earned_at, id)` and external activities use `(synced_at, id)`.
+  Workout deletions page on `(recorded_at, mutation_id)` and ownership
+  events on `(transferred_at, mutation_id)`. `ENTITY_ORDER` is
+  `sessions → routines → cycles → workoutDeletions → ownershipEvents → badges → stats → externalActivities → personalRecords → customExercises`.
 - Deletes come back in two different shapes, so do not generalise:
   - routines and cycles are hard-deleted and reported as id lists
     (`deletedRoutineIds` / `deletedCycleIds`) on the **first page only**
@@ -485,9 +484,9 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
   anon/authenticated outside the allow-list in
   `20260920000100_lockdown_definer_function_grants.sql`.
   **Detector only — it gates nothing;** `deploy-edge-functions.yml` runs its own
-  copy of the migration check as the actual gate. The drift class it surfaces is
-  the one demonstrated by `9thLevelSoftware/Project-Phoenix-MP#602`; pushing the
-  missing migration and verifying the reporter path stay operator work.
+  copy of the migration check as the actual gate. When the run reports drift,
+  applying the missing migration and verifying the affected client path stay
+  operator work.
   Required `production` environment secrets (shared with the deploy workflow):
   `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROD_PROJECT_REF`,
   `SUPABASE_PROD_DB_PASSWORD`. Protect that environment with main-only branch

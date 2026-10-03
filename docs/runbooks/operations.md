@@ -1092,7 +1092,7 @@ SUPABASE_AUTH_ADDITIONAL_REDIRECT_URLS=https://preview.example.com/auth/callback
 The repo now provides an env-driven command that:
 
 1. Generates the Google/Apple auth block in a temporary `supabase/config.toml`
-2. Runs `supabase config push` against the linked hosted project
+2. Runs `supabase config push --project-ref <project-ref>` against the hosted project
 3. Verifies the public auth settings endpoint afterward
 
 ```bash
@@ -1111,8 +1111,9 @@ npm run auth:social:check
 The helper command prints the exact values again, but the critical ones are:
 
 - Supabase OAuth callback URL: `https://<project-ref>.supabase.co/auth/v1/callback`
-- Portal redirect URL allow-list entries: `http://localhost:5173/auth/callback`
-  and your production `/auth/callback`
+- Portal redirect URL allow-list entries: `http://localhost:5173/auth/callback`,
+  `http://localhost:5173/auth/reset-password`, and those same paths on the
+  production site URL
 - Google web app:
   - Authorized JavaScript origins: `http://localhost:5173` and your portal
     origin
@@ -1133,19 +1134,31 @@ npm run auth:social:push
 
 ### Stale Supabase project ref guard (issue #68)
 
-The build refuses to ship a known-dead Supabase project ref (currently
-`ilzlswmatadlnsuxatcv`) in executable scripts, `public/_headers`, or
-`dist/`. The check is wired into `npm run verify` as
-`assert:supabase-config` and can also be run standalone:
+`npm run assert:supabase-config` (also run by `npm run verify`) scans
+executable scripts, `public/_headers`, and `dist/` for Supabase project refs
+on a denylist. `DEFAULT_STALE_REFS` in
+`scripts/assert-live-supabase-config.mjs` is `[]`. The denylist stays empty
+unless `STALE_SUPABASE_REFS` is set to a comma-separated list of
+20-character refs. Neither CI nor `wrangler.toml` sets `STALE_SUPABASE_REFS`;
+while it is unset, the guard refuses no project ref.
 
 ```bash
 npm run assert:supabase-config
 ```
 
-If the guard fails on a ref you believe is live, override the denylist via
-`STALE_SUPABASE_REFS` (comma-separated) and re-run, or replace the
-hardcoded ref with the env-neutral `https://*.supabase.co` CSP pattern
-(see `public/_headers`).
+`ilzlswmatadlnsuxatcv` is the live production project. Preview and cleanup
+tools refuse to target it: `scripts/resolve-sync-preview.mjs` and
+`scripts/cleanup-sync-preview-users.mjs` reject the hosts
+`ilzlswmatadlnsuxatcv.supabase.co`, `ilzlswmatadlnsuxatcv.supabase.in`, and
+`api.phoenix-portal.com`. Leave that ref off `DEFAULT_STALE_REFS` and off
+`STALE_SUPABASE_REFS` for any build that ships the portal. The production
+bundle contains `VITE_SUPABASE_URL` for that host, and listing the ref
+would fail the guard.
+
+When `STALE_SUPABASE_REFS` is set and the guard fails on a ref that should
+ship, remove it from the variable and re-run, or replace a hardcoded
+hostname with the env-neutral `https://*.supabase.co` CSP pattern (see
+`public/_headers`).
 
 The committed `src/lib/database.types.ts` is generated from the migrated
 local schema (`npm run gen:types:local`) and CI (`gen:types:check` in
@@ -1158,8 +1171,8 @@ and run:
 npm run gen:types
 ```
 
-The script will refuse to run with a hardcoded fallback, so the build
-never accidentally targets a deleted project.
+The script has no hardcoded project-ref fallback. It refuses to run unless
+`SUPABASE_PROJECT_REF` is set. That value may be the production ref above.
 
 ---
 
@@ -1503,10 +1516,10 @@ webhook and price mapping expect the other, and a paying customer lands on no
 tier at all.
 **The trap, stated plainly:**
 - The client treats only the exact string `sandbox` as sandbox
-  (`src/lib/paddle-client.ts:148-153`). Empty or unset means **production**.
+  (`initializePaddle` in `src/lib/paddle-client.ts`). Empty or unset means **production**.
 - Server functions default `PADDLE_ENVIRONMENT` to `"production"` when unset
-  (for example `paddle-cancel-subscription/index.ts:90`,
-  `delete-account/index.ts:16`).
+  (for example `paddle-cancel-subscription`, and `paddleBaseUrl` in
+  `_shared/accountPurge.ts`, which `delete-account` uses).
 So "I didn't set it" means production on both sides, and nothing warns you.
 ### The four groups
 Names only. Never record a value in this repo or in a ticket; a value that must
@@ -1522,7 +1535,7 @@ be shown in an example is written `[REDACTED]`.
 `PADDLE_<TIER>_ANNUAL_PRICE_ID`, so tier mapping works with either shape. The
 singles are separately required by
 `getConfiguredPriceIdForTierInterval`, whose only caller is
-`paddle-update-subscription/index.ts:116` -- **a plan change to a
+`paddle-update-subscription` -- **a plan change to a
 tier/interval whose single is unset fails there even though webhooks map that
 price correctly.** Set both shapes.
 **On `PADDLE_CUSTOM_DATA_SECRET`.** This one is **self-issued**, not obtained

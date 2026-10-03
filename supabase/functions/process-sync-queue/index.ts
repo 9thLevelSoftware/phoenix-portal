@@ -160,8 +160,9 @@ export function tasksPerProvider(provider: string): number {
   return Math.max(1, Math.min(MAX_TASKS_PER_PROVIDER, perPass));
 }
 
-// CRON_SECRET (Operator Action 7) is read first by the shared helper; these
-// older per-function names stay accepted as fallbacks.
+// CRON_SECRET is read first. These names are used only when CRON_SECRET is
+// unset. An exact service-role bearer is accepted separately
+// (isServiceRoleRequest / isServiceRoleBearer).
 const LEGACY_CRON_SECRET_NAMES = ['PROCESS_SYNC_QUEUE_SECRET', 'CRON_SYNC_QUEUE_SECRET'];
 
 export interface ProcessSyncQueueDependencies {

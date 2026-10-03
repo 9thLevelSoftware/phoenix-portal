@@ -2,7 +2,6 @@ import { supabase } from "@/lib/supabase";
 import {
 	type CatalogExercise,
 	catalogExerciseListSchema,
-	catalogExerciseSchema,
 } from "@/schemas/transforms";
 
 export interface ExerciseCatalogFilters {
@@ -103,18 +102,4 @@ export async function fetchExerciseCatalog(
 		if (page.length < CATALOG_PAGE_SIZE) break;
 	}
 	return catalogExerciseListSchema.parse(rows).map(withResolvedMedia);
-}
-
-export async function fetchExerciseById(
-	id: string,
-): Promise<CatalogExercise | null> {
-	const { data, error } = await supabase
-		.from("exercise_catalog")
-		.select("*")
-		.eq("id", id)
-		.maybeSingle();
-
-	if (error) throw error;
-	if (!data) return null;
-	return withResolvedMedia(catalogExerciseSchema.parse(data));
 }

@@ -154,12 +154,39 @@ describe("ProviderCard — comingSoon", () => {
 		).toBeDisabled();
 	});
 
-	it("still lets a lapsed connection be recovered", () => {
-		// A user who connected before the flag was raised must not be stranded.
-		renderCard(makeIntegration("token_expired"), { comingSoon: true });
+	it.each([
+		"fitbit",
+		"garmin",
+	] as const)("offers Disconnect instead of Reconnect when %s is coming soon and the grant has lapsed", async (provider) => {
+		const handlers = renderCard(
+			makeIntegration("token_expired", { provider }),
+			{ provider, comingSoon: true },
+		);
 
 		expect(
-			screen.getByRole("button", { name: /reconnect strava/i }),
+			screen.queryByRole("button", { name: /reconnect/i }),
+		).not.toBeInTheDocument();
+		expect(screen.queryByText(/reconnect/i)).not.toBeInTheDocument();
+		expect(screen.getByText("Authorization expired")).toBeInTheDocument();
+
+		await userEvent.click(screen.getByRole("button", { name: /disconnect/i }));
+
+		expect(handlers.onDisconnect).toHaveBeenCalledOnce();
+		expect(handlers.onConnect).not.toHaveBeenCalled();
+	});
+
+	it("offers Disconnect instead of Reconnect when a coming-soon provider is in error", () => {
+		renderCard(makeIntegration("error", { provider: "garmin" }), {
+			provider: "garmin",
+			comingSoon: true,
+		});
+
+		expect(
+			screen.getByRole("button", { name: /disconnect/i }),
 		).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /reconnect/i }),
+		).not.toBeInTheDocument();
+		expect(screen.queryByText(/reconnect/i)).not.toBeInTheDocument();
 	});
 });
