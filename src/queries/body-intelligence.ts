@@ -56,26 +56,3 @@ export function bodyIntelligenceOptions(
 		enabled: !!userId,
 	});
 }
-
-/**
- * Fetches per-set weight data for a specific session.
- * Used by: SRA intensity calculation.
- */
-export function sessionSetWeightsOptions(sessionId: string) {
-	return queryOptions({
-		queryKey: queryKeys.analytics.sessionSetWeights(sessionId),
-		staleTime: 30 * 60 * 1000, // 30 minutes (session data doesn't change)
-		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("sets")
-				.select(
-					"id, exercise_id, weight_kg, actual_reps, exercises!inner(name, muscle_group, session_id)",
-				)
-				.eq("exercises.session_id", sessionId);
-
-			if (error) throw error;
-			return data ?? [];
-		},
-		enabled: !!sessionId,
-	});
-}

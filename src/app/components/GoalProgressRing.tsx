@@ -2,14 +2,12 @@ interface GoalProgressRingProps {
 	progress: number;
 	size?: number;
 	strokeWidth?: number;
-	color?: string;
 }
 
 export function GoalProgressRing({
 	progress,
 	size = 80,
 	strokeWidth = 6,
-	color = "var(--phoenix-ember)",
 }: GoalProgressRingProps) {
 	const radius = (size - strokeWidth) / 2;
 	const circumference = 2 * Math.PI * radius;
@@ -38,7 +36,7 @@ export function GoalProgressRing({
 				cy={size / 2}
 				r={radius}
 				fill="none"
-				stroke={color}
+				stroke="var(--phoenix-ember)"
 				strokeWidth={strokeWidth}
 				strokeDasharray={circumference}
 				strokeDashoffset={offset}

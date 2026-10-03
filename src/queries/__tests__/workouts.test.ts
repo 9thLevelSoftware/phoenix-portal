@@ -441,21 +441,6 @@ describe("dashboardStatsOptions", () => {
 	});
 });
 
-describe("workoutListPageOptions", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		fromFn.mockImplementation(() => chain);
-	});
-
-	it("includes offset in query key for pagination", async () => {
-		chain = buildChain({ data: [], error: null });
-		const { workoutListPageOptions } = await import("../workouts");
-		const opts = workoutListPageOptions("user-1", 50);
-		expect(opts.queryKey).toContain("page");
-		expect(opts.queryKey).toContain(50);
-	});
-});
-
 describe("workoutListInfiniteOptions", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
