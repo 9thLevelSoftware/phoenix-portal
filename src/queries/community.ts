@@ -115,19 +115,24 @@ export function communityFeedOptions(params: FeedParams) {
 			// two-step fetch: get feed rows first, then batch-fetch profiles.
 			let query = supabase.from(table).select(select);
 
-			// Sort
+			// Sort. `id` is the unique tiebreak after the timestamp so equal
+			// shared_at values cannot skip or repeat rows across offset pages.
 			if (params.sort === "new") {
-				query = query.order("shared_at", { ascending: false });
+				query = query
+					.order("shared_at", { ascending: false })
+					.order("id", { ascending: false });
 			} else if (params.sort === "hot") {
 				// "hot" ranks by the precomputed hot_score (recency-weighted votes),
-				// with shared_at as a deterministic tie-breaker.
+				// with shared_at then id as deterministic tie-breakers.
 				query = query
 					.order("hot_score", { ascending: false })
-					.order("shared_at", { ascending: false });
+					.order("shared_at", { ascending: false })
+					.order("id", { ascending: false });
 			} else {
 				query = query
 					.order("vote_count", { ascending: false })
-					.order("shared_at", { ascending: false });
+					.order("shared_at", { ascending: false })
+					.order("id", { ascending: false });
 			}
 
 			// Creator filter

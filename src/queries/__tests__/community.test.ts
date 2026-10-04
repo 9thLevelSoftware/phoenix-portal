@@ -136,6 +136,41 @@ describe("communityFeedOptions", () => {
 		});
 	});
 
+	it("breaks equal timestamps with id after the existing sort keys", async () => {
+		const { communityFeedOptions } = await import("../community");
+
+		await communityFeedOptions({
+			tab: "routines",
+			sort: "new",
+		}).queryFn?.({ pageParam: 0 } as never);
+		expect(feedQuery.order.mock.calls).toEqual([
+			["shared_at", { ascending: false }],
+			["id", { ascending: false }],
+		]);
+
+		feedQuery.order.mockClear();
+		await communityFeedOptions({
+			tab: "routines",
+			sort: "hot",
+		}).queryFn?.({ pageParam: 0 } as never);
+		expect(feedQuery.order.mock.calls).toEqual([
+			["hot_score", { ascending: false }],
+			["shared_at", { ascending: false }],
+			["id", { ascending: false }],
+		]);
+
+		feedQuery.order.mockClear();
+		await communityFeedOptions({
+			tab: "routines",
+			sort: "top",
+		}).queryFn?.({ pageParam: 0 } as never);
+		expect(feedQuery.order.mock.calls).toEqual([
+			["vote_count", { ascending: false }],
+			["shared_at", { ascending: false }],
+			["id", { ascending: false }],
+		]);
+	});
+
 	it("chunks creator profile ids at the shared filter size", async () => {
 		const rows = Array.from(
 			{ length: SUPABASE_FILTER_CHUNK_SIZE + 1 },
