@@ -236,9 +236,7 @@ describe("blockedUsersOptions", () => {
 	});
 
 	it("rejects when a later block page fails", async () => {
-		const full = Array.from({ length: SUPABASE_PAGE_SIZE }, (_, i) =>
-			block(i),
-		);
+		const full = Array.from({ length: SUPABASE_PAGE_SIZE }, (_, i) => block(i));
 		const chain = cappedChain([full]);
 		chain.range.mockImplementation((from: number) =>
 			Promise.resolve(
