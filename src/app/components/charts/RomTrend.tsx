@@ -13,10 +13,11 @@ import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import type { RepSummary } from "@/schemas/telemetry";
 import { CHART_COLORS, CHART_MARGINS } from "./shared/ChartTheme";
 
+const CHART_HEIGHT = 250;
+
 // -- Types --
 export interface RomTrendProps {
 	repSummaries: RepSummary[];
-	height?: number;
 }
 
 interface RomPoint {
@@ -37,12 +38,10 @@ function RomChart({
 	data,
 	average,
 	width,
-	height,
 }: {
 	data: RomPoint[];
 	average: number;
 	width: number;
-	height: number;
 }) {
 	// Colours below come from the theme helpers; re-read them on a switch.
 	useRerenderOnThemeChange();
@@ -58,7 +57,7 @@ function RomChart({
 
 	const margin = { ...CHART_MARGINS, right: 30 };
 	const innerWidth = width - margin.left - margin.right;
-	const innerHeight = height - margin.top - margin.bottom;
+	const innerHeight = CHART_HEIGHT - margin.top - margin.bottom;
 
 	const romValues = data.map((d) => d.rom);
 	const minRom = Math.min(...romValues);
@@ -90,7 +89,7 @@ function RomChart({
 		<>
 			<svg
 				width={width}
-				height={height}
+				height={CHART_HEIGHT}
 				role="img"
 				aria-label="Range of motion trend chart"
 			>
@@ -258,14 +257,14 @@ function RomChart({
 }
 
 // -- Exported Component --
-export function RomTrend({ repSummaries, height = 250 }: RomTrendProps) {
+export function RomTrend({ repSummaries }: RomTrendProps) {
 	// Colours below come from the theme helpers; re-read them on a switch.
 	useRerenderOnThemeChange();
 	if (!repSummaries || repSummaries.length === 0) {
 		return (
 			<div
 				className="flex items-center justify-center text-sm"
-				style={{ height, color: CHART_COLORS().axisText }}
+				style={{ height: CHART_HEIGHT, color: CHART_COLORS().axisText }}
 			>
 				No ROM data available
 			</div>
@@ -285,16 +284,14 @@ export function RomTrend({ repSummaries, height = 250 }: RomTrendProps) {
 			role="img"
 			aria-label={`Range of motion trend chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}. Average ROM: ${average.toFixed(0)} mm.`}
 		>
-			<div aria-hidden="true" style={{ position: "relative", height }}>
+			<div
+				aria-hidden="true"
+				style={{ position: "relative", height: CHART_HEIGHT }}
+			>
 				<ParentSize>
 					{({ width }) =>
 						width > 0 ? (
-							<RomChart
-								data={data}
-								average={average}
-								width={width}
-								height={height}
-							/>
+							<RomChart data={data} average={average} width={width} />
 						) : null
 					}
 				</ParentSize>

@@ -23,11 +23,11 @@ function getAsymmetryColors() {
 }
 
 const COLOR_TEXT = "var(--foreground)";
+const CHART_HEIGHT = 300;
 
 // -- Types --
 export interface AsymmetryGaugeProps {
 	repSummaries: RepSummary[];
-	height?: number;
 }
 
 interface TooltipData {
@@ -54,11 +54,9 @@ function getAsymmetryLabel(pct: number): string {
 function PerRepChart({
 	repSummaries,
 	width,
-	height,
 }: {
 	repSummaries: RepSummary[];
 	width: number;
-	height: number;
 }) {
 	// Colours below come from the theme helpers; re-read them on a switch.
 	useRerenderOnThemeChange();
@@ -73,7 +71,7 @@ function PerRepChart({
 
 	const margin = { top: 30, right: 60, bottom: 40, left: 50 };
 	const innerWidth = width - margin.left - margin.right;
-	const innerHeight = height - margin.top - margin.bottom;
+	const innerHeight = CHART_HEIGHT - margin.top - margin.bottom;
 
 	const repIds = useMemo(
 		() => repSummaries.map((_, i) => String(i + 1)),
@@ -115,7 +113,7 @@ function PerRepChart({
 		<>
 			<svg
 				width={width}
-				height={height}
+				height={CHART_HEIGHT}
 				role="img"
 				aria-label="Cable asymmetry gauge"
 			>
@@ -288,17 +286,14 @@ function PerRepChart({
 }
 
 // -- Main Component --
-export function AsymmetryGauge({
-	repSummaries,
-	height = 300,
-}: AsymmetryGaugeProps) {
+export function AsymmetryGauge({ repSummaries }: AsymmetryGaugeProps) {
 	// Colours below come from the theme helpers; re-read them on a switch.
 	useRerenderOnThemeChange();
 	if (!repSummaries || repSummaries.length === 0) {
 		return (
 			<div
 				className="flex items-center justify-center text-sm"
-				style={{ height, color: getAsymmetryColors().axis }}
+				style={{ height: CHART_HEIGHT, color: getAsymmetryColors().axis }}
 			>
 				No asymmetry data
 			</div>
@@ -312,15 +307,14 @@ export function AsymmetryGauge({
 			role="img"
 			aria-label={`Left-right force asymmetry chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}.`}
 		>
-			<div aria-hidden="true" style={{ position: "relative", height }}>
+			<div
+				aria-hidden="true"
+				style={{ position: "relative", height: CHART_HEIGHT }}
+			>
 				<ParentSize>
 					{({ width }) =>
 						width > 0 ? (
-							<PerRepChart
-								repSummaries={repSummaries}
-								width={width}
-								height={height}
-							/>
+							<PerRepChart repSummaries={repSummaries} width={width} />
 						) : null
 					}
 				</ParentSize>

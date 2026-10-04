@@ -10,9 +10,10 @@ import type { RepSummary } from "@/schemas/telemetry";
 import { CHART_COLORS, CHART_MARGINS, FONT_SIZES } from "./shared/ChartTheme";
 import { ChartTooltipContent, useChartTooltip } from "./shared/ChartTooltip";
 
+const CHART_HEIGHT = 250;
+
 export interface PowerOutputProps {
 	repSummaries: RepSummary[];
-	height?: number;
 }
 
 interface PowerRep {
@@ -24,7 +25,6 @@ interface PowerRep {
 
 function PowerOutputInner({
 	repSummaries,
-	height = 250,
 	width,
 }: PowerOutputProps & { width: number }) {
 	// Colours below come from the theme helpers; re-read them on a switch.
@@ -40,7 +40,7 @@ function PowerOutputInner({
 
 	const margin = CHART_MARGINS;
 	const innerWidth = width - margin.left - margin.right;
-	const innerHeight = height - margin.top - margin.bottom;
+	const innerHeight = CHART_HEIGHT - margin.top - margin.bottom;
 
 	const powerData = useMemo<PowerRep[]>(
 		() =>
@@ -104,7 +104,7 @@ function PowerOutputInner({
 		return (
 			<div
 				className="flex items-center justify-center text-muted-foreground"
-				style={{ height }}
+				style={{ height: CHART_HEIGHT }}
 			>
 				No power data available
 			</div>
@@ -115,7 +115,7 @@ function PowerOutputInner({
 		<div style={{ position: "relative" }}>
 			<svg
 				width={width}
-				height={height}
+				height={CHART_HEIGHT}
 				role="img"
 				aria-label="Power output chart"
 			>
