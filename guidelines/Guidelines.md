@@ -12,7 +12,7 @@ Use design tokens from `src/styles/theme.css` only. Never inline hex colors, raw
 - **Podium:** `--rank-gold`, `--rank-silver`, `--rank-bronze`.
 - **Typography:** `text-display`, `text-h1`, `text-h2`, and `text-h3`, applied through Tailwind utilities.
 - **Spacing:** `--space-6` for the page stack. Prefer Tailwind spacing utilities inside components.
-- **Radii:** `--radius`, `--radius-sm`, `--radius-md`, and `--radius-lg`.
+- **Radii:** `--radius-sm`, `--radius-md`, and `--radius-lg`.
 - **Shadows:** the `shadow-sm|md|lg` utilities, backed by the per-theme `--elevation-sm|md|lg` values.
 
 ## Anti-slop rules (hard constraints)
