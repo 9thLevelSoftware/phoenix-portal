@@ -99,9 +99,6 @@ export const queryKeys = {
 		repSummaries: (setId: string) =>
 			[...queryKeys.telemetry.all, "rep-summaries", setId] as const,
 	},
-	biomechanics: {
-		all: ["biomechanics"] as const,
-	},
 	progress: {
 		all: ["progress"] as const,
 		exercises: (userId: string, profileId?: string | null) =>
