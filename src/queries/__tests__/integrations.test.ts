@@ -3,7 +3,11 @@ import { queryKeys } from "@/queries/keys";
 
 // --- Supabase chainable mock builder -------------------------------------
 
-function buildChain(terminal: { data: unknown; error: unknown }) {
+function buildChain(terminal: {
+	data: unknown;
+	error: unknown;
+	count?: number | null;
+}) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
 	const methods = ["select", "eq", "order", "limit", "in"];
 	for (const m of methods) {
@@ -204,16 +208,22 @@ describe("syncQueueActiveCountOptions", () => {
 		vi.clearAllMocks();
 	});
 
-	it("counts pending and processing by status, not a recency window", async () => {
-		chain = buildChain({
-			data: [
-				{ provider: "strava", status: "pending" },
-				{ provider: "hevy", status: "pending" },
-				{ provider: "fitbit", status: "processing" },
-				{ provider: "garmin", status: "completed" },
-			],
+	it("counts pending with an exact head query and reads one processing provider", async () => {
+		// A row payload must not be the count. head:true returns none, and a
+		// paged select would stop at max-rows.
+		const pendingChain = buildChain({
+			data: [{ id: "should-not-count" }],
+			count: 2500,
 			error: null,
 		});
+		const processingChain = buildChain({
+			data: [{ provider: "fitbit" }],
+			error: null,
+		});
+		fromFn
+			.mockReturnValueOnce(pendingChain)
+			.mockReturnValueOnce(processingChain);
+
 		const { syncQueueActiveCountOptions } = await import("../integrations");
 		const opts = syncQueueActiveCountOptions("user-1");
 		expect(opts.queryKey).toEqual(
@@ -225,18 +235,32 @@ describe("syncQueueActiveCountOptions", () => {
 
 		const result = await opts.queryFn?.({} as never);
 
+		expect(fromFn).toHaveBeenCalledTimes(2);
 		expect(fromFn).toHaveBeenCalledWith("sync_queue");
-		expect(chain.select).toHaveBeenCalledWith("provider, status");
-		expect(chain.in).toHaveBeenCalledWith("status", ["pending", "processing"]);
-		expect(chain.limit).not.toHaveBeenCalled();
+		expect(pendingChain.select).toHaveBeenCalledWith("id", {
+			count: "exact",
+			head: true,
+		});
+		expect(pendingChain.eq).toHaveBeenCalledWith("user_id", "user-1");
+		expect(pendingChain.eq).toHaveBeenCalledWith("status", "pending");
+		expect(pendingChain.limit).not.toHaveBeenCalled();
+		expect(pendingChain.in).not.toHaveBeenCalled();
+		expect(processingChain.select).toHaveBeenCalledWith("provider");
+		expect(processingChain.eq).toHaveBeenCalledWith("user_id", "user-1");
+		expect(processingChain.eq).toHaveBeenCalledWith("status", "processing");
+		expect(processingChain.order).toHaveBeenCalledWith("created_at", {
+			ascending: false,
+		});
+		expect(processingChain.limit).toHaveBeenCalledWith(1);
+		expect(processingChain.limit).toHaveBeenCalledTimes(1);
 		expect(result).toEqual({
-			pending: 2,
+			pending: 2500,
 			processingProvider: "fitbit",
 		});
 	});
 
-	it("reports no active work when the status filter matches nothing", async () => {
-		chain = buildChain({ data: null, error: null });
+	it("reports no active work when both lookups are empty", async () => {
+		chain = buildChain({ data: null, count: null, error: null });
 		const { syncQueueActiveCountOptions } = await import("../integrations");
 		const opts = syncQueueActiveCountOptions("user-1");
 		await expect(opts.queryFn?.({} as never)).resolves.toEqual({
@@ -245,8 +269,35 @@ describe("syncQueueActiveCountOptions", () => {
 		});
 	});
 
-	it("throws on Supabase error", async () => {
-		chain = buildChain({ data: null, error: { message: "unavailable" } });
+	it("throws when the pending count fails", async () => {
+		const pendingChain = buildChain({
+			data: null,
+			count: null,
+			error: { message: "unavailable" },
+		});
+		const processingChain = buildChain({
+			data: [{ provider: "fitbit" }],
+			error: null,
+		});
+		fromFn
+			.mockReturnValueOnce(pendingChain)
+			.mockReturnValueOnce(processingChain);
+		const { syncQueueActiveCountOptions } = await import("../integrations");
+		const opts = syncQueueActiveCountOptions("user-1");
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
+			expect.objectContaining({ message: "unavailable" }),
+		);
+	});
+
+	it("throws when the processing lookup fails", async () => {
+		const pendingChain = buildChain({ data: null, count: 3, error: null });
+		const processingChain = buildChain({
+			data: null,
+			error: { message: "unavailable" },
+		});
+		fromFn
+			.mockReturnValueOnce(pendingChain)
+			.mockReturnValueOnce(processingChain);
 		const { syncQueueActiveCountOptions } = await import("../integrations");
 		const opts = syncQueueActiveCountOptions("user-1");
 		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
