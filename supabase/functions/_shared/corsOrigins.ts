@@ -23,7 +23,20 @@ export function buildAllowedOrigins(
   environment: string | undefined,
   supabaseUrl: string | undefined,
 ): string[] {
-  const origins: string[] = appUrl ? [appUrl] : [];
+  // Browser Origin is scheme + host + port. APP_URL may include a path or a
+  // trailing slash; those never appear on Origin. Strava's redirect base stays
+  // the raw APP_URL in strava-oauth and is not derived here.
+  const origins: string[] = [];
+  if (appUrl) {
+    try {
+      const url = new URL(appUrl);
+      if (url.protocol === "http:" || url.protocol === "https:") {
+        origins.push(url.origin);
+      }
+    } catch {
+      // An unparseable APP_URL cannot match a browser Origin header.
+    }
+  }
   if (shouldAllowLocalhostOrigins(environment, supabaseUrl)) {
     origins.push("http://localhost:5173");
   }
