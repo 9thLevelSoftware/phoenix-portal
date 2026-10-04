@@ -1,7 +1,8 @@
 /**
- * Garmin OAuth 1.0a request signing (HMAC-SHA1, RFC 5849), shared by
- * `garmin-oauth` (token exchange) and `providerRevoke.ts` (user
- * de-registration on disconnect).
+ * Garmin OAuth 1.0a request signing (HMAC-SHA1, RFC 5849).
+ *
+ * Used only by `providerRevoke.ts` (user de-registration on disconnect).
+ * `garmin-oauth` is a 410 stub and does not sign requests.
  */
 
 /**
