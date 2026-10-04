@@ -1,7 +1,12 @@
 import { queryOptions } from "@tanstack/react-query";
 import { classifyMuscleGroup } from "@/lib/exercise-muscles";
 import { supabase } from "@/lib/supabase";
-import { fetchAllKeysetPages } from "@/lib/supabasePaging";
+import {
+	afterSessionFilter,
+	fetchAllKeysetPages,
+	type SessionCursor,
+	sessionCursorOf,
+} from "@/lib/supabasePaging";
 import { exerciseFrequencyOptions } from "./exercise-frequency";
 import { queryKeys } from "./keys";
 import {
@@ -36,28 +41,6 @@ export function isUnknownTimeZoneError(error: unknown): boolean {
 		typeof message === "string" &&
 		message.includes("unknown time zone")
 	);
-}
-
-/** Position of the last session row a keyset page returned. */
-interface SessionCursor {
-	started_at: string;
-	id: string;
-}
-
-function sessionCursorOf(row: {
-	started_at: string;
-	id: string;
-}): SessionCursor {
-	return { started_at: row.started_at, id: row.id };
-}
-
-/**
- * PostgREST `or` filter for "strictly after this (started_at, id)". The
- * timestamp is quoted because an ISO value carries `.` and `:`, which the
- * filter grammar reserves.
- */
-function afterSessionFilter(after: SessionCursor): string {
-	return `started_at.gt."${after.started_at}",and(started_at.eq."${after.started_at}",id.gt.${after.id})`;
 }
 
 /**

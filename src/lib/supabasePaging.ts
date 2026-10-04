@@ -106,3 +106,25 @@ export async function fetchAllKeysetPages<T, C>(
 		after = cursorOf(page[page.length - 1]);
 	}
 }
+
+/** Position of the last session row a keyset page returned. */
+export interface SessionCursor {
+	started_at: string;
+	id: string;
+}
+
+export function sessionCursorOf(row: {
+	started_at: string;
+	id: string;
+}): SessionCursor {
+	return { started_at: row.started_at, id: row.id };
+}
+
+/**
+ * PostgREST `or` filter for "strictly after this (started_at, id)". The
+ * timestamp is quoted because an ISO value carries `.` and `:`, which the
+ * filter grammar reserves.
+ */
+export function afterSessionFilter(after: SessionCursor): string {
+	return `started_at.gt."${after.started_at}",and(started_at.eq."${after.started_at}",id.gt.${after.id})`;
+}

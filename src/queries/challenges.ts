@@ -1,9 +1,13 @@
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import {
+	afterSessionFilter,
+	type FetchSupabaseKeysetPage,
 	fetchAllKeysetPages,
 	fetchAllSupabasePagesForChunks,
+	type SessionCursor,
 	SUPABASE_FILTER_CHUNK_SIZE,
+	sessionCursorOf,
 } from "@/lib/supabasePaging";
 import { totalLoadVolumeKg } from "@/lib/units/loadDisplay";
 import { queryKeys } from "./keys";
@@ -71,10 +75,11 @@ export function challengeProgressOptions(
 					// only where the cable count is unknown (never assume 2).
 					// Sessions are keyset-paged; exercise and set reads are chunked
 					// and range-paged so neither stops at PostgREST's max_rows.
-					const sessions = await fetchVolumeSessions(
+					const sessions = await fetchSessionsInWindow(
 						userId,
 						startDate,
 						endDate,
+						"id, started_at, total_volume",
 					);
 					const exercises = await fetchAllSupabasePagesForChunks(
 						sessions.map((s) => s.id),
@@ -113,10 +118,11 @@ export function challengeProgressOptions(
 					break;
 				}
 				case "streak": {
-					const sessions = await fetchStreakSessions(
+					const sessions = await fetchSessionsInWindow(
 						userId,
 						startDate,
 						endDate,
+						"id, started_at",
 					);
 					current = computeStreak(sessions);
 					break;
@@ -149,42 +155,32 @@ export function challengeProgressOptions(
 	});
 }
 
-/** Position of the last session row a keyset page returned. */
-interface SessionCursor {
-	started_at: string;
-	id: string;
-}
-
-function sessionCursorOf(row: {
-	started_at: string;
-	id: string;
-}): SessionCursor {
-	return { started_at: row.started_at, id: row.id };
-}
-
-/**
- * PostgREST `or` filter for "strictly after this (started_at, id)". The
- * timestamp is quoted because an ISO value carries `.` and `:`, which the
- * filter grammar reserves.
- */
-function afterSessionFilter(after: SessionCursor): string {
-	return `started_at.gt."${after.started_at}",and(started_at.eq."${after.started_at}",id.gt.${after.id})`;
-}
+type SessionWindowColumns = "id, started_at" | "id, started_at, total_volume";
+type SessionWindowRow<Columns extends SessionWindowColumns> =
+	Columns extends "id, started_at, total_volume"
+		? { id: string; started_at: string; total_volume: number }
+		: { id: string; started_at: string };
 
 /**
  * Sessions in the challenge window, keyset-paged on (started_at, id).
  * One select is silently capped at PostgREST's max_rows. The leading
  * `gte` keeps each page index-sargable; `or` drops the cursor row itself.
+ *
+ * `columns` stays a literal at each call so the row type matches the select.
+ * PostgREST cannot parse a generic column string, so the page callback is
+ * asserted to that row.
  */
-function fetchVolumeSessions(
+function fetchSessionsInWindow<Columns extends SessionWindowColumns>(
 	userId: string,
 	startDate: string,
 	endDate: string,
-) {
-	return fetchAllKeysetPages((after: SessionCursor | null, limit) => {
+	columns: Columns,
+): Promise<SessionWindowRow<Columns>[]> {
+	type Row = SessionWindowRow<Columns>;
+	const fetchPage = ((after: SessionCursor | null, limit: number) => {
 		let query = supabase
 			.from("workout_sessions")
-			.select("id, started_at, total_volume")
+			.select(columns)
 			.eq("user_id", userId)
 			.gte("started_at", after?.started_at ?? startDate)
 			.lte("started_at", endDate);
@@ -193,27 +189,8 @@ function fetchVolumeSessions(
 			.order("started_at", { ascending: true })
 			.order("id", { ascending: true })
 			.limit(limit);
-	}, sessionCursorOf);
-}
-
-function fetchStreakSessions(
-	userId: string,
-	startDate: string,
-	endDate: string,
-) {
-	return fetchAllKeysetPages((after: SessionCursor | null, limit) => {
-		let query = supabase
-			.from("workout_sessions")
-			.select("id, started_at")
-			.eq("user_id", userId)
-			.gte("started_at", after?.started_at ?? startDate)
-			.lte("started_at", endDate);
-		if (after) query = query.or(afterSessionFilter(after));
-		return query
-			.order("started_at", { ascending: true })
-			.order("id", { ascending: true })
-			.limit(limit);
-	}, sessionCursorOf);
+	}) as FetchSupabaseKeysetPage<Row, SessionCursor>;
+	return fetchAllKeysetPages(fetchPage, sessionCursorOf);
 }
 
 function computeStreak(sessions: Array<{ started_at: string }>): number {
