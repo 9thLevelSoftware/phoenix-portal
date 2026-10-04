@@ -271,12 +271,18 @@ export function blockedUsersOptions(userId: string) {
 	return queryOptions({
 		queryKey: queryKeys.community.blocks(userId),
 		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("user_blocks")
-				.select("blocked_id")
-				.eq("blocker_id", userId);
-			if (error) throw error;
-			return (data ?? []).map((row) => row.blocked_id);
+			// One response is silently capped at PostgREST max_rows.
+			// blocked_id is unique per blocker, so offset pages neither
+			// skip nor repeat a block.
+			const data = await fetchAllSupabasePages((from, to) =>
+				supabase
+					.from("user_blocks")
+					.select("blocked_id")
+					.eq("blocker_id", userId)
+					.order("blocked_id", { ascending: true })
+					.range(from, to),
+			);
+			return data.map((row) => row.blocked_id);
 		},
 	});
 }
