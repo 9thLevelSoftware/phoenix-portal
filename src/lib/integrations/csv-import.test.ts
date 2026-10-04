@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MILES_TO_METERS } from "./csvShared";
 import { parseHevyCSV } from "./hevy";
 import { parseStrongCSV } from "./strong";
 
@@ -26,7 +27,7 @@ describe("CSV activity import", () => {
 			activity_type: "strength",
 			started_at: "2026-01-01T10:00:00.000Z",
 			duration_seconds: 3600,
-			distance_meters: Math.round(1609.344),
+			distance_meters: Math.round(MILES_TO_METERS),
 			calories: null,
 			avg_heart_rate: null,
 			max_heart_rate: null,
@@ -44,6 +45,6 @@ describe("CSV activity import", () => {
 			distance_meters: 2000,
 		});
 		expect(kilometers).not.toHaveProperty("weightKg");
-		expect(miles?.distance_meters).toBe(Math.round(2 * 1609.344));
+		expect(miles?.distance_meters).toBe(Math.round(2 * MILES_TO_METERS));
 	});
 });
