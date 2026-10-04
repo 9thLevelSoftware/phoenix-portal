@@ -144,6 +144,10 @@ export const queryKeys = {
 			[...queryKeys.integrations.all, userId] as const,
 		external: (userId: string) =>
 			[...queryKeys.integrations.all, "external", userId] as const,
+		// Nested under `external` so invalidating the activity list also
+		// refreshes the bounded analytics chart read.
+		externalChart: (userId: string) =>
+			[...queryKeys.integrations.external(userId), "chart"] as const,
 		syncQueue: (userId: string) =>
 			[...queryKeys.integrations.all, "sync-queue", userId] as const,
 		// Nested under `syncQueue` so invalidating the activity list also

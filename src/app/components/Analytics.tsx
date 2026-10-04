@@ -86,7 +86,7 @@ import {
 import { bodyIntelligenceOptions } from "@/queries/body-intelligence";
 import { dashboardFreshnessOptions } from "@/queries/freshness";
 import { insightsOptions } from "@/queries/insights";
-import { externalActivitiesOptions } from "@/queries/integrations";
+import { externalActivitiesChartOptions } from "@/queries/integrations";
 import { profileOptions } from "@/queries/profile";
 import { progressionWorkbenchOptions } from "@/queries/progress";
 import { personalRecordsOptions } from "@/queries/records";
@@ -633,7 +633,7 @@ export function Analytics() {
 		phaseStatisticsTrendOptions(userId, queryPeriod, activeProfileId),
 	);
 	const { data: externalActivities } = useQuery({
-		...externalActivitiesOptions(userId),
+		...externalActivitiesChartOptions(userId),
 		enabled: !!user,
 	});
 	// The chart's window (4w = 28 days): totals, deltas, training load,
