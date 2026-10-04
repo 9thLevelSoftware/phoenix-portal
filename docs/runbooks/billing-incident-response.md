@@ -1,6 +1,6 @@
 # Billing Incident Response Runbook
 
-> Last updated: 2026-09-20
+> Last updated: 2026-10-04
 > Webhook handler: `supabase/functions/paddle-webhooks/index.ts`
 
 ## 1. Identifying Affected Users
@@ -425,9 +425,9 @@ is documented in the handler, not a defect introduced by the rescue.
 
 ### 8.4 Missing custom_data.user_id (lines 186-193)
 
-- **What happens:** Returns 400.
+- **What happens:** Acknowledged with 200 and ignored.
 - **When:** Checkout session was created without passing `customData: { user_id }` in the client-side Paddle.Checkout.open() call.
-- **Consequence:** Paddle does NOT retry on 400 responses (only 5xx triggers retry). The subscription is created in Paddle but never reflected in the portal. The user pays but gets no access.
+- **Consequence:** This path returns 200, so Paddle does not retry it. The subscription is created in Paddle but never reflected in the portal. The user pays but gets no access. Any other status is retried, including 4xx responses (400, 401, 404) and any response slower than 5 seconds (§9).
 - **Severity:** HIGH. This is a data loss scenario with no automatic recovery.
 - **Mitigation:** Verify all checkout flows pass `user_id` in custom_data. Add an alert on this log message. Consider a reconciliation cron job that queries Paddle API for subscriptions missing from the portal.
 
@@ -448,16 +448,16 @@ is documented in the handler, not a defect introduced by the rescue.
 | Sandbox     | 3           | 15 minutes | Exponential backoff                                  |
 | Live        | 60          | 3 days     | 20 attempts in first hour, 47 in first day, 60 total |
 
-- Paddle expects an HTTP 200 response within **5 seconds**.
-- Only **5xx responses** and **timeouts** trigger retries.
-- **4xx responses** (400, 401, etc.) do NOT trigger retries.
+- Paddle marks a notification delivered only when the endpoint returns HTTP **200** within **5 seconds**.
+- Every other status is retried on the schedule above. **4xx responses retry**, including **400**, **401**, and **404**.
+- A response that takes longer than **5 seconds** is retried on that same schedule.
 - After all retry attempts are exhausted, the notification status is set to **failed**.
 - Failed notifications can be manually replayed via the Paddle API or dashboard.
 
 Sources:
-- [Handle webhook delivery - Paddle Developer](https://developer.paddle.com/webhooks/respond-to-webhooks)
-- [Webhooks overview - Paddle Developer](https://developer.paddle.com/webhooks/overview)
-- [Simulate webhooks - Paddle Developer](https://developer.paddle.com/webhooks/test-webhooks)
+- [Handle webhook delivery - Paddle Developer](https://developer.paddle.com/webhooks/about/respond-to-webhooks/)
+- [How webhooks work - Paddle Developer](https://developer.paddle.com/webhooks/about/how-webhooks-work/)
+- [Simulate webhooks - Paddle Developer](https://developer.paddle.com/webhooks/simulator/test-webhooks/)
 
 ---
 
