@@ -1328,10 +1328,6 @@ schedule or command without undoing an operator pause or activation. For
 owned-row provider handlers are first deployed. Its private release-gate marker
 means re-applying that migration after activation leaves the job active.
 
-**None of them ever changes `active`, in either direction.** A re-apply repairs
-a drifted schedule or command; it never activates a job you paused, and never
-pauses a job that is running. For `generate-insights` a re-apply also preserves
-the batch cursor in `private.insights_batch_state`.
 `20260920000200` is different: it only schedules a job when no job of that name
 exists, and never alters an existing one.
 ### The jobs
