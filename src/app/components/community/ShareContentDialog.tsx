@@ -1,4 +1,4 @@
-import { Check, Share2, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -8,7 +8,6 @@ import {
 	DialogDescription,
 	DialogHeader,
 	DialogTitle,
-	DialogTrigger,
 } from "@/app/components/ui/dialog";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
@@ -50,24 +49,18 @@ interface ShareContentDialogProps {
 	routines?: SourceItem[];
 	/** User's own cycles available to share */
 	cycles?: SourceItem[];
-	/** Optional trigger element (defaults to Share button) */
-	trigger?: React.ReactNode;
-	/** Controlled open state (optional - falls back to internal state) */
-	open?: boolean;
-	/** Controlled open change handler (optional - falls back to internal state) */
-	onOpenChange?: (open: boolean) => void;
+	/** Controlled open state */
+	open: boolean;
+	/** Controlled open change handler */
+	onOpenChange: (open: boolean) => void;
 }
 
 export function ShareContentDialog({
 	routines = [],
 	cycles = [],
-	trigger,
-	open: controlledOpen,
-	onOpenChange: controlledOnOpenChange,
+	open,
+	onOpenChange,
 }: ShareContentDialogProps) {
-	const [internalOpen, setInternalOpen] = useState(false);
-	const open = controlledOpen ?? internalOpen;
-	const setOpen = controlledOnOpenChange ?? setInternalOpen;
 	const [contentType, setContentType] = useState<"routine" | "cycle">(
 		"routine",
 	);
@@ -133,7 +126,7 @@ export function ShareContentDialog({
 				onSuccess: () => {
 					setShowSuccess(true);
 					successTimerRef.current = setTimeout(() => {
-						setOpen(false);
+						onOpenChange(false);
 						resetForm();
 					}, 1200);
 				},
@@ -153,21 +146,11 @@ export function ShareContentDialog({
 			}
 			resetForm();
 		}
-		setOpen(nextOpen);
+		onOpenChange(nextOpen);
 	};
 
 	return (
 		<Dialog open={open} onOpenChange={handleOpenChange}>
-			{controlledOpen === undefined && (
-				<DialogTrigger asChild>
-					{trigger ?? (
-						<Button variant="outline" size="sm" className="gap-2">
-							<Share2 className="h-4 w-4" />
-							Share
-						</Button>
-					)}
-				</DialogTrigger>
-			)}
 			<DialogContent className="max-w-md">
 				<DialogHeader>
 					<DialogTitle>Share to Community</DialogTitle>
