@@ -162,21 +162,31 @@ jobs:
 
       - name: List local migrations
         id: local
+        shell: bash
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          # `version` is the numeric prefix that
-          # `supabase/migrations/<version>_<name>.sql` uses. Emit just the
-          # version, one per line, sorted/unique. Matches
-          # `schema_migrations.version` exactly.
+          # Local versions: the numeric prefix of <version>_<name>.sql, using
+          # the same naming regex as deploy-edge-functions.yml ("Gate on prod
+          # migrations"). Names that do not match are reported and skipped,
+          # never echoed raw into a workflow command. Emit just the version,
+          # one per line, sorted/unique, so it matches schema_migrations.version.
           : > local_migrations.txt
           for f in supabase/migrations/*.sql; do
             [ -f "$f" ] || continue
             base=$(basename "$f")
-            version=$(echo "$base" | sed -E 's/^([0-9]+)_.*/\1/')
-            echo "$version" >> local_migrations.txt
+            if [[ "$base" =~ ^([0-9]+)_[A-Za-z0-9_]+\.sql$ ]]; then
+              echo "${BASH_REMATCH[1]}" >> local_migrations.txt
+            else
+              echo "::warning::Skipping migration file with a non-standard name (expected <digits>_<name>.sql)."
+              printf '  skipped: %q\n' "$base"
+            fi
           done
           sort -u -o local_migrations.txt local_migrations.txt
+          if [ ! -s local_migrations.txt ]; then
+            echo "::error::No local migrations found under supabase/migrations/; refusing to report drift without a migration baseline. Do NOT run db push."
+            exit 1
+          fi
           count=$(wc -l < local_migrations.txt | tr -d ' ')
           echo "Local migration count: $count"
           {
