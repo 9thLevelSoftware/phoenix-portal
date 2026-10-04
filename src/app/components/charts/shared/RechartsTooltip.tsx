@@ -1,8 +1,6 @@
 import type { TooltipProps } from "recharts";
 
 interface RechartsTooltipProps extends TooltipProps<number, string> {
-	/** Optional unit suffix for values (e.g., "kg", "lbs", "%") */
-	unit?: string;
 	/** Optional value formatter */
 	formatValue?: (value: number) => string;
 }
@@ -11,7 +9,6 @@ export function RechartsTooltip({
 	active,
 	payload,
 	label,
-	unit,
 	formatValue,
 }: RechartsTooltipProps) {
 	if (!active || !payload?.length) return null;
@@ -28,7 +25,6 @@ export function RechartsTooltip({
 					<span className="text-muted-foreground">{entry.name}:</span>
 					<span className="font-medium text-foreground">
 						{formatValue ? formatValue(entry.value as number) : entry.value}
-						{unit && ` ${unit}`}
 					</span>
 				</div>
 			))}
