@@ -1505,9 +1505,15 @@ which path applies depends on what is enabled.
   Function secrets are **not** part of a database restore.
 - Re-run the daily health-check queries in [§7](#7-monitoring-quick-reference).
 - Re-verify sync end to end with one real device. A restore rewinds
-  `updated_at`, and `mobile-sync-pull` is a delta on `lastSync`, so a device
-  whose watermark is ahead of the restore point will not be served the rows it
-  is missing until it forces a full `lastSync=0` pull.
+  `updated_at`. `mobile-sync-pull` is a parity pull: the device sends
+  `knownEntityIds`, and the server returns rows that are not in those lists.
+  The stale arm also returns known sessions, routines and cycles changed
+  since `lastSync` minus 2 minutes. Ids the device does not already list
+  still come back after the rewind. A known session, routine or cycle whose
+  `updated_at` now sits behind that window is not refreshed, so a device
+  whose watermark is ahead of the restore point keeps its local copy until
+  it pulls with `lastSync=0` (every known row counts as stale). Empty or
+  absent `knownEntityIds` already returns the whole profile.
 ### Test restore (Operator Action 6)
 1. Restore the most recent backup or PITR point into a **new scratch project**.
 2. Confirm the restore actually contains data:
