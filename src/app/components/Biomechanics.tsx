@@ -98,20 +98,18 @@ function SectionSkeleton() {
 }
 
 interface BiomechanicsContentProps {
-	view?: "all" | "biomechanics" | "performance";
+	view: "biomechanics" | "performance";
 }
 
 // -- Main page content --
-export function BiomechanicsContent({
-	view = "all",
-}: BiomechanicsContentProps) {
+export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 	// Colours below come from the theme helpers; re-read them on a switch.
 	useRerenderOnThemeChange();
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
 	const unit = usePreferredWeightUnit();
-	const showBiomechanics = view === "all" || view === "biomechanics";
-	const showPerformance = view === "all" || view === "performance";
+	const showBiomechanics = view === "biomechanics";
+	const showPerformance = view === "performance";
 
 	// ---- Session/exercise selectors ----
 	const [selectedSessionId, setSelectedSessionId] = useState<string>("");
