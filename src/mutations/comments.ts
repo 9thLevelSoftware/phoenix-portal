@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
+import { createCommentSchema } from "@/schemas/comments";
 
 // ---------- useCreateComment ----------
 
@@ -20,11 +21,13 @@ export function useCreateComment() {
 		mutationFn: async ({ itemId, itemType, body }: CreateCommentArgs) => {
 			if (!user) throw new Error("Must be logged in to comment");
 
+			const { body: parsedBody } = createCommentSchema.parse({ body });
+
 			const { error } = await supabase.from("community_comments").insert({
 				item_id: itemId,
 				item_type: itemType,
 				user_id: user.id,
-				body,
+				body: parsedBody,
 			});
 
 			if (error) throw error;
@@ -89,13 +92,15 @@ export function useUpdateComment() {
 			// check was bypassed.
 			const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
+			const { body: parsedBody } = createCommentSchema.parse({ body });
+
 			// `.select()` is required for the row check: a bare `.update()` does
 			// not populate `count`, so the previous `count === 0` guard never
 			// fired and the server-side edit-window check was a no-op.
 			const { data: updated, error } = await supabase
 				.from("community_comments")
 				.update({
-					body,
+					body: parsedBody,
 					updated_at: new Date().toISOString(),
 				})
 				.eq("id", commentId)

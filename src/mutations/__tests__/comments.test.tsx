@@ -146,6 +146,55 @@ describe("useCreateComment", () => {
 			expect.stringContaining("foreign key"),
 		);
 	});
+
+	it("rejects a body that fails createCommentSchema before insert", async () => {
+		const { useCreateComment } = await import("../comments");
+
+		mockChain.insert.mockResolvedValue({ error: null });
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useCreateComment(), { wrapper });
+
+		result.current.mutate({
+			itemId: "item-1",
+			itemType: "routine",
+			body: "x".repeat(501),
+		});
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockChain.insert).not.toHaveBeenCalled();
+		expect(mockToast.success).not.toHaveBeenCalled();
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Failed to post comment. Please try again.",
+		);
+	});
+
+	it("inserts the trimmed body from createCommentSchema", async () => {
+		const { useCreateComment } = await import("../comments");
+
+		mockChain.insert.mockResolvedValue({ error: null });
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useCreateComment(), { wrapper });
+
+		result.current.mutate({
+			itemId: "item-1",
+			itemType: "cycle",
+			body: "  Padded comment  ",
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+		expect(mockChain.insert).toHaveBeenCalledWith(
+			expect.objectContaining({
+				item_id: "item-1",
+				item_type: "cycle",
+				user_id: "test-user-id",
+				body: "Padded comment",
+			}),
+		);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -235,6 +284,68 @@ describe("useUpdateComment", () => {
 
 		expect(mockToast.error).toHaveBeenCalledWith(
 			"Failed to update comment. Please try again.",
+		);
+	});
+
+	it("rejects a body that fails createCommentSchema before update", async () => {
+		const { useUpdateComment } = await import("../comments");
+
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: { id: "comment-1" }, error: null }),
+		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqGte = vi.fn(() => ({ select }));
+		const eqUserId = vi.fn(() => ({ gte: eqGte }));
+		const eqId = vi.fn(() => ({ eq: eqUserId }));
+		mockChain.update.mockImplementation(() => ({ eq: eqId }));
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateComment(), { wrapper });
+
+		result.current.mutate({
+			commentId: "comment-1",
+			itemId: "item-1",
+			body: "   ",
+			createdAt: new Date(),
+		});
+
+		await waitFor(() => expect(result.current.isError).toBe(true));
+
+		expect(mockChain.update).not.toHaveBeenCalled();
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Failed to update comment. Please try again.",
+		);
+		expect(mockToast.error).not.toHaveBeenCalledWith(
+			"Edit window has expired. Comments can only be edited within 5 minutes.",
+		);
+	});
+
+	it("updates with the trimmed body from createCommentSchema", async () => {
+		const { useUpdateComment } = await import("../comments");
+
+		const maybeSingle = vi.fn(() =>
+			Promise.resolve({ data: { id: "comment-1" }, error: null }),
+		);
+		const select = vi.fn(() => ({ maybeSingle }));
+		const eqGte = vi.fn(() => ({ select }));
+		const eqUserId = vi.fn(() => ({ gte: eqGte }));
+		const eqId = vi.fn(() => ({ eq: eqUserId }));
+		mockChain.update.mockImplementation(() => ({ eq: eqId }));
+
+		const { wrapper } = createWrapper();
+		const { result } = renderHook(() => useUpdateComment(), { wrapper });
+
+		result.current.mutate({
+			commentId: "comment-1",
+			itemId: "item-1",
+			body: "  Edited comment  ",
+			createdAt: new Date(),
+		});
+
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+		expect(mockChain.update).toHaveBeenCalledWith(
+			expect.objectContaining({ body: "Edited comment" }),
 		);
 	});
 });
