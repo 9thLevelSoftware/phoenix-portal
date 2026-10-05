@@ -1,16 +1,8 @@
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2';
-import { effectiveSubscriptionTier } from './subscriptionEntitlement.ts';
-
-/**
- * Subscription tier hierarchy.
- * Each tier grants access to itself and everything below it.
- */
-const TIER_LEVEL: Record<string, number> = {
-  FREE: 0,
-  EMBER: 1,
-  FLAME: 2,
-  INFERNO: 3,
-};
+import {
+  effectiveSubscriptionTier,
+  TIER_LEVEL,
+} from './subscriptionEntitlement.ts';
 
 export type SubscriptionTier = 'FREE' | 'EMBER' | 'FLAME' | 'INFERNO';
 
