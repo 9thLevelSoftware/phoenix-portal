@@ -1,4 +1,4 @@
-import { initiateOAuthConnect } from "./oauthRedirect";
+import { initiateOAuthConnect } from "./initiateOAuthConnect";
 
 /**
  * Initiate Fitbit OAuth 2.0 connection via the initiate-oauth Edge Function.

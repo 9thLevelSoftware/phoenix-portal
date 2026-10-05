@@ -1,4 +1,4 @@
-import { initiateOAuthConnect } from "./oauthRedirect";
+import { initiateOAuthConnect } from "./initiateOAuthConnect";
 
 /**
  * Initiate Strava OAuth connection via the initiate-oauth Edge Function.

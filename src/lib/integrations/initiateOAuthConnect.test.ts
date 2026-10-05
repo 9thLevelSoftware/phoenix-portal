@@ -4,6 +4,28 @@ import { initiateGarminConnect } from "./garmin";
 import { OAuthInitiateError } from "./oauthRedirect";
 import { initiateStravaConnect } from "./strava";
 
+const redirectCalls = vi.hoisted(() => vi.fn());
+
+vi.mock("./oauthRedirect", async () => {
+	const actual =
+		await vi.importActual<typeof import("./oauthRedirect")>("./oauthRedirect");
+	return {
+		...actual,
+		redirectToValidatedOAuthUrl: (
+			provider: Parameters<typeof actual.redirectToValidatedOAuthUrl>[0],
+			value: unknown,
+			options?: Parameters<typeof actual.redirectToValidatedOAuthUrl>[2],
+		) => {
+			const validated = actual.validateOAuthRedirectUrl(
+				provider,
+				value,
+				options,
+			);
+			redirectCalls(provider, validated, options);
+		},
+	};
+});
+
 const SUPABASE_URL = "https://test-project.supabase.co";
 const ACCESS_TOKEN = "portal-jwt";
 
@@ -22,19 +44,15 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 describe("initiateOAuthConnect", () => {
 	let fetchMock: ReturnType<typeof vi.fn>;
-	let hrefSetter: ReturnType<typeof vi.spyOn>;
 
 	beforeEach(() => {
 		vi.stubEnv("VITE_SUPABASE_URL", SUPABASE_URL);
 		fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
-		hrefSetter = vi
-			.spyOn(window.location, "href", "set")
-			.mockImplementation(() => undefined);
+		redirectCalls.mockClear();
 	});
 
 	afterEach(() => {
-		hrefSetter.mockRestore();
 		vi.unstubAllGlobals();
 		vi.stubEnv("VITE_SUPABASE_URL", SUPABASE_URL);
 	});
@@ -50,6 +68,7 @@ describe("initiateOAuthConnect", () => {
 
 		for (const [provider, start] of starters) {
 			fetchMock.mockClear();
+			redirectCalls.mockClear();
 			await expect(start(ACCESS_TOKEN)).rejects.toBeInstanceOf(
 				OAuthInitiateError,
 			);
@@ -63,7 +82,7 @@ describe("initiateOAuthConnect", () => {
 				"Content-Type": "application/json",
 			});
 			expect(JSON.parse(String(init.body))).toEqual({ provider });
-			expect(hrefSetter).not.toHaveBeenCalled();
+			expect(redirectCalls).not.toHaveBeenCalled();
 		}
 	});
 
@@ -77,7 +96,7 @@ describe("initiateOAuthConnect", () => {
 				message: COMING_SOON.message,
 			}),
 		);
-		expect(hrefSetter).not.toHaveBeenCalled();
+		expect(redirectCalls).not.toHaveBeenCalled();
 	});
 
 	it("forwards a Garmin provider_unavailable refusal and does not redirect (NF-46)", async () => {
@@ -90,7 +109,7 @@ describe("initiateOAuthConnect", () => {
 				message: COMING_SOON.message,
 			}),
 		);
-		expect(hrefSetter).not.toHaveBeenCalled();
+		expect(redirectCalls).not.toHaveBeenCalled();
 	});
 
 	it("redirects Strava only to the validated authorize URL", async () => {
@@ -100,8 +119,8 @@ describe("initiateOAuthConnect", () => {
 
 		await initiateStravaConnect(ACCESS_TOKEN);
 
-		expect(hrefSetter).toHaveBeenCalledTimes(1);
-		expect(hrefSetter).toHaveBeenCalledWith(url);
+		expect(redirectCalls).toHaveBeenCalledTimes(1);
+		expect(redirectCalls).toHaveBeenCalledWith("strava", url, undefined);
 	});
 
 	it("redirects Garmin only when the URL is this project's garmin-oauth function", async () => {
@@ -110,8 +129,10 @@ describe("initiateOAuthConnect", () => {
 
 		await initiateGarminConnect(ACCESS_TOKEN);
 
-		expect(hrefSetter).toHaveBeenCalledTimes(1);
-		expect(hrefSetter).toHaveBeenCalledWith(url);
+		expect(redirectCalls).toHaveBeenCalledTimes(1);
+		expect(redirectCalls).toHaveBeenCalledWith("garmin", url, {
+			supabaseUrl: SUPABASE_URL,
+		});
 	});
 
 	it("rejects a Garmin redirect outside the configured Supabase origin", async () => {
@@ -124,7 +145,7 @@ describe("initiateOAuthConnect", () => {
 		await expect(initiateGarminConnect(ACCESS_TOKEN)).rejects.toThrow(
 			/requested provider/,
 		);
-		expect(hrefSetter).not.toHaveBeenCalled();
+		expect(redirectCalls).not.toHaveBeenCalled();
 	});
 
 	it("refuses to start when Supabase is not configured", async () => {
@@ -134,6 +155,6 @@ describe("initiateOAuthConnect", () => {
 			/not configured/,
 		);
 		expect(fetchMock).not.toHaveBeenCalled();
-		expect(hrefSetter).not.toHaveBeenCalled();
+		expect(redirectCalls).not.toHaveBeenCalled();
 	});
 });

@@ -1,4 +1,4 @@
-import { initiateOAuthConnect } from "./oauthRedirect";
+import { initiateOAuthConnect } from "./initiateOAuthConnect";
 
 /**
  * Initiate Garmin Connect OAuth 1.0a connection via the initiate-oauth Edge Function.
