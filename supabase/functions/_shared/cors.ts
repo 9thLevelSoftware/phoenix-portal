@@ -1,11 +1,5 @@
 import { buildAllowedOrigins } from './corsOrigins.ts';
 
-export {
-  buildAllowedOrigins,
-  isHostedSupabaseUrl,
-  shouldAllowLocalhostOrigins,
-} from './corsOrigins.ts';
-
 function readEnv(name: string): string | undefined {
   try {
     return Deno.env.get(name);
