@@ -32,7 +32,7 @@ npm run supabase -- <args>  # Pinned Supabase CLI (version in .supabase-cli-vers
 npm run test:db          # Full pgTAP suite against the local stack (CI: migrations.yml)
 npm run gen:types:local  # Regenerate src/lib/database.types.ts from the migrated local DB
 npm run gen:types:check  # Fail if database.types.ts drifts from the migrations (CI gate)
-npm run verify           # lint + typecheck + test + build + sourcemap/config asserts
+npm run verify           # lint + typecheck + test + build + assert:no-sourcemaps + assert:bundle-budget + assert:supabase-config
 ```
 
 ### Generated types
@@ -438,12 +438,21 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
 - **`ci.yml`** — on every push and PR to `main`. Jobs: `dependency-audit`
   (`npm run audit:security`), `lint` (Biome), `typecheck` (`npm run typecheck`,
   the baseline-comparing checker described under "Typecheck"),
-  `edge-functions` (`npm run check:edge-functions` then `npm run test:edge`,
-  which runs **every** Edge handler suite, not just mobile-sync), `unit-test`
-  (`npm test`), `e2e` (`npm run test:e2e`, Playwright against mocked REST, plus
+  `edge-functions` (`npm run check:edge-functions`, then `npm run test:edge`
+  twice: `SYNC_LWW_ENABLED=false` and `SYNC_LWW_ENABLED=true`. Both must pass.
+  The push handler has a separate write path for each flag value and the
+  production value is unknown (NF-50). Each run covers **every** Edge handler
+  suite, not just mobile-sync), `unit-test` (`npm test`), `e2e`
+  (`npm run test:e2e`, Playwright against mocked REST, plus
   `npm run test:e2e:pwa`), and `build` (production build plus
-  `assert:no-sourcemaps` and `assert:bundle-budget`). It never runs on stacked
-  PRs whose base is not `main`.
+  `assert:no-sourcemaps`, `assert:bundle-budget`, and
+  `assert:supabase-config`). `assert:supabase-config`
+  (`scripts/assert-live-supabase-config.mjs`; also the last step of
+  `npm run verify`) scans `package.json`, `public/_headers`, and `dist/`
+  when present, and fails when they reference a Supabase project ref listed in
+  `STALE_SUPABASE_REFS`. The committed default denylist is empty, and CI does
+  not set that variable. The workflow never runs on stacked PRs whose base is
+  not `main`.
 - **`migrations.yml`** — on PRs and `main` pushes that touch
   `supabase/migrations/**`, `supabase/tests/**`, `supabase/config.toml`,
   `database.types.ts` or the CLI/type tooling. Clean-applies every migration
@@ -472,7 +481,9 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
 - **`deploy-edge-functions.yml`** — deploys on `main` pushes that touch
   `supabase/functions/**` or `supabase/config.toml`, and on
   `workflow_dispatch`. Two gates run before any upload: a `verify` job
-  (`check:edge-functions` + `test:edge` on that exact commit) and
+  (`check:edge-functions`, then `test:edge` with `SYNC_LWW_ENABLED=false` and
+  again with `SYNC_LWW_ENABLED=true`; both must pass on that exact commit, and
+  a red test blocks deploy) and
   "Gate on prod migrations", which fails and names the versions when any local
   migration is not yet applied in prod. That keeps the order migration → Edge
   code. Main-only guard plus the `production` environment secrets below.
