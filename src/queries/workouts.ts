@@ -35,8 +35,11 @@ export function workoutListOptions(userId: string, profileId?: string | null) {
 				query = query.eq("local_profile_id", profileId);
 			}
 
+			// `id` is the unique tiebreak after started_at so equal timestamps
+			// keep a stable order, matching the infinite list.
 			const { data, error } = await query
 				.order("started_at", { ascending: false })
+				.order("id", { ascending: false })
 				.limit(WORKOUTS_PAGE_SIZE);
 			if (error) throw error;
 			return workoutListSchema.parse(data);

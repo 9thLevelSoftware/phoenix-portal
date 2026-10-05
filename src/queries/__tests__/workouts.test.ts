@@ -117,6 +117,20 @@ describe("workoutListOptions", () => {
 		expect(chain.range).not.toHaveBeenCalled();
 	});
 
+	it("orders by started_at then id so equal timestamps stay stable", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { workoutListOptions } = await import("../workouts");
+		const opts = workoutListOptions("user-abc");
+		await opts.queryFn?.({} as never);
+
+		expect(chain.order).toHaveBeenNthCalledWith(1, "started_at", {
+			ascending: false,
+		});
+		expect(chain.order).toHaveBeenNthCalledWith(2, "id", {
+			ascending: false,
+		});
+	});
+
 	it("transforms null name to 'Untitled Workout'", async () => {
 		const raw = [
 			{
