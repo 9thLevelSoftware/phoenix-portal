@@ -790,7 +790,7 @@ export function Dashboard() {
 										value={String(activeGoalCount)}
 										numericValue={activeGoalCount}
 										label="Goals"
-										gradient="from-indigo-500 to-indigo-600"
+										gradient="bg-chart-5"
 									/>
 								)}
 							</div>

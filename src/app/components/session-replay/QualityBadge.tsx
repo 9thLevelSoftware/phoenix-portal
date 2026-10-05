@@ -27,7 +27,7 @@ export function QualityBadge({ qualityResult, repNumber }: QualityBadgeProps) {
             w-14 h-14 rounded-lg
             text-foreground font-semibold
             transition-colors cursor-pointer
-            ${isLowQuality ? "bg-warning/80 hover:bg-amber-600" : "bg-primary/90 hover:bg-primary"}
+            ${isLowQuality ? "bg-warning/80 hover:bg-warning" : "bg-primary/90 hover:bg-primary"}
           `}
 					aria-label={`Rep ${repNumber} quality: ${score}`}
 				>
