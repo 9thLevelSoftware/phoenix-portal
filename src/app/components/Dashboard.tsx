@@ -123,6 +123,12 @@ export function formatPersonalRecordValue(
 	return `${record.value} ${record.unit}`;
 }
 
+const SOLID_FILL_FOREGROUND: Record<string, string> = {
+	"bg-primary": "text-primary-foreground",
+	"bg-accent": "text-accent-foreground",
+	"bg-success": "text-success-foreground",
+};
+
 function QuickStatCard({
 	icon,
 	value,
@@ -136,11 +142,12 @@ function QuickStatCard({
 	label: string;
 	gradient: string;
 }) {
+	const iconTone = SOLID_FILL_FOREGROUND[gradient] ?? "text-white";
 	return (
 		<motion.div whileHover={hover}>
 			<Card variant="stat" padding="sm" className="min-w-[120px] flex-shrink-0">
 				<div
-					className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mb-3 text-white`}
+					className={`w-10 h-10 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center mb-3 ${iconTone}`}
 				>
 					{icon}
 				</div>
@@ -472,7 +479,7 @@ export function Dashboard() {
 							<Card className="p-5 signal-panel">
 								<div className="flex items-center gap-4">
 									<div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-										<TrendingUp className="w-5 h-5 text-foreground" />
+										<TrendingUp className="w-5 h-5 text-primary-foreground" />
 									</div>
 									<div>
 										<h3 className="text-h3 font-semibold text-foreground">
@@ -520,7 +527,7 @@ export function Dashboard() {
 								<Card className="p-5 signal-panel">
 									<div className="flex items-center gap-4">
 										<div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
-											<HeartPulse className="w-5 h-5 text-white" />
+											<HeartPulse className="w-5 h-5 text-accent-foreground" />
 										</div>
 										<div>
 											<h3 className="font-semibold text-foreground">
@@ -566,7 +573,7 @@ export function Dashboard() {
 						<motion.div variants={fadeUpVariants}>
 							<Card className="p-6 signal-panel h-full">
 								<div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center mb-4">
-									<TrendingUp className="w-6 h-6 text-foreground" />
+									<TrendingUp className="w-6 h-6 text-primary-foreground" />
 								</div>
 								<h3 className="text-h3 font-semibold text-foreground mb-2">
 									Track your progress
@@ -599,7 +606,7 @@ export function Dashboard() {
 							<Link to="/recovery" className="block h-full">
 								<Card className="p-6 signal-panel h-full">
 									<div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center mb-4">
-										<HeartPulse className="w-6 h-6 text-white" />
+										<HeartPulse className="w-6 h-6 text-accent-foreground" />
 									</div>
 									<h3 className="text-lg font-semibold text-foreground mb-2">
 										Check recovery
