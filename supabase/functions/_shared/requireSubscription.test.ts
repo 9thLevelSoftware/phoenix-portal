@@ -220,7 +220,7 @@ Deno.test("requireSubscription allows an entitled trialing row at its tier", asy
 });
 
 Deno.test("requireSubscription applies no renewal grace to a subscription scheduled to cancel", async () => {
-  // Pins the pass-through at requireSubscription.ts:108
+  // Pins the pass-through at requireSubscription.ts:100
   // (`{ cancelAtPeriodEnd: Boolean(subscription?.cancel_at_period_end), now }`).
   // The predicate itself is pinned by tests/fixtures/entitlement-cases.json
   // ("active-cancel-scheduled-period-end-minus-1s-no-grace"); what was unpinned

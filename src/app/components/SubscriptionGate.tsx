@@ -2,17 +2,8 @@ import type { ReactNode } from "react";
 import { UpgradePrompt } from "@/app/components/UpgradePrompt";
 import { Button } from "@/app/components/ui/button";
 import { Skeleton } from "@/app/components/ui/skeleton";
-import {
-	type SubscriptionTier,
-	useSubscription,
-} from "@/hooks/useSubscription";
-
-const TIER_LEVEL: Record<SubscriptionTier, number> = {
-	FREE: 0,
-	EMBER: 1,
-	FLAME: 2,
-	INFERNO: 3,
-};
+import { useSubscription } from "@/hooks/useSubscription";
+import { TIER_LEVEL } from "@/lib/subscription-entitlement";
 
 interface SubscriptionGateProps {
 	requiredTier: "EMBER" | "FLAME" | "INFERNO";

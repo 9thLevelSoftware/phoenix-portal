@@ -45,7 +45,10 @@ import {
 	openUpdatePaymentMethodCheckout,
 } from "@/lib/paddle-client";
 import { TIER_PRICING, type TierPricing } from "@/lib/pricing";
-import { getEffectiveSubscriptionTier } from "@/lib/subscription-entitlement";
+import {
+	getEffectiveSubscriptionTier,
+	TIER_LEVEL,
+} from "@/lib/subscription-entitlement";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "@/queries/keys";
 
@@ -168,13 +171,6 @@ const TIERS: TierConfig[] = TIER_PRICING.map((pricing) => ({
 	features: pricing.features.map((f) => ({ label: f })),
 	comingSoon: pricing.comingSoon,
 }));
-
-const TIER_LEVEL: Record<SubscriptionTier, number> = {
-	FREE: 0,
-	EMBER: 1,
-	FLAME: 2,
-	INFERNO: 3,
-};
 
 function selectedPriceId(tierConfig: TierConfig, isAnnual: boolean): string {
 	const tierPricing = TIER_PRICING.find(
