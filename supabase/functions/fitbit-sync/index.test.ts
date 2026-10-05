@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "jsr:@std/assert@1";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { createFitbitSyncHandler } from "./index.ts";
 import { FakeDb, fakeClient, type Row } from "../_shared/testing/fakeSupabase.ts";
 
@@ -45,20 +45,27 @@ interface FakeFitbit {
 }
 
 /** Fitbit API: `pages` of activity lists (100 per page), then an empty page. */
-function fitbit(pages: Row[][], options: { status?: number } = {}): FakeFitbit {
+function fitbit(
+  pages: Row[][],
+  options: { status?: number; tokenStatus?: number; errorBody?: string } = {},
+): FakeFitbit {
   const calls: FakeFitbit["calls"] = [];
+  const errorBody = options.errorBody ?? "nope";
   const fake = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input));
     const auth = new Headers(init?.headers).get("Authorization");
     calls.push({ url: url.href, auth });
     if (url.pathname === "/oauth2/token") {
+      if (options.tokenStatus) {
+        return Promise.resolve(new Response(errorBody, { status: options.tokenStatus }));
+      }
       return Promise.resolve(Response.json({
         access_token: "access-2",
         refresh_token: "refresh-2",
         expires_in: 28_800,
       }));
     }
-    if (options.status) return Promise.resolve(new Response("nope", { status: options.status }));
+    if (options.status) return Promise.resolve(new Response(errorBody, { status: options.status }));
     const page = Number(url.searchParams.get("offset")) / 100;
     return Promise.resolve(Response.json({ activities: pages[page] ?? [] }));
   };
@@ -101,16 +108,35 @@ function request(body: Row, authorization: string | null = `Bearer ${SERVICE_ROL
   });
 }
 
-async function silenced<T>(run: () => Promise<T>): Promise<T> {
-  const original = { log: console.log, warn: console.warn, error: console.error };
-  console.log = () => {};
-  console.warn = () => {};
-  console.error = () => {};
+function renderLogArg(value: unknown): string {
+  if (value instanceof Error) return `${value.name} ${value.message}`;
+  if (typeof value === "string" || typeof value === "number") return String(value);
   try {
-    return await run();
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+/** Runs `run` with console output captured, so a leak check can see every arg. */
+async function captured<T>(run: () => Promise<T>): Promise<{ result: T; logs: string }> {
+  const original = { log: console.log, warn: console.warn, error: console.error };
+  const lines: string[] = [];
+  const capture = (...args: unknown[]) => {
+    lines.push(args.map(renderLogArg).join(" "));
+  };
+  console.log = capture;
+  console.warn = capture;
+  console.error = capture;
+  try {
+    return { result: await run(), logs: lines.join("\n") };
   } finally {
     Object.assign(console, original);
   }
+}
+
+async function silenced<T>(run: () => Promise<T>): Promise<T> {
+  return (await captured(run)).result;
 }
 
 Deno.test("fitbit-sync: no Authorization, or a wrong service key, is 401 before any read", async () => {
@@ -169,4 +195,28 @@ Deno.test("fitbit-sync: an expiring token is refreshed with Basic client auth an
   assertEquals(api.calls.at(-1)?.auth, "Bearer access-2");
   const [token] = state.rows("oauth_tokens");
   assert(token.access_token !== "access-1" && token.refresh_token !== "refresh-1");
+});
+
+/** A body Fitbit might return; it must never be written to a log. */
+const PROVIDER_ERROR_BODY = "refresh_token=super-secret-fitbit-error-body";
+
+Deno.test("fitbit-sync: token refresh and activities failures are logged by status only", async () => {
+  const expiring = db({ tokenExpiresAt: new Date(Date.now() + 60_000).toISOString() });
+  const refreshApi = fitbit([], { tokenStatus: 400, errorBody: PROVIDER_ERROR_BODY });
+  const refresh = await captured(() =>
+    handler(expiring, refreshApi)(request({ queue_id: QUEUE_ID }))
+  );
+  assertEquals(refresh.result.status, 500);
+  assertEquals(expiring.rows("user_integrations")[0].status, "token_expired");
+  assertStringIncludes(refresh.logs, "Fitbit token refresh failed: 400");
+  assert(!refresh.logs.includes(PROVIDER_ERROR_BODY), refresh.logs);
+
+  const activities = db();
+  const activitiesApi = fitbit([], { status: 503, errorBody: PROVIDER_ERROR_BODY });
+  const fetched = await captured(() =>
+    handler(activities, activitiesApi)(request({ queue_id: QUEUE_ID }))
+  );
+  assertEquals(fetched.result.status, 500);
+  assertStringIncludes(fetched.logs, "Fitbit activities fetch failed: 503");
+  assert(!fetched.logs.includes(PROVIDER_ERROR_BODY), fetched.logs);
 });
