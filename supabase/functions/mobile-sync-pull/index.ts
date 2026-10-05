@@ -102,7 +102,6 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 interface PullRequest {
   deviceId: string;
-  /** @deprecated Use knownEntityIds for parity-based sync */
   lastSync?: number;
   profileId?: string;
   /** Optional cursor for pagination. If absent, starts from beginning. */
