@@ -188,7 +188,7 @@ export function useThemeTokens(): ThemeTokens {
 
 /**
  * Re-render the caller when the theme changes. For components that read
- * colours during render through the non-hook helpers (PHOENIX(), CABLE(),
+ * colours during render through the non-hook helpers (PHOENIX(),
  * zone tables, …): those return the fresh snapshot, but only if the
  * component renders again, and a theme switch alone does not cause that.
  */
