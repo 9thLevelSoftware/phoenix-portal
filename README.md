@@ -7,7 +7,7 @@
 
 Web companion dashboard for [Project Phoenix](https://github.com/9thLevelSoftware/Project-Phoenix-MP), an open-source companion for Phoenix-compatible fitness machines. View workouts, build routines and training cycles, analyze biomechanics, and replay 50Hz session telemetry synced from the Kotlin Multiplatform mobile app.
 
-![Phoenix Portal Dashboard](https://img.shields.io/badge/theme-dark-0D0D0D?style=flat&labelColor=FF6B35)
+![Phoenix Portal Dashboard](https://img.shields.io/badge/theme-dark-06060A?style=flat&labelColor=FF6B35)
 
 ## Features
 
@@ -183,17 +183,17 @@ Portal ← useRealtimeSync hook ← Channel sync:{userId}
 
 ## Phoenix Theme
 
-Dark theme with ember color palette:
+Dark theme by default. Color tokens live in `src/styles/theme.css` (`:root` for dark, `:root[data-theme='light']` for light):
 
-| Color       | Hex       | Usage                    |
-| ----------- | --------- | ------------------------ |
-| Background  | `#0D0D0D` | App background           |
-| Ember       | `#FF6B35` | Primary accent           |
-| Flame Red   | `#DC2626` | Alerts, emphasis         |
-| Gold        | `#F59E0B` | Achievements, highlights |
-| Forge Green | `#10B981` | Success states           |
+| Token                           | Dark      | Usage          |
+| ------------------------------- | --------- | -------------- |
+| `--background`                  | `#06060a` | App background |
+| `--primary` / `--phoenix-ember` | `#ff6b35` | Primary accent |
+| `--destructive`                 | `#ff5252` | Alerts         |
+| `--accent`                      | `#f59e0b` | Highlights     |
+| `--success`                     | `#00e676` | Success states |
 
-Custom animations: `flame-flicker`, `ember-rise`, `phoenix-glow`
+The light theme overrides those tokens: `--background` `#fbfbfc`, `--primary` `#c2410c`, `--destructive` `#b91c1c`, `--accent` `#a16207`, `--success` `#047857`. `--phoenix-ember` stays `#ff6b35` in both themes.
 
 ## Deployment
 
