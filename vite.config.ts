@@ -16,7 +16,10 @@ import {
 	shouldUploadSourcemaps,
 } from "./src/lib/build/sourcemaps";
 
-const uploadSourcemaps = shouldUploadSourcemaps(process.env);
+const sourcemapEnv = {
+	SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
+};
+const uploadSourcemaps = shouldUploadSourcemaps(sourcemapEnv);
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const pwaShell = createPwaShellPrecache();
 
@@ -28,7 +31,6 @@ export default defineConfig({
 		pwaShell.plugin,
 		VitePWA({
 			registerType: "autoUpdate",
-			updateViaCache: "none",
 			includeAssets: ["pwa-192x192.png", "pwa-512x512.png"],
 			manifest: {
 				name: "Phoenix Portal",
@@ -90,7 +92,7 @@ export default defineConfig({
 		exclude: ["body-muscles"],
 	},
 	build: {
-		sourcemap: productionSourcemapSetting(process.env),
+		sourcemap: productionSourcemapSetting(sourcemapEnv),
 		chunkSizeWarningLimit: 700,
 		rollupOptions: {
 			onwarn(warning, warn) {
