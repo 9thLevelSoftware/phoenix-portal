@@ -423,7 +423,7 @@ is documented in the handler, not a defect introduced by the rescue.
 - **Consequence:** Paddle retries. Since the issue is in the payload, retries will succeed if the corruption was transient, or keep failing if Paddle is sending bad data.
 - **Severity:** Low. Paddle payloads are well-formed in practice.
 
-### 8.4 Missing custom_data.user_id (lines 186-193)
+### 8.4 Missing custom_data.user_id (`paddle-webhooks/index.ts`, the `paddleWebhookResponseForCustomUserId` call)
 
 - **What happens:** Acknowledged with 200 and ignored.
 - **When:** Checkout session was created without passing `customData: { user_id }` in the client-side Paddle.Checkout.open() call.
