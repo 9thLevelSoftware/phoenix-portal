@@ -115,8 +115,6 @@ export function externalActivitiesChartOptions(userId: string) {
 /** Latest rows shown in the sync activity list. Not the active-work count. */
 export const SYNC_QUEUE_ACTIVITY_LIMIT = 10;
 
-const SYNC_QUEUE_ACTIVE_STATUSES = ["pending", "processing"] as const;
-
 export type SyncQueueActiveCount = {
 	pending: number;
 	processingProvider: string | null;
@@ -146,25 +144,33 @@ export function syncQueueOptions(userId: string) {
 }
 
 /**
- * Count of rows still in `pending` or `processing`, plus the provider of a
- * processing row when one exists. Filtered by status, with no recency cap.
+ * Pending total, plus the provider of a processing row when one exists.
+ * Pending is an exact head count so PostgREST's max-rows cap cannot turn a
+ * long queue into a short page. The provider is a separate `limit(1)` lookup.
  */
 export function syncQueueActiveCountOptions(userId: string) {
 	return queryOptions({
 		queryKey: queryKeys.integrations.syncQueueActive(userId),
 		queryFn: async (): Promise<SyncQueueActiveCount> => {
-			const { data, error } = await supabase
-				.from("sync_queue")
-				.select("provider, status")
-				.eq("user_id", userId)
-				.in("status", [...SYNC_QUEUE_ACTIVE_STATUSES])
-				.order("created_at", { ascending: false });
-			if (error) throw error;
-			const rows = data ?? [];
-			const processing = rows.find((row) => row.status === "processing");
+			const [pendingResult, processingResult] = await Promise.all([
+				supabase
+					.from("sync_queue")
+					.select("id", { count: "exact", head: true })
+					.eq("user_id", userId)
+					.eq("status", "pending"),
+				supabase
+					.from("sync_queue")
+					.select("provider")
+					.eq("user_id", userId)
+					.eq("status", "processing")
+					.order("created_at", { ascending: false })
+					.limit(1),
+			]);
+			if (pendingResult.error) throw pendingResult.error;
+			if (processingResult.error) throw processingResult.error;
 			return {
-				pending: rows.filter((row) => row.status === "pending").length,
-				processingProvider: processing?.provider ?? null,
+				pending: pendingResult.count ?? 0,
+				processingProvider: processingResult.data?.[0]?.provider ?? null,
 			};
 		},
 		enabled: !!userId,
