@@ -11,7 +11,6 @@ export type EnvReader = (key: string) => string | undefined;
 
 // The comparison itself now lives in _shared/timingSafe.ts so the provider
 // sync handlers can use the same one for their service-role bearer check.
-export { timingSafeEqualString };
 
 /**
  * True when `x-cron-secret` equals CRON_SECRET (or, if that is unset, the
