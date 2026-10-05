@@ -35,8 +35,8 @@ export default defineConfig({
 				short_name: "Phoenix",
 				description:
 					"Training companion dashboard for your Phoenix fitness machine",
-				theme_color: "#0D0D0D",
-				background_color: "#0D0D0D",
+				theme_color: "#06060a",
+				background_color: "#06060a",
 				display: "standalone",
 				scope: "/",
 				start_url: "/",
