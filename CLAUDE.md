@@ -46,13 +46,14 @@ generator cannot express (nullable RPC args, PostgREST version) in
 
 ### Typecheck
 
-The root `tsconfig.json` is a solution file (`"files": []` plus three project
+The root `tsconfig.json` is a solution file (`"files": []` plus four project
 references), so **`tsc --noEmit` over it compiles an empty program and exits 0
 without checking anything.** Never use it as a gate.
 
 `npm run typecheck` runs `scripts/typecheck.mjs`, which type-checks each
-project explicitly (`tsc -p tsconfig.app.json|tsconfig.node.json|tsconfig.test.json
---noEmit`) and compares the errors against `typecheck-baseline.json`
+project explicitly (`tsc -p --noEmit` on `tsconfig.app.json`,
+`tsconfig.node.json`, `tsconfig.test.json`, and `tsconfig.e2e.json`) and
+compares the errors against `typecheck-baseline.json`
 (counts per project, file and error code). It fails only on errors not in the
 baseline, so the pre-existing backlog does not block a PR. When you fix
 errors, shrink the baseline with `npm run typecheck:baseline` and commit it;
