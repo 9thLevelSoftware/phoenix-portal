@@ -345,13 +345,13 @@ total is shown beside it only when `exercises.cable_count` is exactly 1 or 2.
 - `personal_records` holds max-weight/max-volume PRs (a different metric) — never relabel them as "1RM". Record-type label maps (`csv.ts`, `RecordsTab.tsx`) key on the UPPERCASE DB values (`MAX_WEIGHT`, `MAX_VOLUME`, `1RM`).
 
 ### Styling
-- Dark theme by default (background: #0D0D0D)
-- Phoenix color palette in `src/styles/theme.css`:
-  - Primary/Ember: `#FF6B35`
-  - Flame Red: `#DC2626`
-  - Gold: `#F59E0B`
-  - Forge Green: `#10B981`
-- Custom animations: `animate-flame-flicker`, `animate-ember-rise`, `animate-phoenix-glow`
+- Dark theme by default (`--background: #06060a` in `src/styles/theme.css`)
+- Phoenix color palette tokens in `src/styles/theme.css` (dark defaults):
+  - Primary/Ember: `--primary` and `--phoenix-ember` `#ff6b35`
+  - Destructive: `--destructive` `#ff5252`
+  - Accent: `--accent` `#f59e0b`
+  - Success: `--success` `#00e676`
+- Light theme (`:root[data-theme='light']`) overrides those tokens (`--background` `#fbfbfc`, `--primary` `#c2410c`, `--destructive` `#b91c1c`, `--accent` `#a16207`, `--success` `#047857`). `--phoenix-ember` stays `#ff6b35`.
 - CSS variables exposed via `@theme inline` for Tailwind v4
 
 ### Navigation Flow
