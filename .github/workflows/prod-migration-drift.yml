@@ -81,7 +81,7 @@ jobs:
     environment: production
     if: github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # Defense-in-depth for workflow_dispatch: fail before installing tools or
       # touching any production secret if a run somehow starts from a non-main
