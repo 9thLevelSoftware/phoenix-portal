@@ -4,7 +4,6 @@ import {
 	buildBodyMuscleFocusModel,
 	getBodyMuscleMappingForExercise,
 } from "@/lib/body-muscle-analytics";
-import { bodyIntelligenceRowSchema } from "@/schemas/transforms";
 
 function row(
 	overrides: Partial<BodyMuscleFocusRow> & Pick<BodyMuscleFocusRow, "name">,
@@ -151,30 +150,5 @@ describe("body muscle mapping", () => {
 			estimated: false,
 		});
 		expect(model.muscleById["chest-upper-left"]).toBeUndefined();
-	});
-
-	it("accepts nullable nested set loads in body-intelligence rows", () => {
-		const parsed = bodyIntelligenceRowSchema.parse({
-			id: crypto.randomUUID(),
-			exercise_id: "Barbell_Curl",
-			name: "Custom Movement",
-			muscle_group: "Chest",
-			session_id: crypto.randomUUID(),
-			setCount: 1,
-			sets: [
-				{
-					id: crypto.randomUUID(),
-					actual_reps: null,
-					weight_kg: null,
-				},
-			],
-			workout_sessions: {
-				id: crypto.randomUUID(),
-				started_at: "2026-06-01T12:00:00Z",
-				user_id: crypto.randomUUID(),
-			},
-		});
-
-		expect(parsed.exercise_id).toBe("Barbell_Curl");
 	});
 });

@@ -551,31 +551,6 @@ export function readCycleProgressionSettings(
 	return out;
 }
 
-// --- Body Intelligence ---
-
-export const bodyIntelligenceRowSchema = z.object({
-	id: z.string().uuid(),
-	exercise_id: z.string().nullable().optional(),
-	name: z.string(),
-	muscle_group: z.string().nullable(),
-	session_id: z.string().uuid(),
-	setCount: z.number(),
-	sets: z
-		.array(
-			z.object({
-				id: z.string().uuid(),
-				actual_reps: z.number().nullable(),
-				weight_kg: z.number().nullable(),
-			}),
-		)
-		.optional(),
-	workout_sessions: z.object({
-		id: z.string().uuid(),
-		started_at: z.coerce.date(),
-		user_id: z.string().uuid(),
-	}),
-});
-
 // --- Exercise Catalog ---
 
 export const catalogExerciseSchema = z.object({
