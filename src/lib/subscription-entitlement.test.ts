@@ -5,7 +5,6 @@ import { renderEntitlementParityTest } from "../../scripts/gen-entitlement-parit
 import {
 	ENTITLEMENT_GRACE_HOURS,
 	getEffectiveSubscriptionTier,
-	hasCurrentPeriodAccess,
 	isStaleActiveSubscription,
 	PAST_DUE_REFRESH_AFTER_DAYS,
 	type SubscriptionStatus,
@@ -21,9 +20,6 @@ describe("subscription entitlement", () => {
 				now,
 			}),
 		).toBe("FLAME");
-		expect(
-			hasCurrentPeriodAccess("active", "2026-06-01T00:00:00Z", { now }),
-		).toBe(true);
 	});
 
 	it("denies the paid tier for an active subscription past the grace window", () => {
@@ -108,15 +104,9 @@ describe("subscription entitlement", () => {
 				{ now },
 			),
 		).toBe("EMBER");
-		expect(
-			hasCurrentPeriodAccess("trialing", "2026-06-01T00:00:00Z", { now }),
-		).toBe(true);
 	});
 
 	it("denies a trialing subscription when current_period_end equals now", () => {
-		expect(
-			hasCurrentPeriodAccess("trialing", "2026-05-17T12:00:00Z", { now }),
-		).toBe(false);
 		expect(
 			getEffectiveSubscriptionTier(
 				"FLAME",

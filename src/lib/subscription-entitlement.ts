@@ -12,7 +12,6 @@ import {
 	ENTITLEMENT_GRACE_HOURS as ENTITLEMENT_GRACE_HOURS_VALUE,
 	type EntitlementOptions,
 	effectiveSubscriptionTier,
-	isSubscriptionEntitled,
 	type SubscriptionStatus,
 	type SubscriptionTier,
 } from "../../supabase/functions/_shared/subscriptionEntitlement.ts";
@@ -43,15 +42,6 @@ export const PAST_DUE_REFRESH_AFTER_DAYS = 3;
 
 const HOUR_MS = 60 * 60 * 1000;
 const PAST_DUE_REFRESH_AFTER_MS = PAST_DUE_REFRESH_AFTER_DAYS * 24 * HOUR_MS;
-
-/** Whether the row grants access now; see `isSubscriptionEntitled`. */
-export function hasCurrentPeriodAccess(
-	status: SubscriptionStatus,
-	currentPeriodEnd: string | null | undefined,
-	options: EntitlementOptions = {},
-): boolean {
-	return isSubscriptionEntitled(status, currentPeriodEnd, options);
-}
 
 /** The stored paid tier when entitled, otherwise FREE (fails closed). */
 export function getEffectiveSubscriptionTier(
