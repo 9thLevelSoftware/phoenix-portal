@@ -115,8 +115,10 @@ async function refreshTokenIfNeeded(
   });
 
   if (!response.ok) {
-    const errorBody = await response.text();
-    console.error('Fitbit token refresh failed:', response.status, errorBody);
+    // Status only. Fitbit's body can carry tokens; Strava refresh drops it
+    // the same way (`_shared/stravaToken.ts`) and never writes it to a log.
+    await response.body?.cancel();
+    console.error('Fitbit token refresh failed:', response.status);
 
     // Mark integration as error
     await supabase
@@ -418,8 +420,10 @@ async function runFitbitSync(
       await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId);
 
       if (!activitiesResponse.ok) {
-        const errorBody = await activitiesResponse.text();
-        console.error('Fitbit activities fetch failed:', activitiesResponse.status, errorBody);
+        // Status only, same as token refresh above. The body is cancelled
+        // unread so it cannot reach a log.
+        await activitiesResponse.body?.cancel();
+        console.error('Fitbit activities fetch failed:', activitiesResponse.status);
 
         // Handle rate limiting
         if (activitiesResponse.status === 429) {
