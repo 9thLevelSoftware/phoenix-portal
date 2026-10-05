@@ -180,7 +180,7 @@ describe("profileStatsOptions", () => {
 		expect(rpcFn).toHaveBeenCalledTimes(1);
 		expect(rpcFn).toHaveBeenCalledWith("profile_workout_stats", {
 			// UTC on purpose: best_streak is account-wide and the current streak
-			// beside it (useStreak/utcDateKey) is UTC-only, so the browser zone
+			// beside it (workout_current_streak) is UTC-only, so the browser zone
 			// here could make the current streak exceed the best one.
 			p_tz: "UTC",
 			p_profile_id: "profile-1",

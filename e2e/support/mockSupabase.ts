@@ -290,6 +290,33 @@ export async function installMockSupabase(
 		);
 
 	/**
+	 * Account-wide UTC streak matching `public.workout_current_streak`:
+	 * unique UTC dates, and if today is empty the run starts yesterday.
+	 * Not capped at the 50-row workout list.
+	 */
+	const workoutCurrentStreak = (now = new Date()) => {
+		const days = new Set(
+			(state.workoutSessions as Array<Record<string, unknown>>)
+				.map((session) => String(session.started_at ?? ""))
+				.filter((value) => value.length > 0)
+				.map((value) => {
+					const date = new Date(value);
+					return `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
+				}),
+		);
+		let count = 0;
+		for (let i = 0; i <= days.size; i++) {
+			const date = new Date(
+				Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i),
+			);
+			const key = `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
+			if (days.has(key)) count++;
+			else if (i > 0) break;
+		}
+		return count;
+	};
+
+	/**
 	 * The SQL aggregates the SPA reads instead of "every session id, then
 	 * .in(session_id, ids)". Mirrors the shapes of migration 20260920004000.
 	 */
@@ -390,6 +417,10 @@ export async function installMockSupabase(
 					);
 				});
 			return rows.slice(0, limit);
+		}
+
+		if (fn === "workout_current_streak") {
+			return workoutCurrentStreak();
 		}
 
 		if (fn === "profile_workout_stats") {

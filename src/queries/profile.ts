@@ -42,7 +42,7 @@ export function profileOptions(userId: string) {
  * the best streak from the OLDEST 1,000 sessions (F-034).
  *
  * `p_tz` is deliberately 'UTC': `best_streak` is account-wide, and the current
- * streak the Profile page shows next to it (`useStreak` / `utcDateKey`) is
+ * streak the Profile page shows next to it (`workout_current_streak`) is
  * computed in UTC. Passing the browser zone here would let the current streak
  * exceed the best one.
  */

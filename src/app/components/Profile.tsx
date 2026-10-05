@@ -51,7 +51,6 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
-import { useStreak } from "@/hooks/useStreak";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PHOENIX } from "@/lib/colors";
 import { cancelSuccessMessage } from "@/lib/paddle";
@@ -69,7 +68,7 @@ import {
 	rpgAttributesOptions,
 	topExercisesOptions,
 } from "@/queries/profile";
-import { workoutListOptions } from "@/queries/workouts";
+import { workoutStreakOptions } from "@/queries/workouts";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 const PLAN_LABELS: Record<string, string> = {
@@ -215,7 +214,10 @@ export function Profile() {
 		...profileStatsOptions(userId, activeProfileId),
 		enabled: !!userId,
 	});
-	const { data: workouts } = useQuery(workoutListOptions(userId));
+	const { data: rpcStreak } = useQuery({
+		...workoutStreakOptions(userId),
+		enabled: !!userId,
+	});
 	const { data: topExercises, isPending: exercisesLoading } = useQuery({
 		...topExercisesOptions(userId, activeProfileId),
 		enabled: !!userId,
@@ -237,7 +239,9 @@ export function Profile() {
 		enabled: !!userId,
 	});
 
-	const streak = useStreak(workouts);
+	// Account streak from workout_current_streak. The 50-row workout list
+	// cannot see a longer run (golden: 51 consecutive UTC days).
+	const streak = rpcStreak ?? 0;
 	// Save failures are reported by useUpdateProfile as a generic toast; the
 	// raw database error stays in the logs, never on screen.
 	const updateProfile = useUpdateProfile(userId || undefined);

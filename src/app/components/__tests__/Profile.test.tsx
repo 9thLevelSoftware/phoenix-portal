@@ -16,7 +16,11 @@ const mockAuth = vi.hoisted(() => ({
 	}),
 }));
 
-const mockData = vi.hoisted(() => ({ enabled: false }));
+const mockData = vi.hoisted(() => ({
+	enabled: false,
+	streak: undefined as number | undefined,
+	keys: [] as unknown[][],
+}));
 
 vi.mock("@/app/hooks/useAuth", () => mockAuth);
 vi.mock("@/providers/AuthProvider", () => mockAuth);
@@ -26,13 +30,16 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 		...actual,
 		useQuery: (options: { queryKey?: unknown[] }) => {
 			const key = options.queryKey ?? [];
+			mockData.keys.push(key);
 			const data = !mockData.enabled
 				? undefined
 				: key[1] === "stats"
 					? { totalWorkouts: 3, totalVolume: 1500, bestStreak: 1, prCount: 0 }
 					: key[1] === "gamification"
 						? { total_volume_kg: 99000, total_workouts: 3, total_reps: 10 }
-						: undefined;
+						: key[1] === "streak"
+							? mockData.streak
+							: undefined;
 			return {
 				data,
 				isPending: false,
@@ -78,6 +85,8 @@ function setSubscription(
 
 describe("Profile", () => {
 	beforeEach(() => {
+		mockData.streak = undefined;
+		mockData.keys = [];
 		setSubscription({
 			tier: "FREE",
 			rawTier: "FREE",
@@ -134,6 +143,20 @@ describe("Profile", () => {
 	it("formats profile volume per cable", () => {
 		expect(formatProfileVolume(1500, "kg")).toBe("1.5K kg per cable");
 		expect(formatProfileVolume(null, "kg")).toBe("0 kg per cable");
+	});
+
+	it("shows the workout_current_streak value, not a reduction of the capped workout list", () => {
+		// Golden case from workout_current_streak: 51 consecutive UTC days.
+		// workoutListOptions is capped at 50, so useStreak on that list cannot
+		// report 51.
+		mockData.enabled = true;
+		mockData.streak = 51;
+		renderWithProviders(<Profile />);
+		expect(screen.getByText("51 day streak")).toBeInTheDocument();
+		expect(screen.getByText("51d")).toBeInTheDocument();
+		expect(mockData.keys.some((key) => key[1] === "streak")).toBe(true);
+		expect(mockData.keys.some((key) => key[1] === "list")).toBe(false);
+		mockData.enabled = false;
 	});
 
 	it("shows only the session-derived per-cable volume, never the device total", () => {
