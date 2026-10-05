@@ -28,7 +28,6 @@ interface RepData {
 
 export interface ForceCurveProps {
 	repData: RepData[];
-	width?: number;
 	height?: number;
 	normalized?: boolean;
 	selectedRep?: number | null;
@@ -310,16 +309,12 @@ export function ForceCurve(props: ForceCurveProps) {
 			aria-label={`Force curve chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}. Peak force: ${maxForce.toFixed(0)} Newtons.`}
 		>
 			<div aria-hidden="true">
-				{props.width ? (
-					<ForceCurveInner {...props} width={props.width} />
-				) : (
-					<ParentSize>
-						{({ width }) => {
-							if (width <= 0) return null;
-							return <ForceCurveInner {...props} width={width} />;
-						}}
-					</ParentSize>
-				)}
+				<ParentSize>
+					{({ width }) => {
+						if (width <= 0) return null;
+						return <ForceCurveInner {...props} width={width} />;
+					}}
+				</ParentSize>
 			</div>
 			<table className="sr-only">
 				<caption>Force curve data by rep</caption>
