@@ -16,8 +16,6 @@ interface RoutinePickerModalProps {
 		muscleGroup: string;
 	}>;
 	onSelect: (routineId: string) => void;
-	/** Optional handler for the "Create New Routine" action. */
-	onCreateRoutine?: () => void;
 }
 
 export function RoutinePickerModal({
@@ -25,7 +23,6 @@ export function RoutinePickerModal({
 	onClose,
 	routines,
 	onSelect,
-	onCreateRoutine,
 }: RoutinePickerModalProps) {
 	const [search, setSearch] = useState("");
 
@@ -172,19 +169,6 @@ export function RoutinePickerModal({
 									</div>
 								)}
 							</div>
-
-							{/* Footer */}
-							{onCreateRoutine && (
-								<div className="p-6 border-t border-secondary">
-									<Button
-										variant="outline"
-										onClick={onCreateRoutine}
-										className="w-full border-primary text-primary hover:bg-primary/10"
-									>
-										+ Create New Routine
-									</Button>
-								</div>
-							)}
 						</Card>
 					</motion.div>
 				</>

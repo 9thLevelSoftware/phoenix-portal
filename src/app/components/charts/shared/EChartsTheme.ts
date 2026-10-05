@@ -21,13 +21,6 @@ export function getPhoenixEchartsTheme(tokens: ThemeTokens = getThemeTokens()) {
 			color: colors.axisText,
 			fontFamily: "system-ui, sans-serif",
 		},
-		title: {
-			textStyle: {
-				color: tokens.foreground,
-				fontSize: FONT_SIZES.title,
-				fontWeight: 600,
-			},
-		},
 		categoryAxis: {
 			axisLine: { lineStyle: { color: tokens.border } },
 			axisTick: { lineStyle: { color: tokens.border } },

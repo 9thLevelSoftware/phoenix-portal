@@ -1,6 +1,5 @@
 import { CommunityDistribution } from "@/app/components/charts/CommunityDistribution";
 import { Card, CardContent } from "@/app/components/ui/card";
-import { Skeleton } from "@/app/components/ui/skeleton";
 
 export interface RankingItem {
 	label: string;
@@ -16,45 +15,9 @@ export interface RankingItem {
 
 export interface CommunityRankingsProps {
 	rankings: RankingItem[];
-	loading?: boolean;
 }
 
-function RankingCardSkeleton() {
-	return (
-		<Card className="border-border p-0">
-			<CardContent className="flex flex-col gap-3 p-4">
-				<Skeleton className="h-3 w-20" />
-				<Skeleton className="h-8 w-16" />
-				<Skeleton className="h-3 w-28" />
-				<Skeleton className="h-14 w-full" />
-			</CardContent>
-		</Card>
-	);
-}
-
-export function CommunityRankings({
-	rankings,
-	loading = false,
-}: CommunityRankingsProps) {
-	if (loading) {
-		return (
-			<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-				<RankingCardSkeleton />
-				<RankingCardSkeleton />
-				<RankingCardSkeleton />
-				<RankingCardSkeleton />
-			</div>
-		);
-	}
-
-	if (rankings.length === 0) {
-		return (
-			<Card className="border-border p-6 text-center text-sm text-muted-foreground">
-				No ranking data available yet.
-			</Card>
-		);
-	}
-
+export function CommunityRankings({ rankings }: CommunityRankingsProps) {
 	return (
 		<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
 			{rankings.map((item) => (

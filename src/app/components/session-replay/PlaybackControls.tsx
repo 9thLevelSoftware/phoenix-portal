@@ -4,10 +4,6 @@ import { Button } from "@/app/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { useReplayStore } from "@/stores/useReplayStore";
 
-interface PlaybackControlsProps {
-	disabled?: boolean;
-}
-
 type Speed = 0.25 | 0.5 | 1 | 2 | 4;
 
 const SPEED_OPTIONS: Speed[] = [0.25, 0.5, 1, 2, 4];
@@ -16,12 +12,11 @@ const SPEED_OPTIONS: Speed[] = [0.25, 0.5, 1, 2, 4];
  * Play/pause button and speed control for session replay.
  * Uses Zustand store for state management.
  */
-export function PlaybackControls({ disabled = false }: PlaybackControlsProps) {
+export function PlaybackControls() {
 	const { isPlaying, speed, togglePlayPause, setSpeed } = useReplayStore();
 
 	// Space bar keyboard shortcut for play/pause
 	useEffect(() => {
-		if (disabled) return;
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.code !== "Space" || e.defaultPrevented) return;
 			const target = e.target as HTMLElement | null;
@@ -46,7 +41,7 @@ export function PlaybackControls({ disabled = false }: PlaybackControlsProps) {
 		};
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [disabled, togglePlayPause]);
+	}, [togglePlayPause]);
 
 	return (
 		<div className="flex items-center gap-4">
@@ -56,7 +51,6 @@ export function PlaybackControls({ disabled = false }: PlaybackControlsProps) {
 				size="icon"
 				className="w-12 h-12 rounded-full bg-primary hover:bg-primary/90"
 				onClick={togglePlayPause}
-				disabled={disabled}
 				aria-label={isPlaying ? "Pause" : "Play"}
 			>
 				{isPlaying ? (
@@ -77,7 +71,6 @@ export function PlaybackControls({ disabled = false }: PlaybackControlsProps) {
 						<TabsTrigger
 							key={s}
 							value={String(s)}
-							disabled={disabled}
 							className="px-2 text-xs min-w-[40px]"
 						>
 							{s}x

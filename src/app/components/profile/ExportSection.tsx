@@ -26,7 +26,10 @@ import {
 } from "@/lib/export/data-export";
 import { profileOptions } from "@/queries/profile";
 import { personalRecordsOptions } from "@/queries/records";
-import { workoutListOptions } from "@/queries/workouts";
+import {
+	fetchWorkoutHistoryForExport,
+	workoutListOptions,
+} from "@/queries/workouts";
 
 export function ExportSection() {
 	const { user } = useAuth();
@@ -55,18 +58,25 @@ export function ExportSection() {
 	} | null>(null);
 	const unit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
-	const handleExportWorkouts = () => {
-		if (!workouts?.length) {
+	// The list query is the dashboard cap (50). The CSV must page the rest:
+	// an unpaged select stops silently at PostgREST max_rows.
+	const handleExportWorkouts = async () => {
+		if (!user?.id || !workouts?.length) {
 			toast.error("No workout data to export");
 			return;
 		}
 
 		setExporting("workouts");
 		try {
-			const csv = generateWorkoutCSV(workouts, unit);
+			const allWorkouts = await fetchWorkoutHistoryForExport(user.id);
+			if (!allWorkouts.length) {
+				toast.error("No workout data to export");
+				return;
+			}
+			const csv = generateWorkoutCSV(allWorkouts, unit);
 			const filename = `phoenix-workouts-${new Date().toISOString().split("T")[0]}`;
 			downloadCSV(csv, filename);
-			toast.success(`Exported ${workouts.length} workouts`);
+			toast.success(`Exported ${allWorkouts.length} workouts`);
 		} catch (error) {
 			toast.error("Failed to export workouts");
 			console.error("Export error:", error);
@@ -196,7 +206,9 @@ export function ExportSection() {
 				<div className="flex flex-col sm:flex-row gap-3">
 					<Button
 						variant="outline"
-						onClick={handleExportWorkouts}
+						onClick={() => {
+							void handleExportWorkouts();
+						}}
 						disabled={workoutsLoading || exporting !== null}
 						className="flex-1 border-secondary text-foreground hover:bg-secondary/50"
 					>

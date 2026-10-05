@@ -12,7 +12,7 @@ Use design tokens from `src/styles/theme.css` only. Never inline hex colors, raw
 - **Podium:** `--rank-gold`, `--rank-silver`, `--rank-bronze`.
 - **Typography:** `text-display`, `text-h1`, `text-h2`, and `text-h3`, applied through Tailwind utilities.
 - **Spacing:** `--space-6` for the page stack. Prefer Tailwind spacing utilities inside components.
-- **Radii:** `--radius`, `--radius-sm`, `--radius-md`, and `--radius-lg`.
+- **Radii:** `--radius-sm`, `--radius-md`, and `--radius-lg`.
 - **Shadows:** the `shadow-sm|md|lg` utilities, backed by the per-theme `--elevation-sm|md|lg` values.
 
 ## Anti-slop rules (hard constraints)
@@ -47,7 +47,7 @@ Use design tokens from `src/styles/theme.css` only. Never inline hex colors, raw
 ## Theming
 
 - Support both light and dark themes through `:root[data-theme='light']` and the default token block.
-- `ThemeProvider` persists the choice in localStorage under `phoenix-theme` and synchronizes `dataset.theme` on `<html>`. `public/theme-boot.js` applies it before first paint (an external file, not inline, so it passes the CSP).
+- `ThemeProvider` persists the choice in localStorage under `phoenix-theme` and synchronizes `dataset.theme` on `<html>`. `public/theme-boot.js` applies it before first paint as a same-origin file, covered by the enforced `script-src 'self'` in `public/_headers`. `'unsafe-inline'` on that policy is the Paddle exception; the boot script does not rely on it.
 - `ThemeToggle` lives in the expanded desktop sidebar footer and in the mobile "More" drawer. The system preference is respected when `theme="system"`.
 - Canvas and ECharts code reads colours through `getThemeTokens()` / `useThemeTokens()` (cached; invalidated by `ThemeProvider` on a switch). Put the tokens in the dependencies of any memo or effect that draws with them. DOM and SVG styles can use `var(--token)` directly, and `withAlpha()` adds transparency to any colour, `var()` included; never append hex digits to a colour string.
 - Do not hardcode theme-dependent colors. Use semantic tokens rather than direct `var(--phoenix-*)` values for surfaces.

@@ -34,7 +34,8 @@ function getAllowedOrigins(): string[] {
  *   `default-src 'self'; connect-src 'self' https://*.paddle.com
  *   https://*.supabase.co https://api.phoenix-portal.com
  *   wss://api.phoenix-portal.com; script-src 'self' 'unsafe-inline';
- *   style-src 'self' 'unsafe-inline'`.
+ *   style-src 'self' 'unsafe-inline'; base-uri 'none'; object-src 'none';
+ *   frame-ancestors 'none'`.
  *   The SPA Content-Security-Policy is a separate header and lives in
  *   `public/_headers`.
  * - Strict-Transport-Security: max-age=31536000 (HSTS for HTTPS enforcement)
@@ -60,7 +61,7 @@ export function getCorsHeaders(req: Request): Record<string, string> {
     'Vary': 'Origin',
     // Security headers
     'X-Frame-Options': 'DENY',
-    'Content-Security-Policy': "default-src 'self'; connect-src 'self' https://*.paddle.com https://*.supabase.co https://api.phoenix-portal.com wss://api.phoenix-portal.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+    'Content-Security-Policy': "default-src 'self'; connect-src 'self' https://*.paddle.com https://*.supabase.co https://api.phoenix-portal.com wss://api.phoenix-portal.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'",
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     // HSTS only in production

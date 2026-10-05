@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { fetchAllSupabasePages } from "@/lib/supabasePaging";
 import {
 	type CatalogExercise,
 	catalogExerciseListSchema,
@@ -10,8 +11,6 @@ export interface ExerciseCatalogFilters {
 	search?: string;
 	includeArchived?: boolean;
 }
-
-export const CATALOG_PAGE_SIZE = 1000;
 
 const EXERCISE_MEDIA_MARKER = "/storage/v1/object/public/exercise-media/";
 
@@ -82,24 +81,19 @@ function applyCatalogFilters<
 export async function fetchExerciseCatalog(
 	filters?: ExerciseCatalogFilters,
 ): Promise<CatalogExercise[]> {
-	const rows: unknown[] = [];
-	for (let from = 0; ; from += CATALOG_PAGE_SIZE) {
-		const pageQuery = applyCatalogFilters(
+	// PostgREST silently caps an unpaged select at max_rows (1,000).
+	// Page inside this function so callers still receive one array.
+	// `id` is the unique tiebreak after popularity so offset pages
+	// do not skip or repeat rows.
+	const rows = await fetchAllSupabasePages((from, to) =>
+		applyCatalogFilters(
 			supabase
 				.from("exercise_catalog")
 				.select("*")
 				.order("popularity", { ascending: false })
 				.order("id", { ascending: true }),
 			filters,
-		);
-		const { data, error } = await pageQuery.range(
-			from,
-			from + CATALOG_PAGE_SIZE - 1,
-		);
-		if (error) throw error;
-		const page = data ?? [];
-		rows.push(...page);
-		if (page.length < CATALOG_PAGE_SIZE) break;
-	}
+		).range(from, to),
+	);
 	return catalogExerciseListSchema.parse(rows).map(withResolvedMedia);
 }

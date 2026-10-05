@@ -14,7 +14,6 @@ const TARGETED_INVALIDATIONS = [
 	queryKeys.cycles.all,
 	queryKeys.analytics.all,
 	queryKeys.telemetry.all,
-	queryKeys.biomechanics.all,
 	queryKeys.progress.all,
 	queryKeys.recovery.all,
 	queryKeys.replay.all,

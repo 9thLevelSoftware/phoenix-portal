@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/queries/keys";
 
 // --- Supabase chainable mock builder -------------------------------------
@@ -103,6 +103,18 @@ describe("workoutListOptions", () => {
 		const opts = workoutListOptions("user-abc");
 		const result = await opts.queryFn!({} as never);
 		expect(result).toEqual([]);
+	});
+
+	it("keeps the dashboard list capped at 50 sessions", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { workoutListOptions, WORKOUTS_PAGE_SIZE } = await import(
+			"../workouts"
+		);
+		expect(WORKOUTS_PAGE_SIZE).toBe(50);
+		const opts = workoutListOptions("user-abc");
+		await opts.queryFn?.({} as never);
+		expect(chain.limit).toHaveBeenCalledWith(WORKOUTS_PAGE_SIZE);
+		expect(chain.range).not.toHaveBeenCalled();
 	});
 
 	it("transforms null name to 'Untitled Workout'", async () => {
@@ -455,6 +467,20 @@ describe("workoutListInfiniteOptions", () => {
 		expect(opts.queryKey).toContain("infinite");
 	});
 
+	it("orders by started_at then id so equal timestamps do not skip offset pages", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { workoutListInfiniteOptions } = await import("../workouts");
+		const opts = workoutListInfiniteOptions("user-abc");
+		await opts.queryFn?.({ pageParam: 0 } as never);
+
+		expect(chain.order).toHaveBeenNthCalledWith(1, "started_at", {
+			ascending: false,
+		});
+		expect(chain.order).toHaveBeenNthCalledWith(2, "id", {
+			ascending: false,
+		});
+	});
+
 	it("stops paging when the last page is short", async () => {
 		const { workoutListInfiniteOptions, WORKOUTS_PAGE_SIZE } = await import(
 			"../workouts"
@@ -473,6 +499,93 @@ describe("workoutListInfiniteOptions", () => {
 		).toBe(WORKOUTS_PAGE_SIZE);
 	});
 });
+
+describe("fetchWorkoutHistoryForExport", () => {
+	afterEach(() => {
+		fromFn.mockImplementation(() => chain);
+	});
+
+	it("pages every session past one full PostgREST page", async () => {
+		const pageSize = 1000;
+		const total = pageSize + 1;
+		const all = Array.from({ length: total }, (_, index) =>
+			exportSessionRow(index),
+		);
+		const ranges: Array<[number, number]> = [];
+		const queries: Array<{
+			orders: unknown[][];
+			eqs: unknown[][];
+			limit: ReturnType<typeof vi.fn>;
+		}> = [];
+
+		fromFn.mockImplementation(() => {
+			const builder: Record<string, ReturnType<typeof vi.fn>> = {};
+			const chainable = () => builder;
+			const query = {
+				orders: [] as unknown[][],
+				eqs: [] as unknown[][],
+				limit: vi.fn(chainable),
+			};
+			queries.push(query);
+			builder.select = vi.fn(chainable);
+			builder.eq = vi.fn((...args: unknown[]) => {
+				query.eqs.push(args);
+				return builder;
+			});
+			builder.order = vi.fn((...args: unknown[]) => {
+				query.orders.push(args);
+				return builder;
+			});
+			builder.range = vi.fn((from: number, to: number) => {
+				ranges.push([from, to]);
+				return Promise.resolve({
+					data: all.slice(from, to + 1),
+					error: null,
+				});
+			});
+			builder.limit = query.limit;
+			return builder;
+		});
+
+		const { fetchWorkoutHistoryForExport } = await import("../workouts");
+		const result = await fetchWorkoutHistoryForExport("user-abc");
+
+		expect(result).toHaveLength(total);
+		expect(result[0]?.name).toBe("Session 0");
+		expect(result.at(-1)?.name).toBe(`Session ${pageSize}`);
+		expect(ranges).toEqual([
+			[0, pageSize - 1],
+			[pageSize, pageSize * 2 - 1],
+		]);
+		expect(queries).toHaveLength(2);
+		for (const query of queries) {
+			expect(query.orders).toEqual([
+				["started_at", { ascending: false }],
+				["id"],
+			]);
+			expect(query.eqs).toEqual([["user_id", "user-abc"]]);
+			expect(query.limit).not.toHaveBeenCalled();
+		}
+		expect(fromFn).toHaveBeenCalledWith("workout_sessions");
+	});
+});
+
+function exportSessionRow(index: number) {
+	return {
+		id: `11111111-1111-4111-8111-${index.toString(16).padStart(12, "0")}`,
+		user_id: "22222222-2222-4222-8222-222222222222",
+		name: `Session ${index}`,
+		started_at: "2026-03-01T08:00:00Z",
+		duration_seconds: 60,
+		total_volume: 1,
+		set_count: 1,
+		exercise_count: 1,
+		pr_count: 0,
+		routine_name: null,
+		workout_mode: null,
+		notes: null,
+	};
+}
 
 describe("workoutStreakOptions", () => {
 	beforeEach(() => {

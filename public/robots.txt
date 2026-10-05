@@ -14,6 +14,12 @@ Disallow: /integrations
 Disallow: /goals
 Disallow: /recovery
 Disallow: /pricing
+Disallow: /leaderboard
+Disallow: /routines
+Disallow: /cycles
+Disallow: /compare
+Disallow: /replay
+Disallow: /biomechanics
 Disallow: /auth/
 
 Sitemap: https://phoenix-portal.com/sitemap.xml

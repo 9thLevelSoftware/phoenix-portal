@@ -2,6 +2,7 @@ import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import type { SessionSummary } from "@/lib/comparison";
 import { supabase } from "@/lib/supabase";
+import { fetchAllSupabasePages } from "@/lib/supabasePaging";
 import {
 	exerciseSchema,
 	personalRecordListSchema,
@@ -63,8 +64,11 @@ export function workoutListInfiniteOptions(
 				query = query.eq("local_profile_id", profileId);
 			}
 
+			// `id` is the unique tiebreak after started_at so equal timestamps
+			// cannot skip or repeat rows across offset pages.
 			const { data, error } = await query
 				.order("started_at", { ascending: false })
+				.order("id", { ascending: false })
 				.range(pageParam, pageParam + WORKOUTS_PAGE_SIZE - 1);
 			if (error) throw error;
 			return workoutListSchema.parse(data);
@@ -75,6 +79,27 @@ export function workoutListInfiniteOptions(
 			return allPages.reduce((total, page) => total + page.length, 0);
 		},
 	});
+}
+
+/**
+ * Every session for the profile "Export Workout History" CSV.
+ *
+ * Pages until a short page so a history longer than PostgREST `max_rows` is
+ * not silently truncated. The dashboard list stays on `workoutListOptions`,
+ * which is capped at `WORKOUTS_PAGE_SIZE`. `id` breaks `started_at` ties so
+ * offset pages neither skip nor repeat a session.
+ */
+export async function fetchWorkoutHistoryForExport(userId: string) {
+	const rows = await fetchAllSupabasePages((from, to) =>
+		supabase
+			.from("workout_sessions")
+			.select("*")
+			.eq("user_id", userId)
+			.order("started_at", { ascending: false })
+			.order("id")
+			.range(from, to),
+	);
+	return workoutListSchema.parse(rows);
 }
 
 /**

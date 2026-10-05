@@ -1,8 +1,9 @@
 // Pre-paint theme: runs synchronously before the stylesheet so the first frame
 // already uses the stored theme (no dark-to-light flash). It is a same-origin
-// file rather than an inline <script> so it passes the script-src CSP (the
-// report-only policy has no 'unsafe-inline'). Keep in sync with
-// src/providers/ThemeProvider.tsx (storage key and accepted values).
+// file, so the enforced script-src 'self' in public/_headers covers it.
+// 'unsafe-inline' on that policy is the Paddle exception; this script does
+// not rely on it. Keep in sync with src/providers/ThemeProvider.tsx (storage
+// key and accepted values).
 (() => {
 	var resolved = "dark";
 	try {

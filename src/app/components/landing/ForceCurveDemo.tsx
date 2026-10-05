@@ -78,10 +78,10 @@ const AXIS_FONT_SIZE = 10;
 const LABEL_FONT_SIZE = 11;
 
 // ---------------------------------------------------------------------------
-// Inner Chart component (exported for testing)
+// Inner Chart component
 // ---------------------------------------------------------------------------
 
-export function Chart({ width, height }: { width: number; height: number }) {
+function Chart({ width, height }: { width: number; height: number }) {
 	// Colours below come from the theme helpers; re-read them on a switch.
 	useRerenderOnThemeChange();
 	const {

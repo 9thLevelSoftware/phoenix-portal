@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import {
 	afterSessionFilter,
 	fetchAllKeysetPages,
+	fetchAllSupabasePages,
 	type SessionCursor,
 	sessionCursorOf,
 } from "@/lib/supabasePaging";
@@ -271,40 +272,46 @@ export function phaseStatisticsTrendOptions(
 		queryFn: async () => {
 			const cutoff = periodCutoffISO(period);
 
-			let query = supabase
-				.from("session_phase_statistics")
-				.select(
-					[
-						"session_id",
-						"concentric_kg_avg",
-						"concentric_kg_max",
-						"concentric_vel_avg",
-						"concentric_vel_max",
-						"concentric_watt_avg",
-						"concentric_watt_max",
-						"eccentric_kg_avg",
-						"eccentric_kg_max",
-						"eccentric_vel_avg",
-						"eccentric_vel_max",
-						"eccentric_watt_avg",
-						"eccentric_watt_max",
-						"workout_sessions!inner(started_at, local_profile_id, name)",
-					].join(", "),
-				)
-				.eq("user_id", userId)
-				.order("created_at", { ascending: true });
+			// One response is silently capped at PostgREST max_rows. Period
+			// "all" has no date filter, so an unpaged select drops the newest
+			// rows. created_at is the trend order; id keeps a page boundary
+			// from skipping ties. Callers still receive one array.
+			return fetchAllSupabasePages((from, to) => {
+				let query = supabase
+					.from("session_phase_statistics")
+					.select(
+						[
+							"session_id",
+							"concentric_kg_avg",
+							"concentric_kg_max",
+							"concentric_vel_avg",
+							"concentric_vel_max",
+							"concentric_watt_avg",
+							"concentric_watt_max",
+							"eccentric_kg_avg",
+							"eccentric_kg_max",
+							"eccentric_vel_avg",
+							"eccentric_vel_max",
+							"eccentric_watt_avg",
+							"eccentric_watt_max",
+							"workout_sessions!inner(started_at, local_profile_id, name)",
+						].join(", "),
+					)
+					.eq("user_id", userId);
 
-			if (cutoff) {
-				query = query.gte("workout_sessions.started_at", cutoff);
-			}
+				if (cutoff) {
+					query = query.gte("workout_sessions.started_at", cutoff);
+				}
 
-			if (profileId) {
-				query = query.eq("workout_sessions.local_profile_id", profileId);
-			}
+				if (profileId) {
+					query = query.eq("workout_sessions.local_profile_id", profileId);
+				}
 
-			const { data, error } = await query;
-			if (error) throw error;
-			return data ?? [];
+				return query
+					.order("created_at", { ascending: true })
+					.order("id", { ascending: true })
+					.range(from, to);
+			});
 		},
 	});
 }

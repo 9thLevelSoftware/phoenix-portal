@@ -99,9 +99,6 @@ export const queryKeys = {
 		repSummaries: (setId: string) =>
 			[...queryKeys.telemetry.all, "rep-summaries", setId] as const,
 	},
-	biomechanics: {
-		all: ["biomechanics"] as const,
-	},
 	progress: {
 		all: ["progress"] as const,
 		exercises: (userId: string, profileId?: string | null) =>
@@ -144,6 +141,10 @@ export const queryKeys = {
 			[...queryKeys.integrations.all, userId] as const,
 		external: (userId: string) =>
 			[...queryKeys.integrations.all, "external", userId] as const,
+		// Nested under `external` so invalidating the activity list also
+		// refreshes the bounded analytics chart read.
+		externalChart: (userId: string) =>
+			[...queryKeys.integrations.external(userId), "chart"] as const,
 		syncQueue: (userId: string) =>
 			[...queryKeys.integrations.all, "sync-queue", userId] as const,
 		// Nested under `syncQueue` so invalidating the activity list also

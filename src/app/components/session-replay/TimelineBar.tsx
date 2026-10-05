@@ -13,8 +13,6 @@ interface TimelineBarProps {
 	durationMs: number;
 	repBoundaries: number[]; // Start timestamp for each rep
 	fatigue: FatigueAnalysis;
-	onScrubStart?: () => void;
-	onScrubEnd?: () => void;
 }
 
 /**
@@ -25,8 +23,6 @@ export function TimelineBar({
 	durationMs,
 	repBoundaries,
 	fatigue,
-	onScrubStart,
-	onScrubEnd,
 }: TimelineBarProps) {
 	const { currentTimeMs, seek } = useReplayStore();
 	const wasPlayingRef = useRef(false);
@@ -53,15 +49,13 @@ export function TimelineBar({
 		if (isPlaying) {
 			pause();
 		}
-		onScrubStart?.();
-	}, [isPlaying, pause, onScrubStart]);
+	}, [isPlaying, pause]);
 
 	const handlePointerUp = useCallback(() => {
 		if (wasPlayingRef.current) {
 			play();
 		}
-		onScrubEnd?.();
-	}, [play, onScrubEnd]);
+	}, [play]);
 
 	const handleValueChange = useCallback(
 		(values: number[]) => {

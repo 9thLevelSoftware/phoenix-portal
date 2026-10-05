@@ -466,12 +466,6 @@ describe("PlaybackControls", () => {
 			expect(screen.getByText(speed)).toBeInTheDocument();
 		}
 	});
-
-	it("disables controls when disabled prop is true", () => {
-		renderWithProviders(<PlaybackControls disabled={true} />);
-		const playBtn = screen.getByRole("button", { name: /play/i });
-		expect(playBtn).toBeDisabled();
-	});
 });
 
 // ===================================================================

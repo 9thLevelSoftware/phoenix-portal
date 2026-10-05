@@ -1091,7 +1091,10 @@ Optional:
 # Override project ref if it cannot be inferred from VITE_SUPABASE_URL
 SUPABASE_PROJECT_REF=abcdefghijklmnopqrst
 
-# Additional exact redirect URLs, comma-separated
+# Additional exact redirect URLs, comma-separated. Use a normal URL
+# (including a normal `?` when the URL already has a query). The push
+# command also allow-lists each entry with `provider=google` and
+# `provider=apple`, and writes every literal `?` as `\?`.
 SUPABASE_AUTH_ADDITIONAL_REDIRECT_URLS=https://preview.example.com/auth/callback
 ```
 
@@ -1119,9 +1122,16 @@ npm run auth:social:check
 The helper command prints the exact values again, but the critical ones are:
 
 - Supabase OAuth callback URL: `https://<project-ref>.supabase.co/auth/v1/callback`
-- Portal redirect URL allow-list entries: `http://localhost:5173/auth/callback`,
-  `http://localhost:5173/auth/reset-password`, and those same paths on the
-  production site URL
+- Portal redirect URL allow-list entries. Supabase matches this list as a
+  glob, so each literal `?` is stored as `\?`:
+  - `http://localhost:5173/auth/callback`
+  - `http://localhost:5173/auth/callback\?provider=google`
+  - `http://localhost:5173/auth/callback\?provider=apple`
+  - the same three forms on `${SUPABASE_AUTH_SITE_URL}/auth/callback`
+  - `http://localhost:5173/auth/reset-password` and that same path on the
+    production site URL (no `provider` query)
+  - each `SUPABASE_AUTH_ADDITIONAL_REDIRECT_URLS` entry, plus that entry
+    with `provider=google` and `provider=apple`
 - Google web app:
   - Authorized JavaScript origins: `http://localhost:5173` and your portal
     origin
@@ -1328,10 +1338,6 @@ schedule or command without undoing an operator pause or activation. For
 owned-row provider handlers are first deployed. Its private release-gate marker
 means re-applying that migration after activation leaves the job active.
 
-**None of them ever changes `active`, in either direction.** A re-apply repairs
-a drifted schedule or command; it never activates a job you paused, and never
-pauses a job that is running. For `generate-insights` a re-apply also preserves
-the batch cursor in `private.insights_batch_state`.
 `20260920000200` is different: it only schedules a job when no job of that name
 exists, and never alters an existing one.
 ### The jobs
@@ -1505,9 +1511,15 @@ which path applies depends on what is enabled.
   Function secrets are **not** part of a database restore.
 - Re-run the daily health-check queries in [§7](#7-monitoring-quick-reference).
 - Re-verify sync end to end with one real device. A restore rewinds
-  `updated_at`, and `mobile-sync-pull` is a delta on `lastSync`, so a device
-  whose watermark is ahead of the restore point will not be served the rows it
-  is missing until it forces a full `lastSync=0` pull.
+  `updated_at`. `mobile-sync-pull` is a parity pull: the device sends
+  `knownEntityIds`, and the server returns rows that are not in those lists.
+  The stale arm also returns known sessions, routines and cycles changed
+  since `lastSync` minus 2 minutes. Ids the device does not already list
+  still come back after the rewind. A known session, routine or cycle whose
+  `updated_at` now sits behind that window is not refreshed, so a device
+  whose watermark is ahead of the restore point keeps its local copy until
+  it pulls with `lastSync=0` (every known row counts as stale). Empty or
+  absent `knownEntityIds` already returns the whole profile.
 ### Test restore (Operator Action 6)
 1. Restore the most recent backup or PITR point into a **new scratch project**.
 2. Confirm the restore actually contains data:

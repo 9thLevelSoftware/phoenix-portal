@@ -115,19 +115,24 @@ export function communityFeedOptions(params: FeedParams) {
 			// two-step fetch: get feed rows first, then batch-fetch profiles.
 			let query = supabase.from(table).select(select);
 
-			// Sort
+			// Sort. `id` is the unique tiebreak after the timestamp so equal
+			// shared_at values cannot skip or repeat rows across offset pages.
 			if (params.sort === "new") {
-				query = query.order("shared_at", { ascending: false });
+				query = query
+					.order("shared_at", { ascending: false })
+					.order("id", { ascending: false });
 			} else if (params.sort === "hot") {
 				// "hot" ranks by the precomputed hot_score (recency-weighted votes),
-				// with shared_at as a deterministic tie-breaker.
+				// with shared_at then id as deterministic tie-breakers.
 				query = query
 					.order("hot_score", { ascending: false })
-					.order("shared_at", { ascending: false });
+					.order("shared_at", { ascending: false })
+					.order("id", { ascending: false });
 			} else {
 				query = query
 					.order("vote_count", { ascending: false })
-					.order("shared_at", { ascending: false });
+					.order("shared_at", { ascending: false })
+					.order("id", { ascending: false });
 			}
 
 			// Creator filter
@@ -271,12 +276,18 @@ export function blockedUsersOptions(userId: string) {
 	return queryOptions({
 		queryKey: queryKeys.community.blocks(userId),
 		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("user_blocks")
-				.select("blocked_id")
-				.eq("blocker_id", userId);
-			if (error) throw error;
-			return (data ?? []).map((row) => row.blocked_id);
+			// One response is silently capped at PostgREST max_rows.
+			// blocked_id is unique per blocker, so offset pages neither
+			// skip nor repeat a block.
+			const data = await fetchAllSupabasePages((from, to) =>
+				supabase
+					.from("user_blocks")
+					.select("blocked_id")
+					.eq("blocker_id", userId)
+					.order("blocked_id", { ascending: true })
+					.range(from, to),
+			);
+			return data.map((row) => row.blocked_id);
 		},
 	});
 }

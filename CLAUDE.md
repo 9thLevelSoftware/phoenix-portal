@@ -32,7 +32,7 @@ npm run supabase -- <args>  # Pinned Supabase CLI (version in .supabase-cli-vers
 npm run test:db          # Full pgTAP suite against the local stack (CI: migrations.yml)
 npm run gen:types:local  # Regenerate src/lib/database.types.ts from the migrated local DB
 npm run gen:types:check  # Fail if database.types.ts drifts from the migrations (CI gate)
-npm run verify           # lint + typecheck + test + build + sourcemap/config asserts
+npm run verify           # lint + typecheck + test + build + assert:no-sourcemaps + assert:bundle-budget + assert:supabase-config
 ```
 
 ### Generated types
@@ -46,13 +46,14 @@ generator cannot express (nullable RPC args, PostgREST version) in
 
 ### Typecheck
 
-The root `tsconfig.json` is a solution file (`"files": []` plus three project
+The root `tsconfig.json` is a solution file (`"files": []` plus four project
 references), so **`tsc --noEmit` over it compiles an empty program and exits 0
 without checking anything.** Never use it as a gate.
 
 `npm run typecheck` runs `scripts/typecheck.mjs`, which type-checks each
-project explicitly (`tsc -p tsconfig.app.json|tsconfig.node.json|tsconfig.test.json
---noEmit`) and compares the errors against `typecheck-baseline.json`
+project explicitly (`tsc -p --noEmit` on `tsconfig.app.json`,
+`tsconfig.node.json`, `tsconfig.test.json`, and `tsconfig.e2e.json`) and
+compares the errors against `typecheck-baseline.json`
 (counts per project, file and error code). It fails only on errors not in the
 baseline, so the pre-existing backlog does not block a PR. When you fix
 errors, shrink the baseline with `npm run typecheck:baseline` and commit it;
@@ -86,6 +87,7 @@ Edge Function secrets (Supabase Dashboard → Edge Functions → Secrets; read w
 - `SUPABASE_PUBLIC_URL` — the externally reachable functions origin. `initiate-oauth`, `complete-oauth` and `strava-oauth` build their redirect URI from it and fall back to `SUPABASE_URL`; `_shared/oauthTokenCrypto.ts` also mixes it into key derivation. (`fitbit-oauth` and `garmin-oauth` are disabled and read no env; see Edge Functions.)
 - `APP_URL` — the portal origin the OAuth callbacks redirect back to (success is `${APP_URL}/integrations/callback`, failure is `${APP_URL}/integrations?error=`; default `http://localhost:5173`) and one of the allowed CORS origins in `_shared/cors.ts`. There is no `PORTAL_URL`.
 - `PADDLE_API_KEY` (server API calls from `paddle-webhooks`, `delete-account`, and the three `paddle-*-subscription` functions), `PADDLE_WEBHOOK_SECRET`, `PADDLE_CUSTOM_DATA_SECRET`, `PADDLE_ENVIRONMENT`, `PADDLE_EMBER_PRICE_IDS` / `PADDLE_FLAME_PRICE_IDS` / `PADDLE_INFERNO_PRICE_IDS`
+- `PADDLE_EMBER_MONTHLY_PRICE_ID`, `PADDLE_EMBER_ANNUAL_PRICE_ID`, `PADDLE_FLAME_MONTHLY_PRICE_ID`, `PADDLE_FLAME_ANNUAL_PRICE_ID`, `PADDLE_INFERNO_MONTHLY_PRICE_ID`, `PADDLE_INFERNO_ANNUAL_PRICE_ID` — six single price IDs, one per tier × interval, each set to the same value as the matching `VITE_PADDLE_*_PRICE_ID`. `_shared/paddlePriceIds.ts` reads the single for a `paddle-update-subscription` plan change (`getConfiguredPriceIdForTierInterval`) and unions it into that tier's allowlist.
 - `CRON_SECRET` — the shared secret for pg_cron-invoked functions, compared in constant time against the `x-cron-secret` header by `_shared/cronSecret.ts`. `process-sync-queue` still accepts the legacy names `PROCESS_SYNC_QUEUE_SECRET` and `CRON_SYNC_QUEUE_SECRET`, but only when `CRON_SECRET` is unset; nothing else does. The DB half is the Vault secret `edge_cron_secret` used by `private.invoke_edge_function` (KD-10).
 - `SYNC_LWW_ENABLED` — cold-start flag in `supabase/functions/_shared/flags.ts`, `"false"` unless the secret is exactly `true`. Flipping it requires a redeploy; there is no runtime refresh. Its production value is not recorded in this repo — ask the operator rather than assuming.
 - `SYNC_PUSH_TRANSACTION` — cold-start flag in the same file, `"false"` unless exactly `true`. When on, `mobile-sync-push` runs its whole write sequence in one Postgres transaction (F-014, `_shared/pushTransaction.ts`): a failure part-way commits nothing, and the `sync_complete` broadcast happens only after COMMIT. It connects with `SUPABASE_DB_URL` (provided by Supabase to Edge Functions); if that connection cannot be opened the push falls back to per-call writes and logs `PushTransactionUnavailable`. The response contract is identical either way.
@@ -437,12 +439,21 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
 - **`ci.yml`** — on every push and PR to `main`. Jobs: `dependency-audit`
   (`npm run audit:security`), `lint` (Biome), `typecheck` (`npm run typecheck`,
   the baseline-comparing checker described under "Typecheck"),
-  `edge-functions` (`npm run check:edge-functions` then `npm run test:edge`,
-  which runs **every** Edge handler suite, not just mobile-sync), `unit-test`
-  (`npm test`), `e2e` (`npm run test:e2e`, Playwright against mocked REST, plus
+  `edge-functions` (`npm run check:edge-functions`, then `npm run test:edge`
+  twice: `SYNC_LWW_ENABLED=false` and `SYNC_LWW_ENABLED=true`. Both must pass.
+  The push handler has a separate write path for each flag value and the
+  production value is unknown (NF-50). Each run covers **every** Edge handler
+  suite, not just mobile-sync), `unit-test` (`npm test`), `e2e`
+  (`npm run test:e2e`, Playwright against mocked REST, plus
   `npm run test:e2e:pwa`), and `build` (production build plus
-  `assert:no-sourcemaps` and `assert:bundle-budget`). It never runs on stacked
-  PRs whose base is not `main`.
+  `assert:no-sourcemaps`, `assert:bundle-budget`, and
+  `assert:supabase-config`). `assert:supabase-config`
+  (`scripts/assert-live-supabase-config.mjs`; also the last step of
+  `npm run verify`) scans `package.json`, `public/_headers`, and `dist/`
+  when present, and fails when they reference a Supabase project ref listed in
+  `STALE_SUPABASE_REFS`. The committed default denylist is empty, and CI does
+  not set that variable. The workflow never runs on stacked PRs whose base is
+  not `main`.
 - **`migrations.yml`** — on PRs and `main` pushes that touch
   `supabase/migrations/**`, `supabase/tests/**`, `supabase/config.toml`,
   `database.types.ts` or the CLI/type tooling. Clean-applies every migration
@@ -471,7 +482,9 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
 - **`deploy-edge-functions.yml`** — deploys on `main` pushes that touch
   `supabase/functions/**` or `supabase/config.toml`, and on
   `workflow_dispatch`. Two gates run before any upload: a `verify` job
-  (`check:edge-functions` + `test:edge` on that exact commit) and
+  (`check:edge-functions`, then `test:edge` with `SYNC_LWW_ENABLED=false` and
+  again with `SYNC_LWW_ENABLED=true`; both must pass on that exact commit, and
+  a red test blocks deploy) and
   "Gate on prod migrations", which fails and names the versions when any local
   migration is not yet applied in prod. That keeps the order migration → Edge
   code. Main-only guard plus the `production` environment secrets below.

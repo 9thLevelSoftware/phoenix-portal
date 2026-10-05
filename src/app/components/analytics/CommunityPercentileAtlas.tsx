@@ -54,7 +54,7 @@ export function CommunityPercentileAtlas({
 					No percentile data is available for your account yet.
 				</div>
 			) : (
-				<CommunityRankings rankings={rankings} loading={false} />
+				<CommunityRankings rankings={rankings} />
 			)}
 		</section>
 	);

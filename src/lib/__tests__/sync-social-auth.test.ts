@@ -75,10 +75,40 @@ describe("sync-social-auth", () => {
 			}),
 		).toEqual([
 			"http://localhost:5173/auth/callback",
+			"http://localhost:5173/auth/callback\\?provider=google",
+			"http://localhost:5173/auth/callback\\?provider=apple",
 			"https://portal.projectphoenix.app/auth/callback",
+			"https://portal.projectphoenix.app/auth/callback\\?provider=google",
+			"https://portal.projectphoenix.app/auth/callback\\?provider=apple",
 			"http://localhost:5173/auth/reset-password",
 			"https://portal.projectphoenix.app/auth/reset-password",
+			"http://localhost:5173/auth/reset-password\\?provider=google",
+			"http://localhost:5173/auth/reset-password\\?provider=apple",
 			"https://preview.projectphoenix.app/auth/callback",
+			"https://preview.projectphoenix.app/auth/callback\\?provider=google",
+			"https://preview.projectphoenix.app/auth/callback\\?provider=apple",
+		]);
+	});
+
+	it("escapes provider variants on callbacks and extra URLs", () => {
+		expect(
+			buildAllowedRedirectUrls({
+				siteUrl: "https://portal.projectphoenix.app",
+				additionalRedirectUrls:
+					"https://preview.projectphoenix.app/auth/callback?next=%2Fdashboard",
+			}),
+		).toEqual([
+			"http://localhost:5173/auth/callback",
+			"http://localhost:5173/auth/callback\\?provider=google",
+			"http://localhost:5173/auth/callback\\?provider=apple",
+			"https://portal.projectphoenix.app/auth/callback",
+			"https://portal.projectphoenix.app/auth/callback\\?provider=google",
+			"https://portal.projectphoenix.app/auth/callback\\?provider=apple",
+			"http://localhost:5173/auth/reset-password",
+			"https://portal.projectphoenix.app/auth/reset-password",
+			"https://preview.projectphoenix.app/auth/callback\\?next=%2Fdashboard",
+			"https://preview.projectphoenix.app/auth/callback\\?next=%2Fdashboard&provider=google",
+			"https://preview.projectphoenix.app/auth/callback\\?next=%2Fdashboard&provider=apple",
 		]);
 	});
 
@@ -113,6 +143,34 @@ verify_jwt = false
 		expect(managedConfig).toContain('client_id = "google-client-id"');
 		expect(managedConfig).toContain('secret = "apple-secret"');
 		expect(managedConfig).toContain("[functions.example]");
+	});
+
+	it("quotes escaped provider query globs so toml keeps the backslash", () => {
+		const baseConfig = `${MANAGED_BLOCK_START}
+${MANAGED_BLOCK_END}
+`;
+		const allowedRedirectUrls = buildAllowedRedirectUrls({
+			siteUrl: "https://portal.projectphoenix.app",
+		});
+
+		const managedConfig = buildManagedConfig(baseConfig, {
+			siteUrl: "https://portal.projectphoenix.app/",
+			allowedRedirectUrls,
+			googleClientId: "google-client-id",
+			googleSecret: "google-secret",
+			appleClientId: "apple-services-id",
+			appleSecret: "apple-secret",
+		});
+
+		expect(managedConfig).toContain(
+			'"http://localhost:5173/auth/callback\\\\?provider=google"',
+		);
+		expect(managedConfig).toContain(
+			'"https://portal.projectphoenix.app/auth/callback\\\\?provider=apple"',
+		);
+		expect(managedConfig).not.toContain(
+			'"http://localhost:5173/auth/callback?provider=google"',
+		);
 	});
 });
 

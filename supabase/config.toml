@@ -19,6 +19,11 @@ refresh_token_reuse_interval = 60
 
 # BEGIN_MANAGED_SOCIAL_AUTH
 # Generated only in a temporary config by scripts/sync-social-auth.mjs.
+# additional_redirect_urls then includes /auth/callback and
+# /auth/callback\?provider=google|apple for localhost and the site URL,
+# plus each SUPABASE_AUTH_ADDITIONAL_REDIRECT_URLS entry and its
+# provider=google|apple variants. The `\?` is a literal query delimiter:
+# an unescaped `?` is a one-character glob wildcard.
 # END_MANAGED_SOCIAL_AUTH
 
 # Keep every deployed Edge Function listed here so Supabase production and
