@@ -467,6 +467,20 @@ describe("workoutListInfiniteOptions", () => {
 		expect(opts.queryKey).toContain("infinite");
 	});
 
+	it("orders by started_at then id so equal timestamps do not skip offset pages", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { workoutListInfiniteOptions } = await import("../workouts");
+		const opts = workoutListInfiniteOptions("user-abc");
+		await opts.queryFn?.({ pageParam: 0 } as never);
+
+		expect(chain.order).toHaveBeenNthCalledWith(1, "started_at", {
+			ascending: false,
+		});
+		expect(chain.order).toHaveBeenNthCalledWith(2, "id", {
+			ascending: false,
+		});
+	});
+
 	it("stops paging when the last page is short", async () => {
 		const { workoutListInfiniteOptions, WORKOUTS_PAGE_SIZE } = await import(
 			"../workouts"
