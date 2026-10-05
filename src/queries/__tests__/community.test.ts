@@ -206,6 +206,54 @@ describe("userVotesOptions", () => {
 	});
 });
 
+describe("blockedUsersOptions", () => {
+	it("pages a user's blocks past the row cap ordered by blocked_id", async () => {
+		const first = Array.from({ length: SUPABASE_PAGE_SIZE }, (_, i) =>
+			block(i),
+		);
+		const tail = block(SUPABASE_PAGE_SIZE);
+		const chain = cappedChain([first, [tail]]);
+		from.mockImplementation((table: string) => {
+			expect(table).toBe("user_blocks");
+			return chain;
+		});
+
+		const { blockedUsersOptions } = await import("../community");
+		const result = await blockedUsersOptions("user-1").queryFn?.({} as never);
+
+		expect(result).toHaveLength(SUPABASE_PAGE_SIZE + 1);
+		expect(result?.[0]).toBe(first[0]?.blocked_id);
+		expect(result?.at(-1)).toBe(tail.blocked_id);
+		expect(chain.eq).toHaveBeenCalledWith("blocker_id", "user-1");
+		expect(chain.order).toHaveBeenCalledWith("blocked_id", {
+			ascending: true,
+		});
+		expect(chain.range).toHaveBeenCalledWith(0, SUPABASE_PAGE_SIZE - 1);
+		expect(chain.range).toHaveBeenCalledWith(
+			SUPABASE_PAGE_SIZE,
+			SUPABASE_PAGE_SIZE * 2 - 1,
+		);
+	});
+
+	it("rejects when a later block page fails", async () => {
+		const full = Array.from({ length: SUPABASE_PAGE_SIZE }, (_, i) => block(i));
+		const chain = cappedChain([full]);
+		chain.range.mockImplementation((from: number) =>
+			Promise.resolve(
+				from === 0
+					? { data: full, error: null }
+					: { data: null, error: new Error("block page failed") },
+			),
+		);
+		from.mockImplementation(() => chain);
+
+		const { blockedUsersOptions } = await import("../community");
+		await expect(
+			blockedUsersOptions("user-1").queryFn?.({} as never),
+		).rejects.toThrow("block page failed");
+	});
+});
+
 describe("savedItemsOptions", () => {
 	it("pages a user's saves past the row cap in saved_at order", async () => {
 		const first = Array.from({ length: SUPABASE_PAGE_SIZE }, (_, i) => save(i));
@@ -237,6 +285,12 @@ function vote(i: number) {
 		item_id: uuid(1_000_000 + i),
 		item_type: "routine" as const,
 		created_at: "2026-03-17T10:00:00.000Z",
+	};
+}
+
+function block(i: number) {
+	return {
+		blocked_id: uuid(3_000_000 + i),
 	};
 }
 
