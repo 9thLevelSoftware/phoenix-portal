@@ -1,4 +1,5 @@
 import Papa from "papaparse";
+import { groupBy, MILES_TO_METERS } from "./csvShared";
 import { upsertExternalActivities } from "./externalActivities";
 import type { NormalizedActivity } from "./types";
 
@@ -25,27 +26,6 @@ interface HevyCSVRow {
 	distance_miles: string;
 	duration_seconds: string;
 	rpe: string;
-}
-
-/** Miles to meters conversion factor */
-const MILES_TO_METERS = 1609.344;
-
-/**
- * Group an array of items by a key function.
- */
-function groupBy<T>(
-	items: T[],
-	keyFn: (item: T) => string,
-): Record<string, T[]> {
-	const groups: Record<string, T[]> = {};
-	for (const item of items) {
-		const key = keyFn(item);
-		if (!groups[key]) {
-			groups[key] = [];
-		}
-		groups[key].push(item);
-	}
-	return groups;
 }
 
 /**
