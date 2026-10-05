@@ -79,5 +79,4 @@ export function useRepColors(): string[] {
 export const FONT_SIZES = {
 	axis: 11,
 	label: 13,
-	title: 15,
 } as const;

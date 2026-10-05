@@ -6,12 +6,9 @@ import {
 	RadarChart,
 } from "echarts/charts";
 import {
-	DataZoomComponent,
 	GridComponent,
 	LegendComponent,
 	MarkLineComponent,
-	TitleComponent,
-	ToolboxComponent,
 	TooltipComponent,
 } from "echarts/components";
 import * as echarts from "echarts/core";
@@ -36,9 +33,6 @@ echarts.use([
 	GridComponent,
 	TooltipComponent,
 	LegendComponent,
-	TitleComponent,
-	DataZoomComponent,
-	ToolboxComponent,
 	MarkLineComponent,
 ]);
 
@@ -114,7 +108,7 @@ function resolveChartOption<T>(value: T, tokens: ThemeTokens): T {
 }
 
 /**
- * Shared ECharts wrapper with Phoenix theme, responsive sizing, and loading state.
+ * Shared ECharts wrapper with Phoenix theme and responsive sizing.
  * Uses tree-shakeable imports to minimize bundle size (~200-300KB vs ~800KB full).
  * Option updates fully replace the previous config (notMerge=true).
  * Canvas colors resolve CSS variables / color-mix() to concrete values so light
@@ -123,18 +117,9 @@ function resolveChartOption<T>(value: T, tokens: ThemeTokens): T {
 interface EChartsWrapperProps {
 	option: echarts.EChartsCoreOption;
 	height?: string | number;
-	className?: string;
-	loading?: boolean;
-	onEvents?: Record<string, (params: unknown) => void>;
 }
 
-export function EChartsWrapper({
-	option,
-	height = 300,
-	className,
-	loading,
-	onEvents,
-}: EChartsWrapperProps) {
+export function EChartsWrapper({ option, height = 300 }: EChartsWrapperProps) {
 	const chartRef = useRef<ReactEChartsCore>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 	// A stable snapshot that changes only when the theme does, so both memos
@@ -179,14 +164,6 @@ export function EChartsWrapper({
 				option={resolvedOption}
 				theme={theme}
 				style={{ height: "100%", width: "100%" }}
-				className={className}
-				showLoading={loading}
-				loadingOption={{
-					text: "",
-					color: resolvedTokens.primary,
-					maskColor: withAlpha(resolvedTokens.background, 0.8),
-				}}
-				onEvents={onEvents}
 				notMerge
 			/>
 		</div>
