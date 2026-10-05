@@ -298,8 +298,6 @@ export const routineExerciseSchema = z.object({
 	created_at: z.coerce.date(),
 });
 
-export const routineExerciseListSchema = z.array(routineExerciseSchema);
-
 export type RoutineExercise = z.infer<typeof routineExerciseSchema>;
 
 // --- Routine Detail (routine + exercises) ---
