@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Ban, Flag, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Ban, Flag, MoreVertical, Trash2 } from "lucide-react";
 import { useState } from "react";
 import {
 	AlertDialog,
@@ -27,7 +27,6 @@ interface ContentActionMenuProps {
 	contentType: "routine" | "cycle" | "comment";
 	authorId: string | null;
 	currentUserId: string;
-	onEdit?: (id: string) => void;
 }
 
 export function ContentActionMenu({
@@ -35,7 +34,6 @@ export function ContentActionMenu({
 	contentType,
 	authorId,
 	currentUserId,
-	onEdit,
 }: ContentActionMenuProps) {
 	const [showReportDialog, setShowReportDialog] = useState(false);
 	const [showBlockConfirm, setShowBlockConfirm] = useState(false);
@@ -67,40 +65,29 @@ export function ContentActionMenu({
 					onClick={(e) => e.stopPropagation()}
 				>
 					{isOwnContent ? (
-						<>
-							{onEdit && contentType !== "comment" && (
-								<DropdownMenuItem
-									onClick={() => onEdit(contentId)}
-									className="cursor-pointer"
-								>
-									<Pencil className="w-4 h-4" />
-									Edit
-								</DropdownMenuItem>
-							)}
-							<DropdownMenuItem
-								onClick={() => {
-									// Undo toast pattern: immediate feedback with recovery window.
-									// Better UX than confirmation dialog for reversible community actions.
-									toastWithUndo({
-										message: `${contentType === "routine" ? "Routine" : "Cycle"} removed from community`,
-										action: () =>
-											deleteMutation.mutateAsync({
-												contentId,
-												contentType: contentType as "routine" | "cycle",
-											}),
-										onUndo: () =>
-											queryClient.invalidateQueries({
-												queryKey: queryKeys.community.all,
-											}),
-									});
-								}}
-								variant="destructive"
-								className="cursor-pointer"
-							>
-								<Trash2 className="w-4 h-4" />
-								Delete
-							</DropdownMenuItem>
-						</>
+						<DropdownMenuItem
+							onClick={() => {
+								// Undo toast pattern: immediate feedback with recovery window.
+								// Better UX than confirmation dialog for reversible community actions.
+								toastWithUndo({
+									message: `${contentType === "routine" ? "Routine" : "Cycle"} removed from community`,
+									action: () =>
+										deleteMutation.mutateAsync({
+											contentId,
+											contentType: contentType as "routine" | "cycle",
+										}),
+									onUndo: () =>
+										queryClient.invalidateQueries({
+											queryKey: queryKeys.community.all,
+										}),
+								});
+							}}
+							variant="destructive"
+							className="cursor-pointer"
+						>
+							<Trash2 className="w-4 h-4" />
+							Delete
+						</DropdownMenuItem>
 					) : (
 						<>
 							<DropdownMenuItem
