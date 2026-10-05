@@ -138,7 +138,7 @@ export default defineConfig({
 					// (sonner, vaul, cmdk, …) can pull React internals into this
 					// chunk, so vendor-react imports vendor-ui and vendor-ui imports
 					// vendor-react: a circular chunk that leaves the production
-					// bundle unable to boot. `onwarn` below turns that into a
+					// bundle unable to boot. `onwarn` above turns that into a
 					// build failure.
 					"vendor-ui": ["class-variance-authority", "clsx", "tailwind-merge"],
 					"vendor-zod": ["zod"],
