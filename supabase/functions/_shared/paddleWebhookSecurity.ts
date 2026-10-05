@@ -1,4 +1,5 @@
 import { hmacSha256Hex } from "./hmac.ts";
+import { timingSafeEqualString } from "./timingSafe.ts";
 
 export type PaddleEventOrderDecision =
   | { action: "accept"; occurredAt: string }
@@ -43,19 +44,6 @@ export function classifyPaddleEventOrder(
   }
 
   return { action: "accept", occurredAt };
-}
-
-function constantTimeEqual(left: string, right: string): boolean {
-  const encoder = new TextEncoder();
-  const a = encoder.encode(left);
-  const b = encoder.encode(right);
-
-  let mismatch = a.length !== b.length ? 1 : 0;
-  const cmpLen = Math.min(a.length, b.length);
-  for (let i = 0; i < cmpLen; i++) {
-    mismatch |= a[i]! ^ b[i]!;
-  }
-  return mismatch === 0;
 }
 
 /** Paddle's replay window for `Paddle-Signature` timestamps, in seconds. */
@@ -115,7 +103,9 @@ export async function verifyPaddleSignature(
   let matched = false;
   for (const candidate of candidates) {
     // Compare every candidate; no early exit on the first match.
-    if (constantTimeEqual(candidate, expectedHex)) matched = true;
+    if (timingSafeEqualString({ expected: expectedHex, provided: candidate })) {
+      matched = true;
+    }
   }
   return matched;
 }
@@ -130,7 +120,7 @@ export async function verifyPaddleCustomDataSignature(
   }
 
   const expectedSig = await hmacSha256Hex(secret, userId);
-  return constantTimeEqual(providedSig, expectedSig);
+  return timingSafeEqualString({ expected: expectedSig, provided: providedSig });
 }
 
 export type PaddleCustomDataTrustDecision =
