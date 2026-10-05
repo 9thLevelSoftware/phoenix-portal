@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SUPABASE_PAGE_SIZE } from "@/lib/supabasePaging";
 import { queryKeys } from "@/queries/keys";
 
 // --- Supabase chainable mock builder -------------------------------------
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	const methods = ["select", "eq", "order", "limit", "in"];
+	const methods = ["select", "eq", "order", "limit", "in", "range"];
 	for (const m of methods) {
 		self[m] = vi.fn();
 	}
@@ -163,6 +164,133 @@ describe("externalActivitiesOptions", () => {
 		const opts = externalActivitiesOptions("user-1");
 		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
+	});
+
+	it("pages the full history without raw_data", async () => {
+		const page = Array.from({ length: SUPABASE_PAGE_SIZE }, (_, index) => ({
+			...externalActivityRow,
+			id: `id-${index}`,
+		}));
+		const tail = [{ ...externalActivityRow, id: "tail" }];
+		chain = buildChain({ data: [], error: null });
+		chain.range
+			.mockReturnValueOnce({ data: page, error: null })
+			.mockReturnValueOnce({ data: tail, error: null });
+
+		const { EXTERNAL_ACTIVITY_LIST_COLUMNS, externalActivitiesOptions } =
+			await import("../integrations");
+		const opts = externalActivitiesOptions("user-1");
+		const result = await opts.queryFn?.({} as never);
+
+		expect(chain.select).toHaveBeenCalledWith(EXTERNAL_ACTIVITY_LIST_COLUMNS);
+		expect(EXTERNAL_ACTIVITY_LIST_COLUMNS.split(", ")).not.toContain(
+			"raw_data",
+		);
+		expect(chain.eq).toHaveBeenCalledWith("user_id", "user-1");
+		expect(chain.order).toHaveBeenCalledWith("started_at", {
+			ascending: false,
+		});
+		expect(chain.order).toHaveBeenCalledWith("id", { ascending: true });
+		expect(chain.limit).not.toHaveBeenCalled();
+		expect(chain.range).toHaveBeenNthCalledWith(1, 0, SUPABASE_PAGE_SIZE - 1);
+		expect(chain.range).toHaveBeenNthCalledWith(
+			2,
+			SUPABASE_PAGE_SIZE,
+			SUPABASE_PAGE_SIZE * 2 - 1,
+		);
+		expect(result).toHaveLength(SUPABASE_PAGE_SIZE + 1);
+		expect(result?.at(-1)).toMatchObject({ id: "tail" });
+	});
+
+	it("applies the provider filter on each page", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { externalActivitiesOptions } = await import("../integrations");
+		const opts = externalActivitiesOptions("user-1", "strava");
+		await opts.queryFn?.({} as never);
+
+		expect(fromFn).toHaveBeenCalledWith("external_activities");
+		expect(chain.eq).toHaveBeenCalledWith("provider", "strava");
+		expect(chain.range).toHaveBeenCalledWith(0, SUPABASE_PAGE_SIZE - 1);
+	});
+
+	it("throws when a later page fails", async () => {
+		const fullPage = Array.from(
+			{ length: SUPABASE_PAGE_SIZE },
+			() => externalActivityRow,
+		);
+		chain = buildChain({ data: [], error: null });
+		chain.range
+			.mockReturnValueOnce({ data: fullPage, error: null })
+			.mockReturnValueOnce({ data: null, error: { message: "timeout" } });
+
+		const { externalActivitiesOptions } = await import("../integrations");
+		const opts = externalActivitiesOptions("user-1");
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
+			expect.objectContaining({ message: "timeout" }),
+		);
+	});
+});
+
+describe("externalActivitiesChartOptions", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("nests under the list key and keeps the bounded metric columns", async () => {
+		chain = buildChain({ data: [externalActivityRow], error: null });
+		const {
+			EXTERNAL_ACTIVITY_CHART_COLUMNS,
+			EXTERNAL_ACTIVITY_CHART_LIMIT,
+			externalActivitiesChartOptions,
+		} = await import("../integrations");
+		const opts = externalActivitiesChartOptions("user-1");
+
+		expect(opts.queryKey).toEqual(
+			queryKeys.integrations.externalChart("user-1"),
+		);
+		expect(opts.queryKey.slice(0, -1)).toEqual(
+			queryKeys.integrations.external("user-1"),
+		);
+
+		const result = await opts.queryFn?.({} as never);
+
+		expect(fromFn).toHaveBeenCalledWith("external_activities");
+		expect(chain.select).toHaveBeenCalledWith(EXTERNAL_ACTIVITY_CHART_COLUMNS);
+		expect(EXTERNAL_ACTIVITY_CHART_COLUMNS.split(", ")).toEqual(
+			expect.arrayContaining([
+				"duration_seconds",
+				"calories",
+				"activity_type",
+				"started_at",
+				"provider",
+			]),
+		);
+		expect(EXTERNAL_ACTIVITY_CHART_COLUMNS.split(", ")).not.toContain(
+			"raw_data",
+		);
+		expect(chain.order).toHaveBeenCalledWith("started_at", {
+			ascending: false,
+		});
+		expect(chain.order).toHaveBeenCalledWith("id", { ascending: true });
+		expect(chain.limit).toHaveBeenCalledWith(EXTERNAL_ACTIVITY_CHART_LIMIT);
+		expect(chain.range).not.toHaveBeenCalled();
+		expect(result).toEqual([externalActivityRow]);
+	});
+
+	it("returns an empty array when the bounded read matches nothing", async () => {
+		chain = buildChain({ data: null, error: null });
+		const { externalActivitiesChartOptions } = await import("../integrations");
+		const opts = externalActivitiesChartOptions("user-1");
+		await expect(opts.queryFn?.({} as never)).resolves.toEqual([]);
+	});
+
+	it("throws on Supabase error", async () => {
+		chain = buildChain({ data: null, error: { message: "unavailable" } });
+		const { externalActivitiesChartOptions } = await import("../integrations");
+		const opts = externalActivitiesChartOptions("user-1");
+		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
+			expect.objectContaining({ message: "unavailable" }),
+		);
 	});
 });
 
