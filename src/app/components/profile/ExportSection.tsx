@@ -24,12 +24,19 @@ import {
 	exportAnalyticsTablesZip,
 	getRunningUserDataExport,
 } from "@/lib/export/data-export";
-import { profileOptions } from "@/queries/profile";
+import { profileOptions, profileStatsOptions } from "@/queries/profile";
 import { personalRecordsOptions } from "@/queries/records";
 import {
 	fetchWorkoutHistoryForExport,
 	workoutListOptions,
 } from "@/queries/workouts";
+
+/** Parenthetical size only when it is an exact total. Zero and unknown stay blank. */
+function exactExportCount(count: number | null | undefined): string {
+	return typeof count === "number" && Number.isFinite(count) && count > 0
+		? ` (${count})`
+		: "";
+}
 
 export function ExportSection() {
 	const { user } = useAuth();
@@ -44,6 +51,15 @@ export function ExportSection() {
 	} = useInfiniteQuery(personalRecordsOptions(user?.id ?? ""));
 	const { data: profile } = useQuery({
 		...profileOptions(user?.id ?? ""),
+		enabled: !!user?.id,
+	});
+	// Account-wide totals from profile_workout_stats. The list and records
+	// queries above are pages (50 sessions, 500 records) and undercount a
+	// longer history. No profile filter: the CSVs export every session and
+	// every live record, not the active profile. A missing count is omitted
+	// rather than replaced with the page length.
+	const { data: exportCounts } = useQuery({
+		...profileStatsOptions(user?.id ?? ""),
 		enabled: !!user?.id,
 	});
 
@@ -218,7 +234,7 @@ export function ExportSection() {
 							<Download className="mr-2 h-4 w-4" />
 						)}
 						Export Workout History
-						{workouts?.length ? ` (${workouts.length})` : ""}
+						{exactExportCount(exportCounts?.totalWorkouts)}
 					</Button>
 
 					<Button
@@ -235,7 +251,7 @@ export function ExportSection() {
 							<Download className="mr-2 h-4 w-4" />
 						)}
 						Export Personal Records
-						{records?.length ? ` (${records.length})` : ""}
+						{exactExportCount(exportCounts?.prCount)}
 					</Button>
 				</div>
 

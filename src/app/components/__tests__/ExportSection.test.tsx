@@ -51,6 +51,10 @@ vi.mock("@/queries/records", () => ({
 
 vi.mock("@/queries/profile", () => ({
 	profileOptions: () => ({ queryKey: ["profile"], queryFn: vi.fn() }),
+	profileStatsOptions: (userId: string) => ({
+		queryKey: ["profile", "stats", userId, "all"],
+		queryFn: vi.fn(),
+	}),
 }));
 
 vi.mock("@/lib/export/data-export", () => exportMocks);
@@ -244,6 +248,104 @@ describe("ExportSection", () => {
 		expect(csv).toContain("Preview only");
 		expect(csv).toContain("Older than the dashboard cap");
 		expect(toast.success).toHaveBeenCalledWith("Exported 2 workouts");
+	});
+
+	it("labels exports with the exact account head count, not the loaded page", () => {
+		vi.mocked(useQuery).mockImplementation((options) => {
+			const key = Array.isArray(options.queryKey) ? options.queryKey : [];
+			if (key[0] === "profile" && key[1] === "stats") {
+				return {
+					data: {
+						totalWorkouts: 1500,
+						prCount: 1100,
+						totalVolume: 0,
+						bestStreak: 0,
+					},
+					isLoading: false,
+				} as ReturnType<typeof useQuery>;
+			}
+			if (key[0] === "profile") {
+				return {
+					data: { weight_unit: "kg" },
+					isLoading: false,
+				} as ReturnType<typeof useQuery>;
+			}
+			if (key[0] === "workouts") {
+				return {
+					data: [workoutSession("First page only")],
+					isLoading: false,
+				} as ReturnType<typeof useQuery>;
+			}
+			return { data: [], isLoading: false } as ReturnType<typeof useQuery>;
+		});
+		vi.mocked(useInfiniteQuery).mockImplementation(
+			() =>
+				({
+					data: [{ id: "record-1" }],
+					isLoading: false,
+					hasNextPage: true,
+					fetchNextPage: vi.fn(),
+				}) as unknown as ReturnType<typeof useInfiniteQuery>,
+		);
+
+		renderWithProviders(<ExportSection />);
+
+		expect(
+			screen.getByRole("button", { name: /export workout history \(1500\)/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", {
+				name: /export personal records \(1100\)/i,
+			}),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /export workout history \(1\)/i }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /export personal records \(1\)/i }),
+		).not.toBeInTheDocument();
+	});
+
+	it("omits the export size when the exact head count is unavailable", () => {
+		vi.mocked(useQuery).mockImplementation((options) => {
+			const key = Array.isArray(options.queryKey) ? options.queryKey : [];
+			if (key[0] === "profile" && key[1] === "stats") {
+				return { data: undefined, isLoading: false } as ReturnType<
+					typeof useQuery
+				>;
+			}
+			if (key[0] === "profile") {
+				return {
+					data: { weight_unit: "kg" },
+					isLoading: false,
+				} as ReturnType<typeof useQuery>;
+			}
+			if (key[0] === "workouts") {
+				return {
+					data: [workoutSession("First page only")],
+					isLoading: false,
+				} as ReturnType<typeof useQuery>;
+			}
+			return { data: [], isLoading: false } as ReturnType<typeof useQuery>;
+		});
+		vi.mocked(useInfiniteQuery).mockImplementation(
+			() =>
+				({
+					data: [{ id: "record-1" }],
+					isLoading: false,
+					hasNextPage: true,
+					fetchNextPage: vi.fn(),
+				}) as unknown as ReturnType<typeof useInfiniteQuery>,
+		);
+
+		renderWithProviders(<ExportSection />);
+
+		expect(
+			screen.getByRole("button", { name: /^export workout history$/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: /^export personal records$/i }),
+		).toBeInTheDocument();
 	});
 });
 
