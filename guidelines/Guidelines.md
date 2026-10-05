@@ -28,8 +28,8 @@ Use design tokens from `src/styles/theme.css` only. Never inline hex colors, raw
 
 ## Component usage
 
-- **Cards:** use `<Card variant="default|elevated|inset|stat">` with `padding="none|sm|md|lg"`. The default variant has no padding; preserve headered-card layouts.
-- **Buttons:** use `<Button variant="default|secondary|outline|ghost|link|destructive|success">`. There is no `cta` variant; use `default`.
+- **Cards:** use `<Card variant="default|stat">` with `padding="none|sm"`. The default variant has no padding; preserve headered-card layouts.
+- **Buttons:** use `<Button variant="default|secondary|outline|ghost|destructive">`. There is no `cta` variant; use `default`.
 - **Empty states:** use `<EmptyState>` from `ui/empty-state` with a verb-led title, concrete next step, and a Button CTA.
 - **Skeletons:** use `<Skeleton>` from `ui/skeleton` and match the final layout's grid and shape.
 - **Forms:** wrap fields in `<Form>` and show validation through `<FormErrorSummary>` at the top. Mark each invalid field `aria-invalid` so "jump to first error" has a target. Server failures are a toast with a generic message, never raw error text in the summary.
