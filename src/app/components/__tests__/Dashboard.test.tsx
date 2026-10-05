@@ -259,6 +259,66 @@ describe("Dashboard", () => {
 		expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
 	});
 
+	it("uses matching foreground tokens on solid fills", () => {
+		const populated = renderWithProviders(<Dashboard />);
+
+		const statWells = Array.from(document.querySelectorAll("div")).filter(
+			(el) =>
+				el.classList.contains("bg-gradient-to-br") &&
+				(el.classList.contains("bg-primary") ||
+					el.classList.contains("bg-accent") ||
+					el.classList.contains("bg-success")),
+		);
+		expect(
+			statWells.map((el) =>
+				Array.from(el.classList).find((token) => token.startsWith("text-")),
+			),
+		).toEqual([
+			"text-primary-foreground",
+			"text-accent-foreground",
+			"text-success-foreground",
+		]);
+
+		const calorieWells = Array.from(document.querySelectorAll("div")).filter(
+			(el) =>
+				el.classList.contains("from-chart-2") &&
+				el.classList.contains("to-primary"),
+		);
+		expect(calorieWells.length).toBeGreaterThan(0);
+		for (const well of calorieWells) {
+			expect(well.classList.contains("text-white")).toBe(true);
+		}
+
+		populated.unmount();
+
+		mockWorkoutList.result = {
+			data: [],
+			isPending: false,
+			isLoading: false,
+			isError: false,
+			refetch: () => Promise.resolve(),
+		};
+		renderWithProviders(<Dashboard />);
+
+		const progressIcons = document.querySelectorAll(".bg-primary svg");
+		expect(progressIcons.length).toBeGreaterThan(0);
+		for (const icon of progressIcons) {
+			expect(icon.classList.contains("text-primary-foreground")).toBe(true);
+		}
+
+		const recoveryIcons = document.querySelectorAll(".bg-accent svg");
+		expect(recoveryIcons.length).toBeGreaterThan(0);
+		for (const icon of recoveryIcons) {
+			expect(icon.classList.contains("text-accent-foreground")).toBe(true);
+		}
+
+		const goalIcons = document.querySelectorAll(".from-chart-2.to-accent svg");
+		expect(goalIcons.length).toBeGreaterThan(0);
+		for (const icon of goalIcons) {
+			expect(icon.classList.contains("text-white")).toBe(true);
+		}
+	});
+
 	it("shows the welcome empty only after a successful zero-row fetch", () => {
 		mockWorkoutList.result = {
 			data: [],
