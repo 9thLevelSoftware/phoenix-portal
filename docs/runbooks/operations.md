@@ -1321,11 +1321,10 @@ set, a caller holding only a legacy value gets 401.
 and returns.** The cron run is still recorded as `succeeded` -- see
 [§10.1](#101-verify-a-jobs-last-run) for why `succeeded` alone proves nothing.
 ### Re-apply semantics
-The four migrations that schedule jobs in this series -- `20260920003100`,
-`20260920003500`, `20260920005600` and `20260920006400` -- each look their job
-up by `jobname`, call `cron.schedule` when it is absent, and
-`cron.alter_job(schedule := …, command := …)` when the stored schedule or
-command has drifted. They keep the same `jobid`.
+`20260920000200`, `20260920003100`, `20260920003500`, `20260920005600` and
+`20260920006400` each look their job up by `jobname`, call `cron.schedule`
+when it is absent, and `cron.alter_job(schedule := …, command := …)` when the
+stored schedule or command differs. They keep the same `jobid`.
 
 `process-sync-queue` and `delete-due-accounts` are created inactive so their
 compatible Edge handlers can deploy first. After creation, re-applying any of
@@ -1338,8 +1337,11 @@ schedule or command without undoing an operator pause or activation. For
 owned-row provider handlers are first deployed. Its private release-gate marker
 means re-applying that migration after activation leaves the job active.
 
-`20260920000200` is different: it only schedules a job when no job of that name
-exists, and never alters an existing one.
+`20260920000200` is not first-apply only. When `refresh-hot-scores` or
+`refresh-community-benchmarks` already exists and its schedule or command
+differs from the captured values, the migration calls
+`cron.alter_job(schedule := …, command := …)` and keeps the same `jobid` and
+`active` flag. A job whose schedule and command already match is left unchanged.
 ### The jobs
 | Job name (`cron.job.jobname`)    | Cadence                            | What it runs                                                                                              | Migration                                             | Cron secret | Created active?                        |
 | -------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------- | -------------------------------------- |
@@ -1358,8 +1360,9 @@ exists. Tombstones are deleted with their account through the
 Cadences are pg_cron expressions, evaluated in the **database** timezone.
 Confirm it with `SHOW timezone;` before converting any of these to local time.
 The last two jobs were created from the dashboard and existed in no migration
-until `20260920000200` captured them, so their live schedule is whatever prod
-holds -- the values above are what was captured on 2026-09-18.
+until `20260920000200` captured them on 2026-09-18. The cadences above are
+those captured values. Re-applying that migration calls `cron.alter_job` when
+the stored schedule or command differs from them, and does not change `active`.
 **Prerequisites and deploy order**
 | Job                   | Must be true before it can work                                                                                                                          |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
