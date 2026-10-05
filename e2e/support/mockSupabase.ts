@@ -187,6 +187,9 @@ export async function installMockSupabase(
 			body: "",
 			headers: {
 				"content-range": `0-0/${count}`,
+				// Cross-origin: without this the browser hides Content-Range
+				// from supabase-js and every head count reads as null.
+				"access-control-expose-headers": "content-range",
 			},
 		});
 	};
@@ -842,6 +845,10 @@ export async function installMockSupabase(
 				// latest 10 rows separately; returning the whole queue for both
 				// would make the active count include finished rows.
 				let rows = filterRows(state.syncQueue, url);
+				if (method === "HEAD") {
+					await respondCount(route, rows.length);
+					return;
+				}
 				const order = url.searchParams.get("order");
 				if (order) {
 					const [column, direction] = order.split(",")[0].split(".");
