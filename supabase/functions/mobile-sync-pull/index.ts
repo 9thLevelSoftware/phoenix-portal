@@ -663,7 +663,7 @@ async function mobileSyncPullHandler(
       knownCycles: body.knownEntityIds?.cycleIds?.length ?? 0,
       knownBadges: body.knownEntityIds?.badgeIds?.length ?? 0,
       knownPersonalRecords: body.knownEntityIds?.personalRecordIds?.length ?? 0,
-      lastSync: body.lastSync, // Legacy
+      lastSync: body.lastSync,
       profileId,
       cursor: body.cursor,
     });
