@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SUPABASE_PAGE_SIZE } from "@/lib/supabasePaging";
 import { queryKeys } from "@/queries/keys";
 
 // --- Supabase chainable mock builder -------------------------------------
@@ -24,6 +25,21 @@ function buildChain(terminal: { data: unknown; error: unknown }) {
 	for (const m of methods) {
 		self[m].mockReturnValue({ ...self, ...terminal });
 	}
+	return self;
+}
+
+/** `.range(from)` resolves the page for that offset. */
+function pagedChain(pages: unknown[][]) {
+	const self: Record<string, ReturnType<typeof vi.fn>> = {};
+	for (const method of ["select", "eq", "gte", "order"]) {
+		self[method] = vi.fn(() => self);
+	}
+	self.range = vi.fn((from: number) =>
+		Promise.resolve({
+			data: pages[Math.floor(from / SUPABASE_PAGE_SIZE)] ?? [],
+			error: null,
+		}),
+	);
 	return self;
 }
 
@@ -503,6 +519,54 @@ describe("phaseStatisticsTrendOptions", () => {
 		expect(chain.eq).toHaveBeenCalledWith(
 			"workout_sessions.local_profile_id",
 			"profile-1",
+		);
+		expect(chain.gte).toHaveBeenCalledWith(
+			"workout_sessions.started_at",
+			expect.any(String),
+		);
+		expect(chain.order).toHaveBeenCalledWith("created_at", { ascending: true });
+		expect(chain.order).toHaveBeenCalledWith("id", { ascending: true });
+		expect(chain.range).toHaveBeenCalledTimes(1);
+		expect(chain.range).toHaveBeenCalledWith(0, SUPABASE_PAGE_SIZE - 1);
+	});
+
+	it("pages period all past the silent row cap without a date filter", async () => {
+		const first = Array.from({ length: SUPABASE_PAGE_SIZE }, (_, i) => ({
+			id: `id-${i}`,
+			session_id: `session-${i}`,
+		}));
+		const tail = { id: "id-tail", session_id: "session-tail" };
+		chain = pagedChain([first, [tail]]) as typeof chain;
+		const { phaseStatisticsTrendOptions } = await import("../analytics");
+		const result = await phaseStatisticsTrendOptions(
+			"user-1",
+			"all",
+			"profile-1",
+		).queryFn!({} as never);
+
+		expect(result).toHaveLength(SUPABASE_PAGE_SIZE + 1);
+		expect(result.at(-1)).toEqual(tail);
+		expect(chain.gte).not.toHaveBeenCalled();
+		expect(chain.eq).toHaveBeenCalledWith("user_id", "user-1");
+		expect(chain.eq).toHaveBeenCalledWith(
+			"workout_sessions.local_profile_id",
+			"profile-1",
+		);
+		expect(chain.order).toHaveBeenCalledWith("created_at", { ascending: true });
+		expect(chain.order).toHaveBeenCalledWith("id", { ascending: true });
+		expect(chain.range).toHaveBeenCalledWith(0, SUPABASE_PAGE_SIZE - 1);
+		expect(chain.range).toHaveBeenCalledWith(
+			SUPABASE_PAGE_SIZE,
+			SUPABASE_PAGE_SIZE * 2 - 1,
+		);
+	});
+
+	it("throws on Supabase error", async () => {
+		chain = buildChain({ data: null, error: { message: "query error" } });
+		const { phaseStatisticsTrendOptions } = await import("../analytics");
+		const opts = phaseStatisticsTrendOptions("user-1", "all");
+		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+			expect.objectContaining({ message: "query error" }),
 		);
 	});
 });
