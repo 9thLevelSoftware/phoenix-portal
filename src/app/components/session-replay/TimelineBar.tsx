@@ -8,6 +8,7 @@ import {
 } from "@/app/components/ui/tooltip";
 import type { FatigueAnalysis } from "@/lib/fatigue-detection";
 import { useReplayStore } from "@/stores/useReplayStore";
+import { formatTime } from "./formatTime";
 
 interface TimelineBarProps {
 	durationMs: number;
@@ -135,14 +136,4 @@ export function TimelineBar({
 			</div>
 		</div>
 	);
-}
-
-/**
- * Format milliseconds to mm:ss display
- */
-function formatTime(ms: number): string {
-	const totalSeconds = Math.floor(ms / 1000);
-	const minutes = Math.floor(totalSeconds / 60);
-	const seconds = totalSeconds % 60;
-	return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }

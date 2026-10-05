@@ -21,6 +21,7 @@ import { replaySessionOptions, replayTelemetryOptions } from "@/queries/replay";
 import type { RepSummary, TelemetryPointRow } from "@/schemas/telemetry";
 import { useReplayStore } from "@/stores/useReplayStore";
 import { FatigueSummary } from "./FatigueSummary";
+import { formatTime } from "./formatTime";
 import { PlaybackControls } from "./PlaybackControls";
 import { QualityBadge } from "./QualityBadge";
 import { ReplayAnnotationOverlay } from "./ReplayAnnotationOverlay";
@@ -480,14 +481,4 @@ function deriveRepBoundaries(
 	}
 
 	return boundaries;
-}
-
-/**
- * Format milliseconds to mm:ss display
- */
-function formatTime(ms: number): string {
-	const totalSeconds = Math.floor(ms / 1000);
-	const minutes = Math.floor(totalSeconds / 60);
-	const seconds = totalSeconds % 60;
-	return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
