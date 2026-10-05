@@ -1091,7 +1091,10 @@ Optional:
 # Override project ref if it cannot be inferred from VITE_SUPABASE_URL
 SUPABASE_PROJECT_REF=abcdefghijklmnopqrst
 
-# Additional exact redirect URLs, comma-separated
+# Additional exact redirect URLs, comma-separated. Use a normal URL
+# (including a normal `?` when the URL already has a query). The push
+# command also allow-lists each entry with `provider=google` and
+# `provider=apple`, and writes every literal `?` as `\?`.
 SUPABASE_AUTH_ADDITIONAL_REDIRECT_URLS=https://preview.example.com/auth/callback
 ```
 
@@ -1119,9 +1122,16 @@ npm run auth:social:check
 The helper command prints the exact values again, but the critical ones are:
 
 - Supabase OAuth callback URL: `https://<project-ref>.supabase.co/auth/v1/callback`
-- Portal redirect URL allow-list entries: `http://localhost:5173/auth/callback`,
-  `http://localhost:5173/auth/reset-password`, and those same paths on the
-  production site URL
+- Portal redirect URL allow-list entries. Supabase matches this list as a
+  glob, so each literal `?` is stored as `\?`:
+  - `http://localhost:5173/auth/callback`
+  - `http://localhost:5173/auth/callback\?provider=google`
+  - `http://localhost:5173/auth/callback\?provider=apple`
+  - the same three forms on `${SUPABASE_AUTH_SITE_URL}/auth/callback`
+  - `http://localhost:5173/auth/reset-password` and that same path on the
+    production site URL (no `provider` query)
+  - each `SUPABASE_AUTH_ADDITIONAL_REDIRECT_URLS` entry, plus that entry
+    with `provider=google` and `provider=apple`
 - Google web app:
   - Authorized JavaScript origins: `http://localhost:5173` and your portal
     origin
