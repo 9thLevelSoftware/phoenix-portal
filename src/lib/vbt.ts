@@ -87,11 +87,6 @@ export type MannVbtZone =
 	| "speed-strength"
 	| "starting-strength";
 
-/**
- * @deprecated Use MannVbtZone instead for clarity
- */
-export type VbtZone = MannVbtZone;
-
 export interface MannZoneInfo {
 	zone: MannVbtZone;
 	label: string;
@@ -100,11 +95,6 @@ export interface MannZoneInfo {
 	maxVelocity: number;
 	description: string;
 }
-
-/**
- * @deprecated Use MannZoneInfo instead for clarity
- */
-export type VbtZoneInfo = MannZoneInfo;
 
 /**
  * Dr. Bryan Mann's velocity-based training zone thresholds.
@@ -159,13 +149,6 @@ export function MANN_ZONES(): MannZoneInfo[] {
 	return mannZones();
 }
 
-/**
- * @deprecated Use MANN_ZONES instead for clarity
- */
-export function VBT_ZONES(): MannZoneInfo[] {
-	return MANN_ZONES();
-}
-
 // --- Classification Functions ---
 
 /**
@@ -210,34 +193,6 @@ export function classifyMannZone(meanVelocityMps: number): MannZoneInfo {
 }
 
 // --- Helper Functions ---
-
-/**
- * Get the dominant (most common) Dr. Mann zone from a set of velocities.
- * Returns the zone info for the zone that appears most frequently.
- * Used for showing the primary training zone for a set.
- */
-export function getDominantMannZone(velocities: number[]): MannZoneInfo | null {
-	if (velocities.length === 0) return null;
-
-	const zoneCounts = new Map<MannVbtZone, number>();
-
-	for (const velocity of velocities) {
-		const zone = classifyMannZone(velocity);
-		zoneCounts.set(zone.zone, (zoneCounts.get(zone.zone) ?? 0) + 1);
-	}
-
-	let maxCount = 0;
-	let dominantZoneId: MannVbtZone = MANN_ZONES()[0].zone;
-
-	for (const [zoneId, count] of zoneCounts) {
-		if (count > maxCount) {
-			maxCount = count;
-			dominantZoneId = zoneId;
-		}
-	}
-
-	return MANN_ZONES().find((z) => z.zone === dominantZoneId) ?? MANN_ZONES()[0];
-}
 
 /**
  * Dominant simplified zone (matches mobile VBT classification).
