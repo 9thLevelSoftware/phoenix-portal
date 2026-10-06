@@ -5,6 +5,7 @@ import {
   findCrossTierDuplicatePriceIds,
   getAllAllowedPriceIds,
   mapPriceIdToTier,
+  PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL,
   paddlePriceIdsConfigured,
 } from "../_shared/paddlePriceIds.ts";
 import {
@@ -193,7 +194,7 @@ async function paddleRefreshSubscriptionHandler(
     }
 
     if (!paddlePriceIdsConfigured(deps.env)) {
-      console.error("[FATAL] Paddle price IDs are not configured");
+      console.error(PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL);
       return new Response(
         JSON.stringify({ error: "Billing configuration incomplete" }),
         { status: 500, headers: { ...cors, "Content-Type": "application/json" } },

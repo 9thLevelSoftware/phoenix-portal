@@ -464,7 +464,7 @@ The adoption residual is the known silent case in the double-subscription alerts
 
 Two checks refuse the request before the body is read:
 
-- No paid price id is configured: 500 `{ "error": "Billing configuration incomplete" }`, logged as `[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set`. `paddlePriceIdsConfigured` passes when any one paid id is set, so a single configured tier is enough to get past this check.
+- No paid price id is configured: 500 `{ "error": "Billing configuration incomplete" }`, logged as `[FATAL] At least one paid Paddle price ID must be set (PADDLE_*_PRICE_IDS or PADDLE_*_MONTHLY_PRICE_ID / PADDLE_*_ANNUAL_PRICE_ID)`. `paddlePriceIdsConfigured` passes when any one paid id is set, so a single configured tier is enough to get past this check.
 - The same id is listed under more than one tier: 500 `{ "error": "Billing configuration invalid" }`. The log names the duplicated ids. That collision never falls through to `mapPriceIdToTier` precedence (INFERNO, then FLAME, then EMBER).
 
 **A present price id that maps to `FREE`.** `resolveBasePlanPriceId` returned a non-empty id, and it is not in those sets.
