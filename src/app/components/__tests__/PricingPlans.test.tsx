@@ -31,6 +31,18 @@ const mockSubscription = vi.hoisted(() => ({
 const mockInvoke = vi.hoisted(() => vi.fn());
 const mockOpenCheckout = vi.hoisted(() => vi.fn());
 const mockOpenUpdatePaymentMethodCheckout = vi.hoisted(() => vi.fn());
+const CheckoutSigningError = vi.hoisted(
+	() =>
+		class CheckoutSigningError extends Error {
+			readonly code: string | undefined;
+
+			constructor(message: string, code?: string) {
+				super(message);
+				this.name = "CheckoutSigningError";
+				this.code = code;
+			}
+		},
+);
 
 vi.mock("@/hooks/useSubscription", () => ({
 	useSubscription: () => mockSubscription.current,
@@ -53,6 +65,7 @@ vi.mock("@/lib/supabase", () => ({
 }));
 
 vi.mock("@/lib/paddle-client", () => ({
+	CheckoutSigningError,
 	openCheckout: mockOpenCheckout,
 	openUpdatePaymentMethodCheckout: mockOpenUpdatePaymentMethodCheckout,
 }));
@@ -462,6 +475,22 @@ describe("PricingPlans billing actions", () => {
 		expect(
 			screen.getByRole("button", { name: /switch billing/i }),
 		).toBeInTheDocument();
+	});
+
+	it("toasts when checkout cannot open because the SDK never loaded", async () => {
+		const user = userEvent.setup();
+		mockOpenCheckout.mockRejectedValue(
+			new Error("Billing checkout is unavailable. Please try again."),
+		);
+
+		renderWithProviders(<PricingPlans />);
+		await user.click(screen.getAllByRole("button", { name: /subscribe/i })[0]);
+
+		await waitFor(() => {
+			expect(toast.error).toHaveBeenCalledWith(
+				"Billing checkout is unavailable. Please try again.",
+			);
+		});
 	});
 
 	it("refreshes billing state after checkout completes", async () => {
