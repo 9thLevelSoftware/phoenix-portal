@@ -24,6 +24,7 @@ import {
   verifyPaddleCustomDataSignature,
   verifyPaddleSignature,
 } from "../_shared/paddleWebhookSecurity.ts";
+import { paddleBaseUrl } from "../_shared/accountPurge.ts";
 
 const responseHeaders = {
   "Content-Type": "application/json",
@@ -127,9 +128,7 @@ async function listLiveCustomerSubscriptions(
     );
     return null;
   }
-  const baseUrl = env.get("PADDLE_ENVIRONMENT") === "sandbox"
-    ? "https://sandbox-api.paddle.com"
-    : "https://api.paddle.com";
+  const baseUrl = paddleBaseUrl(env.get("PADDLE_ENVIRONMENT"));
   // order_by makes "newest first" what we actually asked for, so two live
   // subscriptions resolve deterministically instead of by page order.
   const url =
