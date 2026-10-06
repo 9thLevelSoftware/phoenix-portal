@@ -82,7 +82,7 @@ Fitbit and Garmin Connect stay `comingSoon` in the UI until developer-program ap
 | **Build**          | Vite 7                                         |
 | **Framework**      | React 19, TypeScript 5.7                       |
 | **Styling**        | Tailwind CSS v4                                |
-| **Components**     | shadcn/ui (50+ Radix primitives)               |
+| **Components**     | shadcn/ui (33 component files, 20 Radix imports) |
 | **State**          | Zustand 5 (client), TanStack Query 5 (server)  |
 | **Visualization**  | Recharts 3, @visx, ECharts 6                   |
 | **Animation**      | Motion (formerly Framer Motion, reduced-motion) |
