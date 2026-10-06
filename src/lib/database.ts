@@ -82,10 +82,12 @@ type FunctionOverrides = {
 			sessions: number;
 		}>;
 	};
-	// Same 20260920004000 shape as exercise_frequency (names only).
+	// 20260920004000: `RETURNS jsonb`, jsonb_agg of distinct
+	// exercise_progress.exercise_name text values (A-Z). The generator
+	// records a jsonb scalar as `Json`.
 	exercise_names: {
 		Args: GeneratedFunctions["exercise_names"]["Args"];
-		Returns: Array<{ exercise_name: string | null }>;
+		Returns: string[];
 	};
 };
 
