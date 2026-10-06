@@ -20,6 +20,8 @@ The handler writes a subscription only through `public.apply_subscription_event`
 
 ## 2. Prerequisites
 
+Run this suite against the Paddle **sandbox** and a non-production Supabase project. Every scenario writes `public.subscriptions` through the deployed function, and computing `cd_sig` puts `PADDLE_CUSTOM_DATA_SECRET` on your machine; anyone holding that secret can bind a payment to any user id. Never export the production custom-data secret. If production is unavoidable, use only the dedicated test user below.
+
 ### Notification destination accepts simulations
 
 The destination's **Usage** must be **Platform and simulation**. A destination set to **Platform** does not receive simulated events.
@@ -31,7 +33,7 @@ The destination's **Usage** must be **Platform and simulation**. A destination s
 
 ### Function deployed
 
-Redeploy after a handler change before trusting a simulation:
+Redeploy after a handler change before trusting a simulation. Deploy by hand only to a sandbox or preview project; production deploys go through `deploy-edge-functions.yml`, which runs the Edge tests and the prod-migration gate first:
 
 ```bash
 npm run supabase -- functions deploy paddle-webhooks --project-ref "$SUPABASE_PROJECT_REF"
@@ -53,7 +55,7 @@ Use a dedicated test user for the suite in [section 5](#5-test-scenarios). The r
 
 ### `cd_sig` for that user
 
-`paddle-checkout-custom-data` signs checkout `custom_data` as the hex HMAC-SHA256 of the user id, keyed with `PADDLE_CUSTOM_DATA_SECRET`. The webhook verifies the same way, using the secret with surrounding whitespace trimmed (`verifyPaddleCustomDataSignature` in `supabase/functions/_shared/paddleWebhookSecurity.ts`).
+`paddle-checkout-custom-data` signs checkout `custom_data` as the hex HMAC-SHA256 of the user id, keyed with `PADDLE_CUSTOM_DATA_SECRET`. The webhook recomputes that digest with the secret's surrounding whitespace trimmed (`verifyPaddleCustomDataSignature` in `supabase/functions/_shared/paddleWebhookSecurity.ts`); the checkout function signs with the secret as stored, so keep the secret free of surrounding whitespace.
 
 Put that hex digest on `data.custom_data.cd_sig`. A simulation Paddle signs does not add `cd_sig` for you.
 
@@ -287,6 +289,8 @@ Scenarios 10–11 are a second pass after the [reset](#reset-the-test-user). Sce
 
 Price tokens below mean an id that is only in that tier's set.
 
+Every write replaces the whole row from that one payload. Send the full state on every event — `customer_id`, `items`, `current_billing_period`, and `custom_data` (with `cd_sig`) — even where a row below names only the fields that change. Omitting `current_billing_period` nulls both period columns, and an `active` row with no `current_period_end` is not entitled; omitting `customer_id` nulls `paddle_customer_id`.
+
 ### Ordered lifecycle
 
 | # | Scenario | Event | Payload that decides the write | HTTP and `subscriptions` row |
@@ -316,7 +320,7 @@ Reset the test user first, or send these on the `data.id` the row already tracks
 
 | # | Scenario | What to send | HTTP | Database |
 | --- | --- | --- | --- | --- |
-| 12 | Duplicate | The stored `last_event_id`, any body, valid signature | 200 `{ "received": true, "duplicate": true }` | Unchanged, including `updated_at` |
+| 12 | Duplicate | The stored `last_event_id` on a `subscription.*` event with the same `user_id` and a valid `cd_sig` (or a `data.id` equal to the stored id), valid signature | 200 `{ "received": true, "duplicate": true }` | Unchanged, including `updated_at` |
 | 13 | Stale clock | New `event_id`, valid `cd_sig`, `occurred_at` earlier than or equal to `last_event_occurred_at` | 200 `{ "received": true, "stale": true }` | Unchanged |
 | 14 | Missing user id | `custom_data` omitted or `{}` | 200 `{ "ignored": true }` | No read, no write |
 | 15 | Malformed user id | `user_id` set to `not-a-uuid` | 400 `{ "error": "Invalid user_id in custom_data" }` | No read, no write |
@@ -403,15 +407,11 @@ A later scenario stores a new `last_event_id`. Resending `evt_sim_001` after tha
 
 ### Logs
 
-Dashboard: **Edge Functions > paddle-webhooks > Invocations**.
-
-```bash
-npm run supabase -- functions logs paddle-webhooks --project-ref "$SUPABASE_PROJECT_REF"
-```
+Dashboard: **Edge Functions > paddle-webhooks > Invocations** (or **Logs**). The pinned Supabase CLI has no `functions logs` command.
 
 A delivery that parsed logs `[Paddle] Received event: <event_type>, event_id: <event_id>, customer_id: <customer_id>` before the later accept, ignore, or error line.
 
-The alert catalogue and Paddle's retry schedule are in [billing-incident-response.md](billing-incident-response.md). This handler answers 200 for "accepted, nothing to do" (duplicate, stale, missing user id, untracked subscription, transaction, unhandled type) and 4xx/5xx when the delivery should be retried.
+The alert catalogue and Paddle's retry schedule are in [billing-incident-response.md](billing-incident-response.md). This handler answers 200 for "accepted, nothing to do" (duplicate, stale, missing user id, untracked subscription, transaction, unhandled type) 4xx when the payload is rejected (a retry of the same body fails the same way), and 5xx when the delivery should be retried.
 
 ### Row
 
