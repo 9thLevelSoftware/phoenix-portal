@@ -3,6 +3,7 @@ import {
   findCrossTierDuplicatePriceIds,
   getAllAllowedPriceIds,
   mapPriceIdToTier,
+  PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL,
   paddlePriceIdsConfigured,
 } from "../_shared/paddlePriceIds.ts";
 import { paddleWebhookResponseForCustomUserId } from "../_shared/paddleWebhookUserId.ts";
@@ -217,9 +218,7 @@ async function paddleWebhooksHandler(
 
   try {
     if (!paddlePriceIdsConfigured(env)) {
-      console.error(
-        "[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set",
-      );
+      console.error(PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL);
       return new Response(
         JSON.stringify({ error: "Billing configuration incomplete" }),
         { status: 500, headers: responseHeaders },

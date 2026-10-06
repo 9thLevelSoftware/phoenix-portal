@@ -1620,10 +1620,10 @@ exactly one server tier, and that the tier matches:
 `paddle-update-subscription` or `paddle-refresh-subscription` -- the three that
 validate the price-ID configuration on entry -- and read that function's logs.
 Both of these are fatal configuration errors and each returns 500:
-| Log line                                                                                                  | Cause                                             |
-| ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set`      | No paid price ID is configured at all.              |
-| `[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence): [...]`    | A price ID was copied into more than one tier list. |
+| Log line                                                                                                                             | Cause                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| `[FATAL] At least one paid Paddle price ID must be set (PADDLE_*_PRICE_IDS or PADDLE_*_MONTHLY_PRICE_ID / PADDLE_*_ANNUAL_PRICE_ID)` | No paid price ID is configured at all.              |
+| `[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence): [...]`                             | A price ID was copied into more than one tier list. |
 **(c) Functional.** In sandbox, or with a real card in production if policy
 allows, run one checkout per tier and confirm the tier lands:
 SELECT user_id, tier, status, paddle_subscription_id, current_period_end

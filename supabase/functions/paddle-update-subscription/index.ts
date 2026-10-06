@@ -6,6 +6,7 @@ import {
   getConfiguredPriceIdForTierInterval,
   getAllAllowedPriceIds,
   mapPriceIdToTier,
+  PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL,
   paddlePriceIdsConfigured,
   parsePaddleBillingInterval,
   parsePaddlePaidTier,
@@ -82,9 +83,7 @@ async function paddleUpdateSubscriptionHandler(
 
   try {
     if (!paddlePriceIdsConfigured(deps.env)) {
-      console.error(
-        "[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set",
-      );
+      console.error(PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL);
       return new Response(
         JSON.stringify({ error: "Billing configuration incomplete" }),
         { status: 500, headers: { ...cors, "Content-Type": "application/json" } },

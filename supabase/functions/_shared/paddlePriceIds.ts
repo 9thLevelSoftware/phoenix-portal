@@ -127,6 +127,13 @@ export function paddlePriceIdsConfigured(env: {
 }
 
 /**
+ * Logged when `paddlePriceIdsConfigured` is false. The gate passes when any
+ * one paid id is set: a tier-list entry or a monthly/annual single.
+ */
+export const PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL =
+  "[FATAL] At least one paid Paddle price ID must be set (PADDLE_*_PRICE_IDS or PADDLE_*_MONTHLY_PRICE_ID / PADDLE_*_ANNUAL_PRICE_ID)";
+
+/**
  * Detect price IDs configured under more than one tier. `mapPriceIdToTier`
  * resolves such collisions by fixed precedence (INFERNO > FLAME > EMBER), which
  * can silently map a customer to the wrong paid tier when a price ID is copied
