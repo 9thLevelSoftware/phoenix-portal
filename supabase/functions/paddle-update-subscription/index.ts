@@ -23,6 +23,7 @@ import {
   checkoutRequiredResponseBody,
 } from "../_shared/paddleSubscriptionUpdate.ts";
 import { billingAction } from "../_shared/billingAction.ts";
+import { paddleBaseUrl } from "../_shared/accountPurge.ts";
 
 /** Anything with `get(key)`, e.g. `Deno.env`. */
 export interface EnvReader {
@@ -152,10 +153,7 @@ async function paddleUpdateSubscriptionHandler(
 
     // Paddle API config, needed by both the update-payment route and the
     // plan change below.
-    const paddleEnv = deps.env.get("PADDLE_ENVIRONMENT") ?? "production";
-    const baseUrl = paddleEnv === "sandbox"
-      ? "https://sandbox-api.paddle.com"
-      : "https://api.paddle.com";
+    const baseUrl = paddleBaseUrl(deps.env.get("PADDLE_ENVIRONMENT"));
     const apiKey = deps.env.get("PADDLE_API_KEY");
 
     if (!apiKey) {

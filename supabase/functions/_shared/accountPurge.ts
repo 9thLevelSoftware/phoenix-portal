@@ -166,7 +166,8 @@ export function defaultPurgeUserDependencies(): PurgeUserDependencies {
   };
 }
 
-function paddleBaseUrl(environment: string | undefined): string {
+/** Paddle Billing API origin. Unset or anything other than `sandbox` is production. */
+export function paddleBaseUrl(environment: string | undefined): string {
   return (environment ?? 'production') === 'sandbox'
     ? 'https://sandbox-api.paddle.com'
     : 'https://api.paddle.com';

@@ -17,6 +17,7 @@ import {
   syntheticSubscriptionEventId,
 } from "../_shared/paddleSubscriptionState.ts";
 import { verifyPaddleCustomDataSignature } from "../_shared/paddleWebhookSecurity.ts";
+import { paddleBaseUrl } from "../_shared/accountPurge.ts";
 
 /** Anything with `get(key)`, e.g. `Deno.env`. */
 export interface EnvReader {
@@ -248,10 +249,7 @@ async function paddleRefreshSubscriptionHandler(
       );
     }
 
-    const paddleEnv = deps.env.get("PADDLE_ENVIRONMENT") ?? "production";
-    const baseUrl = paddleEnv === "sandbox"
-      ? "https://sandbox-api.paddle.com"
-      : "https://api.paddle.com";
+    const baseUrl = paddleBaseUrl(deps.env.get("PADDLE_ENVIRONMENT"));
 
     const { data: storedSubscription, error: subError } = await supabaseAdmin
       .from("subscriptions")
