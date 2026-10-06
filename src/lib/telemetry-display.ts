@@ -5,7 +5,7 @@
  * BLE convention used by Phoenix hardware and the mobile app (authoritative
  * for BLE-captured data per monorepo CLAUDE.md).
  *
- * Use these helpers at the presentation boundary when the UI needs a
+ * Use this helper at the presentation boundary when the UI needs a
  * human-readable label. Never translate at the storage or wire boundary.
  *
  * Resolves audit item #4 (2026-04-19).
@@ -29,16 +29,4 @@ export function cableDisplayName(
 	if (c === "A") return "Left";
 	if (c === "B") return "Right";
 	return "Unknown";
-}
-
-/**
- * Convert a cable identifier to a lowercase slug suitable for CSS class names
- * or URL fragments. Non-canonical values return "unknown".
- */
-export function cableSlug(
-	c: Cable | string | null | undefined,
-): "left" | "right" | "unknown" {
-	if (c === "A") return "left";
-	if (c === "B") return "right";
-	return "unknown";
 }
