@@ -26,7 +26,6 @@ export type ThemeTokens = {
 	chart6: string;
 	chart7: string;
 	chart8: string;
-	chartPalette: readonly string[];
 };
 
 const FALLBACKS: ThemeTokens = {
@@ -55,16 +54,6 @@ const FALLBACKS: ThemeTokens = {
 	chart6: "rgb(244, 114, 182)",
 	chart7: "rgb(34, 211, 238)",
 	chart8: "rgb(163, 230, 53)",
-	chartPalette: [
-		"rgb(255, 107, 53)",
-		"rgb(107, 163, 247)",
-		"rgb(245, 158, 11)",
-		"rgb(0, 230, 118)",
-		"rgb(149, 117, 255)",
-		"rgb(244, 114, 182)",
-		"rgb(34, 211, 238)",
-		"rgb(163, 230, 53)",
-	],
 };
 
 export const THEME_CHANGE_EVENT = "phoenix-theme-change";
@@ -124,24 +113,12 @@ function readThemeTokens(styles: CSSStyleDeclaration): ThemeTokens {
 		chart6,
 		chart7,
 		chart8,
-		chartPalette: [
-			chart1,
-			chart2,
-			chart3,
-			chart4,
-			chart5,
-			chart6,
-			chart7,
-			chart8,
-		],
 	};
 }
 
 function sameTokens(a: ThemeTokens, b: ThemeTokens): boolean {
-	return (Object.keys(a) as Array<keyof ThemeTokens>).every((key) =>
-		key === "chartPalette"
-			? a.chartPalette.join() === b.chartPalette.join()
-			: a[key] === b[key],
+	return (Object.keys(a) as Array<keyof ThemeTokens>).every(
+		(key) => a[key] === b[key],
 	);
 }
 
