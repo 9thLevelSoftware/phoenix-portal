@@ -621,6 +621,16 @@
     width: 100%;
     left: 0;
   }
+
+  /* Horizontal chip/tab rows already use this class; hide the bar, keep scrolling. */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Underline tabs: guarantee light active text on transparent background.
