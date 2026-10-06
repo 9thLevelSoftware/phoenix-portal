@@ -1,6 +1,6 @@
 # Phoenix Portal Operational Runbook
 
-> Last updated: 2026-09-30
+> Last updated: 2026-10-06
 > Audience: On-call operators, backend engineers
 
 This document covers day-to-day operational troubleshooting for Phoenix Portal.
@@ -43,7 +43,7 @@ supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --li
 | -------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------- |
 | `[Paddle] Ignoring event with missing custom_data.user_id:` | Event has no `user_id` in custom_data; answered 200 and ignored | HIGH -- user pays but gets no access     |
 | `[BILLING_ALERT] Malformed custom_data.user_id in Paddle event:` | `user_id` in custom_data is not a UUID; answered 400 | HIGH -- event is never applied           |
-| `[BILLING_ALERT] Unknown price ID`                       | Price ID not in `PADDLE_*_PRICE_IDS` env vars     | HIGH -- silent tier mismatch             |
+| `[BILLING_ALERT] Unknown price ID`                       | Price ID not in `PADDLE_*_PRICE_IDS`. A stored paid tier is kept; with none to keep, HTTP 500 and no write | HIGH -- hard failure when no paid tier can be kept |
 | `[BILLING_ALERT] Error applying subscription event for`  | Database write failed                             | MEDIUM -- Paddle retries on 5xx          |
 | `[BILLING_ALERT] Webhook signature too old:`             | Signature age > 5 minutes                         | LOW -- replay protection, retry will fix |
 | `Unhandled event type: <type>`                           | Non-subscription event (normal)                   | NONE                                     |
@@ -1629,9 +1629,10 @@ allows, run one checkout per tier and confirm the tier lands:
 SELECT user_id, tier, status, paddle_subscription_id, current_period_end
 FROM public.subscriptions
 WHERE user_id = '<test user id>';
-A checkout that completes while `subscriptions.tier` stays `FREE` is exactly the
-client/server mismatch this section exists to catch: the webhook arrived but
-`mapPriceIdToTier` did not recognise the price ID.
+A checkout that completes while `subscriptions.tier` stays `FREE` is the
+client/server price mismatch this section exists to catch. With no paid tier to
+keep, an unrecognised price ID is not applied: `paddle-webhooks` returns HTTP
+500 `{ "error": "Unknown price_id — configuration error" }` and writes nothing.
 See also [paddle-simulation-testing.md](paddle-simulation-testing.md) for
 webhook simulation, and [billing-incident-response.md](billing-incident-response.md)
 for what to do when a paying customer has the wrong tier.
