@@ -12,8 +12,6 @@ export default defineConfig({
 			// installed node_modules package so Vitest can resolve the same source
 			// file when running edge-function helpers under Node.
 			"npm:zod@4.3.6": "zod",
-			"npm:zod@^4.3.6": "zod",
-			"npm:zod": "zod",
 			"jsr:@supabase/supabase-js@2": "@supabase/supabase-js",
 		},
 	},
