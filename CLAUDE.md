@@ -101,7 +101,7 @@ Tooling only: `SUPABASE_PROJECT_REF` and the `SUPABASE_AUTH_*` values used by
 ### Tech Stack
 - **Vite 7** with React 19 and TypeScript
 - **Tailwind CSS v4** with @tailwindcss/vite plugin
-- **shadcn/ui** components (50+ Radix UI primitives in `src/app/components/ui/`)
+- **shadcn/ui** components (33 component files in `src/app/components/ui/`; 20 import a Radix UI primitive)
 - **Zustand 5** for client state
 - **TanStack Query 5** for server state
 - **Zod 4** for runtime schema validation
