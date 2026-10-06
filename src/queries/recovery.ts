@@ -9,8 +9,7 @@ import { queryKeys } from "./keys";
 
 /**
  * Fetch workout sessions from the last 42 days for ACWR computation.
- * Uses raw per-cable volume (no Zod weight doubling) since ACWR
- * only cares about relative ratios.
+ * Uses stored per-cable volume; ACWR only cares about relative ratios.
  */
 export function recoverySessionsOptions(userId: string) {
 	return queryOptions({

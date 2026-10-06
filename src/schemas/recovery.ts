@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 /**
- * Schema for recovery session data (raw from Supabase, before weight doubling).
- * Recovery uses raw per-cable values for ACWR computation since the algorithm
- * cares about relative ratios, not display values.
+ * Schema for recovery session data as stored: per-cable volume.
+ * ACWR uses those values because the algorithm cares about relative
+ * ratios, not display totals.
  */
 export const recoverySessionSchema = z.object({
 	started_at: z.coerce.date(),
