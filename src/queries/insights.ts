@@ -11,6 +11,11 @@ import { queryKeys } from "./keys";
  * rules instead of showing stale server text as if it were current. Rows
  * written before migration 20260920006400 have `expires_at IS NULL`; PostgREST
  * `gt` excludes NULLs, so they are treated as expired — which is what we want.
+ *
+ * `replace_user_insights` writes the batch in one INSERT, so every row shares
+ * `created_at`. Ordering on that timestamp is a tie, and a row cap would drop
+ * part of the batch. `id` returns the whole set in a stable order. The feed
+ * renders that array as returned.
  */
 export function insightsOptions(userId: string, period: string = "30d") {
 	return queryOptions({
@@ -22,8 +27,7 @@ export function insightsOptions(userId: string, period: string = "30d") {
 				.eq("user_id", userId)
 				.eq("period", period)
 				.gt("expires_at", new Date().toISOString())
-				.order("created_at", { ascending: false })
-				.limit(10);
+				.order("id", { ascending: true });
 			if (error) throw error;
 			return data;
 		},
