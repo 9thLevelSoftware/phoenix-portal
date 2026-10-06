@@ -174,7 +174,7 @@ async function garminWebhook(
     // Garmin sends before we attempt JSON parsing.
     const rawBody = await req.text();
 
-    // Garmin signs the request body with HMAC-SHA256 using the consumer secret and
+    // Garmin signs the request body with HMAC-SHA256 using GARMIN_WEBHOOK_SECRET and
     // sends the hex digest in the x-garmin-signature header.
     const providedSignature = req.headers.get('x-garmin-signature');
     if (!providedSignature) {
@@ -184,7 +184,7 @@ async function garminWebhook(
       );
     }
 
-    // Compute expected HMAC-SHA256 of the raw request body keyed with the consumer secret.
+    // Compute expected HMAC-SHA256 of the raw request body keyed with GARMIN_WEBHOOK_SECRET.
     const expectedSignature = await hmacSha256Hex(WEBHOOK_SECRET, rawBody);
 
     // Fold a wrong-length header into the same compare. A short or long
