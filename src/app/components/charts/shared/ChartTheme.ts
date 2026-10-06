@@ -14,7 +14,6 @@ export type ChartColors = {
 	secondary: string;
 	danger: string;
 	success: string;
-	accent: string;
 	background: string;
 	gridLine: string;
 	axisText: string;
@@ -28,7 +27,6 @@ const chartColors = memoByTheme(
 		secondary: tokens.accent,
 		danger: tokens.danger,
 		success: tokens.success,
-		accent: tokens.cableB,
 		background: tokens.background,
 		gridLine: tokens.surface3,
 		axisText: tokens.mutedForeground,
