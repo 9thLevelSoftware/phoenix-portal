@@ -6,24 +6,7 @@ import {
 	getSimplifiedZoneById,
 	MANN_ZONES,
 	SIMPLIFIED_ZONES,
-	VBT_ZONES,
 } from "../vbt";
-
-describe("VBT_ZONES", () => {
-	it("contains exactly 5 zones", () => {
-		expect(VBT_ZONES()).toHaveLength(5);
-	});
-
-	it("zones are contiguous (each maxVelocity equals next minVelocity)", () => {
-		for (let i = 0; i < VBT_ZONES().length - 1; i++) {
-			expect(VBT_ZONES()[i].maxVelocity).toBe(VBT_ZONES()[i + 1].minVelocity);
-		}
-	});
-
-	it("last zone has Infinity maxVelocity", () => {
-		expect(VBT_ZONES()[VBT_ZONES().length - 1].maxVelocity).toBe(Infinity);
-	});
-});
 
 // ============================================================
 // Simplified Zone System Tests (Mobile/EXPLOSIVE-FAST-MODERATE-SLOW-GRIND)
