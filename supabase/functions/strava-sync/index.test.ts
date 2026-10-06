@@ -1,10 +1,11 @@
-import { assert, assertEquals } from "jsr:@std/assert@1";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
   buildExternalActivityRow,
   createStravaSyncHandler,
   STRAVA_LOCATION_KEYS,
   stripStravaLocationData,
 } from "./index.ts";
+import { assertNoSecretsLogged, captureLogs } from "../_shared/testLogCapture.ts";
 import {
   FakeDb,
   fakeClient,
@@ -1462,7 +1463,8 @@ Deno.test("strava-sync: the queue (service-role) path is not capped by the manua
 
 Deno.test("strava-sync: a provider error body is never echoed to the caller", async () => {
   // Text that must never leave the server: the processor copies this
-  // handler's response body into sync_queue.error_message.
+  // handler's response body into sync_queue.error_message, and the activities
+  // error log stays status-only, the same policy as token refresh.
   const upstream = JSON.stringify({
     message: "Resource Not Found",
     errors: [{ resource: "Athlete", field: "id", code: "PROVIDER-BODY-MARKER" }],
@@ -1470,7 +1472,7 @@ Deno.test("strava-sync: a provider error body is never echoed to the caller", as
   const tables = baseTables(T0, HISTORY);
   const h = queueHarness(tables, () => new Response(upstream, { status: 500 }));
 
-  const res = await h.call({ sync_type: "incremental" });
+  const { result: res, logs } = await captureLogs(() => h.call({ sync_type: "incremental" }));
   assertEquals(res.status, 502);
   const text = await res.clone().text();
   assert(
@@ -1483,6 +1485,8 @@ Deno.test("strava-sync: a provider error body is never echoed to the caller", as
   });
   // Nothing from the body reached the browser-readable integration card.
   assertEquals(integrationOf(h).error_message ?? null, null);
+  assertStringIncludes(logs, "Strava activities fetch failed: 500");
+  assertNoSecretsLogged(logs, ["PROVIDER-BODY-MARKER", "Resource Not Found"]);
 });
 
 Deno.test("strava-sync: an activities transport throw returns a retryable code, not the thrown message", async () => {
