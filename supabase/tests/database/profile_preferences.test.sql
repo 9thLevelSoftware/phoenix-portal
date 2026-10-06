@@ -1166,5 +1166,92 @@ SELECT results_eq(
     'WORKOUT fields remain optional when the required version is present'
 );
 
+SELECT diag('database:rack-optional-band-dials');
+
+CREATE TEMP TABLE rack_dial_write_state_before ON COMMIT DROP AS
+SELECT
+    rack_revision,
+    core_revision,
+    body_weight_kg,
+    workout_revision,
+    workout_preferences,
+    led_revision,
+    led_color_scheme_id,
+    led_preferences,
+    vbt_revision,
+    vbt_enabled,
+    vbt_preferences
+FROM public.local_profile_preferences
+WHERE user_id = '11111111-1111-4111-8111-111111111111'::uuid
+  AND local_profile_id = 'all-sections';
+
+CREATE TEMP TABLE rack_dial_write_results ON COMMIT DROP AS
+SELECT
+    before_row.rack_revision AS base_revision,
+    result.accepted,
+    result.rejection_reason,
+    result.server_revision,
+    result.canonical_section -> 'payload' AS canonical_payload
+FROM rack_dial_write_state_before AS before_row
+CROSS JOIN LATERAL public.mutate_local_profile_preference_section(
+    '11111111-1111-4111-8111-111111111111'::uuid,
+    'all-sections',
+    'RACK',
+    1,
+    before_row.rack_revision,
+    '{"version":1,"items":[{"id":"band-1","name":"Heavy band","category":"BAND","weightKg":2.5,"behavior":"ADDED_RESISTANCE","enabled":true,"sortOrder":0,"createdAt":1,"updatedAt":1,"addedAtTopKg":20,"loadCurve":"LINEAR"}]}'::jsonb
+) AS result;
+
+SELECT results_eq(
+    $sql$
+        SELECT
+            write_result.accepted,
+            write_result.rejection_reason COLLATE "C",
+            write_result.server_revision = write_result.base_revision + 1,
+            write_result.canonical_payload,
+            stored.equipment_rack,
+            stored.rack_revision = write_result.base_revision + 1
+        FROM rack_dial_write_results AS write_result
+        JOIN public.local_profile_preferences AS stored
+          ON stored.user_id = '11111111-1111-4111-8111-111111111111'::uuid
+         AND stored.local_profile_id = 'all-sections'
+    $sql$,
+    $values$
+        VALUES (
+            true,
+            NULL::text COLLATE "C",
+            true,
+            '{"version":1,"items":[{"id":"band-1","name":"Heavy band","category":"BAND","weightKg":2.5,"behavior":"ADDED_RESISTANCE","enabled":true,"sortOrder":0,"createdAt":1,"updatedAt":1,"addedAtTopKg":20,"loadCurve":"LINEAR"}]}'::jsonb,
+            '{"version":1,"items":[{"id":"band-1","name":"Heavy band","category":"BAND","weightKg":2.5,"behavior":"ADDED_RESISTANCE","enabled":true,"sortOrder":0,"createdAt":1,"updatedAt":1,"addedAtTopKg":20,"loadCurve":"LINEAR"}]}'::jsonb,
+            true
+        )
+    $values$,
+    'rack item with optional addedAtTopKg/loadCurve band dials is accepted and preserved on read'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT
+            current_row.core_revision = before_row.core_revision,
+            current_row.body_weight_kg = before_row.body_weight_kg,
+            current_row.workout_revision = before_row.workout_revision,
+            current_row.workout_preferences = before_row.workout_preferences,
+            current_row.led_revision = before_row.led_revision,
+            current_row.led_color_scheme_id = before_row.led_color_scheme_id,
+            current_row.led_preferences = before_row.led_preferences,
+            current_row.vbt_revision = before_row.vbt_revision,
+            current_row.vbt_enabled = before_row.vbt_enabled,
+            current_row.vbt_preferences = before_row.vbt_preferences
+        FROM public.local_profile_preferences AS current_row
+        CROSS JOIN rack_dial_write_state_before AS before_row
+        WHERE current_row.user_id = '11111111-1111-4111-8111-111111111111'::uuid
+          AND current_row.local_profile_id = 'all-sections'
+    $sql$,
+    $values$
+        VALUES (true, true, true, true, true, true, true, true, true, true)
+    $values$,
+    'sibling preference sections are preserved across a rack write carrying band dials'
+);
+
 SELECT * FROM finish();
 ROLLBACK;

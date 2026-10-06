@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import {
   parsePreferenceEnvelope,
   parsePreferenceMutation,
+  parsePullPreferenceRow,
   parseRpcMutationRow,
   type PortalProfilePreferenceSectionMutation,
   type PreferenceEnvelope,
@@ -2440,6 +2441,175 @@ Deno.test("RACK nonnegative Float32 checks original and narrowed values", () => 
     PreferenceValidationError,
   );
 });
+
+// Issue #580 (PKT-P0): optional per-item band dials "addedAtTopKg" and
+// "loadCurve" widen the RACK item ALLOWED key set (legacy union new). The
+// REQUIRED set stays exactly the legacy 9 keys: a naive append would reject
+// every legacy 9-key item already in the wild. validateRackPayload is shared
+// by push and pull, so every case below covers both directions.
+function rackDialItem(
+  overrides: Record<string, unknown>,
+): Record<string, unknown> {
+  const payload = validRackMutation().payload as Record<string, unknown>;
+  return {
+    ...(payload.items as Record<string, unknown>[])[0],
+    ...overrides,
+  };
+}
+
+function rackMutationWithItem(
+  item: Record<string, unknown>,
+): Record<string, unknown> {
+  const mutation = validRackMutation();
+  (mutation.payload as Record<string, unknown>).items = [item];
+  return mutation;
+}
+
+function validPreferencePullRow(
+  rackPayload: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    local_profile_id: "profile-a",
+    body_weight_kg: 80,
+    weight_unit: "KG",
+    weight_increment: 1,
+    core_revision: 1,
+    core_updated_at: "2026-07-11T12:00:00Z",
+    equipment_rack: rackPayload,
+    rack_revision: 1,
+    rack_updated_at: "2026-07-11T12:00:00Z",
+    workout_preferences: validWorkoutMutation().payload,
+    workout_revision: 1,
+    workout_updated_at: "2026-07-11T12:00:00Z",
+    led_color_scheme_id: 0,
+    led_preferences: { version: 1, discoModeUnlocked: true },
+    led_revision: 1,
+    led_updated_at: "2026-07-11T12:00:00Z",
+    vbt_enabled: true,
+    vbt_preferences:
+      (validVbtMutation().payload as Record<string, unknown>).preferences,
+    vbt_revision: 1,
+    vbt_updated_at: "2026-07-11T12:00:00Z",
+  };
+}
+
+function pulledRackPayload(
+  row: Record<string, unknown>,
+): Record<string, unknown> {
+  const canonicals = parsePullPreferenceRow(row, "profile-a");
+  const rack = canonicals.find((canonical) => canonical.section === "RACK");
+  assert(rack, "pull row yields a RACK canonical section");
+  return rack.payload;
+}
+
+Deno.test("rack regression (issue #580): legacy 9-key items stay accepted on push and pull", () => {
+  const mutation = validRackMutation();
+  const items = (mutation.payload as Record<string, unknown>)
+    .items as Record<string, unknown>[];
+  // Exactly the legacy required keys — the required set did not grow even
+  // though the allowed set expanded with the two optional dials.
+  assertEquals(Object.keys(items[0]).sort(), [
+    "behavior",
+    "category",
+    "createdAt",
+    "enabled",
+    "id",
+    "name",
+    "sortOrder",
+    "updatedAt",
+    "weightKg",
+  ]);
+  parsePreferenceMutation(mutation);
+  assertEquals(envelopeFromMutations([mutation]).rejections, []);
+  assertEquals(
+    pulledRackPayload(
+      validPreferencePullRow(mutation.payload as Record<string, unknown>),
+    ),
+    mutation.payload,
+  );
+});
+
+Deno.test("rack accepts a new-shape item without addedAtTopKg/loadCurve", () => {
+  const mutation = rackMutationWithItem(rackDialItem({}));
+  const item = ((mutation.payload as Record<string, unknown>)
+    .items as Record<string, unknown>[])[0];
+  assertEquals("addedAtTopKg" in item, false);
+  assertEquals("loadCurve" in item, false);
+  parsePreferenceMutation(mutation);
+  assertEquals(envelopeFromMutations([mutation]).rejections, []);
+  assertEquals(
+    pulledRackPayload(
+      validPreferencePullRow(mutation.payload as Record<string, unknown>),
+    ),
+    mutation.payload,
+  );
+});
+
+Deno.test("rack accepts addedAtTopKg and loadCurve LINEAR and round-trips them on pull", () => {
+  const mutation = rackMutationWithItem(
+    rackDialItem({ addedAtTopKg: 20, loadCurve: "LINEAR" }),
+  );
+  const payload = mutation.payload as Record<string, unknown>;
+  const parsed = parsePreferenceMutation(mutation);
+  assertEquals(parsed.payload, payload);
+  const envelope = envelopeFromMutations([mutation]);
+  assertEquals(envelope.rejections, []);
+  assertEquals(envelope.validatedMutations[0].payload, payload);
+  const pulled = pulledRackPayload(validPreferencePullRow(payload));
+  assertEquals(pulled, payload);
+  const pulledItem = (pulled.items as Record<string, unknown>[])[0];
+  assertEquals(pulledItem.addedAtTopKg, 20);
+  assertEquals(pulledItem.loadCurve, "LINEAR");
+});
+
+for (
+  const [label, item, field] of [
+    ["unknown extra key", rackDialItem({ dial3: 1 }), "payload.items[0].dial3"],
+    [
+      "missing one legacy required key",
+      (() => {
+        const legacyItem = rackDialItem({});
+        delete legacyItem.behavior;
+        return legacyItem;
+      })(),
+      "payload.items[0].behavior",
+    ],
+    [
+      "negative addedAtTopKg",
+      rackDialItem({ addedAtTopKg: -1 }),
+      "payload.items[0].addedAtTopKg",
+    ],
+    [
+      "non-number addedAtTopKg",
+      rackDialItem({ addedAtTopKg: "20" }),
+      "payload.items[0].addedAtTopKg",
+    ],
+    [
+      "bad loadCurve enum value",
+      rackDialItem({ loadCurve: "EXPONENTIAL" }),
+      "payload.items[0].loadCurve",
+    ],
+  ] as Array<[string, Record<string, unknown>, string]>
+) {
+  Deno.test(`rack rejects ${label} on push and pull`, () => {
+    const mutation = rackMutationWithItem(item);
+    const payload = mutation.payload as Record<string, unknown>;
+    const error = assertThrows(
+      () => parsePreferenceMutation(mutation),
+      PreferenceValidationError,
+    ) as PreferenceValidationError;
+    assertEquals(error.reason, "VALIDATION_FAILED");
+    assertEquals(error.field, field);
+    const envelope = envelopeFromMutations([mutation]);
+    assertEquals(envelope.validatedMutations, []);
+    assertEquals(envelope.rejections.length, 1);
+    assertEquals(envelope.rejections[0].reason, "VALIDATION_FAILED");
+    assertThrows(
+      () => parsePullPreferenceRow(validPreferencePullRow(payload), "profile-a"),
+      PreferenceInfrastructureError,
+    );
+  });
+}
 
 for (const mode of [0, 2, 3, 4, 6, 10]) {
   Deno.test(`WORKOUT accepts mode ${mode}`, () => {

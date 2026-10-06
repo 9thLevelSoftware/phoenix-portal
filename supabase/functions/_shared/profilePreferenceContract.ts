@@ -531,6 +531,17 @@ const RACK_ITEM_KEYS = [
   "createdAt",
   "updatedAt",
 ] as const;
+// Optional per-item band dials (issue #580). They widen the ALLOWED key set
+// only: RACK_ITEM_KEYS stays the REQUIRED set, so legacy 9-key items already
+// in the wild keep validating. New keys are validated only when present.
+const RACK_ITEM_OPTIONAL_KEYS = [
+  "addedAtTopKg",
+  "loadCurve",
+] as const;
+const RACK_ITEM_ALLOWED_KEYS: ReadonlySet<string> = new Set([
+  ...RACK_ITEM_KEYS,
+  ...RACK_ITEM_OPTIONAL_KEYS,
+]);
 const RACK_CATEGORIES = [
   "WEIGHTED_VEST",
   "DIP_BELT",
@@ -545,6 +556,7 @@ const RACK_BEHAVIORS = [
   "COUNTERWEIGHT",
   "DISPLAY_ONLY",
 ] as const;
+const RACK_LOAD_CURVES = ["LINEAR"] as const;
 const WORKOUT_MODES = [0, 2, 3, 4, 6, 10] as const;
 const REP_COUNT_TIMINGS = ["TOP", "BOTTOM"] as const;
 
@@ -574,7 +586,14 @@ export function validateRackPayload(value: unknown): JsonRecord {
   const ids = new Set<string>();
   requireArray(payload.items, "payload.items").forEach((rawItem, index) => {
     const field = "payload.items[" + index + "]";
-    const item = requireExactRecord(rawItem, RACK_ITEM_KEYS, field);
+    // Allowed keys = legacy union optional dials; REQUIRED keys stay exactly
+    // RACK_ITEM_KEYS (a naive append here would reject every legacy item).
+    const item = requireRecord(rawItem, field);
+    requirePostgresTextTree(item, field);
+    requireKnownKeys(item, RACK_ITEM_ALLOWED_KEYS, field);
+    for (const key of RACK_ITEM_KEYS) {
+      if (!Object.hasOwn(item, key)) fail(field + "." + key);
+    }
     const id = requireNonBlank(item.id, field + ".id");
     requireNonBlank(item.name, field + ".name");
     if (ids.has(id)) fail(field + ".id");
@@ -586,6 +605,16 @@ export function validateRackPayload(value: unknown): JsonRecord {
     requireInt32(item.sortOrder, field + ".sortOrder");
     requireSafeJsonLong(item.createdAt, field + ".createdAt");
     requireSafeJsonLong(item.updatedAt, field + ".updatedAt");
+    if (Object.hasOwn(item, "addedAtTopKg")) {
+      requireFloat32(
+        item.addedAtTopKg,
+        field + ".addedAtTopKg",
+        (number) => number >= 0,
+      );
+    }
+    if (Object.hasOwn(item, "loadCurve")) {
+      requireEnum(item.loadCurve, RACK_LOAD_CURVES, field + ".loadCurve");
+    }
   });
   return payload;
 }
