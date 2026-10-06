@@ -5,12 +5,9 @@ export interface PhoenixColors {
 	flameRed: string;
 	gold: string;
 	forgeGreen: string;
-	black: string;
 	white: string;
 	ashGray: string;
 	moltenSteel: string;
-	lightGray: string;
-	crimson: string;
 	flameYellow: string;
 	mutedForeground: string;
 }
@@ -21,12 +18,9 @@ const _phoenix = memoByTheme(
 		flameRed: tokens.danger,
 		gold: tokens.accent,
 		forgeGreen: tokens.success,
-		black: tokens.background,
 		white: tokens.foreground,
 		ashGray: tokens.mutedForeground,
 		moltenSteel: tokens.border,
-		lightGray: tokens.foreground,
-		crimson: tokens.danger,
 		flameYellow: tokens.accent,
 		mutedForeground: tokens.mutedForeground,
 	}),
@@ -36,5 +30,3 @@ const _phoenix = memoByTheme(
 export function PHOENIX(): PhoenixColors {
 	return _phoenix();
 }
-
-export type PhoenixColor = PhoenixColors[keyof PhoenixColors];
