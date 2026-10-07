@@ -20,6 +20,7 @@ import { EmptyState } from "@/app/components/ui/empty-state";
 import { CardSkeleton, Skeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { fadeUp } from "@/lib/animations";
+import { getMuscleGroupColor } from "@/lib/muscle-group-chip";
 import type { WeightUnit } from "@/lib/units";
 import { formatLoad } from "@/lib/units/loadDisplay";
 import {
@@ -71,18 +72,6 @@ function formatRecordMeasurement(
 	}
 	// Records are per cable and carry no cable count, so no total (KD-8).
 	return formatLoad(value, null, unit);
-}
-
-function getMuscleGroupColor(muscleGroup: string): string {
-	const colors: Record<string, string> = {
-		Chest: "bg-primary text-background",
-		Shoulders: "bg-accent text-background",
-		Back: "bg-success text-background",
-		Legs: "bg-chart-2 text-background",
-		Arms: "bg-warning text-background",
-		Core: "bg-chart-5 text-background",
-	};
-	return colors[muscleGroup] ?? "bg-secondary text-secondary-foreground";
 }
 
 interface ExercisePR {
