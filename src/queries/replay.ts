@@ -6,6 +6,8 @@ import { fetchSetTelemetry } from "./telemetry";
 /**
  * Query options for session replay data.
  * Fetches session structure with exercises and sets for navigation.
+ * Exercise and set order matches `loadSessionEmbed`: exercises by
+ * `order_index`, nested sets by `set_number`.
  */
 export const replaySessionOptions = (sessionId: string) =>
 	queryOptions({
@@ -26,6 +28,14 @@ export const replaySessionOptions = (sessionId: string) =>
           )
         `)
 				.eq("id", sessionId)
+				.order("order_index", {
+					ascending: true,
+					referencedTable: "exercises",
+				})
+				.order("set_number", {
+					ascending: true,
+					referencedTable: "exercises.sets",
+				})
 				.single();
 
 			if (error) throw error;
