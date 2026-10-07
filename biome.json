@@ -18,7 +18,6 @@
 			"tests/**/*.tsx",
 			"e2e/**/*.ts",
 			"playwright.pwa.config.ts",
-			"scripts/**/*.ts",
 			"scripts/resolve-sync-preview.mjs",
 			"scripts/cleanup-sync-preview-users.mjs",
 			"scripts/migration-list-applied.mjs"
