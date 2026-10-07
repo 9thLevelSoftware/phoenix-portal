@@ -81,11 +81,14 @@ describe("Sync wire-level error class signals", () => {
 			expect(result.error?.code).toBe("VALIDATION_ERROR");
 		});
 
-		it("invalid payload (missing platform) returns 400 (permanent signal)", async () => {
-			const payload = createMinimalPushPayload(testUser.id, { platform: "" });
-			const result = await callPushEndpoint(payload, testUser.accessToken);
-			expect(result.status).toBe(400);
-			expect(result.error?.code).toBe("VALIDATION_ERROR");
+		it("blank platform is accepted and normalized to unknown", async () => {
+			for (const platform of ["", "   "]) {
+				const payload = createMinimalPushPayload(testUser.id, { platform });
+				const result = await callPushEndpoint(payload, testUser.accessToken);
+				expect(result.success).toBe(true);
+				expect(result.status).toBe(200);
+				expect(payload.platform).toBe("unknown");
+			}
 		});
 	});
 

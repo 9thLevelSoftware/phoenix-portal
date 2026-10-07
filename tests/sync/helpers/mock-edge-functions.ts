@@ -41,6 +41,7 @@ import {
 	findPushPayloadIncompleteRoutines,
 	formatPushPayloadDuplicateError,
 	formatPushPayloadIncompleteRoutinesError,
+	platformSchema,
 } from "../../../supabase/functions/_shared/pushPayloadSchema.ts";
 import { syncBroadcastTopic } from "../../../supabase/functions/_shared/syncBroadcast.ts";
 import type {
@@ -208,7 +209,11 @@ export function mockPushEndpoint(
 		};
 	}
 
-	if (!payload.platform) {
+	// Blank platform matches platformSchema / the push handler: empty and
+	// whitespace-only strings normalize to "unknown" and the push is accepted.
+	if (typeof payload.platform === "string" && payload.platform.trim() === "") {
+		payload.platform = platformSchema.parse(payload.platform);
+	} else if (!payload.platform) {
 		return {
 			success: false,
 			status: 400,
