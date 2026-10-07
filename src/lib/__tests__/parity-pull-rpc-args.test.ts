@@ -5,10 +5,11 @@ import type { Database } from "@/lib/database.types";
 
 // mobile-sync-pull passes p_last_sync_at to every parity RPC. The generated
 // types must keep it. The typed literals below fail `tsc -p tsconfig.test.json`
-// if it disappears; `npm run typecheck` (bare `tsc --noEmit` over a
-// references-only tsconfig) does not check test files, so the text check below
-// is what fails in `npm test`. Behaviour and grants are covered by the real-SQL
-// "integration: " tests in supabase/functions/mobile-sync-pull/index.test.ts.
+// if it disappears. `npm run typecheck` runs that project via
+// scripts/typecheck.mjs, so the literals are part of the typecheck gate.
+// The text check below is what fails in `npm test`. Behaviour and grants are
+// covered by the real-SQL "integration: " tests in
+// supabase/functions/mobile-sync-pull/index.test.ts.
 type Functions = Database["public"]["Functions"];
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";

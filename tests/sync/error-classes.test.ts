@@ -43,11 +43,10 @@ describe("Sync wire-level error class signals", () => {
 
 	describe("TRANSIENT (5xx)", () => {
 		it.skip("5xx from server surfaces as transient error with retry guidance — depends on live fault injection", async () => {
-			// The Edge Function surfaces transient DB failures as 500 with a
-			// generic message (mobile-sync-push/index.ts lines 1495-1504).
-			// Mobile's Kotlin classifier maps 500/502/503 to TRANSIENT and
-			// backs off per the policy defined in CLAUDE.md:
-			//   5 → 15 → 30 → 60 minutes for transient errors.
+			// Unexpected push failures surface as 500. Outside verbose
+			// environments the body is { error: "Internal server error" }
+			// (mobile-sync-push/index.ts lines 4485-4498). Mobile's Kotlin
+			// classifier maps 500/502/503 to TRANSIENT.
 			//
 			// Live-mode trigger: tear down the DB or rename a target table.
 			// Kotlin-side proof: see SyncErrorClassifierTest in mobile
@@ -128,8 +127,8 @@ describe("Sync wire-level error class signals", () => {
 		it.skip("fetch abort surfaces as NETWORK class — mobile-only concern", async () => {
 			// The harness wraps fetch in try/catch and returns a
 			// { status: 0, code: 'NETWORK_ERROR' } result when fetch throws
-			// (edge-function-harness.ts lines 608-618). This is the exact
-			// signal mobile's classifier reads as NETWORK.
+			// (edge-function-harness.ts callPushEndpoint, lines 812-820). This
+			// is the exact signal mobile's classifier reads as NETWORK.
 			//
 			// In mock mode, the callPushEndpoint path never invokes fetch
 			// (it hits the mock directly), so the NETWORK signal is not
