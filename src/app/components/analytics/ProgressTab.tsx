@@ -10,6 +10,7 @@ import {
 	WORKOUT_PHASE_FILTERS,
 	type WorkoutPhaseFilter,
 } from "@/lib/workout-phases";
+import { formatMetric } from "./formatMetric";
 import { ProgressionWorkbench } from "./ProgressionWorkbench";
 import type {
 	PhaseMetricPair,
@@ -38,10 +39,6 @@ export interface ProgressTabProps {
 	phaseMetricSummary: PhaseMetricSummary;
 	progressionModel: ProgressionWorkbenchModel;
 	onSelectProgressionExercise: (exerciseName: string) => void;
-}
-
-function formatMetric(value: number, decimals = 1): string {
-	return value.toFixed(decimals).replace(/\.0$/, "");
 }
 
 function PhaseMetricPanel({
