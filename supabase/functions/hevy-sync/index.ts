@@ -338,11 +338,11 @@ async function runHevySync(
         );
       }
 
-      // The thrown error is logged above and goes no further. The fetch+parse is
-      // wrapped as a whole, so besides our own fixed "Hevy API returned N" it
-      // can be a V8 JSON parse message quoting the provider's body, or a
-      // transport/TLS internal. `user_integrations.error_message` is rendered
-      // by ProviderCard and the response body is copied into
+      // The thrown error is logged above and goes no further. JSON parse
+      // failures are already a fixed message from createHevyPageFetcher, so
+      // this log cannot quote the provider body. A transport/TLS internal
+      // still can. `user_integrations.error_message` is rendered by
+      // ProviderCard and the response body is copied into
       // `sync_queue.error_message` by the processor, so both get fixed text.
       await supabase
         .from('user_integrations')
@@ -535,9 +535,9 @@ async function runHevySync(
       }
     );
   } catch (err) {
-    // `errorMessage` is a deliberate passthrough of `.message`, which for a
-    // driver error carries constraint/column/relation names and for a parse
-    // failure carries a slice of the provider's body. Log it, return a code.
+    // Log the thrown value and return a code. A driver error's message names
+    // constraints and columns. Provider JSON parse failures are replaced with
+    // a fixed message before they can reach this log.
     console.error('Hevy sync error:', err);
     return new Response(
       JSON.stringify({ error: 'Hevy sync failed', code: 'internal_error' }),

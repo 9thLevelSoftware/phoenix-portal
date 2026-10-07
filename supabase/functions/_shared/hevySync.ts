@@ -132,7 +132,12 @@ export function createHevyPageFetcher(
     if (!response.ok) {
       throw new Error(`Hevy API returned ${response.status}`);
     }
-    return await response.json();
+    try {
+      return await response.json();
+    } catch {
+      // Never let provider body text (e.g. an HTML error page) reach the caller.
+      throw new Error('Hevy API returned an unreadable response');
+    }
   };
 }
 
