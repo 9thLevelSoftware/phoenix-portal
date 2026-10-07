@@ -65,19 +65,27 @@ vi.mock("@/queries/telemetry", async (importOriginal) => {
 
 vi.mock("@/lib/supabase", () => {
 	const chainFor = (table: string) => {
-		const chain = {
-			select: () => chain,
-			eq: () => chain,
-			maybeSingle: () => Promise.resolve({ data: null, error: null }),
-			order: () =>
-				Promise.resolve({ data: mockDb.rows[table] ?? [], error: null }),
-			single: () =>
-				Promise.resolve(
-					mockDb.session
-						? { data: mockDb.session, error: null }
-						: { data: null, error: { message: "not found" } },
-				),
-		};
+		// A real promise so a terminal .order() (rep summaries) still resolves
+		// to rows, with chain methods so the session embed can order
+		// exercises and sets before single().
+		const chain = Object.assign(
+			Promise.resolve({
+				data: mockDb.rows[table] ?? [],
+				error: null as null,
+			}),
+			{
+				select: () => chain,
+				eq: () => chain,
+				maybeSingle: () => Promise.resolve({ data: null, error: null }),
+				order: () => chain,
+				single: () =>
+					Promise.resolve(
+						mockDb.session
+							? { data: mockDb.session, error: null }
+							: { data: null, error: { message: "not found" } },
+					),
+			},
+		);
 		return chain;
 	};
 
