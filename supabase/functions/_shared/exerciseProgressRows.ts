@@ -13,6 +13,18 @@
 export interface ProgressSetInput {
 	weightKg: number;
 	actualReps: number;
+	/** Wire mode (SCREAMING_SNAKE). Absent on legacy payloads. */
+	workoutMode?: string | null;
+}
+
+/**
+ * Mobile #1182: an Echo set with no measured load ships the non-null
+ * `weightKg = 0` sentinel ("load unavailable"), not a lift of 0 kg. It must
+ * not feed max weight, volume or the 1RM estimate, or the progress series
+ * would plot a 0 kg / 0 1RM session.
+ */
+export function isUnmeasuredEchoSet(set: ProgressSetInput): boolean {
+	return set.workoutMode?.toUpperCase() === "ECHO" && !(set.weightKg > 0);
 }
 
 export interface ProgressExerciseInput {
@@ -81,6 +93,12 @@ export function buildExerciseProgressRows(
 	for (const session of sessions) {
 		for (const exercise of session.exercises) {
 			if (exercise.sets.length === 0) continue;
+			// No progress row for an exercise whose only sets are the Echo
+			// "load unavailable" sentinel: there is no measured load to chart.
+			const measuredSets = exercise.sets.filter(
+				(s) => !isUnmeasuredEchoSet(s),
+			);
+			if (measuredSets.length === 0) continue;
 
 			// pushPayloadSchema enforces non-negative weights/reps at ingress, but
 			// clamp defensively here too so a direct (non-HTTP) caller cannot write
@@ -88,9 +106,9 @@ export function buildExerciseProgressRows(
 			// pull (Finding F334).
 			const maxWeight = Math.max(
 				0,
-				...exercise.sets.map((s) => Math.max(0, s.weightKg)),
+				...measuredSets.map((s) => Math.max(0, s.weightKg)),
 			);
-			const totalVolume = exercise.sets.reduce(
+			const totalVolume = measuredSets.reduce(
 				(sum, s) => sum + Math.max(0, s.weightKg) * Math.max(0, s.actualReps),
 				0,
 			);
@@ -105,7 +123,7 @@ export function buildExerciseProgressRows(
 			const estimated1rm =
 				exercise.estimatedOneRepMaxKg != null
 					? exercise.estimatedOneRepMaxKg
-					: bestEstimateFromSets(exercise.sets);
+					: bestEstimateFromSets(measuredSets);
 
 			rows.push({
 				user_id: userId,

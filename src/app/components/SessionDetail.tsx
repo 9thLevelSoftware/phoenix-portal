@@ -363,6 +363,7 @@ export function SessionDetail() {
 										<LoadValue
 											perCableKg={session.heaviest_lift_kg}
 											unit={unit}
+											workoutMode={session.workout_mode}
 										/>
 									</div>
 								</div>
@@ -691,6 +692,9 @@ export function SessionDetail() {
 																		perCableKg={set.weight_kg}
 																		cableCount={exercise.cable_count}
 																		unit={unit}
+																		workoutMode={
+																			set.workout_mode ?? session.workout_mode
+																		}
 																	/>
 																</td>
 																<td className="py-3 text-secondary-foreground font-data">
