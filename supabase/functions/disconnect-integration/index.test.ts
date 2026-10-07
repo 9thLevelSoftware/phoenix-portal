@@ -466,7 +466,7 @@ Deno.test("disconnect-integration: a token read error returns 500 and disconnect
 });
 
 Deno.test("disconnect-integration: providers without a server-side grant skip the revoke and still call the RPC", async () => {
-  for (const provider of ["hevy", "liftosaur", "apple_health", "google_health"]) {
+  for (const provider of ["hevy", "liftosaur", "strong", "apple_health", "google_health"]) {
     const state = fakeState({ tokens: { [provider]: { access_token: "x", refresh_token: "y", token_expires_at: null } } });
     const { result: res } = await captured(() => handlerFor(state)(post({ provider })));
     assertEquals(res.status, 200, provider);

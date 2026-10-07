@@ -13,6 +13,7 @@ const ALLOWED_PROVIDERS = new Set([
   'garmin',
   'hevy',
   'liftosaur',
+  'strong',
   'apple_health',
   'google_health',
 ]);
