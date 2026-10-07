@@ -31,6 +31,7 @@ import { Skeleton } from "@/app/components/ui/skeleton";
 import phoenixLogo from "@/assets/phoenix-logo-fallback.png";
 import { useSubscription } from "@/hooks/useSubscription";
 import { displayExerciseName } from "@/lib/exercise-display";
+import { getMuscleGroupColor } from "@/lib/muscle-group-chip";
 import { formatVolume } from "@/lib/units";
 import { LoadValue } from "@/lib/units/loadDisplay";
 import { useAuth } from "@/providers/AuthProvider";
@@ -72,18 +73,6 @@ export function SessionDetail() {
 				? current.filter((id) => id !== exerciseId)
 				: [...current, exerciseId];
 		});
-	};
-
-	const getMuscleGroupColor = (muscleGroup: string) => {
-		const colors: Record<string, string> = {
-			Chest: "bg-primary text-background",
-			Shoulders: "bg-accent text-background",
-			Back: "bg-success text-background",
-			Legs: "bg-chart-2 text-background",
-			Arms: "bg-warning text-background",
-			Core: "bg-chart-5 text-background",
-		};
-		return colors[muscleGroup] || "bg-secondary text-secondary-foreground";
 	};
 
 	// Loading state

@@ -41,6 +41,7 @@ import { Label } from "@/app/components/ui/label";
 import { Switch } from "@/app/components/ui/switch";
 import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
 import { useExerciseCatalog } from "@/hooks/useExerciseCatalog";
+import { getMuscleGroupColor } from "@/lib/muscle-group-chip";
 import {
 	convertWeight,
 	getUnitLabel,
@@ -935,17 +936,6 @@ function SortableExerciseItem({
 		id: exercise.id,
 		index,
 	});
-
-	const getMuscleGroupColor = (group: string) => {
-		const colors: Record<string, string> = {
-			Chest: "bg-primary text-background",
-			Back: "bg-success text-background",
-			Shoulders: "bg-accent text-background",
-			Legs: "bg-chart-2 text-background",
-			Arms: "bg-warning text-background",
-		};
-		return colors[group] || "bg-secondary text-secondary-foreground";
-	};
 
 	return (
 		<div ref={ref} style={{ opacity: isDragging ? 0.5 : 1 }}>
