@@ -26,7 +26,6 @@ import {
 	TabsTrigger,
 } from "@/app/components/ui/tabs";
 import { useBlockedUsers } from "@/hooks/useBlockedUsers";
-import { useDebounce } from "@/hooks/useDebounce";
 import { useVote } from "@/mutations/community";
 import { useAuth } from "@/providers/AuthProvider";
 import { communityFeedOptions, userVotesOptions } from "@/queries/community";
@@ -50,8 +49,6 @@ export function Community() {
 	const setSort = useCommunityStore((s) => s.setSort);
 	const setSelectedItemId = useCommunityStore((s) => s.setSelectedItemId);
 
-	const debouncedSearch = useDebounce(search, 300);
-
 	// Feed query
 	const {
 		data,
@@ -66,7 +63,7 @@ export function Community() {
 			tab: activeTab,
 			sort,
 			filters,
-			search: debouncedSearch,
+			search,
 		}),
 	);
 
@@ -109,7 +106,7 @@ export function Community() {
 		(item) => item.user_id === null || !blockedUserIds.has(item.user_id),
 	);
 	const hasActiveFilters = Boolean(
-		debouncedSearch || filters.muscleGroup || filters.difficulty,
+		search || filters.muscleGroup || filters.difficulty,
 	);
 	const kind = activeTab === "routines" ? "routines" : "cycles";
 	const emptyStateTitle = hasActiveFilters
