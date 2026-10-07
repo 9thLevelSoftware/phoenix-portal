@@ -80,8 +80,10 @@ describe("Sync wire-level error class signals", () => {
 			expect(result.status).toBe(400);
 			expect(result.error?.code).toBe("VALIDATION_ERROR");
 		});
+	});
 
-		it("blank platform is accepted and normalized to unknown", async () => {
+	describe("blank platform", () => {
+		it("is accepted and normalized to unknown", async () => {
 			for (const platform of ["", "   "]) {
 				const payload = createMinimalPushPayload(testUser.id, { platform });
 				const result = await callPushEndpoint(payload, testUser.accessToken);
