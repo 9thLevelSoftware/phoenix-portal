@@ -164,6 +164,8 @@ export const setSchema = z.object({
 	rpe: z.number().nullable(),
 	is_pr: z.boolean(),
 	notes: z.string().nullable(),
+	// Per-set wire mode (sets.workout_mode); absent on legacy rows.
+	workout_mode: z.string().nullish(),
 });
 
 export type WorkoutSet = z.infer<typeof setSchema>;
