@@ -261,9 +261,12 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
     preserves portal-only configuration the phone does not know about, ignores
     a structure the portal has edited since the device's `baseUpdatedAt`, and
     returns `accepted` / `structure_applied` / the stored keys;
-  - session children (exercises, sets, rep summaries, `rep_telemetry` **and**
+  - session children (exercises, sets, rep summaries, telemetry **and**
     `exercise_progress`) are written by this push: `replace_session_children`
     replaces them in one transaction, so a partial child write cannot lose data.
+    Since `20260925200000` telemetry is stored in `set_telemetry`;
+    `rep_telemetry` is a per-sample view over it plus unfolded
+    `rep_telemetry_legacy` rows.
 - A `user_id` transition on `workout_sessions` / `routines` / `training_cycles`
   raises 42501 from a DB trigger (`20260920002102`), whichever path writes it.
 - Deletes are explicit: `deletedRoutineIds` are tombstoned, and a push that
