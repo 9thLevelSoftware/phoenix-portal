@@ -54,7 +54,7 @@ function setupSubscription(overrides: {
 		isLoading: overrides.isLoading ?? false,
 		isError: overrides.isError ?? false,
 		refetch: overrides.refetch ?? vi.fn(),
-		isPremium: (overrides.tier ?? "FREE") !== "FREE",
+		isEntitled: (overrides.tier ?? "FREE") !== "FREE",
 		isFlame: overrides.tier === "FLAME" || overrides.tier === "INFERNO",
 		isInferno: overrides.tier === "INFERNO",
 	});

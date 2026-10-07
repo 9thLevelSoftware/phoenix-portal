@@ -225,7 +225,7 @@ function CommentItem({
 
 export function CommentThread({ itemId, itemType }: CommentThreadProps) {
 	const { user } = useAuth();
-	const { isPremium } = useSubscription();
+	const { isEntitled } = useSubscription();
 	const { blockedUserIds } = useBlockedUsers();
 	const [newComment, setNewComment] = useState("");
 
@@ -287,7 +287,7 @@ export function CommentThread({ itemId, itemType }: CommentThreadProps) {
 			)}
 
 			{/* Comment input area */}
-			{user && isPremium ? (
+			{user && isEntitled ? (
 				<div className="space-y-2 pt-2">
 					<Textarea
 						value={newComment}

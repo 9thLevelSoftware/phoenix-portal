@@ -104,7 +104,6 @@ describe("useSubscription effective tier", () => {
 		expect(result.current.rawTier).toBe("FLAME");
 		expect(result.current.priceId).toBe("pri_flame_monthly");
 		expect(result.current.isEntitled).toBe(true);
-		expect(result.current.isPremium).toBe(true);
 		expect(result.current.isFlame).toBe(true);
 	});
 
@@ -126,7 +125,6 @@ describe("useSubscription effective tier", () => {
 		expect(result.current.tier).toBe("INFERNO");
 		expect(result.current.rawTier).toBe("INFERNO");
 		expect(result.current.isEntitled).toBe(true);
-		expect(result.current.isPremium).toBe(true);
 		expect(result.current.isInferno).toBe(true);
 	});
 
@@ -188,7 +186,7 @@ describe("useSubscription effective tier", () => {
 
 		// Effective tier for access control is FREE
 		expect(result.current.tier).toBe("FREE");
-		expect(result.current.isPremium).toBe(false);
+		expect(result.current.isEntitled).toBe(false);
 		expect(result.current.isFlame).toBe(false);
 
 		// Raw tier preserves the database value for display
@@ -211,7 +209,7 @@ describe("useSubscription effective tier", () => {
 		await waitFor(() => expect(result.current.isLoading).toBe(false));
 
 		expect(result.current.tier).toBe("EMBER");
-		expect(result.current.isPremium).toBe(true);
+		expect(result.current.isEntitled).toBe(true);
 		expect(result.current.rawTier).toBe("EMBER");
 		// Period ended long ago: stale, so the portal asks Paddle for a refresh
 		// (heals a lost cancel/pause webhook) while access keeps the past_due rule.
@@ -292,7 +290,7 @@ describe("useSubscription effective tier", () => {
 		await waitFor(() => expect(result.current.isLoading).toBe(false));
 
 		expect(result.current.tier).toBe("FREE");
-		expect(result.current.isPremium).toBe(false);
+		expect(result.current.isEntitled).toBe(false);
 		expect(result.current.isInferno).toBe(false);
 		expect(result.current.rawTier).toBe("INFERNO");
 	});
@@ -309,7 +307,7 @@ describe("useSubscription effective tier", () => {
 		expect(result.current.tier).toBe("FREE");
 		expect(result.current.rawTier).toBe("FREE");
 		expect(result.current.status).toBe("none");
-		expect(result.current.isPremium).toBe(false);
+		expect(result.current.isEntitled).toBe(false);
 	});
 
 	it("reports isError without treating a failed fetch as an entitled FREE plan", async () => {
@@ -324,7 +322,6 @@ describe("useSubscription effective tier", () => {
 
 		expect(result.current.isError).toBe(true);
 		expect(result.current.isEntitled).toBe(false);
-		expect(result.current.isPremium).toBe(false);
 		expect(result.current.isFlame).toBe(false);
 		expect(result.current.isInferno).toBe(false);
 		expect(result.current.tier).toBe("FREE");

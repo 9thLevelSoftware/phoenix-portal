@@ -67,7 +67,6 @@ const mockSubscription = vi.hoisted(() => ({
 		isError: false,
 		error: null,
 		refetch: vi.fn(),
-		isPremium: false,
 		isFlame: false,
 		isInferno: false,
 	},
@@ -98,7 +97,6 @@ describe("Profile", () => {
 			billingAction: "checkout",
 			needsPaymentUpdate: false,
 			isStale: false,
-			isPremium: false,
 			isFlame: false,
 			isInferno: false,
 		});
@@ -182,7 +180,6 @@ describe("Profile", () => {
 			billingAction: "manage",
 			needsPaymentUpdate: true,
 			isStale: false,
-			isPremium: true,
 			isFlame: true,
 		});
 
@@ -207,7 +204,6 @@ describe("Profile", () => {
 			isEntitled: true,
 			billingAction: "manage",
 			needsPaymentUpdate: false,
-			isPremium: true,
 			isFlame: true,
 		});
 
