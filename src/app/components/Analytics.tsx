@@ -152,7 +152,8 @@ const MUSCLE_GROUP_COLORS: Record<string, string> = {
 	Core: "var(--chart-6)",
 };
 
-// Map old tab names to new tab names for backward compatibility
+// Legacy `?tab=` aliases. `biomechanics` still opens Performance;
+// `/biomechanics` redirects straight to `?tab=performance`.
 const TAB_MIGRATION: Record<string, string> = {
 	overview: "overview",
 	strength: "progress",
@@ -563,7 +564,8 @@ export function Analytics() {
 		useState<string | null>(null);
 	const [searchParams, setSearchParams] = useSearchParams();
 
-	// Map old tab names to new ones for backward compatibility
+	// Resolve legacy `?tab=` aliases (see TAB_MIGRATION). `/biomechanics`
+	// already arrives as `performance`.
 	const rawTab = searchParams.get("tab") || "overview";
 	const activeTab = VALID_TABS.includes(rawTab)
 		? rawTab
