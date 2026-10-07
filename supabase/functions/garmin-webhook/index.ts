@@ -21,7 +21,6 @@ import { timingSafeEqualString } from '../_shared/timingSafe.ts';
  * - activityDetails: Detailed activity data (if configured)
  *
  * NOTE: Garmin developer program approval may be pending.
- * This function is ready but untested until webhook registration is complete.
  */
 
 /**
@@ -201,7 +200,24 @@ async function garminWebhook(
       );
     }
 
-    const payload: GarminWebhookPayload = JSON.parse(rawBody);
+    // V8's JSON.parse SyntaxError quotes a slice of the source. Garmin bodies
+    // carry userAccessToken, so a malformed payload must not reach the
+    // catch-all below, which logs the thrown value.
+    let payload: GarminWebhookPayload;
+    try {
+      payload = JSON.parse(rawBody);
+    } catch (parseError) {
+      if (!(parseError instanceof SyntaxError)) throw parseError;
+      console.error('[GARMIN_WEBHOOK] rejected malformed JSON body');
+      return new Response(
+        JSON.stringify({
+          received: false,
+          error: 'Processing error',
+          code: 'internal_error',
+        }),
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
     // Garmin may deliver both `activities` (summaries) and `activityDetails` in the
     // same payload. Merge and de-duplicate by activityId so detailed records are not
     // dropped whenever summaries are also present. Details win on conflict.
@@ -372,7 +388,8 @@ async function garminWebhook(
     );
   } catch (err) {
     // fix(audit): C5 — stop swallowing errors. Propagate 5xx so Garmin retries.
-    // The message can carry DB or parse internals: log it, return a code.
+    // A driver error's message can carry DB internals: log it, return a code.
+    // JSON parse failures are returned above and never reach this log.
     console.error('[GARMIN_WEBHOOK] unhandled error:', err);
     return new Response(
       JSON.stringify({
