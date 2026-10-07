@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { WeightUnit } from "../../../supabase/functions/_shared/insightRules.ts";
 import {
 	generateInsights,
 	type InsightInput,
 	type TrainingInsight,
-	type WeightUnit,
 } from "../insights";
 
 interface FixtureCase {
