@@ -197,7 +197,7 @@ function setupSubscription(tier: string) {
 		currentPeriodEnd: null,
 		cancelAtPeriodEnd: false,
 		isLoading: false,
-		isPremium: tier !== "FREE",
+		isEntitled: tier !== "FREE",
 		isFlame: tier === "FLAME" || tier === "INFERNO",
 		isInferno: tier === "INFERNO",
 	});

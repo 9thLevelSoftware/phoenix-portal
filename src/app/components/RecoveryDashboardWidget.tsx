@@ -9,11 +9,11 @@ import { GATING_THRESHOLD_DAYS } from "@/lib/recovery";
 import { RecoveryScore } from "./RecoveryScore";
 
 export function RecoveryDashboardWidget() {
-	const { isPremium } = useSubscription();
+	const { isEntitled } = useSubscription();
 	const { recovery, isLoading, isError, daysSinceFirstSession } =
 		useRecoveryScore();
 
-	if (!isPremium) {
+	if (!isEntitled) {
 		return (
 			<Card className="relative overflow-hidden p-6 signal-panel">
 				<div className="absolute inset-0 bg-primary/5 pointer-events-none" />

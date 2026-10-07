@@ -29,7 +29,7 @@ vi.mock("@/app/hooks/useAuth", () => mockAuth);
 vi.mock("@/providers/AuthProvider", () => mockAuth);
 vi.mock("@/hooks/useSubscription", () => ({
 	useSubscription: () => ({
-		isPremium: true,
+		isEntitled: true,
 		isFlame: false,
 		isInferno: false,
 		tier: "EMBER",

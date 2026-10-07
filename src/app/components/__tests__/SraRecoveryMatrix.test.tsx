@@ -22,7 +22,7 @@ function setupSubscription(isInferno: boolean) {
 		currentPeriodEnd: null,
 		cancelAtPeriodEnd: false,
 		isLoading: false,
-		isPremium: true,
+		isEntitled: true,
 		isFlame: true,
 		isInferno,
 	});

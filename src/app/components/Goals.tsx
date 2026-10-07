@@ -299,7 +299,7 @@ function ExerciseNameCombobox({
 export function Goals() {
 	const { user } = useAuth();
 	const unit = usePreferredWeightUnit();
-	const { isPremium, isInferno } = useSubscription();
+	const { isEntitled, isInferno } = useSubscription();
 	const { activeProfileId } = useProfileFilterStore();
 	const {
 		data: goals,
@@ -326,7 +326,7 @@ export function Goals() {
 
 	// M24: INFERNO = unlimited goals, paid (EMBER/FLAME) = 3. There is no free
 	// tier, so users without a subscription get 0 (and are gated out below).
-	const maxGoals = isInferno ? Infinity : isPremium ? 3 : 0;
+	const maxGoals = isInferno ? Infinity : isEntitled ? 3 : 0;
 	const atLimit = activeGoals.length >= maxGoals;
 
 	// M26: Derive distinct exercise names from personal records for autocomplete
@@ -444,7 +444,7 @@ export function Goals() {
 	}
 
 	// Tier gate for FREE users
-	if (!isPremium && !isPending) {
+	if (!isEntitled && !isPending) {
 		return (
 			<div className="min-h-screen pb-20 md:pb-8">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -727,7 +727,7 @@ export function Goals() {
 						{isInferno
 							? `${activeGoals.length} active goal${activeGoals.length !== 1 ? "s" : ""} (unlimited)`
 							: `${activeGoals.length}/${maxGoals} active goal${maxGoals > 1 ? "s" : ""}`}
-						{!isPremium && " (upgrade for more)"}
+						{!isEntitled && " (upgrade for more)"}
 					</p>
 				</motion.div>
 			</div>

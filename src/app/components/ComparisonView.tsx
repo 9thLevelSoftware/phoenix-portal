@@ -314,7 +314,7 @@ export function ComparisonView() {
 	const navigate = useNavigate();
 	const isMobile = useIsMobile();
 	const unit = usePreferredWeightUnit();
-	const { isPremium, isLoading: subLoading } = useSubscription();
+	const { isEntitled, isLoading: subLoading } = useSubscription();
 
 	const sessionAId = searchParams.get("a") ?? "";
 	const sessionBId = searchParams.get("b") ?? "";
@@ -325,7 +325,7 @@ export function ComparisonView() {
 		error: errorA,
 	} = useQuery({
 		...comparisonDetailOptions(sessionAId),
-		enabled: isPremium && !!sessionAId,
+		enabled: isEntitled && !!sessionAId,
 	});
 	const {
 		data: summaryB,
@@ -333,11 +333,11 @@ export function ComparisonView() {
 		error: errorB,
 	} = useQuery({
 		...comparisonDetailOptions(sessionBId),
-		enabled: isPremium && !!sessionBId,
+		enabled: isEntitled && !!sessionBId,
 	});
 
 	// Tier gate: FREE users see upgrade prompt
-	if (!subLoading && !isPremium) {
+	if (!subLoading && !isEntitled) {
 		return (
 			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">

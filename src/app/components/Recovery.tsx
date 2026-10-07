@@ -181,7 +181,7 @@ function FreeRecoveryView() {
 }
 
 export function Recovery() {
-	const { isPremium } = useSubscription();
+	const { isEntitled } = useSubscription();
 	const { recovery, wearable, isLoading, isError, daysSinceFirstSession } =
 		useRecoveryScore();
 
@@ -191,7 +191,7 @@ export function Recovery() {
 	});
 
 	// FREE tier: simplified view
-	if (!isPremium) return <FreeRecoveryView />;
+	if (!isEntitled) return <FreeRecoveryView />;
 
 	if (isLoading) {
 		return (

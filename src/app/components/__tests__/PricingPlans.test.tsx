@@ -22,7 +22,6 @@ const mockSubscription = vi.hoisted(() => ({
 		isLoading: false,
 		isError: false,
 		refetch: vi.fn(),
-		isPremium: false,
 		isFlame: false,
 		isInferno: false,
 	},
@@ -129,7 +128,6 @@ function setSubscription(overrides: Partial<typeof mockSubscription.current>) {
 		isLoading: false,
 		isError: false,
 		refetch: vi.fn(),
-		isPremium: false,
 		isFlame: false,
 		isInferno: false,
 		...overrides,
@@ -240,7 +238,6 @@ describe("PricingPlans billing actions", () => {
 			cancelAtPeriodEnd: true,
 			isEntitled: true,
 			isStale: false,
-			isPremium: true,
 			isFlame: true,
 		});
 
@@ -265,7 +262,6 @@ describe("PricingPlans billing actions", () => {
 			priceId: "pri_flame_monthly",
 			currentPeriodEnd: "2026-05-07T00:00:00Z",
 			isEntitled: true,
-			isPremium: true,
 			isFlame: true,
 		});
 		mockInvoke.mockResolvedValue({
@@ -304,7 +300,6 @@ describe("PricingPlans billing actions", () => {
 		isEntitled: true,
 		billingAction: "manage" as const,
 		needsPaymentUpdate: true,
-		isPremium: true,
 		isFlame: true,
 	};
 
@@ -379,7 +374,6 @@ describe("PricingPlans billing actions", () => {
 			priceId: "pri_flame_monthly",
 			currentPeriodEnd: "2026-05-07T00:00:00Z",
 			isEntitled: true,
-			isPremium: true,
 			isFlame: true,
 		});
 		mockInvoke.mockResolvedValue({
@@ -416,7 +410,6 @@ describe("PricingPlans billing actions", () => {
 			priceId: "pri_flame_monthly",
 			currentPeriodEnd: "2999-04-17T00:00:00Z",
 			isEntitled: true,
-			isPremium: true,
 			isFlame: true,
 		});
 
@@ -439,7 +432,6 @@ describe("PricingPlans billing actions", () => {
 			priceId: "pri_flame_monthly",
 			currentPeriodEnd: "2999-04-17T00:00:00Z",
 			isEntitled: true,
-			isPremium: true,
 			isFlame: true,
 		});
 
@@ -465,7 +457,6 @@ describe("PricingPlans billing actions", () => {
 			priceId: "pri_flame_monthly",
 			currentPeriodEnd: "2999-04-17T00:00:00Z",
 			isEntitled: true,
-			isPremium: true,
 			isFlame: true,
 		});
 
@@ -552,7 +543,6 @@ describe("PricingPlans billing actions", () => {
 				priceId: "pri_flame_monthly",
 				currentPeriodEnd: "2999-04-17T00:00:00Z",
 				isEntitled: true,
-				isPremium: true,
 				isFlame: true,
 				...overrides,
 			});

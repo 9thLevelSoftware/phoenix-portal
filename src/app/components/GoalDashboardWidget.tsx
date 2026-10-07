@@ -16,17 +16,17 @@ import { useGoalProgress } from "./Goals";
 export function GoalDashboardWidget() {
 	const { user } = useAuth();
 	const unit = usePreferredWeightUnit();
-	const { isPremium } = useSubscription();
+	const { isEntitled } = useSubscription();
 	const { data: goals } = useQuery({
 		...goalsOptions(user?.id ?? ""),
-		enabled: isPremium && !!user?.id,
+		enabled: isEntitled && !!user?.id,
 	});
 
 	const { activeProfileId } = useProfileFilterStore();
 	const activeGoals = goals?.filter((g) => g.status === "active") ?? [];
 	const progressMap = useGoalProgress(activeProfileId);
 
-	if (!isPremium) {
+	if (!isEntitled) {
 		return (
 			<Card className="relative overflow-hidden p-6 signal-panel">
 				<div className="absolute inset-0 bg-primary/5 pointer-events-none" />
