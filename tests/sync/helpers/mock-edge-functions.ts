@@ -208,16 +208,10 @@ export function mockPushEndpoint(
 		};
 	}
 
-	if (!payload.platform) {
-		return {
-			success: false,
-			status: 400,
-			error: {
-				message: "Missing required field: platform",
-				code: "VALIDATION_ERROR",
-			},
-		};
-	}
+	// Platform is never a validation error: the push handler parses it with
+	// platformSchema, which maps missing, blank and unrecognized values to
+	// "unknown" and accepts the push. The mock stores no platform, so there is
+	// nothing to normalize here.
 
 	const duplicateConflictKeys = findPushPayloadDuplicateConflictKeys(payload);
 	if (duplicateConflictKeys.length > 0) {

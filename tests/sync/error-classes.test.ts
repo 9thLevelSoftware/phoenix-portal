@@ -80,12 +80,20 @@ describe("Sync wire-level error class signals", () => {
 			expect(result.status).toBe(400);
 			expect(result.error?.code).toBe("VALIDATION_ERROR");
 		});
+	});
 
-		it("invalid payload (missing platform) returns 400 (permanent signal)", async () => {
-			const payload = createMinimalPushPayload(testUser.id, { platform: "" });
-			const result = await callPushEndpoint(payload, testUser.accessToken);
-			expect(result.status).toBe(400);
-			expect(result.error?.code).toBe("VALIDATION_ERROR");
+	describe("missing or blank platform", () => {
+		// mobile-sync-push parses platform with platformSchema, which maps
+		// missing and blank values to "unknown" instead of rejecting the push.
+		it("is accepted, not a 400", async () => {
+			for (const platform of [undefined, "", "   "]) {
+				const payload = createMinimalPushPayload(testUser.id, {
+					platform: platform as string,
+				});
+				const result = await callPushEndpoint(payload, testUser.accessToken);
+				expect(result.success).toBe(true);
+				expect(result.status).toBe(200);
+			}
 		});
 	});
 
