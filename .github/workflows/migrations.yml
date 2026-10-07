@@ -56,8 +56,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: migrations-${{ github.ref }}
-  cancel-in-progress: true
+  # Supersede stale PR runs, but never cancel post-merge runs on main: every main
+  # commit gets its own group (keyed by SHA), so neither an in-progress nor a
+  # pending main run can be replaced by a newer one.
+  group: migrations-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   clean-apply:
