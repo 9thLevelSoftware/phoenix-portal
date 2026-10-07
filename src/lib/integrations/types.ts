@@ -53,64 +53,46 @@ export const PROVIDER_METADATA: Record<
 		name: string;
 		icon: string;
 		description: string;
-		oauthRequired: boolean;
-		mobileOnly: boolean;
 	}
 > = {
 	strava: {
 		name: "Strava",
 		icon: "Activity",
 		description: "Running, cycling, and outdoor activities",
-		oauthRequired: true,
-		mobileOnly: false,
 	},
 	fitbit: {
 		name: "Fitbit",
 		icon: "Watch",
 		description: "Activity and recovery data",
-		oauthRequired: true,
-		mobileOnly: false,
 	},
 	garmin: {
 		name: "Garmin",
 		icon: "Watch",
 		description: "GPS activities and health metrics",
-		oauthRequired: true,
-		mobileOnly: false,
 	},
 	hevy: {
 		name: "Hevy",
 		icon: "Dumbbell",
 		description: "Strength training workouts",
-		oauthRequired: false,
-		mobileOnly: false,
 	},
 	liftosaur: {
 		name: "Liftosaur",
 		icon: "Dumbbell",
 		description: "Scriptable workout tracking",
-		oauthRequired: false,
-		mobileOnly: false,
 	},
 	strong: {
 		name: "Strong",
 		icon: "Dumbbell",
 		description: "Strength training via CSV import",
-		oauthRequired: false,
-		mobileOnly: false,
 	},
 	apple_health: {
 		name: "Apple Health",
 		icon: "Apple",
 		description: "Synced via Phoenix iOS app",
-		oauthRequired: false,
-		mobileOnly: true,
 	},
 	google_health: {
 		name: "Google Health Connect",
 		icon: "Smartphone",
 		description: "Synced via Phoenix Android app",
-		oauthRequired: false,
-		mobileOnly: true,
 	},
 };
