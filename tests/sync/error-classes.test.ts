@@ -82,14 +82,17 @@ describe("Sync wire-level error class signals", () => {
 		});
 	});
 
-	describe("blank platform", () => {
-		it("is accepted and normalized to unknown", async () => {
-			for (const platform of ["", "   "]) {
-				const payload = createMinimalPushPayload(testUser.id, { platform });
+	describe("missing or blank platform", () => {
+		// mobile-sync-push parses platform with platformSchema, which maps
+		// missing and blank values to "unknown" instead of rejecting the push.
+		it("is accepted, not a 400", async () => {
+			for (const platform of [undefined, "", "   "]) {
+				const payload = createMinimalPushPayload(testUser.id, {
+					platform: platform as string,
+				});
 				const result = await callPushEndpoint(payload, testUser.accessToken);
 				expect(result.success).toBe(true);
 				expect(result.status).toBe(200);
-				expect(payload.platform).toBe("unknown");
 			}
 		});
 	});

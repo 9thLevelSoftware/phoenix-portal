@@ -41,7 +41,6 @@ import {
 	findPushPayloadIncompleteRoutines,
 	formatPushPayloadDuplicateError,
 	formatPushPayloadIncompleteRoutinesError,
-	platformSchema,
 } from "../../../supabase/functions/_shared/pushPayloadSchema.ts";
 import { syncBroadcastTopic } from "../../../supabase/functions/_shared/syncBroadcast.ts";
 import type {
@@ -209,20 +208,10 @@ export function mockPushEndpoint(
 		};
 	}
 
-	// Blank platform matches platformSchema / the push handler: empty and
-	// whitespace-only strings normalize to "unknown" and the push is accepted.
-	if (typeof payload.platform === "string" && payload.platform.trim() === "") {
-		payload.platform = platformSchema.parse(payload.platform);
-	} else if (!payload.platform) {
-		return {
-			success: false,
-			status: 400,
-			error: {
-				message: "Missing required field: platform",
-				code: "VALIDATION_ERROR",
-			},
-		};
-	}
+	// Platform is never a validation error: the push handler parses it with
+	// platformSchema, which maps missing, blank and unrecognized values to
+	// "unknown" and accepts the push. The mock stores no platform, so there is
+	// nothing to normalize here.
 
 	const duplicateConflictKeys = findPushPayloadDuplicateConflictKeys(payload);
 	if (duplicateConflictKeys.length > 0) {
