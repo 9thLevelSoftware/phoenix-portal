@@ -1316,7 +1316,7 @@ Receivers compare it in constant time via
 `supabase/functions/_shared/cronSecret.ts`. That helper reads `CRON_SECRET`
 first. Only `process-sync-queue` passes the legacy names
 `PROCESS_SYNC_QUEUE_SECRET` and `CRON_SYNC_QUEUE_SECRET`, and the helper
-consults the first set of those names only when `CRON_SECRET` is unset; once
+uses the first of them that is set only when `CRON_SECRET` is unset; once
 `CRON_SECRET` is set, a caller holding only a legacy value gets 401 from
 that function. `generate-insights` and `delete-account` pass no legacy
 names, so they accept `CRON_SECRET` alone.
