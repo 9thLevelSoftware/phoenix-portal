@@ -1314,9 +1314,12 @@ into the SQL editor or a shell command line -- see
 the only supported way to move the value.
 Receivers compare it in constant time via
 `supabase/functions/_shared/cronSecret.ts`. That helper reads `CRON_SECRET`
-first and only falls back to a legacy name (`PROCESS_SYNC_QUEUE_SECRET`,
-`CRON_SYNC_QUEUE_SECRET`) when `CRON_SECRET` is unset; once `CRON_SECRET` is
-set, a caller holding only a legacy value gets 401.
+first. Only `process-sync-queue` passes the legacy names
+`PROCESS_SYNC_QUEUE_SECRET` and `CRON_SYNC_QUEUE_SECRET`, and the helper
+consults the first set of those names only when `CRON_SECRET` is unset; once
+`CRON_SECRET` is set, a caller holding only a legacy value gets 401 from
+that function. `generate-insights` and `delete-account` pass no legacy
+names, so they accept `CRON_SECRET` alone.
 **Until the Vault secrets exist, `private.invoke_edge_function` raises a NOTICE
 and returns.** The cron run is still recorded as `succeeded` -- see
 [§10.1](#101-verify-a-jobs-last-run) for why `succeeded` alone proves nothing.
