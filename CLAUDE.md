@@ -178,7 +178,7 @@ There is **no** `src/app/components/mobile/` directory; mobile variants are
 5. On receiving `sync_complete`, hook invalidates relevant TanStack Query caches (workouts, records, analytics, routines, cycles, insights, …)
 6. UI components re-render with fresh data from cache refetch
 
-`rep_telemetry` and `exercise_progress` snapshots used by session replay are **portal-only**. `mobile-sync-pull` does not return telemetry; do not add a telemetry pull in this stack.
+`rep_telemetry` and `exercise_progress` snapshots used by session replay are written by `mobile-sync-push` and omitted from `mobile-sync-pull`. Do not add a pull for either in this stack.
 
 ### Edge Functions
 
@@ -262,8 +262,11 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
     a structure the portal has edited since the device's `baseUpdatedAt`, and
     returns `accepted` / `structure_applied` / the stored keys;
   - session children (exercises, sets, rep summaries, telemetry **and**
-    `exercise_progress`) are replaced by `replace_session_children` in one
-    transaction, so a partial child write cannot lose data.
+    `exercise_progress`) are written by this push: `replace_session_children`
+    replaces them in one transaction, so a partial child write cannot lose data.
+    Since `20260925200000` telemetry is stored in `set_telemetry`;
+    `rep_telemetry` is a per-sample view over it plus unfolded
+    `rep_telemetry_legacy` rows.
 - A `user_id` transition on `workout_sessions` / `routines` / `training_cycles`
   raises 42501 from a DB trigger (`20260920002102`), whichever path writes it.
 - Deletes are explicit: `deletedRoutineIds` are tombstoned, and a push that
@@ -302,8 +305,8 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
     forever because the device already has the id.
 - Children are fetched from parent presence, not their own timestamps.
 - `rep_telemetry` and the `exercise_progress` snapshots session replay uses are
-  **portal-only**. The pull does not return telemetry; do not add a telemetry
-  pull in this stack.
+  written by push and omitted from this pull. Do not add a pull for either in
+  this stack.
 
 ### Sync Test Infrastructure
 
