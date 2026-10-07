@@ -76,9 +76,6 @@ and writes through the ordering guard. See §2's caution before reaching for
 
 ## 2. Manually Fixing Subscription State
 
-> Last verified against `8f7d3b8` (PR 44 `apply_subscription_event` guard +
-> `subscriptions_paddle_subscription_id_key`; PR 45 ordered writers).
-
 **Read this before running anything in this section.** Every code path that
 writes `subscriptions` now goes through `public.apply_subscription_event`,
 which (a) refuses a write that is not strictly newer than the stored
@@ -339,8 +336,6 @@ supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --li
 
 ### `[BILLING_ALERT]` catalogue
 
-> Last verified against `8f7d3b8` (PR 44 + PR 45).
-
 Every alert in this section is logged verbatim with a `[BILLING_ALERT]` prefix,
 so the whole channel is one grep. The four billing functions log separately:
 
@@ -365,6 +360,8 @@ portal keeps a single row per user. Work them through §10.
 | `[BILLING_ALERT] untracked_subscription_not_adopted:`   | A live sibling was found but could not be adopted: its `custom_data.user_id` is someone else, or the `cd_sig` did not verify. The cancellation proceeds and the user drops to FREE.          | Check whether a real second subscription of theirs exists in Paddle (a shared Paddle customer is only an email match, so an unadoptable candidate may belong to a different person). If theirs, resolve via §10.     |
 | `[BILLING_ALERT] Untracked live subscription has no usable price ID; not adopting it:` | The sibling's price is not in the `PADDLE_*_PRICE_IDS` env vars, so adopting it would put a paying user on FREE.                                                | Add the price id to that function's env and redeploy. Note that a plain refresh will **not** fix the user: the cancellation already applied, so the row points at the cancelled subscription and re-reading it changes nothing. The sibling is picked up by its own next Paddle event, or by a refresh against the sibling's transaction. Resolve via §10. |
 | `[BILLING_ALERT] untracked_subscription_lookup_failed:` | Paddle could not be asked whether a live sibling exists (429/5xx/timeout). The handler returns 500 and **does not** apply the cancellation, so the user keeps access.                       | Self-healing: Paddle redelivers and the listing is retried. If it persists, check `PADDLE_API_KEY` is set in `paddle-webhooks`' secrets — this function did not call the Paddle API before PR 44, so the key may never have been set there. |
+| `[BILLING_ALERT] Paddle listing returned a subscription for another customer:` | The live-sibling listing returned a row whose `customer_id` is not the customer the query asked for. The line names `requested=` and `returned=`. That row is dropped and is never an adoption candidate. | Filter regression or a wrong page. The adoption walk continues over the remaining candidates; if none is adoptable, the cancellation applies. Do not adopt the returned subscription by hand — it belongs to a different Paddle customer. If it keeps firing, the `customer_id=` filter on the list call is not being honored. |
+| `[BILLING_ALERT] Paddle listing returned a non-live subscription:` | The same listing returned a subscription whose status is outside `active`, `trialing`, and `past_due` (the `status=` set the request asks for). The line is `<id>=<status>`. The row is dropped. | The status filter was not honored, so a canceled or paused sibling is not written onto the row. A single line is one excluded row; a burst means the `status=` filter regressed. |
 | `[BILLING_ALERT] switch_to_untracked_subscription_failed:` | The adoption write itself errored. The row is left **untouched** — still the (now cancelled in Paddle) tracked subscription, so the user keeps access rather than dropping to FREE.       | Self-healing: the 500 makes Paddle redeliver, `last_event_occurred_at` did not move, so the redelivery is accepted and the whole rescue runs again. Act only if it keeps firing across Paddle's retry window (§9) — then fix the DB error and run `paddle-refresh-subscription`. |
 
 **Known silent case, no alert.** If the sibling's cancellation `occurred_at` is
@@ -380,7 +377,7 @@ is documented in the handler, not a defect introduced by the rescue.
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `[BILLING_ALERT] subscription_guard_rejected_write:`      | `apply_subscription_event` refused a write because the subscription id differed from the stored one and the incoming status would not keep the user entitled. From `paddle-webhooks` the line carries `path=direct`; from the other three it carries `source=refresh`, `source=update` or `source=cancel`. Each line also names `attempted_subscription_id` and `tracked_subscription_id`. | Same situation as `foreign_subscription_event_ignored`, reached by a different route: two subscription ids for one user. Go to §10. From `source=refresh`/`update` the caller is told (`applied:false`, `reason:'untracked_subscription'`) and the stored row is returned unchanged, so the UI is honest — no user-facing repair needed. |
 | `[BILLING_ALERT] subscription_already_bound_to_another_user:` | The write hit `23505` on `subscriptions_paddle_subscription_id_key`: this Paddle subscription is already bound to a **different portal user**. The line carries `source=refresh\|update\|cancel` and the `paddle_subscription_id`. | **Needs a human decision — the system deliberately will not guess.** See §10 "One subscription, two claimants". From `refresh` and `update` the caller gets `409 {"code":"subscription_already_bound"}` and sees "This subscription is linked to a different account. Contact support." From `cancel` it is logged only: Paddle has already cancelled, and the call still reports success. |
-| `[BILLING_ALERT] cancel_response_mismatch:`               | Paddle's `POST /subscriptions/{id}/cancel` did not return the cancelled subscription entity in `data` (or returned a different id), so there was no trustworthy post-cancel state to store. The cancellation itself succeeded; the local write was skipped. | Usually nothing: the `subscription.canceled` webhook reconciles the row within Paddle's delivery window. Confirm the row does flip to `canceled`. **If this fires on every cancel**, the assumption that Paddle returns the full entity is wrong for this account/API version — the cancel UI will silently stop updating until the webhook lands. A sandbox cancel settles it; that assumption was never confirmed against live Paddle. |
+| `[BILLING_ALERT] Paddle cancel response id mismatch; local write skipped:` | Paddle's `POST /subscriptions/{id}/cancel` did not return the cancelled subscription entity in `data` (or returned a different id), so there was no trustworthy post-cancel state to store. The cancellation itself succeeded; the local write was skipped. | Usually nothing: the `subscription.canceled` webhook reconciles the row within Paddle's delivery window. Confirm the row does flip to `canceled`. **If this fires on every cancel**, the assumption that Paddle returns the full entity is wrong for this account/API version — the cancel UI will silently stop updating until the webhook lands. A sandbox cancel settles it; that assumption was never confirmed against live Paddle. |
 | `[BILLING_ALERT] Paddle update response subscription mismatch:` | `paddle-update-subscription` got back a subscription whose id is not the one it changed.                                                                                                                       | Same class as above: verify in Paddle, let the webhook reconcile.                                                                                                     |
 
 #### Configuration and trust alerts
@@ -500,8 +497,6 @@ Sources:
 ---
 
 ## 10. One Customer, Two Subscriptions
-
-> Last verified against `8f7d3b8` (PR 44 + PR 45).
 
 The portal stores exactly one `subscriptions` row per user, but a Paddle
 customer can hold several subscriptions — a customer is keyed by the email
