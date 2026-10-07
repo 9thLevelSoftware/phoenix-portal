@@ -1,6 +1,7 @@
-import { assert, assertEquals } from "jsr:@std/assert@1";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { createGarminWebhookHandler } from "./index.ts";
 import { hmacSha256Hex } from "../_shared/hmac.ts";
+import { assertNoSecretsLogged, captureLogs } from "../_shared/testLogCapture.ts";
 import { FakeDb, fakeClient, type Row } from "../_shared/testing/fakeSupabase.ts";
 
 // F-053: handler tests for the not-yet-launched Garmin webhook. In-process DB
@@ -128,4 +129,22 @@ Deno.test("garmin-webhook: an unparseable signed body is a 500 with a stable cod
   assertEquals(res.status, 500);
   const body = await res.json();
   assertEquals(body, { received: false, error: "Processing error", code: "internal_error" });
+});
+
+Deno.test("garmin-webhook: a signed body whose parse error quotes the access token is a 500 and the log omits it", async () => {
+  // An unquoted token value makes V8's SyntaxError quote a slice of the source.
+  // Ten characters is short enough that the whole value is inside that quote.
+  const token = "garmintok1";
+  const raw = `{"activities":[{"userAccessToken":${token}}]}`;
+  const { result: res, logs } = await captureLogs(async () => handler(db())(await signed(raw)));
+  assertEquals(res.status, 500);
+  assertEquals(await res.json(), {
+    received: false,
+    error: "Processing error",
+    code: "internal_error",
+  });
+  assertStringIncludes(logs, "[GARMIN_WEBHOOK] rejected malformed JSON body");
+  assert(!logs.includes("is not valid JSON"));
+  assert(!logs.includes("SyntaxError"));
+  assertNoSecretsLogged(logs, [token]);
 });
