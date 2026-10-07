@@ -19,9 +19,9 @@
  *     supabase/functions/_shared/personalRecordRow.ts
  *
  * NOTE: The mock push handler spreads each SetDto onto the stored session
- * (mock-edge-functions.ts lines 335-341) but does NOT derive
+ * (mockPushEndpoint in mock-edge-functions.ts) but does NOT derive
  * personal_records from isPr sets. The pull fixture returns
- * personalRecords: [] (line 501).
+ * personalRecords: [] (mockPullEndpoint).
  * Tests that depend on the server deriving a PersonalRecordDto from a set
  * use `liveIt` (skipped unless live sync tests are enabled). The round-trip
  * of the `prPhase` field on the SetDto itself runs in mock mode.
@@ -140,7 +140,7 @@ describe("WorkoutPhase round-trip", () => {
 			// The real push function derives a PersonalRecordDto from SetDto.isPr
 			// and surfaces it via the pull response's `personalRecords` array.
 			// The mock returns an empty `personalRecords` array unconditionally
-			// (mock-edge-functions.ts line 501).
+			// (mockPullEndpoint in mock-edge-functions.ts).
 			//
 			// Live-mode trigger: push a session with isPr=true + prPhase=CONCENTRIC,
 			// then pull and assert data.personalRecords[0].workoutPhase ===
