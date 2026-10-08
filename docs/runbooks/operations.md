@@ -27,8 +27,8 @@ testing, see [paddle-simulation-testing.md](paddle-simulation-testing.md).
 2. Open the **Invocations** tab. Look for non-200 status codes.
 3. Click an invocation to view `console.log` / `console.error` output.
 
-The pinned Supabase CLI (2.117.0) has no `functions logs` subcommand. Use
-**Edge Functions > paddle-webhooks > Logs/Invocations** above.
+The Supabase CLI has no `functions logs` subcommand, so Edge Function logs are
+read in the Dashboard as above. The same applies to every log check in this runbook.
 
 **Key log messages:**
 
@@ -202,8 +202,7 @@ WHERE key = '<provider_or_endpoint>' AND user_id = '<uuid>';
 
 Open **Edge Functions > process-sync-queue > Logs/Invocations** for the queue
 processor, and the same Logs/Invocations view for `strava-sync`, `fitbit-sync`,
-and `hevy-sync`. The pinned Supabase CLI (2.117.0) has no `functions logs`
-subcommand.
+and `hevy-sync`.
 
 **Key log messages:**
 
@@ -420,8 +419,7 @@ Hand-deleting an account is the **last** resort. Work down this list:
 4. Only if all of the above are exhausted, follow the manual procedure.
 
 **Before proceeding:** Open **Edge Functions > delete-account > Logs/Invocations**
-to see why it failed. The pinned Supabase CLI (2.117.0) has no `functions logs`
-subcommand.
+to see why it failed.
 
 Common failure reasons:
 - Rate limit hit (1 request/hour/user) -- wait and retry.
@@ -729,8 +727,7 @@ SELECT id, email FROM auth.users WHERE id = '<uuid>';
 
 Every string below is logged verbatim by `delete-account` or
 `_shared/accountPurge.ts`. Open **Edge Functions > delete-account > Logs/Invocations**
-and filter on `[DELETION_ALERT]`. The pinned Supabase CLI (2.117.0) has no
-`functions logs` subcommand.
+and filter on `[DELETION_ALERT]`.
 
 `process_due`'s HTTP response body (persisted by pg_net in
 `net._http_response`) deliberately carries **counts only** — no user ids — so

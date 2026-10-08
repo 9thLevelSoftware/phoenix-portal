@@ -314,8 +314,8 @@ curl -X POST "https://api.paddle.com/notifications/{notification_id}/replay" \
 2. View recent invocations and their HTTP status codes.
 3. Click individual invocations to see `console.log` and `console.error` output.
 
-The pinned Supabase CLI (2.117.0) has no `functions logs` subcommand. Use
-**Edge Functions > paddle-webhooks > Logs/Invocations** above.
+The Supabase CLI has no `functions logs` subcommand, so Edge Function logs are
+read in the Dashboard as above. The same applies to every log check in this runbook.
 
 ### Key log messages to search for
 
@@ -335,8 +335,7 @@ The four billing functions log separately. Open each of
 **Edge Functions > paddle-refresh-subscription > Logs/Invocations**,
 **Edge Functions > paddle-update-subscription > Logs/Invocations**, and
 **Edge Functions > paddle-cancel-subscription > Logs/Invocations**, and filter
-on `[BILLING_ALERT]`. The pinned Supabase CLI (2.117.0) has no `functions logs`
-subcommand.
+on `[BILLING_ALERT]`.
 
 #### Double-subscription alerts (`paddle-webhooks`)
 
