@@ -55,7 +55,7 @@ Use a dedicated test user for the suite in [section 5](#5-test-scenarios). The r
 
 ### `cd_sig` for that user
 
-`paddle-checkout-custom-data` signs checkout `custom_data` as the hex HMAC-SHA256 of the user id, keyed with `PADDLE_CUSTOM_DATA_SECRET`. The webhook recomputes that digest with the secret's surrounding whitespace trimmed (`verifyPaddleCustomDataSignature` in `supabase/functions/_shared/paddleWebhookSecurity.ts`); the checkout function signs with the secret as stored, so keep the secret free of surrounding whitespace.
+`paddle-checkout-custom-data` signs checkout `custom_data` as the hex HMAC-SHA256 of the user id, keyed with `PADDLE_CUSTOM_DATA_SECRET` after trimming surrounding whitespace. `paddle-webhooks` and `paddle-refresh-subscription` verify that digest with the same trimmed secret (`verifyPaddleCustomDataSignature` in `supabase/functions/_shared/paddleWebhookSecurity.ts`).
 
 Put that hex digest on `data.custom_data.cd_sig`. A simulation Paddle signs does not add `cd_sig` for you.
 
