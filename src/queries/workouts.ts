@@ -18,7 +18,7 @@ import {
 
 /**
  * Paginated workout session list for a user.
- * Returns Zod-transformed WorkoutSession[] (per-cable weights, dates as Date, duration as minutes).
+ * Returns Zod-transformed WorkoutSession[] (per-cable weights, dates as Date, duration_seconds in seconds).
  */
 export const WORKOUTS_PAGE_SIZE = 50;
 
