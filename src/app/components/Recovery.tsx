@@ -182,8 +182,15 @@ function FreeRecoveryView() {
 
 export function Recovery() {
 	const { isEntitled } = useSubscription();
-	const { recovery, wearable, isLoading, isError, daysSinceFirstSession } =
-		useRecoveryScore();
+	const {
+		recovery,
+		wearable,
+		isLoading,
+		isError,
+		daysSinceFirstSession,
+		isWearablePending,
+		isWearableError,
+	} = useRecoveryScore();
 
 	const [showDisclaimer, setShowDisclaimer] = useState(() => {
 		if (typeof window === "undefined") return true;
@@ -483,7 +490,16 @@ export function Recovery() {
 									Wearable Recovery Data
 								</h2>
 
-								{wearable && wearable.length > 0 ? (
+								{isWearablePending ? (
+									<Skeleton className="h-24 w-full" />
+								) : isWearableError ? (
+									<div className="flex flex-col items-center justify-center py-6 text-center">
+										<Link2 className="w-8 h-8 text-secondary mb-2" />
+										<p className="text-sm text-muted-foreground">
+											Couldn't load wearable data
+										</p>
+									</div>
+								) : wearable && wearable.length > 0 ? (
 									<div className="space-y-3">
 										{wearable.map((w) => {
 											const rawData =
