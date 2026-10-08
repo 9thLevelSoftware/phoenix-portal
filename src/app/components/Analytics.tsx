@@ -155,13 +155,10 @@ const MUSCLE_GROUP_COLORS: Record<string, string> = {
 // Legacy `?tab=` aliases. `biomechanics` still opens Performance;
 // `/biomechanics` redirects straight to `?tab=performance`.
 const TAB_MIGRATION: Record<string, string> = {
-	overview: "overview",
 	strength: "progress",
 	insights: "progress",
-	body: "body",
 	external: "overview",
 	biomechanics: "performance",
-	performance: "performance",
 };
 
 const VALID_TABS = ["overview", "progress", "body", "performance", "records"];
