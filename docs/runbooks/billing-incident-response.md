@@ -1,6 +1,6 @@
 # Billing Incident Response Runbook
 
-> Last updated: 2026-10-05
+> Last updated: 2026-10-08
 > Webhook handler: `supabase/functions/paddle-webhooks/index.ts`
 
 ## 1. Identifying Affected Users
@@ -314,15 +314,8 @@ curl -X POST "https://api.paddle.com/notifications/{notification_id}/replay" \
 2. View recent invocations and their HTTP status codes.
 3. Click individual invocations to see `console.log` and `console.error` output.
 
-### Via Supabase CLI
-
-```bash
-# Tail live logs
-supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF
-
-# View recent logs
-supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --limit 100
-```
+The Supabase CLI has no `functions logs` subcommand, so Edge Function logs are
+read in the Dashboard as above. The same applies to every log check in this runbook.
 
 ### Key log messages to search for
 
@@ -336,17 +329,13 @@ supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --li
 
 ### `[BILLING_ALERT]` catalogue
 
-Every alert in this section is logged verbatim with a `[BILLING_ALERT]` prefix,
-so the whole channel is one grep. The four billing functions log separately:
-
-```bash
-for fn in paddle-webhooks paddle-refresh-subscription \
-          paddle-update-subscription paddle-cancel-subscription; do
-  echo "== $fn"
-  supabase functions logs "$fn" --project-ref $SUPABASE_PROJECT_REF --limit 200 \
-    | grep BILLING_ALERT
-done
-```
+Every alert in this section is logged verbatim with a `[BILLING_ALERT]` prefix.
+The four billing functions log separately. Open each of
+**Edge Functions > paddle-webhooks > Logs/Invocations**,
+**Edge Functions > paddle-refresh-subscription > Logs/Invocations**,
+**Edge Functions > paddle-update-subscription > Logs/Invocations**, and
+**Edge Functions > paddle-cancel-subscription > Logs/Invocations**, and filter
+on `[BILLING_ALERT]`.
 
 #### Double-subscription alerts (`paddle-webhooks`)
 
