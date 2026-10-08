@@ -212,7 +212,12 @@ export type SavedItem = z.infer<typeof savedItemSchema>;
 
 export const creatorStatsSchema = z.object({
 	user_id: z.string().uuid(),
-	display_name: z.string(),
+	// profiles.display_name is nullable and creator_stats passes it through.
+	// A null or missing name must not fail the featured list or creator profile.
+	display_name: z
+		.string()
+		.nullish()
+		.transform((value) => value ?? ""),
 	avatar_url: z.string().nullable(),
 	total_shares: z.number(),
 	total_upvotes: z.number(),

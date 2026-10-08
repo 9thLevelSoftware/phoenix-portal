@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
+	creatorStatsSchema,
 	cycleSnapshotSchema,
 	routineExercisesSnapshotSchema,
 } from "@/schemas/community";
@@ -114,5 +116,43 @@ describe("community snapshot schemas", () => {
 		});
 
 		expect(result.success).toBe(false);
+	});
+});
+
+describe("creatorStatsSchema", () => {
+	const named = {
+		user_id: "22222222-2222-4222-8222-222222222222",
+		display_name: "Coach Phoenix",
+		avatar_url: "https://example.com/avatar.png",
+		total_shares: 4,
+		total_upvotes: 12,
+		featured_count: 1,
+	};
+	const nameless = {
+		user_id: "33333333-3333-4333-8333-333333333333",
+		display_name: null,
+		avatar_url: null,
+		total_shares: 3,
+		total_upvotes: 1,
+		featured_count: 0,
+	};
+
+	it("coerces a null display_name beside a named creator to an empty string", () => {
+		const result = z.array(creatorStatsSchema).parse([named, nameless]);
+		const [coach, anonymous] = result;
+		const coachName: string = coach.display_name;
+		const anonymousName: string = anonymous.display_name;
+
+		expect(result).toHaveLength(2);
+		expect(coachName).toBe("Coach Phoenix");
+		expect(anonymousName).toBe("");
+	});
+
+	it("coerces a missing display_name to an empty string", () => {
+		const { display_name: _omitted, ...withoutName } = nameless;
+		const result = creatorStatsSchema.parse(withoutName);
+
+		const displayName: string = result.display_name;
+		expect(displayName).toBe("");
 	});
 });
