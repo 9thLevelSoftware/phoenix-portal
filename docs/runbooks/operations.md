@@ -1616,9 +1616,9 @@ exactly one server tier, and that the tier matches:
   environment.
 - Confirm the same value is in `PADDLE_<TIER>_PRICE_IDS` (or is the matching
   `PADDLE_<TIER>_<INTERVAL>_PRICE_ID`) for the **same** tier.
-- Confirm no price ID appears under two tiers. `mapPriceIdToTier` resolves such
-  a collision by fixed precedence (INFERNO > FLAME > EMBER), which silently maps
-  customers to the wrong tier.
+- Confirm no price ID appears under two tiers. The same id listed under more
+  than one tier returns HTTP 500 `{ "error": "Billing configuration invalid" }`
+  before `mapPriceIdToTier` runs. The log names the duplicated ids.
 **(b) Log-based.** Trigger one call to `paddle-webhooks`,
 `paddle-update-subscription` or `paddle-refresh-subscription` -- the three that
 validate the price-ID configuration on entry -- and read that function's logs.
