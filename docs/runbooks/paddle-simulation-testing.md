@@ -100,7 +100,7 @@ The handler reads these at request time. Set them on the `paddle-webhooks` funct
 
 `mapPriceIdToTier` (`supabase/functions/_shared/paddlePriceIds.ts`) checks Inferno, then Flame, then Ember. The handler does not use that precedence for an id listed under two tiers: it returns HTTP 500 `{ "error": "Billing configuration invalid" }` before reading the body, and the log names the duplicated ids.
 
-HTTP 500 `{ "error": "Billing configuration incomplete" }` is returned when the union of those price-id variables is empty. The log line is `[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set`. One configured paid id is enough to pass. A missing `PADDLE_CUSTOM_DATA_SECRET` returns HTTP 500 `{ "error": "Billing custom_data signing is not configured" }`.
+HTTP 500 `{ "error": "Billing configuration incomplete" }` is returned when the union of those price-id variables is empty. The log line is `[FATAL] At least one paid Paddle price ID must be set (PADDLE_*_PRICE_IDS or PADDLE_*_MONTHLY_PRICE_ID / PADDLE_*_ANNUAL_PRICE_ID)`. One configured paid id is enough to pass. A missing `PADDLE_CUSTOM_DATA_SECRET` returns HTTP 500 `{ "error": "Billing custom_data signing is not configured" }`.
 
 These three configuration responses are sent before the signature check.
 
