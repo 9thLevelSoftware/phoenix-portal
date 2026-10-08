@@ -594,73 +594,29 @@ async function runLiftosaurSync(
 				imported: importedCount,
 			};
 			if (outcome.kind === "continue") {
-				// Hand this run's own row on as the follow-up in ONE conditional
-				// update: `processing` -> `pending` incremental, so it continues
-				// from the saved cursor. Atomic, so the chain can never be left
-				// with this row completed and no follow-up; and it matches only
-				// while the row is still ours. (sync_queue_one_active allows one
-				// active row per user/provider, so the row is reused rather than
-				// completed plus a new insert.) A run without a queue row inserts
-				// the follow-up instead.
-				let followUpQueued: boolean;
-				if (ownedQueueId) {
-					const { data: handedOn, error: handOnError } = await supabase
-						.from("sync_queue")
-						.update({
-							status: "pending",
-							sync_type: "incremental",
-							started_at: null,
-							completed_at: null,
-							error_message: null,
-							// retry_count is kept, never reset: it is the claim
-							// generation, and it must stay monotonic so a stale
-							// worker's generation can never match again.
-						})
-						.eq("id", ownedQueueId)
-						.eq("user_id", userId)
-						.eq("status", "processing")
-						.eq("retry_count", ownedAttempt ?? 0)
-						.select("id");
-					followUpQueued = !handOnError && Array.isArray(handedOn) && handedOn.length > 0;
-					if (!followUpQueued && (handOnError as { code?: string } | null)?.code === "23505") {
-						// This row is `initial` and a non-initial row for the same
-						// user/provider is already pending (sync_queue_one_active
-						// allows one of each class). That pending row is the
-						// continuation: the saved cursor makes it resume this chain.
-						// Complete this run's own row instead of retrying it, which
-						// would restart the initial read from page one.
-						const completed = await completeSyncQueueEntry(supabase, {
-							userId,
-							provider: "liftosaur",
-							queueId: ownedQueueId,
-							claimGeneration: ownedAttempt,
-						});
-						if (completed) {
-							return new Response(
-								JSON.stringify({
-									...base,
-									success: true,
-									partial: true,
-									continuing: true,
-									follow_up_queued: true,
-									queue_row_handed_off: false,
-									backfill_before: outcome.nextBefore,
-								}),
-								{ status: 200, headers: { ...cors, "Content-Type": "application/json" } },
-							);
-						}
-					}
-					if (!followUpQueued) {
-						// Still processing (a write error): the processor re-queues
-						// it and the saved cursor continues the chain. Lost (0 rows):
-						// nothing of ours to hand on.
-						return new Response(
-							JSON.stringify({ ...base, error: "Failed to queue the backfill follow-up", code: "follow_up_failed" }),
-							{ status: handOnError ? 502 : 409, headers: { ...cors, "Content-Type": "application/json" } },
-						);
-					}
-				} else {
-					followUpQueued = await ensureFollowUpTask(supabase, userId);
+				// Make sure a non-initial run follows THIS ONE before progress is
+				// reported: the saved cursor alone schedules nothing.
+				const continuation = await secureIncrementalContinuation(
+					supabase,
+					userId,
+					ownedQueueId,
+					ownedAttempt,
+				);
+				if (!continuation.ok) {
+					// Nothing is scheduled and no continuation is claimed. The
+					// still-processing row (or the processor's retry) continues the
+					// chain from the saved cursor.
+					return new Response(
+						JSON.stringify({
+							...base,
+							error: "Failed to queue the backfill follow-up",
+							code: continuation.code,
+						}),
+						{
+							status: continuation.retryable ? 502 : 409,
+							headers: { ...cors, "Content-Type": "application/json" },
+						},
+					);
 				}
 				return new Response(
 					JSON.stringify({
@@ -668,20 +624,63 @@ async function runLiftosaurSync(
 						success: true,
 						partial: true,
 						continuing: true,
-						follow_up_queued: followUpQueued,
-						// The dispatcher must not complete this row: it is the
-						// pending follow-up now (maybe already claimed again).
-						queue_row_handed_off: Boolean(ownedQueueId),
+						follow_up_queued: true,
+						// The dispatcher must not complete a row that is the pending
+						// follow-up now (maybe already claimed again).
+						queue_row_handed_off: continuation.handedOff,
 						backfill_before: outcome.nextBefore,
 					}),
 					{ status: 200, headers: { ...cors, "Content-Type": "application/json" } },
 				);
 			}
 			if (outcome.kind === "resume") {
+				if (outcome.retryReadsFurther) {
+					// A non-initial run consumes its own watermark: leave the row
+					// processing and let process-sync-queue's retry (502 is
+					// retryable) read further from the saved resume point.
+					return new Response(
+						JSON.stringify({ ...base, error: outcome.message, code: "history_truncated", resume_at: outcome.resumeAt }),
+						{ status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+					);
+				}
+				// An `initial` retry can never consume this watermark
+				// (planLiftosaurSync ignores last_sync_at for initial), so safely
+				// stored progress is not a retry but a HAND-OFF: the owned queue
+				// row becomes a non-initial continuation before this run reports
+				// progress. Do not just return 502 while the row stays `initial`.
+				// The failed-save path above already scheduled nothing and claimed
+				// nothing.
+				const continuation = await secureIncrementalContinuation(
+					supabase,
+					userId,
+					ownedQueueId,
+					ownedAttempt,
+				);
+				if (!continuation.ok) {
+					return new Response(
+						JSON.stringify({
+							...base,
+							error: "Failed to queue the backfill follow-up",
+							code: continuation.code,
+							resume_at: outcome.resumeAt,
+						}),
+						{
+							status: continuation.retryable ? 502 : 409,
+							headers: { ...cors, "Content-Type": "application/json" },
+						},
+					);
+				}
 				return new Response(
-					JSON.stringify({ ...base, error: outcome.message, code: "history_truncated", resume_at: outcome.resumeAt }),
-					// 502 is retryable per process-sync-queue; 500 is not.
-					{ status: outcome.retryReadsFurther ? 502 : 500, headers: { ...cors, "Content-Type": "application/json" } },
+					JSON.stringify({
+						...base,
+						success: true,
+						partial: true,
+						continuing: true,
+						follow_up_queued: true,
+						queue_row_handed_off: continuation.handedOff,
+						resume_at: outcome.resumeAt,
+					}),
+					{ status: 200, headers: { ...cors, "Content-Type": "application/json" } },
 				);
 			}
 			return new Response(
@@ -740,21 +739,122 @@ async function runLiftosaurSync(
 	}
 }
 
+/** How a truncated run secured (or failed to secure) its continuation. */
+type ContinuationHandoff =
+	| { ok: true; handedOff: boolean; completedOwnRow: boolean }
+	| { ok: false; retryable: boolean; code: string };
+
 /**
- * Make sure a pending, non-initial Liftosaur task exists so an in-progress
- * backfill continues on the next queue pass (a non-initial run resumes the
- * chain; an `initial` one would restart it). Returns true when one is queued,
- * including when `sync_queue_one_active` reports that one already is (23505).
+ * Make sure a non-initial Liftosaur continuation exists before a truncated run
+ * reports progress. Continuation is claimed ONLY here, and only after the
+ * continuation actually exists:
+ *
+ * - A run that owns a queue row hands THAT row on in ONE conditional update:
+ *   `processing` -> `pending` incremental, so it continues from the saved
+ *   cursor/watermark. Atomic, so the chain can never be left with this row
+ *   completed and no follow-up; and it matches only while the row is still
+ *   this run's (status + claim generation). `retry_count` is kept, never
+ *   reset: it is the claim generation, and it must stay monotonic so a stale
+ *   worker's generation can never match again. (sync_queue_one_active allows
+ *   one active row per user/provider class, so the row is reused rather than
+ *   completed plus a new insert.)
+ *
+ * - On 23505 (this `initial` row would become the second active non-initial
+ *   row), the existing sibling is trusted ONLY while it is still `pending`:
+ *   a pending row has not planned its window yet and will re-read
+ *   user_integrations, so it continues this chain and this run's own row is
+ *   completed. A `processing` sibling planned against the old window and its
+ *   completion write can overwrite the saved resume watermark — that case
+ *   completes nothing and claims nothing.
+ *
+ * - A run without a queue row inserts the follow-up instead. A failed insert
+ *   schedules nothing and must never be reported as success or continuing.
  */
-async function ensureFollowUpTask(supabase: DbClient, userId: string): Promise<boolean> {
-	const { error } = await supabase.from("sync_queue").insert({
+async function secureIncrementalContinuation(
+	supabase: DbClient,
+	userId: string,
+	ownedQueueId: string | null,
+	ownedAttempt: number | null,
+): Promise<ContinuationHandoff> {
+	if (ownedQueueId) {
+		const { data: handedOn, error: handOnError } = await supabase
+			.from("sync_queue")
+			.update({
+				status: "pending",
+				sync_type: "incremental",
+				started_at: null,
+				completed_at: null,
+				error_message: null,
+			})
+			.eq("id", ownedQueueId)
+			.eq("user_id", userId)
+			.eq("status", "processing")
+			.eq("retry_count", ownedAttempt ?? 0)
+			.select("id");
+		if (!handOnError && Array.isArray(handedOn) && handedOn.length > 0) {
+			return { ok: true, handedOff: true, completedOwnRow: false };
+		}
+		if ((handOnError as { code?: string } | null)?.code === "23505") {
+			if (await pendingContinuationExists(supabase, userId)) {
+				// The pending sibling is the continuation; complete this run's
+				// own row instead of retrying it, which would restart the
+				// initial read from page one.
+				const completed = await completeSyncQueueEntry(supabase, {
+					userId,
+					provider: "liftosaur",
+					queueId: ownedQueueId,
+					claimGeneration: ownedAttempt,
+				});
+				return completed
+					? { ok: true, handedOff: false, completedOwnRow: true }
+					: { ok: false, retryable: true, code: "follow_up_failed" };
+			}
+			// The conflicting non-initial row is already processing (or cannot
+			// be verified as pending): do not complete this row and do not
+			// claim continuation.
+			return { ok: false, retryable: true, code: "follow_up_conflict" };
+		}
+		// A write error is retryable; a row that is no longer ours is not.
+		return { ok: false, retryable: Boolean(handOnError), code: "follow_up_failed" };
+	}
+	const { error: insertError } = await supabase.from("sync_queue").insert({
 		user_id: userId,
 		provider: "liftosaur",
 		sync_type: "incremental",
 		status: "pending",
 	});
-	if (!error) return true;
-	if ((error as { code?: string }).code === "23505") return true;
-	console.error("Failed to queue the Liftosaur backfill follow-up:", error);
-	return false;
+	if (!insertError) return { ok: true, handedOff: false, completedOwnRow: false };
+	if ((insertError as { code?: string }).code === "23505") {
+		return (await pendingContinuationExists(supabase, userId))
+			? { ok: true, handedOff: false, completedOwnRow: false }
+			: { ok: false, retryable: true, code: "follow_up_conflict" };
+	}
+	console.error("Failed to queue the Liftosaur backfill follow-up:", insertError);
+	return { ok: false, retryable: true, code: "follow_up_failed" };
+}
+
+/**
+ * True when a non-initial Liftosaur row for this user is still `pending`, so
+ * claiming it as the continuation is safe: it has not planned its window yet
+ * and will re-read user_integrations when it runs.
+ */
+async function pendingContinuationExists(
+	supabase: DbClient,
+	userId: string,
+): Promise<boolean> {
+	const { data, error } = await supabase
+		.from("sync_queue")
+		.select("id, sync_type, status")
+		.eq("user_id", userId)
+		.eq("provider", "liftosaur")
+		.in("status", ["pending", "processing"]);
+	if (error) {
+		console.error("Failed to read the Liftosaur sync queue:", error);
+		return false;
+	}
+	const rows = (data ?? []) as Array<{ sync_type?: string; status?: string }>;
+	return rows.some(
+		(row) =>
+			(row.sync_type ?? "incremental") !== "initial" && row.status === "pending",
+	);
 }

@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects, assertThrows } from 'jsr:@std/assert@1';
+import { assertEquals, assertRejects, assertStringIncludes, assertThrows } from 'jsr:@std/assert@1';
 import {
   type LiftosaurFetchResult,
   fetchLiftosaurHistory,
@@ -219,6 +219,89 @@ Deno.test('resolveLiftosaurTruncation: an unordered page has no safe resume poin
   );
   assertEquals(outcome.kind, 'stuck');
   assertEquals('last_sync_at' in outcome.columns, false);
+});
+
+Deno.test('resolveLiftosaurTruncation: an ascending oldest-first page resumes at the newest record read (#204)', () => {
+  // Ascending is not the documented /history order, but an oldest-first page
+  // still has one safe resume point: the newest record read. An `initial` run
+  // cannot consume that watermark itself (planLiftosaurSync ignores it), so
+  // its caller hands the queue row on; a non-initial run retries and reads
+  // further from the same point.
+  const pages = {
+    order: 'ascending' as const,
+    oldestDatedAt: '2026-01-01T00:00:00.000Z',
+    newestDatedAt: '2026-06-01T00:00:00.000Z',
+  };
+  const initial = resolveLiftosaurTruncation(
+    fetched(pages),
+    planLiftosaurSync(null, 'initial', NOW),
+    'initial',
+    2000,
+  );
+  assertEquals(initial.kind, 'resume');
+  if (initial.kind !== 'resume') return;
+  assertEquals(initial.resumeAt, '2026-06-01T00:00:00.000Z');
+  assertEquals(initial.retryReadsFurther, false, 'an initial run hands the row on instead of retrying');
+  assertEquals(initial.columns.last_sync_at, initial.resumeAt, 'the provider window watermark IS the resume point');
+  // No LWW key and no server pull cursor is touched by a provider window write.
+  assertEquals('client_updated_at' in initial.columns, false);
+  assertEquals('updated_at' in initial.columns, false);
+  assertEquals('synced_at' in initial.columns, false);
+
+  const incremental = resolveLiftosaurTruncation(
+    fetched(pages),
+    planLiftosaurSync({ last_sync_at: '2025-12-01T00:00:00.000Z' }, 'manual', NOW),
+    'manual',
+    2000,
+  );
+  assertEquals(incremental.kind, 'resume');
+  if (incremental.kind !== 'resume') return;
+  assertEquals(incremental.retryReadsFurther, true, 'a non-initial run retries and reads further');
+  assertEquals(incremental.columns.last_sync_at, incremental.resumeAt);
+});
+
+Deno.test('resolveLiftosaurTruncation: the resume save clears a stale chain in the same write (#204)', () => {
+  // A queued `initial` (no new API key) does not reset the chain columns. A
+  // continuation that finds them still set plans `inBackfill` against the
+  // stale window and completes `last_sync_at` past the unread ascending tail,
+  // so the resume write must drop them. (The descending `continue` outcome
+  // keeps them: its chain is live.)
+  const outcome = resolveLiftosaurTruncation(
+    fetched({ order: 'ascending', newestDatedAt: '2026-06-01T00:00:00.000Z' }),
+    planLiftosaurSync(
+      {
+        last_sync_at: '2025-12-01T00:00:00.000Z',
+        backfill_before: '2025-01-01T00:00:01.000Z',
+        backfill_after: '2024-06-01T00:00:00.000Z',
+        backfill_started_at: '2025-01-01T00:00:00.000Z',
+      },
+      'initial',
+      NOW,
+    ),
+    'initial',
+    2000,
+  );
+  assertEquals(outcome.kind, 'resume');
+  assertEquals(
+    [outcome.columns.backfill_before, outcome.columns.backfill_after, outcome.columns.backfill_started_at],
+    [null, null, null],
+  );
+});
+
+Deno.test('resolveLiftosaurTruncation: an ascending window that cannot move is stuck, not looped (#204)', () => {
+  // Dense history: every record read shares the new window, so resuming would
+  // re-read the same rows forever. Explicit refusal, no false completion and
+  // no watermark past unread rows — the 72-hour lookback is NOT shrunk here.
+  const outcome = resolveLiftosaurTruncation(
+    fetched({ order: 'ascending', newestDatedAt: '2026-06-01T00:00:00.000Z' }),
+    planLiftosaurSync({ last_sync_at: '2026-06-01T00:00:00.000Z' }, 'manual', NOW),
+    'manual',
+    2000,
+  );
+  assertEquals(outcome.kind, 'stuck');
+  assertEquals(outcome.columns.status, 'error');
+  assertEquals('last_sync_at' in outcome.columns, false);
+  assertStringIncludes(outcome.message, 'more records share this window than a single run can read');
 });
 
 Deno.test('writeLiftosaurRows: an undated record keeps its first import date on every later run', async () => {
