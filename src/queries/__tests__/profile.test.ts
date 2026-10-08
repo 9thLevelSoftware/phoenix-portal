@@ -370,6 +370,28 @@ describe("earnedBadgesOptions", () => {
 		const result = await opts.queryFn!({} as never);
 		expect(result).toEqual([]);
 	});
+
+	it("defaults a null badge_tier to bronze instead of failing the list", async () => {
+		chain = buildChain({
+			data: [
+				{ ...badgeRow, badge_tier: null },
+				{
+					...badgeRow,
+					badge_id: "tenth-workout",
+					badge_name: "Tenth Flame",
+					badge_tier: "gold",
+				},
+			],
+			error: null,
+		});
+		const { earnedBadgesOptions } = await import("../profile");
+		const opts = earnedBadgesOptions("user-1");
+		const result = await opts.queryFn!({} as never);
+
+		expect(result).toHaveLength(2);
+		expect(result[0].badge_tier).toBe("bronze");
+		expect(result[1].badge_tier).toBe("gold");
+	});
 });
 
 describe("rpgAttributesOptions", () => {
