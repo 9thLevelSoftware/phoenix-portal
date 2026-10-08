@@ -37,5 +37,3 @@ export const createCommentSchema = z.object({
 		.min(1, "Comment cannot be empty")
 		.max(500, "Comment must be 500 characters or less"),
 });
-
-export type CreateCommentInput = z.infer<typeof createCommentSchema>;

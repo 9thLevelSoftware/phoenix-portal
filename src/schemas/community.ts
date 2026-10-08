@@ -192,8 +192,6 @@ export const communityVoteSchema = z.object({
 	created_at: z.string().transform((s) => new Date(s)),
 });
 
-export type CommunityVote = z.infer<typeof communityVoteSchema>;
-
 // --- Saved Item ---
 
 export const savedItemSchema = z.object({
@@ -205,8 +203,6 @@ export const savedItemSchema = z.object({
 	imported_cycle_id: z.string().uuid().nullable().optional(),
 	saved_at: z.string().transform((s) => new Date(s)),
 });
-
-export type SavedItem = z.infer<typeof savedItemSchema>;
 
 // --- Creator Stats ---
 
@@ -223,8 +219,6 @@ export const creatorStatsSchema = z.object({
 	total_upvotes: z.number(),
 	featured_count: z.number(),
 });
-
-export type CreatorStats = z.infer<typeof creatorStatsSchema>;
 
 // --- Report & Block ---
 

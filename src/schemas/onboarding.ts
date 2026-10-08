@@ -19,5 +19,3 @@ export const onboardingSchema = z.object({
 	dismissed_whats_new: z.boolean(),
 	created_at: z.coerce.date(),
 });
-
-export type OnboardingRow = z.infer<typeof onboardingSchema>;

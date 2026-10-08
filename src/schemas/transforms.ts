@@ -168,8 +168,6 @@ export const setSchema = z.object({
 	workout_mode: z.string().nullish(),
 });
 
-export type WorkoutSet = z.infer<typeof setSchema>;
-
 // --- Personal Record ---
 
 // Workout phase display mapping
@@ -300,8 +298,6 @@ export const routineExerciseSchema = z.object({
 	created_at: z.coerce.date(),
 });
 
-export type RoutineExercise = z.infer<typeof routineExerciseSchema>;
-
 // --- Routine Detail (routine + exercises) ---
 
 export const routineDetailSchema = routineSchema.extend({
@@ -327,8 +323,6 @@ export const earnedBadgeSchema = z.object({
 
 export const earnedBadgeListSchema = z.array(earnedBadgeSchema);
 
-export type EarnedBadge = z.infer<typeof earnedBadgeSchema>;
-
 export const rpgAttributesSchema = z.object({
 	id: z.string().uuid().optional(),
 	user_id: z.string().uuid(),
@@ -343,8 +337,6 @@ export const rpgAttributesSchema = z.object({
 	updated_at: nullableOptionalDate,
 });
 
-export type RpgAttributes = z.infer<typeof rpgAttributesSchema>;
-
 export const gamificationStatsSchema = z.object({
 	id: z.string().uuid().optional(),
 	user_id: z.string().uuid(),
@@ -356,8 +348,6 @@ export const gamificationStatsSchema = z.object({
 	total_time_seconds: z.number(),
 	updated_at: nullableOptionalDate,
 });
-
-export type GamificationStats = z.infer<typeof gamificationStatsSchema>;
 
 // --- Cycle Day ---
 
@@ -384,8 +374,6 @@ export const cycleDetailSchema = trainingCycleSchema.extend({
 	progression_settings: z.unknown().nullable().optional(),
 	deload_settings: z.unknown().nullable().optional(),
 });
-
-export type CycleDetail = z.infer<typeof cycleDetailSchema>;
 
 // --- Cycle progression settings (shared with mobile) ---
 //
