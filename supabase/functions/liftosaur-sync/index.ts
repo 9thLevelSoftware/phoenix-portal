@@ -836,7 +836,10 @@ async function secureIncrementalContinuation(
 /**
  * True when a non-initial Liftosaur row for this user is still `pending`, so
  * claiming it as the continuation is safe: it has not planned its window yet
- * and will re-read user_integrations when it runs.
+ * and will re-read user_integrations when it runs. The class filter is
+ * `sync_type IS DISTINCT FROM 'initial'` — the same classification
+ * `sync_queue_one_active` uses, where a NULL `sync_type` (the column is
+ * nullable) counts as non-initial.
  */
 async function pendingContinuationExists(
 	supabase: DbClient,
@@ -844,17 +847,14 @@ async function pendingContinuationExists(
 ): Promise<boolean> {
 	const { data, error } = await supabase
 		.from("sync_queue")
-		.select("id, sync_type, status")
+		.select("id")
 		.eq("user_id", userId)
 		.eq("provider", "liftosaur")
-		.in("status", ["pending", "processing"]);
+		.eq("status", "pending")
+		.or("sync_type.is.null,sync_type.neq.initial");
 	if (error) {
 		console.error("Failed to read the Liftosaur sync queue:", error);
 		return false;
 	}
-	const rows = (data ?? []) as Array<{ sync_type?: string; status?: string }>;
-	return rows.some(
-		(row) =>
-			(row.sync_type ?? "incremental") !== "initial" && row.status === "pending",
-	);
+	return (data ?? []).length > 0;
 }

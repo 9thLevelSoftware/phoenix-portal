@@ -671,6 +671,36 @@ Deno.test("liftosaur-sync: an ascending handoff trusts a pending sibling and com
   );
 });
 
+Deno.test("liftosaur-sync: an ascending handoff trusts a pending NULL sync_type sibling (#204)", async () => {
+  const db = new FakeDb(
+    tables([
+      { ...queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT), retry_count: 0 },
+      // sync_queue_one_active classifies with coalesce(sync_type, 'incremental')
+      // = 'initial' (migration 20260920005200): a NULL sync_type counts as
+      // non-initial, so this untyped legacy row IS the continuation and must be
+      // trusted like any other pending non-initial sibling.
+      {
+        ...queueRow(OTHER_QUEUE_ID, "incremental", "pending", null),
+        sync_type: null,
+        retry_count: 0,
+      },
+    ]),
+    [syncQueueOneActiveIndex],
+  );
+  const upstream = ascendingLiftosaur(2201);
+  const res = await harness(db, upstream.fetch)({
+    sync_type: "initial", queue_id: QUEUE_ID, claim_generation: 0,
+  });
+  assertEquals(res.status, 200, await res.clone().text());
+  const body = await res.json();
+  assertEquals([body.continuing, body.follow_up_queued, body.queue_row_handed_off], [true, true, false]);
+  assertEquals(
+    db.rows("sync_queue").map((r) => [r.id, r.status]),
+    [[QUEUE_ID, "completed"], [OTHER_QUEUE_ID, "pending"]],
+    "the NULL-classified sibling is the continuation; only this run's own row completes",
+  );
+});
+
 Deno.test("liftosaur-sync: a failed follow-up insert is never reported as a continuation (#204)", async () => {
   // A run that owns no queue row can only secure the continuation with an
   // insert. When that insert fails, nothing is scheduled and no continuation
