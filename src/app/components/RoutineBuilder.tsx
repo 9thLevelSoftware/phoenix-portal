@@ -41,6 +41,7 @@ import { Label } from "@/app/components/ui/label";
 import { Switch } from "@/app/components/ui/switch";
 import { UnsavedChangesDialog } from "@/app/components/ui/unsaved-changes-dialog";
 import { useExerciseCatalog } from "@/hooks/useExerciseCatalog";
+import { formatExercisePrescriptionLine } from "@/lib/exercisePrescription";
 import { getMuscleGroupColor } from "@/lib/muscle-group-chip";
 import {
 	convertWeight,
@@ -49,7 +50,6 @@ import {
 	type WeightUnit,
 	weightInputValue,
 } from "@/lib/units";
-import { formatLoad } from "@/lib/units/loadDisplay";
 import { useSaveRoutine, useUpdateRoutine } from "@/mutations/routines";
 import { useAuth } from "@/providers/AuthProvider";
 import { profileOptions } from "@/queries/profile";
@@ -76,7 +76,6 @@ import {
 	WIRE_MODE_LABELS,
 	WIRE_MODES,
 	type WireMode,
-	workoutModeLabel,
 } from "../../../supabase/functions/_shared/workoutModes.ts";
 
 const WIRE_MODE_DESCRIPTIONS: Record<WireMode, string> = {
@@ -156,19 +155,18 @@ function getDisplayWeight(weightKg: number, unit: WeightUnit) {
 }
 
 export function formatExerciseSummary(exercise: Exercise, unit: WeightUnit) {
-	const loadLabel = exercise.isBodyweight
-		? "Bodyweight"
-		: formatLoad(exercise.weight, null, unit);
-
-	if (exercise.durationSeconds) {
-		return `${exercise.sets} sets • ${exercise.durationSeconds}s • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
-	}
-
-	if (exercise.isAmrap) {
-		return `${exercise.sets} sets • AMRAP • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
-	}
-
-	return `${exercise.sets} sets • ${exercise.reps} reps • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
+	return formatExercisePrescriptionLine(
+		{
+			sets: exercise.sets,
+			reps: exercise.reps,
+			weight: exercise.weight,
+			durationSeconds: exercise.durationSeconds,
+			isAmrap: exercise.isAmrap,
+			isBodyweight: exercise.isBodyweight,
+			mode: exercise.mode,
+		},
+		unit,
+	);
 }
 
 function getPerSetValues(
