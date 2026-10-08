@@ -12,8 +12,6 @@ export const recoverySessionSchema = z.object({
 
 export const recoverySessionListSchema = z.array(recoverySessionSchema);
 
-export type RecoverySessionRow = z.infer<typeof recoverySessionSchema>;
-
 /**
  * Active cycle position from training_cycles table.
  */
@@ -22,8 +20,6 @@ export const activeCycleSchema = z.object({
 	duration_weeks: z.number(),
 	status: z.enum(["active", "completed", "draft"]),
 });
-
-export type ActiveCycleRow = z.infer<typeof activeCycleSchema>;
 
 /**
  * Wearable recovery data from external_activities table.
