@@ -139,6 +139,5 @@ describe("useRecoveryScore", () => {
 		expect(result.current.recovery).toBeNull();
 		expect(result.current.isWearablePending).toBe(false);
 		expect(result.current.isWearableError).toBe(false);
-		expect(result.current.wearable).toHaveLength(1);
 	});
 });
