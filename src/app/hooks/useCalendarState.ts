@@ -57,3 +57,31 @@ export function createDayStateHelpers(
 
 	return { hasWorkout, isSelected, isToday };
 }
+
+/** Sunday-first labels shared by the desktop and mobile calendar headers. */
+export const CALENDAR_WEEKDAY_LABELS = [
+	"Su",
+	"Mo",
+	"Tu",
+	"We",
+	"Th",
+	"Fr",
+	"Sa",
+] as const;
+
+/**
+ * Shift one calendar month. The day is pinned to the 1st so a 31st cannot
+ * overflow (Jan 31 + 1 month would otherwise land on Mar 3).
+ */
+export function navigateMonth(
+	currentMonth: Date,
+	direction: "prev" | "next",
+): Date {
+	const newDate = new Date(
+		currentMonth.getFullYear(),
+		currentMonth.getMonth(),
+		1,
+	);
+	newDate.setMonth(newDate.getMonth() + (direction === "prev" ? -1 : 1));
+	return newDate;
+}

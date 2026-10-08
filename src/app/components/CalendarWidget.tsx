@@ -3,7 +3,9 @@ import { CalendarWidgetMobile } from "@/app/components/CalendarWidgetMobile";
 import { Button } from "@/app/components/ui/button";
 import { cn } from "@/app/components/ui/utils";
 import {
+	CALENDAR_WEEKDAY_LABELS,
 	createDayStateHelpers,
+	navigateMonth,
 	useCalendarState,
 } from "@/app/hooks/useCalendarState";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
@@ -19,8 +21,6 @@ interface CalendarWidgetProps {
 	selectedDate: Date | null;
 	onDateSelect: (date: Date) => void;
 }
-
-const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 export function CalendarWidget({
 	currentMonth,
@@ -47,17 +47,6 @@ export function CalendarWidget({
 		);
 	}
 
-	const navigateMonth = (direction: "prev" | "next") => {
-		// Set day to 1 first to avoid month overflow (e.g., Jan 31 + 1 month = Mar 3)
-		const newDate = new Date(
-			currentMonth.getFullYear(),
-			currentMonth.getMonth(),
-			1,
-		);
-		newDate.setMonth(newDate.getMonth() + (direction === "prev" ? -1 : 1));
-		onMonthChange(newDate);
-	};
-
 	const { hasWorkout, isSelected, isToday } = createDayStateHelpers(
 		selectedDate,
 		workoutDates,
@@ -77,7 +66,7 @@ export function CalendarWidget({
 				<Button
 					variant="ghost"
 					size="icon"
-					onClick={() => navigateMonth("prev")}
+					onClick={() => onMonthChange(navigateMonth(currentMonth, "prev"))}
 					className="h-8 w-8"
 					aria-label="Previous month"
 				>
@@ -89,7 +78,7 @@ export function CalendarWidget({
 				<Button
 					variant="ghost"
 					size="icon"
-					onClick={() => navigateMonth("next")}
+					onClick={() => onMonthChange(navigateMonth(currentMonth, "next"))}
 					className="h-8 w-8"
 					aria-label="Next month"
 				>
@@ -99,7 +88,7 @@ export function CalendarWidget({
 
 			{/* Day headers */}
 			<div className="grid grid-cols-7 gap-1 mb-2">
-				{DAYS.map((day) => (
+				{CALENDAR_WEEKDAY_LABELS.map((day) => (
 					<div
 						key={day}
 						className="text-center text-xs text-muted-foreground font-medium"

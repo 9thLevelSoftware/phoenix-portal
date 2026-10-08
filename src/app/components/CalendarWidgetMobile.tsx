@@ -1,7 +1,9 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/app/components/ui/utils";
 import {
+	CALENDAR_WEEKDAY_LABELS,
 	createDayStateHelpers,
+	navigateMonth,
 	useCalendarState,
 } from "@/app/hooks/useCalendarState";
 
@@ -17,8 +19,6 @@ interface CalendarWidgetMobileProps {
 	onDateSelect: (date: Date) => void;
 }
 
-const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-
 export function CalendarWidgetMobile({
 	currentMonth,
 	onMonthChange,
@@ -28,17 +28,6 @@ export function CalendarWidgetMobile({
 }: CalendarWidgetMobileProps) {
 	const { daysInMonth, startingDayOfWeek, year, month } =
 		useCalendarState(currentMonth);
-
-	const navigateMonth = (direction: "prev" | "next") => {
-		// Set day to 1 first to avoid month overflow (e.g., Jan 31 + 1 month = Mar 3)
-		const newDate = new Date(
-			currentMonth.getFullYear(),
-			currentMonth.getMonth(),
-			1,
-		);
-		newDate.setMonth(newDate.getMonth() + (direction === "prev" ? -1 : 1));
-		onMonthChange(newDate);
-	};
 
 	const { hasWorkout, isSelected, isToday } = createDayStateHelpers(
 		selectedDate,
@@ -58,7 +47,7 @@ export function CalendarWidgetMobile({
 			<div className="flex items-center justify-between mb-4">
 				<button
 					type="button"
-					onClick={() => navigateMonth("prev")}
+					onClick={() => onMonthChange(navigateMonth(currentMonth, "prev"))}
 					aria-label="Previous month"
 					className="flex items-center justify-center h-11 w-11 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary active:bg-secondary/70 transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-primary"
 				>
@@ -69,7 +58,7 @@ export function CalendarWidgetMobile({
 				</span>
 				<button
 					type="button"
-					onClick={() => navigateMonth("next")}
+					onClick={() => onMonthChange(navigateMonth(currentMonth, "next"))}
 					aria-label="Next month"
 					className="flex items-center justify-center h-11 w-11 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary active:bg-secondary/70 transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-primary"
 				>
@@ -79,7 +68,7 @@ export function CalendarWidgetMobile({
 
 			{/* Day-of-week headers */}
 			<div className="grid grid-cols-7 gap-1 mb-2">
-				{DAYS.map((day) => (
+				{CALENDAR_WEEKDAY_LABELS.map((day) => (
 					<div
 						key={day}
 						className="text-center text-xs text-muted-foreground font-medium py-1"
