@@ -12,9 +12,9 @@ describe("calculateRTL", () => {
 
 	it("returns moderate score for typical week", () => {
 		const sessions: WorkoutLoadInput[] = [
-			{ totalVolume: 5000, durationSeconds: 3600, setCount: 16 },
-			{ totalVolume: 6000, durationSeconds: 4200, setCount: 20 },
-			{ totalVolume: 4500, durationSeconds: 3000, setCount: 14 },
+			{ totalVolume: 5000, setCount: 16 },
+			{ totalVolume: 6000, setCount: 20 },
+			{ totalVolume: 4500, setCount: 14 },
 		];
 		const score = calculateRTL(sessions);
 		expect(score).toBeGreaterThan(30);
@@ -24,7 +24,6 @@ describe("calculateRTL", () => {
 	it("returns high score for overtraining week", () => {
 		const sessions: WorkoutLoadInput[] = Array.from({ length: 7 }, () => ({
 			totalVolume: 10000,
-			durationSeconds: 5400,
 			setCount: 30,
 		}));
 		const score = calculateRTL(sessions);
@@ -34,7 +33,6 @@ describe("calculateRTL", () => {
 	it("caps at 100", () => {
 		const sessions: WorkoutLoadInput[] = Array.from({ length: 14 }, () => ({
 			totalVolume: 20000,
-			durationSeconds: 7200,
 			setCount: 50,
 		}));
 		expect(calculateRTL(sessions)).toBeLessThanOrEqual(100);
