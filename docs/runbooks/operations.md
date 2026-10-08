@@ -1,6 +1,6 @@
 # Phoenix Portal Operational Runbook
 
-> Last updated: 2026-10-06
+> Last updated: 2026-10-08
 > Audience: On-call operators, backend engineers
 
 This document covers day-to-day operational troubleshooting for Phoenix Portal.
@@ -27,15 +27,8 @@ testing, see [paddle-simulation-testing.md](paddle-simulation-testing.md).
 2. Open the **Invocations** tab. Look for non-200 status codes.
 3. Click an invocation to view `console.log` / `console.error` output.
 
-**Supabase CLI:**
-
-```bash
-# Tail live logs
-supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF
-
-# View recent entries
-supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --limit 100
-```
+The pinned Supabase CLI (2.117.0) has no `functions logs` subcommand. Use
+**Edge Functions > paddle-webhooks > Logs/Invocations** above.
 
 **Key log messages:**
 
@@ -207,15 +200,10 @@ WHERE key = '<provider_or_endpoint>' AND user_id = '<uuid>';
 
 ### Check Edge Function logs for sync errors
 
-```bash
-# Logs for the queue processor
-supabase functions logs process-sync-queue --project-ref $SUPABASE_PROJECT_REF --limit 50
-
-# Logs for a specific provider sync function
-supabase functions logs strava-sync --project-ref $SUPABASE_PROJECT_REF --limit 50
-supabase functions logs fitbit-sync --project-ref $SUPABASE_PROJECT_REF --limit 50
-supabase functions logs hevy-sync --project-ref $SUPABASE_PROJECT_REF --limit 50
-```
+Open **Edge Functions > process-sync-queue > Logs/Invocations** for the queue
+processor, and the same Logs/Invocations view for `strava-sync`, `fitbit-sync`,
+and `hevy-sync`. The pinned Supabase CLI (2.117.0) has no `functions logs`
+subcommand.
 
 **Key log messages:**
 
@@ -431,11 +419,9 @@ Hand-deleting an account is the **last** resort. Work down this list:
    below — clearing the reason usually re-arms the automatic purge.
 4. Only if all of the above are exhausted, follow the manual procedure.
 
-**Before proceeding:** Check Edge Function logs to understand why it failed.
-
-```bash
-supabase functions logs delete-account --project-ref $SUPABASE_PROJECT_REF --limit 20
-```
+**Before proceeding:** Open **Edge Functions > delete-account > Logs/Invocations**
+to see why it failed. The pinned Supabase CLI (2.117.0) has no `functions logs`
+subcommand.
 
 Common failure reasons:
 - Rate limit hit (1 request/hour/user) -- wait and retry.
@@ -742,12 +728,9 @@ SELECT id, email FROM auth.users WHERE id = '<uuid>';
 ### Deletion alerts and the needs-support path
 
 Every string below is logged verbatim by `delete-account` or
-`_shared/accountPurge.ts`, so it can be grepped in the Edge Function logs:
-
-```bash
-supabase functions logs delete-account --project-ref $SUPABASE_PROJECT_REF --limit 200 \
-  | grep DELETION_ALERT
-```
+`_shared/accountPurge.ts`. Open **Edge Functions > delete-account > Logs/Invocations**
+and filter on `[DELETION_ALERT]`. The pinned Supabase CLI (2.117.0) has no
+`functions logs` subcommand.
 
 `process_due`'s HTTP response body (persisted by pg_net in
 `net._http_response`) deliberately carries **counts only** — no user ids — so
