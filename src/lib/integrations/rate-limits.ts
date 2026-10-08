@@ -4,7 +4,7 @@
  *
  * MUST stay in sync with RATE_LIMITS in
  * `supabase/functions/process-sync-queue/index.ts` — enforced by
- * `src/lib/__tests__/rate-limit-schema.test.ts`.
+ * `src/lib/__tests__/rate-limit-parity.test.ts`.
  */
 export const RATE_LIMITS: Record<
 	string,
