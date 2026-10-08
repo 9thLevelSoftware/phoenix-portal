@@ -38,7 +38,7 @@ interface MuscleEntry {
 export interface MobileBodyTabProps {
 	muscleGroupData: Array<{ name: string; value: number; color: string }>;
 	muscleRadarData: Record<string, number>;
-	mobileMusclData: MuscleEntry[];
+	mobileMuscleData: MuscleEntry[];
 	/** Null while the lazily loaded body-muscle map is still downloading. */
 	bodyMuscleModel: BodyMuscleFocusModel | null;
 	bodyMuscleMapFailed?: boolean;
@@ -53,7 +53,7 @@ export interface MobileBodyTabProps {
 export default function MobileBodyTab({
 	muscleGroupData,
 	muscleRadarData,
-	mobileMusclData,
+	mobileMuscleData,
 	bodyMuscleModel,
 	bodyMuscleMapFailed = false,
 	weeklyVolume,
@@ -91,7 +91,7 @@ export default function MobileBodyTab({
 				<ResponsiveContainer width="100%" height={200}>
 					<PieChart>
 						<Pie
-							data={mobileMusclData}
+							data={mobileMuscleData}
 							cx="50%"
 							cy="50%"
 							innerRadius={50}
@@ -105,7 +105,7 @@ export default function MobileBodyTab({
 					</PieChart>
 				</ResponsiveContainer>
 				<div className="flex flex-wrap gap-2 mt-3 justify-center">
-					{mobileMusclData.map((muscle) => (
+					{mobileMuscleData.map((muscle) => (
 						<div key={muscle.name} className="flex items-center gap-1 text-xs">
 							<div
 								className="w-3 h-3 rounded-full"

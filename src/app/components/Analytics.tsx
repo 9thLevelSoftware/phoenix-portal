@@ -1286,7 +1286,7 @@ export function Analytics() {
 			volume: Math.round(convertWeight(entry.volume, unit) * 10) / 10,
 		}),
 	);
-	const mobileMusclData = (muscleGroupRaw ?? []).map((m) => ({
+	const mobileMuscleData = (muscleGroupRaw ?? []).map((m) => ({
 		...m,
 		color: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? "var(--muted-foreground)",
 		fill: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? "var(--muted-foreground)",
@@ -1316,7 +1316,7 @@ export function Analytics() {
 		(personalRecords?.length ?? 0) > 0 ||
 		(bodyIntelData?.length ?? 0) > 0;
 	const mobileHasData =
-		mobileVolumeData.length > 0 || mobileMusclData.length > 0 || hasTabData;
+		mobileVolumeData.length > 0 || mobileMuscleData.length > 0 || hasTabData;
 
 	if (isPending) {
 		return (
@@ -1482,7 +1482,7 @@ export function Analytics() {
 						},
 						{
 							label: "Groups",
-							value: `${mobileMusclData.length}`,
+							value: `${mobileMuscleData.length}`,
 							icon: <Zap className="w-5 h-5" />,
 						},
 					].map((stat) => (
@@ -1564,7 +1564,7 @@ export function Analytics() {
 									<MobileBodyTab
 										muscleGroupData={muscleGroupData}
 										muscleRadarData={muscleRadarData}
-										mobileMusclData={mobileMusclData}
+										mobileMuscleData={mobileMuscleData}
 										weeklyVolume={weeklyVolume}
 										bodyMuscleModel={bodyMuscleModel}
 										bodyMuscleMapFailed={bodyMuscleMapFailed}
