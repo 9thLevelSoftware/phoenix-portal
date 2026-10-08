@@ -316,7 +316,12 @@ export const earnedBadgeSchema = z.object({
 	badge_id: z.string(),
 	badge_name: z.string(),
 	badge_description: z.string().nullable().optional(),
-	badge_tier: z.string(),
+	// Column is nullable. Push and pull already default a missing tier to
+	// "bronze"; one null row must not fail the whole earned-badges parse.
+	badge_tier: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? "bronze"),
 	earned_at: z.coerce.date(),
 });
 
