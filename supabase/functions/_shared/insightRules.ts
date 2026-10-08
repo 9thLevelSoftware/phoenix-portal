@@ -55,17 +55,17 @@ export interface InsightInput {
 
 const STREAK_MILESTONES = [7, 14, 21, 30];
 
-export const KG_TO_LBS = 2.20462;
+const KG_TO_LBS = 2.20462;
 
 export function normalizeWeightUnit(unit: unknown): WeightUnit {
   return unit === 'lbs' ? 'lbs' : 'kg';
 }
 
-export function convertWeight(valueKg: number, unit: WeightUnit): number {
+function convertWeight(valueKg: number, unit: WeightUnit): number {
   return unit === 'lbs' ? valueKg * KG_TO_LBS : valueKg;
 }
 
-export function formatWeight(valueKg: number, unit: WeightUnit): string {
+function formatWeight(valueKg: number, unit: WeightUnit): string {
   const converted = convertWeight(valueKg, unit);
   return unit === 'lbs'
     ? `${converted.toFixed(1)} lbs`
@@ -77,7 +77,7 @@ export function formatWeight(valueKg: number, unit: WeightUnit): string {
  * cable count attached, so it is labelled per cable and no total is shown
  * (mirrors `formatLoad(value, null, unit)` in `src/lib/units/loadDisplay.ts`).
  */
-export function formatPerCableWeight(
+function formatPerCableWeight(
   valueKg: number,
   unit: WeightUnit,
 ): string {
@@ -85,7 +85,7 @@ export function formatPerCableWeight(
 }
 
 /** Volume PRs are large numbers; abbreviate above 1K. */
-export function formatVolume(valueKg: number, unit: WeightUnit): string {
+function formatVolume(valueKg: number, unit: WeightUnit): string {
   const converted = convertWeight(valueKg, unit);
   const absValue = Math.abs(converted);
 
@@ -100,12 +100,12 @@ export function formatVolume(valueKg: number, unit: WeightUnit): string {
     : `${Math.round(converted)} kg`;
 }
 
-export function roundWeightMetric(valueKg: number, unit: WeightUnit): number {
+function roundWeightMetric(valueKg: number, unit: WeightUnit): number {
   const converted = convertWeight(valueKg, unit);
   return Number(converted.toFixed(unit === 'lbs' ? 1 : 0));
 }
 
-export function formatWorkoutPhase(phase: string | null | undefined): string {
+function formatWorkoutPhase(phase: string | null | undefined): string {
   switch ((phase ?? 'COMBINED').toUpperCase()) {
     case 'CONCENTRIC':
       return 'Concentric';
@@ -120,7 +120,7 @@ export function formatWorkoutPhase(phase: string | null | undefined): string {
  * `personal_records` holds MAX_WEIGHT / MAX_VOLUME / 1RM (CLAUDE.md: never
  * relabel the first two as "1RM"); the map keys on the UPPERCASE DB values.
  */
-export function formatRecordType(recordType: string | null | undefined): string {
+function formatRecordType(recordType: string | null | undefined): string {
   switch ((recordType ?? '').toUpperCase()) {
     case 'MAX_WEIGHT':
       return 'Max Weight';
