@@ -36,6 +36,15 @@ function parseBoolFlag(name: string): boolean {
 export const SYNC_LWW_ENABLED = parseBoolFlag("SYNC_LWW_ENABLED");
 
 /**
+ * AI routine generation kill switch (issue #1223). Default OFF: the
+ * generate-routine function returns 403 `feature_disabled` until an operator
+ * sets `AI_ROUTINE_GENERATION_ENABLED=true` in the environment. Production
+ * enablement additionally requires the provider retention/privacy launch gate
+ * (implementation-spec §1.2).
+ */
+export const AI_ROUTINE_GENERATION_ENABLED = parseBoolFlag("AI_ROUTINE_GENERATION_ENABLED");
+
+/**
  * Run the mobile push's whole write sequence in ONE Postgres transaction
  * (F-014). When false (default) every write is its own PostgREST request, as
  * before, so a failure part-way through leaves the earlier writes committed

@@ -146,5 +146,12 @@ verify_jwt = false
 [functions.generate-insights]
 verify_jwt = false
 
+[functions.generate-routine]
+# Auth: handler JWT. Gateway verification is intentionally disabled: the
+# handler calls auth.getUser(userJwt) before constructing its service-role
+# client so mobile retries can distinguish definitive credential failures
+# (401) from Auth outages (503).
+verify_jwt = false
+
 [functions.strava-sync]
 verify_jwt = true
