@@ -2,6 +2,7 @@ import { assertEquals, assertNotEquals } from "jsr:@std/assert@1";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { billingAction } from "../_shared/billingAction.ts";
 import { hmacSha256Hex } from "../_shared/hmac.ts";
+import { captureLogs } from "../_shared/testLogCapture.ts";
 import { createPaddleUpdateSubscriptionHandler } from "../paddle-update-subscription/index.ts";
 import { createPaddleCheckoutCustomDataHandler } from "./index.ts";
 
@@ -19,9 +20,15 @@ interface SubscriptionRow {
 
 function buildHandler(
   row: SubscriptionRow | null,
-  options: { selectError?: unknown; user?: { id: string } | null } = {},
+  options: {
+    selectError?: unknown;
+    user?: { id: string } | null;
+    /** Pass `undefined` explicitly to simulate an unset secret. */
+    secret?: string;
+  } = {},
 ) {
   const user = options.user === undefined ? { id: USER_ID } : options.user;
+  const secret = "secret" in options ? options.secret : SECRET;
   return createPaddleCheckoutCustomDataHandler({
     createAuthClient: () =>
       ({
@@ -42,7 +49,7 @@ function buildHandler(
       };
       return { from: () => query } as unknown as SupabaseClient;
     },
-    env: { get: (key: string) => (key === "PADDLE_CUSTOM_DATA_SECRET" ? SECRET : undefined) },
+    env: { get: (key: string) => (key === "PADDLE_CUSTOM_DATA_SECRET" ? secret : undefined) },
     now: () => NOW,
   });
 }
@@ -132,6 +139,35 @@ Deno.test("paddle-checkout-custom-data: signs for a user with no subscription", 
   const body = await response.json();
   assertEquals(body.custom_data.user_id, USER_ID);
   assertEquals(body.custom_data.cd_sig, await hmacSha256Hex(SECRET, USER_ID));
+});
+
+Deno.test("paddle-checkout-custom-data: signs with the trimmed custom_data secret", async () => {
+  const padded = `  ${SECRET}\n`;
+  const response = await buildHandler(null, { secret: padded })(signRequest());
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.custom_data.user_id, USER_ID);
+  assertEquals(body.custom_data.cd_sig, await hmacSha256Hex(SECRET, USER_ID));
+  assertNotEquals(body.custom_data.cd_sig, await hmacSha256Hex(padded, USER_ID));
+});
+
+Deno.test("paddle-checkout-custom-data: a missing custom_data secret matches the billing fatal", async () => {
+  for (const secret of [undefined, "", "   ", "\n\t"]) {
+    const { result: response, logs } = await captureLogs(() =>
+      buildHandler(null, { secret })(signRequest()),
+    );
+
+    assertEquals(response.status, 500, JSON.stringify(secret));
+    assertEquals(await response.json(), {
+      error: "Billing custom_data signing is not configured",
+    });
+    assertEquals(
+      logs.includes("[FATAL] PADDLE_CUSTOM_DATA_SECRET must be set"),
+      true,
+      JSON.stringify(secret),
+    );
+  }
 });
 
 Deno.test("paddle-checkout-custom-data: signs after a cancellation", async () => {
