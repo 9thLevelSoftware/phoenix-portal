@@ -209,8 +209,8 @@ jobs:
           #
           # Every failure path below is terminal and says "do NOT db push".
           # This step must never hand the report step a result it cannot
-          # trust: an empty applied set there would render as "all 90-odd
-          # local migrations are unapplied", and acting on that would replay
+          # trust: an empty applied set there would render as "all local
+          # migrations are unapplied", and acting on that would replay
           # the entire migration history against prod.
           : > remote_migrations.txt
           if ! supabase migration list --linked --output-format json > migration_list.json 2> migration_list.err; then
