@@ -909,7 +909,6 @@ export function Analytics() {
 	const trainingLoad = useMemo(() => {
 		const sessions = (volumeComparison?.current ?? []).map((s) => ({
 			totalVolume: s.total_volume ?? 0,
-			durationSeconds: s.duration_seconds ?? 0,
 			setCount: s.set_count ?? 0,
 		}));
 		const rtl = calculateRTL(sessions);

@@ -1,6 +1,5 @@
 export interface WorkoutLoadInput {
 	totalVolume: number;
-	durationSeconds: number;
 	setCount: number;
 }
 
