@@ -8,6 +8,7 @@ import {
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { getAllAllowedPriceIds } from "../_shared/paddlePriceIds.ts";
 import { CHECKOUT_LIFETIME_MS, paddleApiBase, signCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
+import { checkRateLimit } from "../_shared/rateLimit.ts";
 import { readBoundedRequestBody } from "../_shared/requestBody.ts";
 
 class PaddleTransactionHttpError extends Error {
@@ -22,7 +23,7 @@ export interface EnvReader {
 export interface PaddleCheckoutCustomDataDependencies {
   /** User-scoped client used only for `auth.getUser()`. */
   createAuthClient(authorization: string): Pick<SupabaseClient, "auth">;
-  /** Service-role client for the subscription lookup (bypasses RLS). */
+  /** Service-role client for the rate limit and subscription lookup (bypasses RLS). */
   createAdminClient(): SupabaseClient;
   env: EnvReader;
   now(): Date;
@@ -109,7 +110,19 @@ async function paddleCheckoutCustomDataHandler(
       });
     }
 
-    const { data: sub, error: subError } = await deps.createAdminClient()
+    // Same per-user budget and 429 body as paddle-refresh-subscription.
+    // Runs before the subscription read, the Paddle API calls and the
+    // signature so a flood cannot force transaction or signing work.
+    const supabaseAdmin = deps.createAdminClient();
+    const rateCheck = await checkRateLimit(supabaseAdmin, {
+      key: "paddle-checkout-custom-data",
+      userId: user.id,
+      maxRequests: 10,
+      windowSeconds: 60,
+    }, cors);
+    if (!rateCheck.allowed) return rateCheck.response!;
+
+    const { data: sub, error: subError } = await supabaseAdmin
       .from("subscriptions")
       .select("paddle_subscription_id, tier, status, current_period_end, cancel_at_period_end")
       .eq("user_id", user.id)
