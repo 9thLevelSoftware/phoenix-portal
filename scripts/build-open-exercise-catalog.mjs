@@ -169,6 +169,10 @@ const EQUIPMENT_MAP = {
 	"foam roll": "FOAM_ROLL",
 	bench: "BENCH",
 	"pull-up bar": "PULL_UP_BAR",
+	// Issue #883 (Project-Phoenix-MP): the mobile belt-squat seed stores `belt` and the
+	// picker's Belt chip matches the BELT token. Carry the same vocabulary here so any
+	// belt-equipped source row maps to BELT instead of silently degrading to OTHER.
+	belt: "BELT",
 	none: "BODYWEIGHT",
 	other: "OTHER",
 };
@@ -258,7 +262,15 @@ function sidednessFromName(name) {
 function defaultCableConfig(sidedness, equipment) {
 	if (sidedness === "alternating" || sidedness === "unilateral") return "SINGLE";
 	if (sidedness === "bilateral") return "DOUBLE";
-	if (equipment.includes("BARBELL") || equipment.includes("CABLE")) return "DOUBLE";
+	if (
+		equipment.includes("BARBELL") ||
+		equipment.includes("CABLE") ||
+		// Issue #883: a belt connects both cables into one load, like a bar —
+		// matches the mobile importer's cableMetadataForEquipment("belt") = DOUBLE.
+		equipment.includes("BELT")
+	) {
+		return "DOUBLE";
+	}
 	if (equipment.includes("DUMBBELL") || equipment.includes("KETTLEBELL")) {
 		return "EITHER";
 	}

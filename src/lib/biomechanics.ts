@@ -39,18 +39,17 @@ export function authoritativeRepPower(rep: {
 }): { meanWatts: number | null; peakWatts: number | null } {
 	const validated = rep.power_method === "PAIRED_CABLE_WORK_V1";
 	return {
-		meanWatts: validated && typeof rep.power_watts === "number" &&
-			Number.isFinite(rep.power_watts) ? rep.power_watts : null,
-		peakWatts: validated && typeof rep.peak_power_watts === "number" &&
-			Number.isFinite(rep.peak_power_watts) ? rep.peak_power_watts : null,
+		meanWatts:
+			validated &&
+			typeof rep.power_watts === "number" &&
+			Number.isFinite(rep.power_watts)
+				? rep.power_watts
+				: null,
+		peakWatts:
+			validated &&
+			typeof rep.peak_power_watts === "number" &&
+			Number.isFinite(rep.peak_power_watts)
+				? rep.peak_power_watts
+				: null,
 	};
-}
-
-/**
- * Calculate range of motion from position readings.
- * Returns max - min in millimeters.
- */
-export function calculateRom(positions: number[]): number {
-	if (positions.length === 0) return 0;
-	return Math.round(Math.max(...positions) - Math.min(...positions));
 }

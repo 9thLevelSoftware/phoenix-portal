@@ -40,7 +40,7 @@ describe("CORS localhost fail-closed", () => {
 		).toBe(true);
 		expect(
 			buildAllowedOrigins(undefined, undefined, "http://127.0.0.1:54321"),
-		).toEqual(["http://localhost:5173", "http://localhost:3000"]);
+		).toEqual(["http://localhost:5173"]);
 	});
 
 	it("denies localhost when ENVIRONMENT is development against a hosted project", () => {
@@ -60,5 +60,36 @@ describe("CORS localhost fail-closed", () => {
 		expect(
 			isHostedSupabaseUrl("https://evil.example/?host=foo.supabase.co"),
 		).toBe(false);
+	});
+});
+
+describe("CORS APP_URL origin", () => {
+	it("allow-lists the origin of APP_URL when it carries a path or trailing slash", () => {
+		expect(
+			buildAllowedOrigins(
+				"https://phoenix-portal.com/integrations/callback",
+				"production",
+				undefined,
+			),
+		).toEqual(["https://phoenix-portal.com"]);
+		expect(
+			buildAllowedOrigins(
+				"https://phoenix-portal.com/",
+				"production",
+				undefined,
+			),
+		).toEqual(["https://phoenix-portal.com"]);
+		expect(
+			buildAllowedOrigins("http://localhost:4173/app", "production", undefined),
+		).toEqual(["http://localhost:4173"]);
+	});
+
+	it("does not allow-list an unparseable or non-http APP_URL", () => {
+		expect(buildAllowedOrigins("not a url", "production", undefined)).toEqual(
+			[],
+		);
+		expect(
+			buildAllowedOrigins("file:///tmp/portal", "production", undefined),
+		).toEqual([]);
 	});
 });

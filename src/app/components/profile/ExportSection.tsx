@@ -24,9 +24,19 @@ import {
 	exportAnalyticsTablesZip,
 	getRunningUserDataExport,
 } from "@/lib/export/data-export";
-import { profileOptions } from "@/queries/profile";
+import { profileOptions, profileStatsOptions } from "@/queries/profile";
 import { personalRecordsOptions } from "@/queries/records";
-import { workoutListOptions } from "@/queries/workouts";
+import {
+	fetchWorkoutHistoryForExport,
+	workoutListOptions,
+} from "@/queries/workouts";
+
+/** Parenthetical size only when it is an exact total. Zero and unknown stay blank. */
+function exactExportCount(count: number | null | undefined): string {
+	return typeof count === "number" && Number.isFinite(count) && count > 0
+		? ` (${count})`
+		: "";
+}
 
 export function ExportSection() {
 	const { user } = useAuth();
@@ -43,6 +53,15 @@ export function ExportSection() {
 		...profileOptions(user?.id ?? ""),
 		enabled: !!user?.id,
 	});
+	// Account-wide totals from profile_workout_stats. The list and records
+	// queries above are pages (50 sessions, 500 records) and undercount a
+	// longer history. No profile filter: the CSVs export every session and
+	// every live record, not the active profile. A missing count is omitted
+	// rather than replaced with the page length.
+	const { data: exportCounts } = useQuery({
+		...profileStatsOptions(user?.id ?? ""),
+		enabled: !!user?.id,
+	});
 
 	const [exporting, setExporting] = useState<"workouts" | "records" | null>(
 		null,
@@ -55,18 +74,25 @@ export function ExportSection() {
 	} | null>(null);
 	const unit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 
-	const handleExportWorkouts = () => {
-		if (!workouts?.length) {
+	// The list query is the dashboard cap (50). The CSV must page the rest:
+	// an unpaged select stops silently at PostgREST max_rows.
+	const handleExportWorkouts = async () => {
+		if (!user?.id || !workouts?.length) {
 			toast.error("No workout data to export");
 			return;
 		}
 
 		setExporting("workouts");
 		try {
-			const csv = generateWorkoutCSV(workouts, unit);
+			const allWorkouts = await fetchWorkoutHistoryForExport(user.id);
+			if (!allWorkouts.length) {
+				toast.error("No workout data to export");
+				return;
+			}
+			const csv = generateWorkoutCSV(allWorkouts, unit);
 			const filename = `phoenix-workouts-${new Date().toISOString().split("T")[0]}`;
 			downloadCSV(csv, filename);
-			toast.success(`Exported ${workouts.length} workouts`);
+			toast.success(`Exported ${allWorkouts.length} workouts`);
 		} catch (error) {
 			toast.error("Failed to export workouts");
 			console.error("Export error:", error);
@@ -184,7 +210,7 @@ export function ExportSection() {
 	return (
 		<Card className="bg-surface-2 border-secondary">
 			<CardHeader>
-				<CardTitle className="flex items-center gap-2 text-white">
+				<CardTitle className="flex items-center gap-2 text-foreground">
 					<FileSpreadsheet className="h-5 w-5 text-primary" />
 					Export Data
 				</CardTitle>
@@ -196,9 +222,11 @@ export function ExportSection() {
 				<div className="flex flex-col sm:flex-row gap-3">
 					<Button
 						variant="outline"
-						onClick={handleExportWorkouts}
+						onClick={() => {
+							void handleExportWorkouts();
+						}}
 						disabled={workoutsLoading || exporting !== null}
-						className="flex-1 border-secondary text-white hover:bg-secondary/50"
+						className="flex-1 border-secondary text-foreground hover:bg-secondary/50"
 					>
 						{exporting === "workouts" ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -206,7 +234,7 @@ export function ExportSection() {
 							<Download className="mr-2 h-4 w-4" />
 						)}
 						Export Workout History
-						{workouts?.length ? ` (${workouts.length})` : ""}
+						{exactExportCount(exportCounts?.totalWorkouts)}
 					</Button>
 
 					<Button
@@ -215,7 +243,7 @@ export function ExportSection() {
 							void handleExportRecords();
 						}}
 						disabled={recordsLoading || exporting !== null}
-						className="flex-1 border-secondary text-white hover:bg-secondary/50"
+						className="flex-1 border-secondary text-foreground hover:bg-secondary/50"
 					>
 						{exporting === "records" ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -223,7 +251,7 @@ export function ExportSection() {
 							<Download className="mr-2 h-4 w-4" />
 						)}
 						Export Personal Records
-						{records?.length ? ` (${records.length})` : ""}
+						{exactExportCount(exportCounts?.prCount)}
 					</Button>
 				</div>
 
@@ -247,7 +275,7 @@ export function ExportSection() {
 				)}
 
 				<div className="border-t border-secondary pt-4 mt-4">
-					<p className="text-sm font-medium text-white mb-2">
+					<p className="text-sm font-medium text-foreground mb-2">
 						Analytics Tables
 					</p>
 					<p className="text-xs text-muted-foreground mb-3">
@@ -258,7 +286,7 @@ export function ExportSection() {
 						variant="outline"
 						onClick={handleAnalyticsExport}
 						disabled={analyticsExporting || fullExporting || !user?.id}
-						className="w-full border-secondary text-white hover:bg-secondary/50"
+						className="w-full border-secondary text-foreground hover:bg-secondary/50"
 					>
 						{analyticsExporting ? (
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -272,7 +300,7 @@ export function ExportSection() {
 				</div>
 
 				<div className="border-t border-secondary pt-4 mt-4">
-					<p className="text-sm font-medium text-white mb-2">
+					<p className="text-sm font-medium text-foreground mb-2">
 						Complete Data Export
 					</p>
 					<p className="text-xs text-muted-foreground mb-3">

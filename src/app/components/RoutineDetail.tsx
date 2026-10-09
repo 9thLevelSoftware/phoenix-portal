@@ -13,8 +13,8 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { useAuth } from "@/app/hooks/useAuth";
+import { formatExercisePrescriptionLine } from "@/lib/exercisePrescription";
 import type { WeightUnit } from "@/lib/units";
-import { formatLoad } from "@/lib/units/loadDisplay";
 import { profileOptions } from "@/queries/profile";
 import { routineDetailOptions } from "@/queries/routines";
 import {
@@ -23,7 +23,6 @@ import {
 	repCountTimingLabel,
 	supersetColorHex,
 	toWireMode,
-	workoutModeLabel,
 } from "../../../supabase/functions/_shared/workoutModes.ts";
 
 export function formatExercisePrescription(
@@ -39,20 +38,18 @@ export function formatExercisePrescription(
 	},
 	unit: WeightUnit,
 ) {
-	const loadLabel = exercise.is_bodyweight
-		? "Bodyweight"
-		: // Routine weights are per cable; routines carry no cable count (KD-8).
-			formatLoad(exercise.weight, null, unit);
-
-	if (exercise.duration_seconds) {
-		return `${exercise.sets} sets • ${exercise.duration_seconds}s • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
-	}
-
-	if (exercise.is_amrap) {
-		return `${exercise.sets} sets • AMRAP • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
-	}
-
-	return `${exercise.sets} sets • ${exercise.reps} reps • ${loadLabel} • ${workoutModeLabel(exercise.mode)}`;
+	return formatExercisePrescriptionLine(
+		{
+			sets: exercise.sets,
+			reps: exercise.reps,
+			weight: exercise.weight,
+			durationSeconds: exercise.duration_seconds,
+			isAmrap: exercise.is_amrap,
+			isBodyweight: exercise.is_bodyweight,
+			mode: exercise.mode,
+		},
+		unit,
+	);
 }
 
 function exerciseBadges(exercise: {
@@ -120,7 +117,7 @@ export function RoutineDetail() {
 		return (
 			<PageShell className="min-h-screen">
 				<Card className="mx-auto max-w-2xl border-secondary bg-surface-2 p-8 text-center">
-					<h1 className="mb-2 text-2xl font-semibold text-white">
+					<h1 className="mb-2 text-2xl font-semibold text-foreground">
 						Routine unavailable
 					</h1>
 					<p className="mb-6 text-muted-foreground">
@@ -180,20 +177,20 @@ export function RoutineDetail() {
 					<Button
 						variant="ghost"
 						asChild
-						className="mb-3 px-0 text-muted-foreground hover:text-white"
+						className="mb-3 px-0 text-muted-foreground hover:text-foreground"
 					>
 						<Link to="/routines">
 							<ArrowLeft className="mr-2 h-4 w-4" />
 							Back to Routines
 						</Link>
 					</Button>
-					<h1 className="mb-2 text-3xl text-white">{routine.name}</h1>
+					<h1 className="mb-2 text-3xl text-foreground">{routine.name}</h1>
 					<p className="max-w-2xl text-muted-foreground">
 						{routine.description || "No description added yet."}
 					</p>
 				</div>
 
-				<Button asChild variant="cta">
+				<Button asChild>
 					<Link to={`/routines/${routine.id}`}>
 						<Edit className="mr-2 h-4 w-4" />
 						Edit Routine
@@ -207,7 +204,7 @@ export function RoutineDetail() {
 						<Dumbbell className="h-4 w-4" />
 						Exercises
 					</div>
-					<div className="text-2xl font-semibold text-white">
+					<div className="text-2xl font-semibold text-foreground">
 						{routine.exercise_count}
 					</div>
 				</Card>
@@ -216,7 +213,7 @@ export function RoutineDetail() {
 						<Clock className="h-4 w-4" />
 						Estimated Duration
 					</div>
-					<div className="text-2xl font-semibold text-white">
+					<div className="text-2xl font-semibold text-foreground">
 						~{routine.estimated_duration} min
 					</div>
 				</Card>
@@ -225,13 +222,13 @@ export function RoutineDetail() {
 						<Repeat className="h-4 w-4" />
 						Times Completed
 					</div>
-					<div className="text-2xl font-semibold text-white">
+					<div className="text-2xl font-semibold text-foreground">
 						{routine.times_completed}
 					</div>
 				</Card>
 				<Card className="border-secondary bg-surface-2 p-4">
 					<div className="mb-2 text-sm text-muted-foreground">Last Used</div>
-					<div className="text-lg font-semibold text-white">
+					<div className="text-lg font-semibold text-foreground">
 						{routine.last_used_at
 							? routine.last_used_at.toLocaleDateString()
 							: "Never"}
@@ -249,10 +246,10 @@ export function RoutineDetail() {
 							<div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
 								<div>
 									<div className="mb-2 flex flex-wrap items-center gap-2">
-										<h2 className="text-lg font-semibold text-white">
+										<h2 className="text-lg font-semibold text-foreground">
 											{item.exercise.name}
 										</h2>
-										<Badge className="border-0 bg-primary text-white">
+										<Badge className="border-0 bg-primary text-primary-foreground">
 											{item.exercise.muscle_group}
 										</Badge>
 									</div>
@@ -305,10 +302,10 @@ export function RoutineDetail() {
 										<div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
 											<div>
 												<div className="mb-2 flex flex-wrap items-center gap-2">
-													<h2 className="text-lg font-semibold text-white">
+													<h2 className="text-lg font-semibold text-foreground">
 														{exercise.name}
 													</h2>
-													<Badge className="border-0 bg-primary text-white">
+													<Badge className="border-0 bg-primary text-primary-foreground">
 														{exercise.muscle_group}
 													</Badge>
 												</div>

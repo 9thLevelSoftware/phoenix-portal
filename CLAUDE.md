@@ -32,7 +32,7 @@ npm run supabase -- <args>  # Pinned Supabase CLI (version in .supabase-cli-vers
 npm run test:db          # Full pgTAP suite against the local stack (CI: migrations.yml)
 npm run gen:types:local  # Regenerate src/lib/database.types.ts from the migrated local DB
 npm run gen:types:check  # Fail if database.types.ts drifts from the migrations (CI gate)
-npm run verify           # lint + typecheck + test + build + sourcemap/config asserts
+npm run verify           # lint + typecheck + test + build + assert:no-sourcemaps + assert:bundle-budget + assert:supabase-config
 ```
 
 ### Generated types
@@ -46,13 +46,14 @@ generator cannot express (nullable RPC args, PostgREST version) in
 
 ### Typecheck
 
-The root `tsconfig.json` is a solution file (`"files": []` plus three project
+The root `tsconfig.json` is a solution file (`"files": []` plus four project
 references), so **`tsc --noEmit` over it compiles an empty program and exits 0
 without checking anything.** Never use it as a gate.
 
 `npm run typecheck` runs `scripts/typecheck.mjs`, which type-checks each
-project explicitly (`tsc -p tsconfig.app.json|tsconfig.node.json|tsconfig.test.json
---noEmit`) and compares the errors against `typecheck-baseline.json`
+project explicitly (`tsc -p --noEmit` on `tsconfig.app.json`,
+`tsconfig.node.json`, `tsconfig.test.json`, and `tsconfig.e2e.json`) and
+compares the errors against `typecheck-baseline.json`
 (counts per project, file and error code). It fails only on errors not in the
 baseline, so the pre-existing backlog does not block a PR. When you fix
 errors, shrink the baseline with `npm run typecheck:baseline` and commit it;
@@ -83,12 +84,13 @@ Browser bundle (`VITE_`-prefixed, embedded at build time — never put a secret 
 Edge Function secrets (Supabase Dashboard → Edge Functions → Secrets; read with
 `Deno.env.get`, never `VITE_`):
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ENVIRONMENT`
-- `SUPABASE_PUBLIC_URL` — the externally reachable functions origin. `initiate-oauth`, `complete-oauth` and `strava-oauth` build their redirect URI from it and fall back to `SUPABASE_URL`; `_shared/oauthTokenCrypto.ts` also mixes it into key derivation. (`fitbit-oauth` and `garmin-oauth` are disabled and read no env; see Edge Functions.)
-- `APP_URL` — the portal origin the OAuth callbacks redirect back to (`${APP_URL}/integrations?…`, default `http://localhost:5173`) and one of the allowed CORS origins in `_shared/cors.ts`. There is no `PORTAL_URL`.
-- `PADDLE_API_KEY` (server API calls from `delete-account` and the three `paddle-*-subscription` functions), `PADDLE_WEBHOOK_SECRET`, `PADDLE_CUSTOM_DATA_SECRET`, `PADDLE_ENVIRONMENT`, `PADDLE_EMBER_PRICE_IDS` / `PADDLE_FLAME_PRICE_IDS` / `PADDLE_INFERNO_PRICE_IDS`
+- `SUPABASE_PUBLIC_URL` — the externally reachable functions origin. `initiate-oauth` and `complete-oauth`'s Fitbit exchange build `redirect_uri` from it and fall back to `SUPABASE_URL`. `strava-oauth` redirects the browser with `APP_URL` and does not read this variable. `_shared/oauthTokenCrypto.ts` uses it only as a deployed-runtime marker (alongside `DENO_DEPLOYMENT_ID` or `ENVIRONMENT=production`), not for key derivation. (`fitbit-oauth` and `garmin-oauth` are disabled and read no env; see Edge Functions.)
+- `APP_URL` — the portal origin the OAuth callbacks redirect back to (success is `${APP_URL}/integrations/callback`, failure is `${APP_URL}/integrations?error=`; default `http://localhost:5173`) and one of the allowed CORS origins in `_shared/cors.ts`. There is no `PORTAL_URL`.
+- `PADDLE_API_KEY` (server API calls from `paddle-webhooks`, `delete-account`, and the three `paddle-*-subscription` functions), `PADDLE_WEBHOOK_SECRET`, `PADDLE_CUSTOM_DATA_SECRET`, `PADDLE_ENVIRONMENT`, `PADDLE_EMBER_PRICE_IDS` / `PADDLE_FLAME_PRICE_IDS` / `PADDLE_INFERNO_PRICE_IDS`
+- `PADDLE_EMBER_MONTHLY_PRICE_ID`, `PADDLE_EMBER_ANNUAL_PRICE_ID`, `PADDLE_FLAME_MONTHLY_PRICE_ID`, `PADDLE_FLAME_ANNUAL_PRICE_ID`, `PADDLE_INFERNO_MONTHLY_PRICE_ID`, `PADDLE_INFERNO_ANNUAL_PRICE_ID` — six single price IDs, one per tier × interval, each set to the same value as the matching `VITE_PADDLE_*_PRICE_ID`. `_shared/paddlePriceIds.ts` reads the single for a `paddle-update-subscription` plan change (`getConfiguredPriceIdForTierInterval`) and unions it into that tier's allowlist.
 - `CRON_SECRET` — the shared secret for pg_cron-invoked functions, compared in constant time against the `x-cron-secret` header by `_shared/cronSecret.ts`. `process-sync-queue` still accepts the legacy names `PROCESS_SYNC_QUEUE_SECRET` and `CRON_SYNC_QUEUE_SECRET`, but only when `CRON_SECRET` is unset; nothing else does. The DB half is the Vault secret `edge_cron_secret` used by `private.invoke_edge_function` (KD-10).
-- `SYNC_LWW_ENABLED` — cold-start flag in `supabase/functions/_shared/flags.ts`, `"false"` unless the secret is exactly `true`. Flipping it requires a redeploy; there is no runtime refresh. Its production value is not recorded in this repo — ask the operator rather than assuming.
-- `SYNC_PUSH_TRANSACTION` — cold-start flag in the same file, `"false"` unless exactly `true`. When on, `mobile-sync-push` runs its whole write sequence in one Postgres transaction (F-014, `_shared/pushTransaction.ts`): a failure part-way commits nothing, and the `sync_complete` broadcast happens only after COMMIT. It connects with `SUPABASE_DB_URL` (provided by Supabase to Edge Functions); if that connection cannot be opened the push falls back to per-call writes and logs `PushTransactionUnavailable`. The response contract is identical either way.
+- `SYNC_LWW_ENABLED` — cold-start flag in `supabase/functions/_shared/flags.ts`, `"false"` unless the secret is trimmed any-case `true` (`parseBoolFlag`). Flipping it requires a redeploy; there is no runtime refresh. Its production value is not recorded in this repo — ask the operator rather than assuming.
+- `SYNC_PUSH_TRANSACTION` — cold-start flag in the same file, `"false"` unless the secret is trimmed any-case `true` (`parseBoolFlag`). When on, `mobile-sync-push` runs its whole write sequence in one Postgres transaction (F-014, `_shared/pushTransaction.ts`): a failure part-way commits nothing, and the `sync_complete` broadcast happens only after COMMIT. It connects with `SUPABASE_DB_URL` (provided by Supabase to Edge Functions); if that connection cannot be opened the push falls back to per-call writes and logs `PushTransactionUnavailable`. The response contract is identical either way.
 - `OAUTH_TOKEN_ENCRYPTION_KEY`, `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET`, `FITBIT_CLIENT_ID` / `FITBIT_CLIENT_SECRET`, `GARMIN_CONSUMER_KEY` / `GARMIN_CONSUMER_SECRET`, `GARMIN_WEBHOOK_SECRET` (the webhook 503s without it). The Fitbit client secrets are still read by `complete-oauth`, `fitbit-sync` and `_shared/providerRevoke.ts`, the Garmin consumer secrets only by `_shared/providerRevoke.ts`; the disabled `fitbit-oauth` / `garmin-oauth` callbacks read none.
 
 Tooling only: `SUPABASE_PROJECT_REF` and the `SUPABASE_AUTH_*` values used by
@@ -99,7 +101,7 @@ Tooling only: `SUPABASE_PROJECT_REF` and the `SUPABASE_AUTH_*` values used by
 ### Tech Stack
 - **Vite 7** with React 19 and TypeScript
 - **Tailwind CSS v4** with @tailwindcss/vite plugin
-- **shadcn/ui** components (50+ Radix UI primitives in `src/app/components/ui/`)
+- **shadcn/ui** components (33 component files in `src/app/components/ui/`; 20 import a Radix UI primitive)
 - **Zustand 5** for client state
 - **TanStack Query 5** for server state
 - **Zod 4** for runtime schema validation
@@ -133,9 +135,8 @@ src/
 │   │   ├── [Feature]Mobile.tsx    # Mobile variants
 │   │   ├── ui/                    # shadcn/ui primitives
 │   │   ├── analytics/ charts/ community/ integrations/ landing/
-│   │   ├── modals/ profile/ figma/
+│   │   ├── modals/ profile/
 │   │   ├── routine-builder/       # Routine creation subcomponents
-│   │   ├── cycle-builder/         # Training cycle subcomponents
 │   │   ├── session-replay/        # Session replay components
 │   │   └── __tests__/             # Component unit tests
 │   ├── routes/                    # index.tsx, AppLayout, ProtectedRoute, SubscribedRoute
@@ -177,7 +178,7 @@ There is **no** `src/app/components/mobile/` directory; mobile variants are
 5. On receiving `sync_complete`, hook invalidates relevant TanStack Query caches (workouts, records, analytics, routines, cycles, insights, …)
 6. UI components re-render with fresh data from cache refetch
 
-`rep_telemetry` and `exercise_progress` snapshots used by session replay are **portal-only**. `mobile-sync-pull` does not return telemetry; do not add a telemetry pull in this stack.
+`rep_telemetry` and `exercise_progress` snapshots used by session replay are written by `mobile-sync-push` and omitted from `mobile-sync-pull`. Do not add a pull for either in this stack.
 
 ### Edge Functions
 
@@ -261,21 +262,21 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
     a structure the portal has edited since the device's `baseUpdatedAt`, and
     returns `accepted` / `structure_applied` / the stored keys;
   - session children (exercises, sets, rep summaries, telemetry **and**
-    `exercise_progress`) are replaced by `replace_session_children` in one
-    transaction, so a partial child write cannot lose data.
+    `exercise_progress`) are written by this push: `replace_session_children`
+    replaces them in one transaction, so a partial child write cannot lose data.
+    Since `20260925200000` telemetry is stored in `set_telemetry`;
+    `rep_telemetry` is a per-sample view over it plus unfolded
+    `rep_telemetry_legacy` rows.
 - A `user_id` transition on `workout_sessions` / `routines` / `training_cycles`
   raises 42501 from a DB trigger (`20260920002102`), whichever path writes it.
-- Deletes are explicit: `deletedRoutineIds` / `deletedCycleIds` are tombstoned,
-  and a push that tries to re-create a tombstoned id gets it back under
-  `skippedDeleted` instead of resurrecting the row.
+- Deletes are explicit: `deletedRoutineIds` are tombstoned, and a push that
+  tries to re-create a tombstoned id gets it back under `skippedDeleted`
+  instead of resurrecting the row. Cycle resurrection is stopped by clocked
+  `deletedCycles` together with the tombstone gate
+  (`apply_sync_tombstone_gate`). Legacy `deletedCycleIds` do not tombstone.
 - Broadcasts `sync_complete` on the private channel `sync:{userId}`.
 
 **mobile-sync-pull** (`supabase/functions/mobile-sync-pull/index.ts`):
-- Parity sync: sessions, routines, cycles, badges and PRs always go through the `*_excluding_ids` RPCs (rows not in `knownEntityIds`; sessions/routines/cycles also re-send known rows changed since `lastSync - 2 min`; empty known ids = whole profile; `lastSync: 0` = everything). Other `lastSync` filters also use `lastSync - 2 min`
-- Cursor-based pagination with 75 entities per page (max 300)
-- Entity order: sessions -> routines -> cycles -> badges -> stats
-- Uses composite cursor (updated_at, id) for stable ordering across pages
-- Child entities fetched based on parent presence, not their own timestamps
 - **Parity only — the legacy timestamp-mode pull is gone.** Sessions, routines,
   cycles, badges and PRs always go through the `*_excluding_ids` RPCs: rows not
   in `knownEntityIds`, plus (for sessions/routines/cycles) known rows changed
@@ -286,9 +287,12 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
   activities, custom exercises) subtracts `STALE_OVERLAP_MS` = 2 minutes, so a
   write that committed after the previous `syncTime` is re-delivered. Mobile
   merges duplicates idempotently.
-- Cursor pagination, 75 entities per page (max 300), composite cursor
-  `(updated_at, id)`. `ENTITY_ORDER` is
-  `sessions → routines → cycles → badges → stats → personalRecords → customExercises`.
+- Cursor pagination, 75 entities per page (max 300). Sessions, routines,
+  cycles, personal records and custom exercises use `(updated_at, id)`;
+  badges use `(earned_at, id)` and external activities use `(synced_at, id)`.
+  Workout deletions page on `(recorded_at, mutation_id)` and ownership
+  events on `(transferred_at, mutation_id)`. `ENTITY_ORDER` is
+  `sessions → routines → cycles → workoutDeletions → ownershipEvents → badges → stats → externalActivities → personalRecords → customExercises`.
 - Deletes come back in two different shapes, so do not generalise:
   - routines and cycles are hard-deleted and reported as id lists
     (`deletedRoutineIds` / `deletedCycleIds`) on the **first page only**
@@ -301,8 +305,8 @@ pre-tombstone, pre-LWW-clock push and are **not** the current contract.
     forever because the device already has the id.
 - Children are fetched from parent presence, not their own timestamps.
 - `rep_telemetry` and the `exercise_progress` snapshots session replay uses are
-  **portal-only**. The pull does not return telemetry; do not add a telemetry
-  pull in this stack.
+  written by push and omitted from this pull. Do not add a pull for either in
+  this stack.
 
 ### Sync Test Infrastructure
 
@@ -344,13 +348,13 @@ total is shown beside it only when `exercises.cable_count` is exactly 1 or 2.
 - `personal_records` holds max-weight/max-volume PRs (a different metric) — never relabel them as "1RM". Record-type label maps (`csv.ts`, `RecordsTab.tsx`) key on the UPPERCASE DB values (`MAX_WEIGHT`, `MAX_VOLUME`, `1RM`).
 
 ### Styling
-- Dark theme by default (background: #0D0D0D)
-- Phoenix color palette in `src/styles/theme.css`:
-  - Primary/Ember: `#FF6B35`
-  - Flame Red: `#DC2626`
-  - Gold: `#F59E0B`
-  - Forge Green: `#10B981`
-- Custom animations: `animate-flame-flicker`, `animate-ember-rise`, `animate-phoenix-glow`
+- Dark theme by default (`--background: #06060a` in `src/styles/theme.css`)
+- Phoenix color palette tokens in `src/styles/theme.css` (dark defaults):
+  - Primary/Ember: `--primary` and `--phoenix-ember` `#ff6b35`
+  - Destructive: `--destructive` `#ff5252`
+  - Accent: `--accent` `#f59e0b`
+  - Success: `--success` `#00e676`
+- Light theme (`:root[data-theme='light']`) overrides those tokens (`--background` `#fbfbfc`, `--primary` `#c2410c`, `--destructive` `#b91c1c`, `--accent` `#a16207`, `--success` `#047857`). `--phoenix-ember` stays `#ff6b35`.
 - CSS variables exposed via `@theme inline` for Tailwind v4
 
 ### Navigation Flow
@@ -438,12 +442,21 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
 - **`ci.yml`** — on every push and PR to `main`. Jobs: `dependency-audit`
   (`npm run audit:security`), `lint` (Biome), `typecheck` (`npm run typecheck`,
   the baseline-comparing checker described under "Typecheck"),
-  `edge-functions` (`npm run check:edge-functions` then `npm run test:edge`,
-  which runs **every** Edge handler suite, not just mobile-sync), `unit-test`
-  (`npm test`), `e2e` (`npm run test:e2e`, Playwright against mocked REST, plus
+  `edge-functions` (`npm run check:edge-functions`, then `npm run test:edge`
+  twice: `SYNC_LWW_ENABLED=false` and `SYNC_LWW_ENABLED=true`. Both must pass.
+  The push handler has a separate write path for each flag value and the
+  production value is unknown (NF-50). Each run covers **every** Edge handler
+  suite, not just mobile-sync), `unit-test` (`npm test`), `e2e`
+  (`npm run test:e2e`, Playwright against mocked REST, plus
   `npm run test:e2e:pwa`), and `build` (production build plus
-  `assert:no-sourcemaps` and `assert:bundle-budget`). It never runs on stacked
-  PRs whose base is not `main`.
+  `assert:no-sourcemaps`, `assert:bundle-budget`, and
+  `assert:supabase-config`). `assert:supabase-config`
+  (`scripts/assert-live-supabase-config.mjs`; also the last step of
+  `npm run verify`) scans `package.json`, `public/_headers`, and `dist/`
+  when present, and fails when they reference a Supabase project ref listed in
+  `STALE_SUPABASE_REFS`. The committed default denylist is empty, and CI does
+  not set that variable. The workflow never runs on stacked PRs whose base is
+  not `main`.
 - **`migrations.yml`** — on PRs and `main` pushes that touch
   `supabase/migrations/**`, `supabase/tests/**`, `supabase/config.toml`,
   `database.types.ts` or the CLI/type tooling. Clean-applies every migration
@@ -454,9 +467,9 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
   sync-queue backlog triage (which re-applies `20260920003100` and then
   restores the production shape with a second `db reset --no-seed`, because
   re-applying individual migrations would clobber later definitions), the
-  pgTAP suite plus a test-count floor
-  (`PGTAP_TEST_FLOOR`), the types check, the definer-grant guard on its own,
-  and the `scripts/migration-gating/run.sh` checks for `20260920007600`.
+  pgTAP suite (including the definer-grant guard) plus a test-count floor
+  (`PGTAP_TEST_FLOOR`), the types check, and the
+  `scripts/migration-gating/run.sh` checks for `20260920007600`.
 - **`edge-integration.yml`** — the real-SQL Deno tests. `pull_request` has no
   `paths:` filter (so it always reports and is safe as a required check); a
   `changes` job decides whether the heavy job runs. It starts a local stack,
@@ -472,7 +485,9 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
 - **`deploy-edge-functions.yml`** — deploys on `main` pushes that touch
   `supabase/functions/**` or `supabase/config.toml`, and on
   `workflow_dispatch`. Two gates run before any upload: a `verify` job
-  (`check:edge-functions` + `test:edge` on that exact commit) and
+  (`check:edge-functions`, then `test:edge` with `SYNC_LWW_ENABLED=false` and
+  again with `SYNC_LWW_ENABLED=true`; both must pass on that exact commit, and
+  a red test blocks deploy) and
   "Gate on prod migrations", which fails and names the versions when any local
   migration is not yet applied in prod. That keeps the order migration → Edge
   code. Main-only guard plus the `production` environment secrets below.
@@ -485,9 +500,9 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
   anon/authenticated outside the allow-list in
   `20260920000100_lockdown_definer_function_grants.sql`.
   **Detector only — it gates nothing;** `deploy-edge-functions.yml` runs its own
-  copy of the migration check as the actual gate. The drift class it surfaces is
-  the one demonstrated by `9thLevelSoftware/Project-Phoenix-MP#602`; pushing the
-  missing migration and verifying the reporter path stay operator work.
+  copy of the migration check as the actual gate. When the run reports drift,
+  applying the missing migration and verifying the affected client path stay
+  operator work.
   Required `production` environment secrets (shared with the deploy workflow):
   `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROD_PROJECT_REF`,
   `SUPABASE_PROD_DB_PASSWORD`. Protect that environment with main-only branch

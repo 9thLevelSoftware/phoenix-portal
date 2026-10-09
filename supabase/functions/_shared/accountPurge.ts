@@ -171,7 +171,8 @@ export function defaultPurgeUserDependencies(): PurgeUserDependencies {
   };
 }
 
-function paddleBaseUrl(environment: string | undefined): string {
+/** Paddle Billing API origin. Unset or anything other than `sandbox` is production. */
+export function paddleBaseUrl(environment: string | undefined): string {
   return (environment ?? 'production') === 'sandbox'
     ? 'https://sandbox-api.paddle.com'
     : 'https://api.paddle.com';
@@ -381,6 +382,8 @@ async function cancelBilling(
   userId: string,
   deps: PurgeUserDependencies,
 ): Promise<BillingOutcome> {
+  // Checkout issuance and webhook attribution trim the configured secret too.
+  const customDataSecret = deps.paddleCustomDataSecret?.trim();
   const { data: subscription, error } = await admin
     .from('subscriptions')
     .select('paddle_subscription_id, paddle_customer_id, status')
@@ -464,8 +467,8 @@ async function cancelBilling(
         // Shared customer IDs are not ownership. Clearly foreign accounts are
         // left alone; missing or contradictory proof blocks erasure.
         if (typeof data?.user_id === 'string' && data.user_id !== userId) continue;
-        if (data?.user_id !== userId || !deps.paddleCustomDataSecret ||
-          !(await verifyCheckoutBinding(data, deps.paddleCustomDataSecret) || await verifyPaddleCustomDataSignature(userId, data.cd_sig, deps.paddleCustomDataSecret))) {
+        if (data?.user_id !== userId || !customDataSecret ||
+          !(await verifyCheckoutBinding(data, customDataSecret) || await verifyPaddleCustomDataSignature(userId, data.cd_sig, customDataSecret))) {
           return { ok: false, stage: 'billing_lookup', detail: 'Customer subscription ownership is ambiguous' };
         }
       }

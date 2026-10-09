@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { ReplayIntelligence } from "@/lib/replay-intelligence";
 import { renderForceCurve, renderVelocityBars } from "@/lib/replay-renderer";
+import { useThemeTokens } from "@/lib/theme-tokens";
 import type { TelemetryPointRow } from "@/schemas/telemetry";
 import { useReplayStore } from "@/stores/useReplayStore";
 
@@ -22,6 +23,8 @@ export function ReplayCanvas({
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const currentTimeMs = useReplayStore((state) => state.currentTimeMs);
 	const activeChart = useReplayStore((state) => state.activeChart);
+	// Redraw on a theme switch too, not only on the next playback tick.
+	const tokens = useThemeTokens();
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -44,6 +47,7 @@ export function ReplayCanvas({
 			currentTimeMs,
 			repBoundaries,
 			intelligence,
+			tokens,
 		};
 
 		if (activeChart === "force") {
@@ -59,6 +63,7 @@ export function ReplayCanvas({
 		activeChart,
 		repBoundaries,
 		intelligence,
+		tokens,
 	]);
 
 	return (

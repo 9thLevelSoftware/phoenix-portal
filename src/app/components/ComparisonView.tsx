@@ -91,7 +91,9 @@ function SessionSummaryCard({
 			<div className="text-xs text-muted-foreground uppercase tracking-wider mb-3">
 				{label}
 			</div>
-			<h3 className="text-lg font-semibold text-white mb-1">{summary.name}</h3>
+			<h3 className="text-lg font-semibold text-foreground mb-1">
+				{summary.name}
+			</h3>
 			<p className="text-sm text-muted-foreground mb-4">
 				{summary.startedAt.toLocaleDateString("en-US", {
 					weekday: "short",
@@ -103,25 +105,25 @@ function SessionSummaryCard({
 			<div className="grid grid-cols-2 gap-4 text-sm">
 				<div>
 					<div className="text-muted-foreground">Volume</div>
-					<div className="text-white font-semibold font-data">
+					<div className="text-foreground font-semibold font-data">
 						{formatVolume(summary.totalVolume, unit)}
 					</div>
 				</div>
 				<div>
 					<div className="text-muted-foreground">Duration</div>
-					<div className="text-white font-semibold font-data">
+					<div className="text-foreground font-semibold font-data">
 						{summary.duration}m
 					</div>
 				</div>
 				<div>
 					<div className="text-muted-foreground">Exercises</div>
-					<div className="text-white font-semibold font-data">
+					<div className="text-foreground font-semibold font-data">
 						{summary.exerciseCount}
 					</div>
 				</div>
 				<div>
 					<div className="text-muted-foreground">Sets</div>
-					<div className="text-white font-semibold font-data">
+					<div className="text-foreground font-semibold font-data">
 						{summary.setCount}
 					</div>
 				</div>
@@ -194,7 +196,7 @@ function ExerciseBreakdownTable({
 					<tbody>
 						{result.exerciseDeltas.map((ex) => (
 							<tr key={ex.name} className="border-b border-secondary/50">
-								<td className="py-3 text-white font-medium">{ex.name}</td>
+								<td className="py-3 text-foreground font-medium">{ex.name}</td>
 								<td className="py-3 text-right text-secondary-foreground">
 									{ex.onlyInB ? (
 										<span className="text-muted-foreground">—</span>
@@ -268,7 +270,7 @@ function ExerciseBreakdownMobile({
 			</h3>
 			{result.exerciseDeltas.map((ex) => (
 				<Card key={ex.name} className="bg-surface-2 border-secondary p-4">
-					<div className="font-medium text-white mb-3">{ex.name}</div>
+					<div className="font-medium text-foreground mb-3">{ex.name}</div>
 					{ex.onlyInA || ex.onlyInB ? (
 						<div className="text-sm text-muted-foreground">
 							{ex.onlyInA ? "Only in Session A" : "Only in Session B"}
@@ -314,7 +316,7 @@ export function ComparisonView() {
 	const navigate = useNavigate();
 	const isMobile = useIsMobile();
 	const unit = usePreferredWeightUnit();
-	const { isPremium, isLoading: subLoading } = useSubscription();
+	const { isEntitled, isLoading: subLoading } = useSubscription();
 
 	const sessionAId = searchParams.get("a") ?? "";
 	const sessionBId = searchParams.get("b") ?? "";
@@ -325,7 +327,7 @@ export function ComparisonView() {
 		error: errorA,
 	} = useQuery({
 		...comparisonDetailOptions(user?.id ?? "", sessionAId),
-		enabled: !!user && isPremium && !!sessionAId,
+		enabled: !!user && isEntitled && !!sessionAId,
 	});
 	const {
 		data: summaryB,
@@ -333,11 +335,11 @@ export function ComparisonView() {
 		error: errorB,
 	} = useQuery({
 		...comparisonDetailOptions(user?.id ?? "", sessionBId),
-		enabled: !!user && isPremium && !!sessionBId,
+		enabled: !!user && isEntitled && !!sessionBId,
 	});
 
 	// Tier gate: FREE users see upgrade prompt
-	if (!subLoading && !isPremium) {
+	if (!subLoading && !isEntitled) {
 		return (
 			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
@@ -355,16 +357,14 @@ export function ComparisonView() {
 				</div>
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
 					<Crown className="w-12 h-12 text-warning mx-auto mb-4" />
-					<h2 className="text-2xl font-semibold text-white mb-2">
+					<h2 className="text-2xl font-semibold text-foreground mb-2">
 						Premium Feature
 					</h2>
 					<p className="text-muted-foreground mb-6 max-w-md mx-auto">
 						Workout comparison is available to subscribers. Upgrade to compare
 						sessions side by side and track your progress.
 					</p>
-					<Button onClick={() => navigate("/pricing")} variant="cta">
-						View Plans
-					</Button>
+					<Button onClick={() => navigate("/pricing")}>View Plans</Button>
 				</div>
 			</div>
 		);
@@ -389,17 +389,13 @@ export function ComparisonView() {
 				</div>
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
 					<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
-					<h2 className="text-xl font-semibold text-white mb-2">
+					<h2 className="text-xl font-semibold text-foreground mb-2">
 						Cannot compare a session with itself
 					</h2>
 					<p className="text-muted-foreground">
 						Select two different sessions to compare.
 					</p>
-					<Button
-						onClick={() => navigate("/history")}
-						variant="cta"
-						className="mt-6"
-					>
+					<Button onClick={() => navigate("/history")} className="mt-6">
 						Return to History
 					</Button>
 				</div>
@@ -426,17 +422,13 @@ export function ComparisonView() {
 				</div>
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
 					<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
-					<h2 className="text-xl font-semibold text-white mb-2">
+					<h2 className="text-xl font-semibold text-foreground mb-2">
 						Missing Session IDs
 					</h2>
 					<p className="text-muted-foreground">
 						Navigate here from Workout History to compare two sessions.
 					</p>
-					<Button
-						onClick={() => navigate("/history")}
-						variant="cta"
-						className="mt-6"
-					>
+					<Button onClick={() => navigate("/history")} className="mt-6">
 						Go to History
 					</Button>
 				</div>
@@ -494,7 +486,7 @@ export function ComparisonView() {
 				</div>
 				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
 					<AlertCircle className="w-12 h-12 text-chart-2 mx-auto mb-4" />
-					<h2 className="text-xl font-semibold text-white mb-2">
+					<h2 className="text-xl font-semibold text-foreground mb-2">
 						Failed to Load Sessions
 					</h2>
 					<p className="text-muted-foreground">
@@ -502,11 +494,7 @@ export function ComparisonView() {
 							errorB?.message ||
 							"One or both sessions could not be loaded."}
 					</p>
-					<Button
-						onClick={() => navigate("/history")}
-						variant="cta"
-						className="mt-6"
-					>
+					<Button onClick={() => navigate("/history")} className="mt-6">
 						Return to History
 					</Button>
 				</div>
@@ -543,13 +531,13 @@ export function ComparisonView() {
 							content="Compare two workout sessions side-by-side to track progression"
 							side="bottom"
 						>
-							<h1 className="text-display-2 mb-2 text-white">
+							<h1 className="text-display-2 mb-2 text-foreground">
 								Session Comparison
 							</h1>
 						</FeatureHint>
 						<div className="flex items-center gap-3 flex-wrap text-sm">
 							<span className="text-muted-foreground">
-								<span className="font-medium text-white">A</span> ·{" "}
+								<span className="font-medium text-foreground">A</span> ·{" "}
 								{summaryA.name} ·{" "}
 								<time
 									dateTime={summaryA.startedAt.toISOString()}
@@ -561,7 +549,7 @@ export function ComparisonView() {
 							</span>
 							<span className="text-muted-foreground/60">vs</span>
 							<span className="text-muted-foreground">
-								<span className="font-medium text-white">B</span> ·{" "}
+								<span className="font-medium text-foreground">B</span> ·{" "}
 								{summaryB.name} ·{" "}
 								<time
 									dateTime={summaryB.startedAt.toISOString()}

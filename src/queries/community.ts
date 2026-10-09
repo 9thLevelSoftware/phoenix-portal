@@ -2,6 +2,10 @@ import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import {
+	fetchAllSupabasePages,
+	SUPABASE_FILTER_CHUNK_SIZE,
+} from "@/lib/supabasePaging";
+import {
 	communityVoteSchema,
 	creatorStatsSchema,
 	savedItemSchema,
@@ -39,7 +43,7 @@ type ProfileSummary = {
 	avatar_url: string | null;
 };
 
-async function hydrateProfiles<T extends { user_id: string | null }>(
+export async function hydrateProfiles<T extends { user_id: string | null }>(
 	rows: T[],
 ): Promise<Array<T & { profiles: ProfileSummary | null }>> {
 	const userIds = [
@@ -50,11 +54,18 @@ async function hydrateProfiles<T extends { user_id: string | null }>(
 
 	const profileMap: Record<string, ProfileSummary> = {};
 
-	if (userIds.length > 0) {
+	// One `.in(id)` puts every UUID on the request URL. A few hundred ids
+	// already exceed that limit, so profile lookups go out in chunks.
+	for (
+		let offset = 0;
+		offset < userIds.length;
+		offset += SUPABASE_FILTER_CHUNK_SIZE
+	) {
+		const chunk = userIds.slice(offset, offset + SUPABASE_FILTER_CHUNK_SIZE);
 		const { data: profiles, error } = await supabase
 			.from("public_profiles")
 			.select("id, display_name, avatar_url")
-			.in("id", userIds);
+			.in("id", chunk);
 
 		// Surface backend/RLS failures instead of silently rendering every creator
 		// as having no public profile.
@@ -104,19 +115,24 @@ export function communityFeedOptions(params: FeedParams) {
 			// two-step fetch: get feed rows first, then batch-fetch profiles.
 			let query = supabase.from(table).select(select);
 
-			// Sort
+			// Sort. `id` is the unique tiebreak after the timestamp so equal
+			// shared_at values cannot skip or repeat rows across offset pages.
 			if (params.sort === "new") {
-				query = query.order("shared_at", { ascending: false });
+				query = query
+					.order("shared_at", { ascending: false })
+					.order("id", { ascending: false });
 			} else if (params.sort === "hot") {
 				// "hot" ranks by the precomputed hot_score (recency-weighted votes),
-				// with shared_at as a deterministic tie-breaker.
+				// with shared_at then id as deterministic tie-breakers.
 				query = query
 					.order("hot_score", { ascending: false })
-					.order("shared_at", { ascending: false });
+					.order("shared_at", { ascending: false })
+					.order("id", { ascending: false });
 			} else {
 				query = query
 					.order("vote_count", { ascending: false })
-					.order("shared_at", { ascending: false });
+					.order("shared_at", { ascending: false })
+					.order("id", { ascending: false });
 			}
 
 			// Creator filter
@@ -223,12 +239,17 @@ export function savedItemsOptions(userId: string) {
 	return queryOptions({
 		queryKey: queryKeys.community.saves(userId),
 		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("saved_community_items")
-				.select("*")
-				.eq("user_id", userId)
-				.order("saved_at", { ascending: false });
-			if (error) throw error;
+			// One response is silently capped at PostgREST max_rows. saved_at
+			// is the display order; id keeps a page boundary from skipping ties.
+			const data = await fetchAllSupabasePages((from, to) =>
+				supabase
+					.from("saved_community_items")
+					.select("*")
+					.eq("user_id", userId)
+					.order("saved_at", { ascending: false })
+					.order("id", { ascending: false })
+					.range(from, to),
+			);
 			return z.array(savedItemSchema).parse(data);
 		},
 	});
@@ -239,7 +260,7 @@ export function isFollowingOptions(followerId: string, followedId: string) {
 		queryKey: queryKeys.community.follows(followerId, followedId),
 		queryFn: async () => {
 			const { data, error } = await supabase
-				.from("creator_follows" as never)
+				.from("creator_follows")
 				.select("id")
 				.eq("follower_id", followerId)
 				.eq("followed_id", followedId)
@@ -255,12 +276,18 @@ export function blockedUsersOptions(userId: string) {
 	return queryOptions({
 		queryKey: queryKeys.community.blocks(userId),
 		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("user_blocks" as never)
-				.select("blocked_id")
-				.eq("blocker_id", userId);
-			if (error) throw error;
-			return (data as { blocked_id: string }[]).map((row) => row.blocked_id);
+			// One response is silently capped at PostgREST max_rows.
+			// blocked_id is unique per blocker, so offset pages neither
+			// skip nor repeat a block.
+			const data = await fetchAllSupabasePages((from, to) =>
+				supabase
+					.from("user_blocks")
+					.select("blocked_id")
+					.eq("blocker_id", userId)
+					.order("blocked_id", { ascending: true })
+					.range(from, to),
+			);
+			return data.map((row) => row.blocked_id);
 		},
 	});
 }
@@ -270,11 +297,16 @@ export function userVotesOptions(userId: string) {
 		queryKey: queryKeys.community.votes(userId),
 		refetchOnWindowFocus: true,
 		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("community_votes")
-				.select("*")
-				.eq("user_id", userId);
-			if (error) throw error;
+			// One response is silently capped at PostgREST max_rows. id is
+			// unique, so offset pages neither skip nor repeat a vote.
+			const data = await fetchAllSupabasePages((from, to) =>
+				supabase
+					.from("community_votes")
+					.select("*")
+					.eq("user_id", userId)
+					.order("id", { ascending: true })
+					.range(from, to),
+			);
 			const votes = z.array(communityVoteSchema).parse(data);
 			return new Set(votes.map((v) => v.item_id));
 		},

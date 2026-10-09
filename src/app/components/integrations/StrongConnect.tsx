@@ -34,6 +34,7 @@ import {
 } from "@/lib/integrations/strong";
 import type { NormalizedActivity } from "@/lib/integrations/types";
 import { queryKeys } from "@/queries/keys";
+import { getDateRange, getTotalDuration } from "./activityPreview";
 
 interface StrongConnectProps {
 	userId: string;
@@ -61,7 +62,6 @@ export function StrongConnect({
 	const [isImporting, setIsImporting] = useState(false);
 	const [csvFileName, setCsvFileName] = useState<string | null>(null);
 	const [rawCsv, setRawCsv] = useState<string | null>(null);
-	const [importWeightUnit, setImportWeightUnit] = useState<"kg" | "lbs">("kg");
 	const [importDistanceUnit, setImportDistanceUnit] = useState<"km" | "miles">(
 		"km",
 	);
@@ -76,12 +76,8 @@ export function StrongConnect({
 	// =========================================================================
 
 	const reparseImportPreview = useCallback(
-		(
-			csvContent: string,
-			weightUnit: "kg" | "lbs",
-			distanceUnit: "km" | "miles",
-		) => {
-			const activities = parseStrongCSV(csvContent, weightUnit, distanceUnit);
+		(csvContent: string, distanceUnit: "km" | "miles") => {
+			const activities = parseStrongCSV(csvContent, distanceUnit);
 			setParsedActivities(activities.length > 0 ? activities : null);
 			return activities;
 		},
@@ -106,7 +102,6 @@ export function StrongConnect({
 					const csvContent = e.target?.result as string;
 					const activities = reparseImportPreview(
 						csvContent,
-						importWeightUnit,
 						importDistanceUnit,
 					);
 
@@ -119,7 +114,7 @@ export function StrongConnect({
 						return;
 					}
 
-					// Keep the raw CSV so we can reparse if the user changes the unit.
+					// Keep the raw CSV so we can reparse if the user changes the distance unit.
 					setRawCsv(csvContent);
 					setParsedActivities(activities);
 				} catch (_err) {
@@ -135,22 +130,7 @@ export function StrongConnect({
 			};
 			reader.readAsText(file);
 		},
-		[importWeightUnit, importDistanceUnit, reparseImportPreview],
-	);
-
-	// Reparse the already-loaded CSV when the import unit changes, so the preview
-	// and the imported values reflect the currently-selected unit.
-	const handleImportUnitChange = useCallback(
-		(unit: "kg" | "lbs") => {
-			setImportWeightUnit(unit);
-			if (!rawCsv) return;
-			try {
-				reparseImportPreview(rawCsv, unit, importDistanceUnit);
-			} catch {
-				setParsedActivities(null);
-			}
-		},
-		[importDistanceUnit, rawCsv, reparseImportPreview],
+		[importDistanceUnit, reparseImportPreview],
 	);
 
 	const handleImportDistanceUnitChange = useCallback(
@@ -158,12 +138,12 @@ export function StrongConnect({
 			setImportDistanceUnit(unit);
 			if (!rawCsv) return;
 			try {
-				reparseImportPreview(rawCsv, importWeightUnit, unit);
+				reparseImportPreview(rawCsv, unit);
 			} catch {
 				setParsedActivities(null);
 			}
 		},
-		[importWeightUnit, rawCsv, reparseImportPreview],
+		[rawCsv, reparseImportPreview],
 	);
 
 	const handleImport = useCallback(async () => {
@@ -232,29 +212,6 @@ export function StrongConnect({
 	}, [userId, exportWeightUnit]);
 
 	// =========================================================================
-	// Preview Helpers
-	// =========================================================================
-
-	function getDateRange(activities: NormalizedActivity[]): string {
-		if (activities.length === 0) return "";
-		const dates = activities.map((a) => new Date(a.started_at).getTime());
-		const earliest = new Date(Math.min(...dates));
-		const latest = new Date(Math.max(...dates));
-		return `${earliest.toLocaleDateString()} - ${latest.toLocaleDateString()}`;
-	}
-
-	function getTotalDuration(activities: NormalizedActivity[]): string {
-		const totalSeconds = activities.reduce(
-			(sum, a) => sum + a.duration_seconds,
-			0,
-		);
-		const hours = Math.floor(totalSeconds / 3600);
-		const minutes = Math.floor((totalSeconds % 3600) / 60);
-		if (hours > 0) return `${hours}h ${minutes}m`;
-		return `${minutes}m`;
-	}
-
-	// =========================================================================
 	// Shared UI: Weight Unit Toggle
 	// =========================================================================
 
@@ -278,7 +235,7 @@ export function StrongConnect({
 						onClick={() => onChange("kg")}
 						className={
 							value === "kg"
-								? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
+								? "bg-chart-5 hover:bg-chart-5/90 text-background border-0"
 								: ""
 						}
 					>
@@ -291,7 +248,7 @@ export function StrongConnect({
 						onClick={() => onChange("lbs")}
 						className={
 							value === "lbs"
-								? "bg-[#5856D6] hover:bg-[#5856D6]/90 text-white border-0"
+								? "bg-chart-5 hover:bg-chart-5/90 text-background border-0"
 								: ""
 						}
 					>
@@ -311,8 +268,8 @@ export function StrongConnect({
 		<Card className="border-border/50">
 			<CardHeader>
 				<div className="flex items-center gap-3">
-					<div className="flex items-center justify-center size-10 rounded-lg bg-[#5856D6]/10">
-						<Dumbbell className="size-5 text-[#5856D6]" />
+					<div className="flex items-center justify-center size-10 rounded-lg bg-[var(--chart-5)]/10">
+						<Dumbbell className="size-5 text-[var(--chart-5)]" />
 					</div>
 					<div>
 						<CardTitle className="text-base">Strong</CardTitle>
@@ -322,7 +279,7 @@ export function StrongConnect({
 					</div>
 					{isConnected && (
 						<div className="flex items-center gap-2">
-							<span className="text-xs text-[var(--color-forge-green)] flex items-center gap-1">
+							<span className="text-xs text-success flex items-center gap-1">
 								<CheckCircle className="size-3" />
 								Connected
 							</span>
@@ -366,7 +323,7 @@ export function StrongConnect({
 							onClick={handleExport}
 							disabled={isExporting}
 							size="sm"
-							className="bg-[#5856D6] hover:bg-[#5856D6]/90 text-white"
+							className="bg-chart-5 hover:bg-chart-5/90 text-background"
 						>
 							{isExporting ? (
 								"Exporting..."
@@ -385,12 +342,6 @@ export function StrongConnect({
 							Export your workouts from Strong (Settings &rarr; Export Workout
 							Data) and upload the CSV file here.
 						</p>
-
-						<WeightUnitToggle
-							value={importWeightUnit}
-							onChange={handleImportUnitChange}
-							description="Strong exports weights in your app's unit setting. Select the unit your Strong app uses so we can store values correctly."
-						/>
 
 						{/* Distance Unit Toggle */}
 						<div className="space-y-2">
@@ -449,7 +400,7 @@ export function StrongConnect({
 						{parsedActivities && parsedActivities.length > 0 && (
 							<div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-3">
 								<div className="flex items-center gap-2 text-sm font-medium">
-									<FileText className="size-4 text-[var(--color-phoenix-primary)]" />
+									<FileText className="size-4 text-primary" />
 									Import Preview
 									{csvFileName && (
 										<span className="text-muted-foreground font-normal">
@@ -482,7 +433,7 @@ export function StrongConnect({
 										onClick={handleImport}
 										disabled={isImporting}
 										size="sm"
-										className="bg-[#5856D6] hover:bg-[#5856D6]/90 text-white"
+										className="bg-chart-5 hover:bg-chart-5/90 text-background"
 									>
 										{isImporting
 											? "Importing..."

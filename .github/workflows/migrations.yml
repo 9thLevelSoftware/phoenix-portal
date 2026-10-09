@@ -7,8 +7,10 @@ name: Migrations
 # Then runs the full pgTAP suite and checks that the generated
 # src/lib/database.types.ts matches the migrated schema.
 #
-# Out of scope: diff vs live prod. That gate requires prod credentials
-# in CI and is tracked as a follow-up. See CLAUDE.md -> "Migration
+# Out of scope here: checks against live prod. prod-migration-drift.yml
+# compares prod's applied migration versions with these files (daily,
+# workflow_dispatch, and main pushes of that file). It needs prod
+# credentials that PR forks cannot reach. See CLAUDE.md -> "Migration
 # Workflow Discipline".
 
 # Keep the two path lists identical: everything the apply, the pgTAP suite
@@ -54,8 +56,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: migrations-${{ github.ref }}
-  cancel-in-progress: true
+  # Supersede stale PR runs, but never cancel post-merge runs on main: every main
+  # commit gets its own group (keyed by SHA), so neither an in-progress nor a
+  # pending main run can be replaced by a newer one.
+  group: migrations-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   clean-apply:
@@ -63,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # Single source for the CLI version: .supabase-cli-version (also read
       # by scripts/supabase-cli.mjs and scripts/gen-types.mjs, which refuses
@@ -159,29 +164,32 @@ jobs:
       # Full pgTAP suite (every file in supabase/tests/database/): definer
       # grant guard, dashboard capture, cross-user RLS isolation, trust plane,
       # profile preferences. Locally: `npm run test:db`.
+      # The log is captured so the test-count floor step can read Tests=
+      # without running the suite again.
       - name: pgTAP suite
-        run: supabase test db
+        run: |
+          set -euo pipefail
+          supabase test db 2>&1 | tee "${RUNNER_TEMP}/pgtap-suite.log"
 
       # Test-count floor (PR 25 review R-21). `supabase test db` only checks
-      # the exit code, and five of the six pgTAP files still use `no_plan()`,
-      # so DELETING an assertion leaves CI green with a smaller suite. That
-      # matters most for gamification_stats.test.sql, which is the only place
-      # the "a crafted payload cannot write a derived counter" claim is
-      # proven — a mutation that re-added the derived columns to the RPC's
-      # INSERT list was fully green against the whole suite before this PR.
-      # gamification_stats.test.sql itself now uses `SELECT plan(N)`; this
-      # floor covers the other five files.
+      # the exit code. The suite is every *.test.sql under
+      # supabase/tests/database/ (41 files). Nine declare SELECT plan(N) and
+      # fail when their own count changes; the other 32 still use no_plan(),
+      # so deleting an assertion, or a no_plan() file dropping out of the
+      # run, leaves CI green with a smaller suite. PGTAP_TEST_FLOOR is the
+      # minimum aggregate pg_prove Tests= count across that full run.
       #
       # Raise PGTAP_TEST_FLOOR whenever the suite grows. It is a floor, not
       # an equality check, so adding tests never fails the gate.
       - name: pgTAP test-count floor
         env:
-          # C10 added supabase/tests/database/epoch_zero_session_repair.test.sql
-          # with plan(27): 763 + 27 = 790.
+          # Minimum Tests= across the current 41-file suite. Raise this
+          # when assertions are added.
           PGTAP_TEST_FLOOR: "2058"
         run: |
           set -euo pipefail
-          summary="$(supabase test db 2>&1 | tee /dev/stderr | grep -oE 'Tests=[0-9]+' | tail -1 || true)"
+          log="${RUNNER_TEMP}/pgtap-suite.log"
+          summary="$(grep -oE 'Tests=[0-9]+' "$log" | tail -1 || true)"
           if [ -z "$summary" ]; then
             echo "::error::Could not parse the pg_prove 'Tests=<n>' summary. The CLI output shape changed — fix this step rather than removing it."
             exit 1
@@ -212,13 +220,6 @@ jobs:
         env:
           SUPABASE_BIN: supabase
         run: npm run gen:types:check
-
-      # SECURITY DEFINER grant guard: fails if any definer function in public
-      # is executable by anon/authenticated outside the browser allow-list,
-      # or lacks a pinned search_path. The full pgTAP suite is enabled
-      # separately; this runs only the guard file.
-      - name: pgTAP definer function grant guard
-        run: supabase test db supabase/tests/database/definer_function_grants.test.sql
 
       # Gating checks for 20260920007600: it must be a no-op against a
       # prod-shaped schema, idempotent, and correct on a drifted database that

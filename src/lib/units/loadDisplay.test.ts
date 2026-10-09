@@ -3,6 +3,8 @@ import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import {
 	formatLoad,
+	isUnavailableEchoLoad,
+	LOAD_UNAVAILABLE_TEXT,
 	LoadValue,
 	normalizeCableCount,
 	toLoadDisplay,
@@ -122,6 +124,30 @@ describe("LoadValue", () => {
 		);
 		expect(screen.getByTestId("load-value").textContent).toBe(
 			"20 kg per cable · 40 kg total",
+		);
+	});
+});
+
+describe("unmeasured Echo load (#1182)", () => {
+	it("treats the Echo 0 sentinel as unavailable, never 0 kg", () => {
+		expect(isUnavailableEchoLoad(0, "ECHO")).toBe(true);
+		expect(isUnavailableEchoLoad(null, "ECHO")).toBe(true);
+		expect(isUnavailableEchoLoad(80, "ECHO")).toBe(false);
+		expect(isUnavailableEchoLoad(0, "OLD_SCHOOL")).toBe(false);
+		expect(isUnavailableEchoLoad(0, null)).toBe(false);
+	});
+
+	it("renders Load unavailable for an unmeasured Echo set", () => {
+		render(
+			createElement(LoadValue, {
+				perCableKg: 0,
+				cableCount: 2,
+				unit: "kg",
+				workoutMode: "ECHO",
+			}),
+		);
+		expect(screen.getByTestId("load-value").textContent).toBe(
+			LOAD_UNAVAILABLE_TEXT,
 		);
 	});
 });

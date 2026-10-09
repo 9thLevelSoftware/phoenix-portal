@@ -129,7 +129,7 @@ export function AuthCallback() {
 			<div className="min-h-screen bg-background flex items-center justify-center px-4">
 				<Card className="w-full max-w-md p-8 bg-surface-2 border-secondary text-center">
 					<div className="flex items-center justify-center gap-2 mb-8">
-						<PhoenixLogo size="sm" animated={false} />
+						<PhoenixLogo />
 						<span className="text-xl text-primary font-semibold">
 							Phoenix Portal
 						</span>
@@ -139,7 +139,7 @@ export function AuthCallback() {
 						<Loader2 className="w-6 h-6 text-primary animate-spin" />
 					</div>
 
-					<h1 className="text-2xl font-semibold text-white mb-2">
+					<h1 className="text-2xl font-semibold text-foreground mb-2">
 						Finishing {providerLabel} sign-in
 					</h1>
 					<p className="text-sm text-muted-foreground">
@@ -154,20 +154,19 @@ export function AuthCallback() {
 		<div className="min-h-screen bg-background flex items-center justify-center px-4">
 			<Card className="w-full max-w-md p-8 bg-surface-2 border-secondary text-center">
 				<div className="flex items-center justify-center gap-2 mb-8">
-					<PhoenixLogo size="sm" animated={false} />
+					<PhoenixLogo />
 					<span className="text-xl text-primary font-semibold">
 						Phoenix Portal
 					</span>
 				</div>
 
-				<h1 className="text-2xl font-semibold text-white mb-2">
+				<h1 className="text-2xl font-semibold text-foreground mb-2">
 					{providerLabel} sign-in failed
 				</h1>
-				<p className="text-sm text-red-300 mb-6">{errorMessage}</p>
+				<p className="text-sm text-destructive mb-6">{errorMessage}</p>
 
 				<Button
 					type="button"
-					variant="cta"
 					className="w-full"
 					onClick={() => navigate("/", { replace: true })}
 				>

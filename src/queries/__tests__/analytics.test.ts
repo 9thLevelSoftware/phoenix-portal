@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SUPABASE_PAGE_SIZE } from "@/lib/supabasePaging";
 import { queryKeys } from "@/queries/keys";
 
 // --- Supabase chainable mock builder -------------------------------------
@@ -24,6 +25,21 @@ function buildChain(terminal: { data: unknown; error: unknown }) {
 	for (const m of methods) {
 		self[m].mockReturnValue({ ...self, ...terminal });
 	}
+	return self;
+}
+
+/** `.range(from)` resolves the page for that offset. */
+function pagedChain(pages: unknown[][]) {
+	const self: Record<string, ReturnType<typeof vi.fn>> = {};
+	for (const method of ["select", "eq", "gte", "order"]) {
+		self[method] = vi.fn(() => self);
+	}
+	self.range = vi.fn((from: number) =>
+		Promise.resolve({
+			data: pages[Math.floor(from / SUPABASE_PAGE_SIZE)] ?? [],
+			error: null,
+		}),
+	);
 	return self;
 }
 
@@ -152,6 +168,14 @@ describe("volumeTrendOptions", () => {
 	});
 });
 
+async function readMuscleGroups(userId: string, profileId?: string | null) {
+	const { muscleGroupOptions } = await import("../analytics");
+	const opts = muscleGroupOptions(userId, profileId);
+	const rows = await opts.queryFn!({} as never);
+	if (!opts.select) throw new Error("muscleGroupOptions select missing");
+	return opts.select(rows);
+}
+
 describe("muscleGroupOptions", () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
@@ -159,12 +183,12 @@ describe("muscleGroupOptions", () => {
 		fromFn.mockImplementation(() => chain);
 	});
 
-	it("uses analytics.summary query key with muscle-groups", async () => {
+	it("shares the exercise frequency query key", async () => {
 		mockRpc({ data: [], error: null });
 		const { muscleGroupOptions } = await import("../analytics");
 		const opts = muscleGroupOptions("user-1");
 		expect(opts.queryKey).toEqual(
-			queryKeys.analytics.summary("user-1", "muscle-groups"),
+			queryKeys.analytics.exerciseFrequency("user-1"),
 		);
 	});
 
@@ -193,9 +217,7 @@ describe("muscleGroupOptions", () => {
 			error: null,
 		});
 
-		const { muscleGroupOptions } = await import("../analytics");
-		const opts = muscleGroupOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await readMuscleGroups("user-1");
 
 		// Must NOT collapse to a single "General" bucket
 		expect(result.some((r: { name: string }) => r.name === "General")).toBe(
@@ -223,9 +245,7 @@ describe("muscleGroupOptions", () => {
 			error: null,
 		});
 
-		const { muscleGroupOptions } = await import("../analytics");
-		const opts = muscleGroupOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await readMuscleGroups("user-1");
 
 		expect(result).toEqual(
 			expect.arrayContaining([
@@ -256,9 +276,7 @@ describe("muscleGroupOptions", () => {
 			error: null,
 		});
 
-		const { muscleGroupOptions } = await import("../analytics");
-		const opts = muscleGroupOptions("user-1", "profile-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await readMuscleGroups("user-1", "profile-1");
 
 		expect(rpcFn).toHaveBeenCalledTimes(1);
 		expect(rpcFn).toHaveBeenCalledWith("exercise_frequency", {
@@ -290,9 +308,7 @@ describe("muscleGroupOptions", () => {
 
 	it("returns empty array when user has no sessions", async () => {
 		mockRpc({ data: [], error: null });
-		const { muscleGroupOptions } = await import("../analytics");
-		const opts = muscleGroupOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await readMuscleGroups("user-1");
 		expect(result).toEqual([]);
 	});
 });
@@ -504,6 +520,54 @@ describe("phaseStatisticsTrendOptions", () => {
 			"workout_sessions.local_profile_id",
 			"profile-1",
 		);
+		expect(chain.gte).toHaveBeenCalledWith(
+			"workout_sessions.started_at",
+			expect.any(String),
+		);
+		expect(chain.order).toHaveBeenCalledWith("created_at", { ascending: true });
+		expect(chain.order).toHaveBeenCalledWith("id", { ascending: true });
+		expect(chain.range).toHaveBeenCalledTimes(1);
+		expect(chain.range).toHaveBeenCalledWith(0, SUPABASE_PAGE_SIZE - 1);
+	});
+
+	it("pages period all past the silent row cap without a date filter", async () => {
+		const first = Array.from({ length: SUPABASE_PAGE_SIZE }, (_, i) => ({
+			id: `id-${i}`,
+			session_id: `session-${i}`,
+		}));
+		const tail = { id: "id-tail", session_id: "session-tail" };
+		chain = pagedChain([first, [tail]]) as typeof chain;
+		const { phaseStatisticsTrendOptions } = await import("../analytics");
+		const result = await phaseStatisticsTrendOptions(
+			"user-1",
+			"all",
+			"profile-1",
+		).queryFn!({} as never);
+
+		expect(result).toHaveLength(SUPABASE_PAGE_SIZE + 1);
+		expect(result.at(-1)).toEqual(tail);
+		expect(chain.gte).not.toHaveBeenCalled();
+		expect(chain.eq).toHaveBeenCalledWith("user_id", "user-1");
+		expect(chain.eq).toHaveBeenCalledWith(
+			"workout_sessions.local_profile_id",
+			"profile-1",
+		);
+		expect(chain.order).toHaveBeenCalledWith("created_at", { ascending: true });
+		expect(chain.order).toHaveBeenCalledWith("id", { ascending: true });
+		expect(chain.range).toHaveBeenCalledWith(0, SUPABASE_PAGE_SIZE - 1);
+		expect(chain.range).toHaveBeenCalledWith(
+			SUPABASE_PAGE_SIZE,
+			SUPABASE_PAGE_SIZE * 2 - 1,
+		);
+	});
+
+	it("throws on Supabase error", async () => {
+		chain = buildChain({ data: null, error: { message: "query error" } });
+		const { phaseStatisticsTrendOptions } = await import("../analytics");
+		const opts = phaseStatisticsTrendOptions("user-1", "all");
+		await expect(opts.queryFn!({} as never)).rejects.toEqual(
+			expect.objectContaining({ message: "query error" }),
+		);
 	});
 });
 
@@ -700,45 +764,10 @@ describe("session trend readers page past the 1,000-row cap (F-012/F-034, NF-19)
 		vi.clearAllMocks();
 	});
 
-	/** A chain whose `limit` resolves to the next queued page. */
-	function pagedChain(pages: Array<Array<Record<string, unknown>>>) {
-		const self: Record<string, ReturnType<typeof vi.fn>> = {};
-		for (const m of ["select", "eq", "not", "or", "gte", "lt", "order"]) {
-			self[m] = vi.fn(() => self);
-		}
-		let call = 0;
-		self.limit = vi.fn(() =>
-			Promise.resolve({ data: pages[call++] ?? [], error: null }),
-		);
-		return self;
-	}
-
 	const session = (i: number) => ({
 		id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
 		started_at: new Date(Date.UTC(2020, 0, 1) + i * 60_000).toISOString(),
 		form_score: 80,
-	});
-
-	it("formScoreTrendOptions('all') reads a second page and keeps the newest row", async () => {
-		const first = Array.from({ length: 1000 }, (_, i) => session(i));
-		const second = [session(1000)];
-		const chain = pagedChain([first, second]);
-		fromFn.mockImplementation(() => chain as never);
-
-		const { formScoreTrendOptions } = await import("../analytics");
-		const rows = await formScoreTrendOptions("user-1", "all").queryFn!(
-			{} as never,
-		);
-
-		expect(rows).toHaveLength(1001);
-		expect(rows.at(-1)?.id).toBe(session(1000).id);
-		expect(chain.limit).toHaveBeenCalledTimes(2);
-		// The second page starts strictly after the last row of the first.
-		const last = first[999];
-		expect(chain.or).toHaveBeenCalledWith(
-			`started_at.gt."${last.started_at}",and(started_at.eq."${last.started_at}",id.gt.${last.id})`,
-		);
-		expect(chain.order).toHaveBeenCalledWith("id", { ascending: true });
 	});
 
 	it("volumeComparisonOptions pages both windows instead of one capped select", async () => {
@@ -753,12 +782,17 @@ describe("session trend readers page past the 1,000-row cap (F-012/F-034, NF-19)
 			previous: [[]],
 		};
 		const limits: string[] = [];
+		const ors: string[] = [];
 		fromFn.mockImplementation(() => {
 			let window = "current";
 			const self: Record<string, ReturnType<typeof vi.fn>> = {};
-			for (const m of ["select", "eq", "not", "or", "gte", "order"]) {
+			for (const m of ["select", "eq", "not", "gte", "order"]) {
 				self[m] = vi.fn(() => self);
 			}
+			self.or = vi.fn((filter: string) => {
+				ors.push(filter);
+				return self;
+			});
 			self.lt = vi.fn(() => {
 				window = "previous";
 				return self;
@@ -781,6 +815,11 @@ describe("session trend readers page past the 1,000-row cap (F-012/F-034, NF-19)
 		expect(result.current).toHaveLength(1001);
 		expect(result.previous).toEqual([]);
 		expect(limits.filter((w) => w === "current")).toHaveLength(2);
+		// The second page starts strictly after the last row of the first.
+		const last = first[999];
+		expect(ors).toEqual([
+			`started_at.gt."${last.started_at}",and(started_at.eq."${last.started_at}",id.gt.${last.id})`,
+		]);
 	});
 });
 

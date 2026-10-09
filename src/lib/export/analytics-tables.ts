@@ -1,11 +1,11 @@
 import { format } from "date-fns";
 import JSZip from "jszip";
 import Papa from "papaparse";
+import { authoritativeRepPower } from "@/lib/biomechanics";
 import type {
 	BodyMuscleFocusModel,
 	BodyMuscleFocusRow,
 } from "@/lib/body-muscle-analytics";
-import { authoritativeRepPower } from "@/lib/biomechanics";
 import { loadBodyMuscleAnalytics } from "@/lib/body-muscle-analytics-loader";
 import { supabase } from "@/lib/supabase";
 import {
@@ -14,9 +14,6 @@ import {
 } from "@/lib/supabasePaging";
 import { convertWeight, getUnitLabel, type WeightUnit } from "@/lib/units";
 import { normalizeCableCount } from "@/lib/units/loadDisplay";
-
-// Re-exported for existing callers; the helpers now live in supabasePaging.ts.
-export { fetchAllSupabasePages, fetchAllSupabasePagesForChunks };
 
 type ProgressCallback = (step: string, current: number, total: number) => void;
 
@@ -257,8 +254,12 @@ export function generateRepSummaryCsv(rows: AnalyticsRepSummaryRow[]): string {
 		"Peak Velocity (m/s)": row.peakVelocityMps ?? "",
 		"Mean Force (N)": row.meanForceN ?? "",
 		"Peak Force (N)": row.peakForceN ?? "",
-		"Mean Cable-work Proxy (W)": row.powerMethod === "PAIRED_CABLE_WORK_V1" ? row.powerWatts ?? "" : "",
-		"Peak Cable-work Proxy (W)": row.powerMethod === "PAIRED_CABLE_WORK_V1" ? row.peakPowerWatts ?? "" : "",
+		"Mean Cable-work Proxy (W)":
+			row.powerMethod === "PAIRED_CABLE_WORK_V1" ? (row.powerWatts ?? "") : "",
+		"Peak Cable-work Proxy (W)":
+			row.powerMethod === "PAIRED_CABLE_WORK_V1"
+				? (row.peakPowerWatts ?? "")
+				: "",
 		"Power Method": row.powerMethod ?? "LEGACY_UNKNOWN_V0",
 		"ROM (mm)": row.romMm ?? "",
 		"TUT (ms)": row.tutMs ?? "",

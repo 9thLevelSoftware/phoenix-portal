@@ -58,5 +58,3 @@ export const createGoalSchema = z
 			path: ["exercise_name"],
 		},
 	);
-
-export type CreateGoalInput = z.infer<typeof createGoalSchema>;

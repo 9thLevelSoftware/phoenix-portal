@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import { useThemeTokens, withAlpha } from "@/lib/theme-tokens";
+import { CHART_COLORS } from "./shared/ChartTheme";
 import { EChartsWrapper } from "./shared/EChartsWrapper";
 
 export interface CommunityDistributionProps {
@@ -79,6 +81,8 @@ export function CommunityDistribution({
 	color,
 	label,
 }: CommunityDistributionProps) {
+	const themeTokens = useThemeTokens();
+	const chartColors = CHART_COLORS(themeTokens);
 	const points = useMemo(
 		() => generateBellCurvePoints(percentiles),
 		[percentiles],
@@ -141,8 +145,10 @@ export function CommunityDistribution({
 					data: leftPoints,
 					smooth: true,
 					symbol: "none",
-					lineStyle: { color: "#4B5563", width: 1.5 },
-					areaStyle: { color: "#4B556322" },
+					lineStyle: { color: chartColors.axisText, width: 1.5 },
+					areaStyle: {
+						color: withAlpha(chartColors.axisText, 0.13),
+					},
 					silent: true,
 					z: 1,
 				},
@@ -153,7 +159,7 @@ export function CommunityDistribution({
 					smooth: true,
 					symbol: "none",
 					lineStyle: { color, width: 1.5 },
-					areaStyle: { color: `${color}33` },
+					areaStyle: { color: withAlpha(color, 0.2) },
 					silent: true,
 					z: 2,
 					markLine: {
@@ -177,14 +183,14 @@ export function CommunityDistribution({
 				},
 			],
 		};
-	}, [points, userValue, color]);
+	}, [points, userValue, color, chartColors.axisText]);
 
 	if (!hasData) {
 		return (
 			<div
 				role="img"
 				aria-label={`${label} community distribution: not enough community data. Your value: ${userValue}`}
-				className="flex items-center justify-center text-xs text-gray-500"
+				className="flex items-center justify-center text-xs text-muted-foreground"
 				style={{ height: 60 }}
 			>
 				Not enough community data

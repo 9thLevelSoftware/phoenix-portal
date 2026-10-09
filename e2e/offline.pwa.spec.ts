@@ -28,8 +28,14 @@ test("app shell boots offline; visited routes work, unvisited ones say offline",
 	page,
 	context,
 }) => {
+	// A production bundle that throws at load (e.g. a circular vendor chunk)
+	// renders nothing; surface that as the failure instead of a missing heading.
+	const pageErrors: string[] = [];
+	page.on("pageerror", (error) => pageErrors.push(error.message));
+
 	// Online: open one lazy route so its chunk lands in the runtime cache.
 	await page.goto("/terms");
+	expect(pageErrors).toEqual([]);
 	await expect(
 		page.getByRole("heading", { name: /Terms/i }).first(),
 	).toBeVisible();

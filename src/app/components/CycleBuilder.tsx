@@ -24,6 +24,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/app/components/ui/dialog";
+import { FormErrorSummary } from "@/app/components/ui/form-error-summary";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
 import {
@@ -111,6 +112,7 @@ export function CycleBuilder() {
 	const [showRoutinePicker, setShowRoutinePicker] = useState(false);
 	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+	const [formErrors, setFormErrors] = useState<string[]>([]);
 
 	// Progression settings. Defaults mirror what the phone does when a cycle
 	// has no progression keys (no weight increase, every 2 cycles), because
@@ -245,6 +247,16 @@ export function CycleBuilder() {
 	};
 
 	const handleSave = () => {
+		const nextErrors: string[] = [];
+		if (!cycleName.trim()) {
+			nextErrors.push("Give this cycle a name.");
+		}
+		if (nextErrors.length > 0) {
+			setFormErrors(nextErrors);
+			return;
+		}
+		setFormErrors([]);
+
 		// Every value is a string so mobile's Map<String, String> decode
 		// succeeds; mobile reads frequencyCycles / weightIncreasePercent.
 		const progressionSettings = buildCycleProgressionSettings(
@@ -399,6 +411,9 @@ export function CycleBuilder() {
 
 	return (
 		<div className="min-h-screen pb-8">
+			<div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
+				<FormErrorSummary messages={formErrors} />
+			</div>
 			{/* Sticky Top Bar */}
 			<div className="sticky top-0 z-40 bg-surface-1 border-b border-secondary px-4 py-4">
 				<div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -407,14 +422,23 @@ export function CycleBuilder() {
 							variant="ghost"
 							size="sm"
 							onClick={handleCancel}
-							className="text-muted-foreground hover:text-white"
+							className="text-muted-foreground hover:text-foreground"
 						>
 							<ChevronLeft className="w-5 h-5 mr-1" />
 							Cancel
 						</Button>
 
+						<Label
+							htmlFor="cycle-name"
+							className="text-xs text-muted-foreground"
+						>
+							Cycle name
+						</Label>
 						<Input
+							id="cycle-name"
 							value={cycleName}
+							// The save-time summary jumps to this field while the name is blank.
+							aria-invalid={formErrors.length > 0 && !cycleName.trim()}
 							onChange={(e) => {
 								setCycleName(e.target.value);
 								setHasUnsavedChanges(true);
@@ -445,7 +469,6 @@ export function CycleBuilder() {
 						<Button
 							onClick={handleSave}
 							disabled={saveMutation.isPending || updateMutation.isPending}
-							variant="cta"
 						>
 							{saveMutation.isPending || updateMutation.isPending ? (
 								<Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -468,7 +491,7 @@ export function CycleBuilder() {
 					animate={{ opacity: 1, y: 0 }}
 				>
 					<Card className="p-6 bg-surface-2 border-secondary">
-						<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
+						<h2 className="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
 							<Calendar className="w-5 h-5 text-primary" />
 							Cycle Details
 						</h2>
@@ -520,10 +543,14 @@ export function CycleBuilder() {
 							</div>
 
 							<div className="md:col-span-2">
-								<Label className="text-secondary-foreground mb-2">
+								<Label
+									htmlFor="cycle-description"
+									className="text-secondary-foreground mb-2"
+								>
 									Description
 								</Label>
 								<Textarea
+									id="cycle-description"
 									value={description}
 									onChange={(e) => {
 										setDescription(e.target.value);
@@ -535,10 +562,14 @@ export function CycleBuilder() {
 							</div>
 
 							<div>
-								<Label className="text-secondary-foreground mb-2">
+								<Label
+									htmlFor="cycle-start-date"
+									className="text-secondary-foreground mb-2"
+								>
 									Start Date (Optional)
 								</Label>
 								<Input
+									id="cycle-start-date"
 									type="date"
 									value={startDate}
 									onChange={(e) => {
@@ -566,7 +597,7 @@ export function CycleBuilder() {
 				>
 					<Card className="p-6 bg-surface-2 border-secondary">
 						<div className="flex items-center justify-between mb-6">
-							<h2 className="text-xl font-semibold text-white flex items-center gap-2">
+							<h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
 								<Dumbbell className="w-5 h-5 text-primary" />
 								Workout Schedule
 							</h2>
@@ -701,7 +732,7 @@ export function CycleBuilder() {
 					transition={{ delay: 0.3 }}
 				>
 					<Card className="p-6 bg-surface-2 border-secondary">
-						<h2 className="text-xl font-semibold text-white mb-6">
+						<h2 className="text-xl font-semibold text-foreground mb-6">
 							Week at a Glance
 						</h2>
 
@@ -841,7 +872,7 @@ function DayCard({
 				onClick={onClick}
 				className={`p-4 ${
 					day.type === "workout"
-						? "bg-gradient-to-br from-primary/10 to-chart-2/5 border-l-4 border-l-[#FF6B35]"
+						? "bg-gradient-to-br from-primary/10 to-chart-2/5 border-l-4 border-l-[var(--primary)]"
 						: "bg-gradient-to-br from-secondary/20 to-background border-secondary"
 				}`}
 			>
@@ -854,7 +885,7 @@ function DayCard({
 				{day.type === "workout" && day.routineName ? (
 					<div className="text-center space-y-2">
 						<Dumbbell className="w-6 h-6 text-primary mx-auto" />
-						<div className="font-semibold text-white text-sm">
+						<div className="font-semibold text-foreground text-sm">
 							{day.routineName}
 						</div>
 						<div className="text-xs text-muted-foreground">
@@ -915,7 +946,7 @@ function DayEditorPanel({
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
 			<div className="flex items-center justify-between mb-6">
-				<h3 className="text-lg font-semibold text-white">
+				<h3 className="text-lg font-semibold text-foreground">
 					Day {day.dayNumber} Configuration
 				</h3>
 				<Button variant="ghost" size="sm" onClick={onClose}>
@@ -932,7 +963,7 @@ function DayEditorPanel({
 							</Label>
 							<div className="flex items-center gap-2">
 								<div className="flex-1 p-3 bg-background border border-secondary rounded-lg">
-									<div className="font-semibold text-white">
+									<div className="font-semibold text-foreground">
 										{day.routineName}
 									</div>
 									<div className="text-sm text-muted-foreground">
@@ -973,7 +1004,10 @@ function DayEditorPanel({
 
 						<div className="space-y-4">
 							<div>
-								<Label className="text-sm text-muted-foreground mb-2">
+								<Label
+									htmlFor={`day-${day.dayNumber}-weight-adjustment`}
+									className="text-sm text-muted-foreground mb-2"
+								>
 									Weight Adjustment (%)
 								</Label>
 								<div className="flex items-center gap-2">
@@ -990,6 +1024,7 @@ function DayEditorPanel({
 										-
 									</Button>
 									<Input
+										id={`day-${day.dayNumber}-weight-adjustment`}
 										type="number"
 										value={day.weightAdjustment || 0}
 										onChange={(e) =>
@@ -1015,7 +1050,10 @@ function DayEditorPanel({
 							</div>
 
 							<div>
-								<Label className="text-sm text-muted-foreground mb-2">
+								<Label
+									htmlFor={`day-${day.dayNumber}-rep-modifier`}
+									className="text-sm text-muted-foreground mb-2"
+								>
 									Rep Modifier
 								</Label>
 								<div className="flex items-center gap-2">
@@ -1030,6 +1068,7 @@ function DayEditorPanel({
 										-
 									</Button>
 									<Input
+										id={`day-${day.dayNumber}-rep-modifier`}
 										type="number"
 										value={day.repModifier || 0}
 										onChange={(e) =>
@@ -1055,8 +1094,14 @@ function DayEditorPanel({
 					</div>
 
 					<div>
-						<Label className="text-secondary-foreground mb-2">Notes</Label>
+						<Label
+							htmlFor={`day-${day.dayNumber}-workout-notes`}
+							className="text-secondary-foreground mb-2"
+						>
+							Notes
+						</Label>
 						<Textarea
+							id={`day-${day.dayNumber}-workout-notes`}
 							value={day.notes || ""}
 							onChange={(e) => onUpdate({ notes: e.target.value })}
 							className="bg-background border-secondary"
@@ -1081,14 +1126,22 @@ function DayEditorPanel({
 					</div>
 
 					<div>
-						<Label className="text-secondary-foreground mb-2">Rest Type</Label>
+						<Label
+							htmlFor={`day-${day.dayNumber}-rest-type`}
+							className="text-secondary-foreground mb-2"
+						>
+							Rest Type
+						</Label>
 						<Select
 							value={day.restType || "complete"}
 							onValueChange={(value: "complete" | "active" | "mobility") =>
 								onUpdate({ restType: value })
 							}
 						>
-							<SelectTrigger className="bg-background border-secondary">
+							<SelectTrigger
+								id={`day-${day.dayNumber}-rest-type`}
+								className="bg-background border-secondary"
+							>
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -1100,8 +1153,14 @@ function DayEditorPanel({
 					</div>
 
 					<div>
-						<Label className="text-secondary-foreground mb-2">Notes</Label>
+						<Label
+							htmlFor={`day-${day.dayNumber}-rest-notes`}
+							className="text-secondary-foreground mb-2"
+						>
+							Notes
+						</Label>
 						<Textarea
+							id={`day-${day.dayNumber}-rest-notes`}
 							value={day.notes || ""}
 							onChange={(e) => onUpdate({ notes: e.target.value })}
 							className="bg-background border-secondary"
@@ -1178,7 +1237,7 @@ function ProgressionRules({
 
 	return (
 		<Card className="p-6 bg-surface-2 border-secondary">
-			<h2 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
+			<h2 className="text-xl font-semibold text-foreground mb-6 flex items-center gap-2">
 				<Settings className="w-5 h-5 text-primary" />
 				Progression Rules
 			</h2>
@@ -1187,7 +1246,10 @@ function ProgressionRules({
 				{/* Progression Type */}
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 					<div>
-						<Label className="text-secondary-foreground mb-2">
+						<Label
+							htmlFor="progression-type"
+							className="text-secondary-foreground mb-2"
+						>
 							Progression Type
 						</Label>
 						<Select
@@ -1196,7 +1258,10 @@ function ProgressionRules({
 								onProgressionTypeChange(v as "percentage" | "fixed" | "manual")
 							}
 						>
-							<SelectTrigger className="bg-background border-secondary">
+							<SelectTrigger
+								id="progression-type"
+								className="bg-background border-secondary"
+							>
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -1273,7 +1338,10 @@ function ProgressionRules({
 					</div>
 
 					<div>
-						<Label className="text-secondary-foreground mb-2">
+						<Label
+							htmlFor="progression-trigger"
+							className="text-secondary-foreground mb-2"
+						>
 							Progression Trigger
 						</Label>
 						<Select
@@ -1284,7 +1352,10 @@ function ProgressionRules({
 								)
 							}
 						>
-							<SelectTrigger className="bg-background border-secondary">
+							<SelectTrigger
+								id="progression-trigger"
+								className="bg-background border-secondary"
+							>
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
@@ -1341,7 +1412,7 @@ function ProgressionRules({
 				<div className="border-t border-secondary pt-6">
 					<div className="flex items-center justify-between mb-4">
 						<div>
-							<Label className="text-white text-base">Deload Week</Label>
+							<Label className="text-foreground text-base">Deload Week</Label>
 							<p className="text-xs text-muted-foreground">
 								Periodically reduce intensity for recovery
 							</p>
@@ -1358,10 +1429,14 @@ function ProgressionRules({
 					{includeDeload && (
 						<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 							<div>
-								<Label className="text-secondary-foreground mb-2">
+								<Label
+									htmlFor="deload-frequency"
+									className="text-secondary-foreground mb-2"
+								>
 									Every N weeks
 								</Label>
 								<Input
+									id="deload-frequency"
 									type="number"
 									value={deloadFrequency}
 									onChange={(e) =>
@@ -1372,10 +1447,14 @@ function ProgressionRules({
 								/>
 							</div>
 							<div>
-								<Label className="text-secondary-foreground mb-2">
+								<Label
+									htmlFor="deload-intensity"
+									className="text-secondary-foreground mb-2"
+								>
 									Intensity (% of normal)
 								</Label>
 								<Input
+									id="deload-intensity"
 									type="number"
 									value={deloadIntensity}
 									onChange={(e) =>
@@ -1387,10 +1466,14 @@ function ProgressionRules({
 								/>
 							</div>
 							<div>
-								<Label className="text-secondary-foreground mb-2">
+								<Label
+									htmlFor="deload-volume"
+									className="text-secondary-foreground mb-2"
+								>
 									Volume (% of normal)
 								</Label>
 								<Input
+									id="deload-volume"
 									type="number"
 									value={deloadVolume}
 									onChange={(e) =>
@@ -1440,7 +1523,7 @@ function PreviewModal({
 		<Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
 			<DialogContent className="bg-surface-2 border-secondary max-w-2xl max-h-[80vh] overflow-y-auto">
 				<DialogHeader>
-					<DialogTitle className="text-white text-xl">
+					<DialogTitle className="text-foreground text-xl">
 						{cycle.name || "Untitled Cycle"}
 					</DialogTitle>
 					<DialogDescription>
@@ -1453,7 +1536,7 @@ function PreviewModal({
 					<div className="grid grid-cols-3 gap-4">
 						<div className="p-3 bg-background rounded-lg border border-secondary text-center">
 							<div className="text-sm text-muted-foreground">Duration</div>
-							<div className="text-2xl font-bold text-white">
+							<div className="text-2xl font-bold text-foreground">
 								{cycle.duration}
 							</div>
 							<div className="text-xs text-muted-foreground">days</div>
@@ -1495,7 +1578,7 @@ function PreviewModal({
 									{day.type === "workout" ? (
 										<>
 											<Dumbbell className="w-3 h-3 text-primary mx-auto my-1" />
-											<div className="text-white truncate text-[10px]">
+											<div className="text-foreground truncate text-[10px]">
 												{day.routineName || "TBD"}
 											</div>
 										</>
@@ -1513,14 +1596,14 @@ function PreviewModal({
 							Progression
 						</h4>
 						<div className="p-3 bg-background rounded-lg border border-secondary space-y-1">
-							<div className="text-sm text-white">
+							<div className="text-sm text-foreground">
 								Type:{" "}
 								<span className="text-primary capitalize">
 									{cycle.progression.type}
 								</span>
 							</div>
 							{cycle.progression.type !== "manual" && (
-								<div className="text-sm text-white">
+								<div className="text-sm text-foreground">
 									Amount:{" "}
 									<span className="text-primary">
 										{cycle.progression.type === "percentage"
@@ -1529,13 +1612,13 @@ function PreviewModal({
 									</span>
 								</div>
 							)}
-							<div className="text-sm text-white">
+							<div className="text-sm text-foreground">
 								Every:{" "}
 								<span className="text-primary">
 									{cycle.progression.frequency} week(s)
 								</span>
 							</div>
-							<div className="text-sm text-white">
+							<div className="text-sm text-foreground">
 								Trigger:{" "}
 								<span className="text-primary">
 									{cycle.progression.trigger.replace(/_/g, " ")}
@@ -1551,19 +1634,19 @@ function PreviewModal({
 								Deload Schedule
 							</h4>
 							<div className="p-3 bg-background rounded-lg border border-secondary space-y-1">
-								<div className="text-sm text-white">
+								<div className="text-sm text-foreground">
 									Every{" "}
 									<span className="text-primary">
 										{cycle.deload.frequency} weeks
 									</span>
 								</div>
-								<div className="text-sm text-white">
+								<div className="text-sm text-foreground">
 									Intensity:{" "}
 									<span className="text-primary">
 										{cycle.deload.intensity}% of normal
 									</span>
 								</div>
-								<div className="text-sm text-white">
+								<div className="text-sm text-foreground">
 									Volume:{" "}
 									<span className="text-primary">
 										{cycle.deload.volume}% of normal

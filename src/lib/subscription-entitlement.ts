@@ -4,15 +4,16 @@
  * The predicate itself has ONE TypeScript implementation (F-059):
  * `supabase/functions/_shared/subscriptionEntitlement.ts`, shared with the Edge
  * Functions. This module re-exports it under the names the SPA already uses
- * and adds only SPA concerns (the refresh-staleness check below). SQL keeps
- * its own copy in `public.subscription_tier_for(uuid)`; both are pinned to
- * tests/fixtures/entitlement-cases.json, so change them together.
+ * and adds only SPA concerns (the refresh-staleness check below). `TIER_LEVEL`
+ * is that file's rank ladder (FREE < EMBER < FLAME < INFERNO). SQL keeps its
+ * own copy of the entitlement predicate in `public.subscription_tier_for`;
+ * both predicates are pinned to tests/fixtures/entitlement-cases.json, so
+ * change them together.
  */
 import {
 	ENTITLEMENT_GRACE_HOURS as ENTITLEMENT_GRACE_HOURS_VALUE,
 	type EntitlementOptions,
 	effectiveSubscriptionTier,
-	isSubscriptionEntitled,
 	type SubscriptionStatus,
 	type SubscriptionTier,
 } from "../../supabase/functions/_shared/subscriptionEntitlement.ts";
@@ -22,6 +23,7 @@ export {
 	type EntitlementOptions,
 	type SubscriptionStatus,
 	type SubscriptionTier,
+	TIER_LEVEL,
 } from "../../supabase/functions/_shared/subscriptionEntitlement.ts";
 
 export const ACTIVE_SUBSCRIPTION_STATUSES: ReadonlySet<SubscriptionStatus> =
@@ -43,15 +45,6 @@ export const PAST_DUE_REFRESH_AFTER_DAYS = 3;
 
 const HOUR_MS = 60 * 60 * 1000;
 const PAST_DUE_REFRESH_AFTER_MS = PAST_DUE_REFRESH_AFTER_DAYS * 24 * HOUR_MS;
-
-/** Whether the row grants access now; see `isSubscriptionEntitled`. */
-export function hasCurrentPeriodAccess(
-	status: SubscriptionStatus,
-	currentPeriodEnd: string | null | undefined,
-	options: EntitlementOptions = {},
-): boolean {
-	return isSubscriptionEntitled(status, currentPeriodEnd, options);
-}
 
 /** The stored paid tier when entitled, otherwise FREE (fails closed). */
 export function getEffectiveSubscriptionTier(

@@ -9,20 +9,25 @@ import { TooltipWithBounds, useTooltip } from "@visx/tooltip";
 import { useMemo } from "react";
 import { ASYMMETRY_THRESHOLD, calculateAsymmetry } from "@/lib/biomechanics";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import type { RepSummary } from "@/schemas/telemetry";
 
-// -- Colors --
-const COLOR_BALANCED = PHOENIX.forgeGreen; // Forge Green
-const COLOR_IMBALANCED = PHOENIX.flameRed; // Flame Red
-const COLOR_AXIS = PHOENIX.ashGray;
-const COLOR_THRESHOLD = PHOENIX.gold; // Gold for threshold lines
-const COLOR_TEXT = "#D1D5DB";
+function getAsymmetryColors() {
+	const phoenix = PHOENIX();
+	return {
+		balanced: phoenix.forgeGreen,
+		imbalanced: phoenix.flameRed,
+		axis: phoenix.ashGray,
+		threshold: phoenix.gold,
+	};
+}
+
+const COLOR_TEXT = "var(--foreground)";
+const CHART_HEIGHT = 300;
 
 // -- Types --
 export interface AsymmetryGaugeProps {
 	repSummaries: RepSummary[];
-	height?: number;
-	mode?: "per-rep" | "summary";
 }
 
 interface TooltipData {
@@ -45,24 +50,16 @@ function getAsymmetryLabel(pct: number): string {
 	return pct > 0 ? `R+${Math.abs(pct)}%` : `L+${Math.abs(pct)}%`;
 }
 
-function getSummaryLabel(avg: number): string {
-	const abs = Math.abs(avg);
-	const direction = avg > 0 ? "Right" : "Left";
-	if (abs <= 2) return "Balanced";
-	if (abs <= ASYMMETRY_THRESHOLD) return `Slight ${direction} Imbalance`;
-	return `Significant ${direction} Imbalance`;
-}
-
 // -- Per-Rep Mode --
 function PerRepChart({
 	repSummaries,
 	width,
-	height,
 }: {
 	repSummaries: RepSummary[];
 	width: number;
-	height: number;
 }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const {
 		tooltipOpen,
 		tooltipData,
@@ -74,7 +71,7 @@ function PerRepChart({
 
 	const margin = { top: 30, right: 60, bottom: 40, left: 50 };
 	const innerWidth = width - margin.left - margin.right;
-	const innerHeight = height - margin.top - margin.bottom;
+	const innerHeight = CHART_HEIGHT - margin.top - margin.bottom;
 
 	const repIds = useMemo(
 		() => repSummaries.map((_, i) => String(i + 1)),
@@ -116,7 +113,7 @@ function PerRepChart({
 		<>
 			<svg
 				width={width}
-				height={height}
+				height={CHART_HEIGHT}
 				role="img"
 				aria-label="Cable asymmetry gauge"
 			>
@@ -149,7 +146,7 @@ function PerRepChart({
 							key={t}
 							from={{ x: xScale(t), y: 0 }}
 							to={{ x: xScale(t), y: innerHeight }}
-							stroke={COLOR_THRESHOLD}
+							stroke={getAsymmetryColors().threshold}
 							strokeWidth={1}
 							strokeDasharray="4,3"
 							opacity={0.6}
@@ -160,7 +157,7 @@ function PerRepChart({
 					<Line
 						from={{ x: centerX, y: 0 }}
 						to={{ x: centerX, y: innerHeight }}
-						stroke={COLOR_AXIS}
+						stroke={getAsymmetryColors().axis}
 						strokeWidth={1}
 					/>
 
@@ -168,7 +165,9 @@ function PerRepChart({
 					{repSummaries.map((rep, i) => {
 						const a = asymmetries[i];
 						const isBalanced = Math.abs(a) <= ASYMMETRY_THRESHOLD;
-						const barColor = isBalanced ? COLOR_BALANCED : COLOR_IMBALANCED;
+						const barColor = isBalanced
+							? getAsymmetryColors().balanced
+							: getAsymmetryColors().imbalanced;
 						const barX = a >= 0 ? centerX : xScale(a);
 						const barWidth = Math.abs(xScale(a) - centerX);
 						const barY = yScale(String(i + 1)) ?? 0;
@@ -224,8 +223,8 @@ function PerRepChart({
 							(v) => Math.abs(v) <= maxAbs,
 						)}
 						tickFormat={(v) => `${v as number}%`}
-						stroke={COLOR_AXIS}
-						tickStroke={COLOR_AXIS}
+						stroke={getAsymmetryColors().axis}
+						tickStroke={getAsymmetryColors().axis}
 						tickLabelProps={() => ({
 							fill: COLOR_TEXT,
 							fontSize: 10,
@@ -236,8 +235,8 @@ function PerRepChart({
 					<AxisLeft
 						scale={yScale}
 						tickFormat={(v) => `Rep ${v}`}
-						stroke={COLOR_AXIS}
-						tickStroke={COLOR_AXIS}
+						stroke={getAsymmetryColors().axis}
+						tickStroke={getAsymmetryColors().axis}
 						tickLabelProps={() => ({
 							fill: COLOR_TEXT,
 							fontSize: 10,
@@ -255,9 +254,9 @@ function PerRepChart({
 					left={tooltipLeft}
 					top={tooltipTop}
 					style={{
-						background: "#1F2937",
+						background: "var(--surface-3)",
 						color: COLOR_TEXT,
-						border: "1px solid #374151",
+						border: "1px solid var(--border)",
 						borderRadius: 6,
 						padding: "8px 12px",
 						fontSize: 12,
@@ -273,7 +272,9 @@ function PerRepChart({
 					<div>Asymmetry: {tooltipData.asymmetry.toFixed(1)}%</div>
 					<div
 						style={{
-							color: tooltipData.isBalanced ? COLOR_BALANCED : COLOR_IMBALANCED,
+							color: tooltipData.isBalanced
+								? getAsymmetryColors().balanced
+								: getAsymmetryColors().imbalanced,
 						}}
 					>
 						{tooltipData.isBalanced ? "Balanced" : "Imbalanced"}
@@ -284,89 +285,15 @@ function PerRepChart({
 	);
 }
 
-// -- Summary Mode --
-function SummaryDisplay({ repSummaries }: { repSummaries: RepSummary[] }) {
-	const avgAsymmetry = useMemo(() => {
-		const total = repSummaries.reduce((sum, rep) => sum + getAsymmetry(rep), 0);
-		return Math.round((total / repSummaries.length) * 10) / 10;
-	}, [repSummaries]);
-
-	const isBalanced = Math.abs(avgAsymmetry) <= ASYMMETRY_THRESHOLD;
-	const label = getSummaryLabel(avgAsymmetry);
-	const color = isBalanced ? COLOR_BALANCED : COLOR_IMBALANCED;
-
-	// Calculate left/right split as percentages, clamped to [0, 100] so severe
-	// but valid imbalances (asymmetry can reach +/-200%) cannot emit negative
-	// or overflowing widths.
-	const clamp01 = (n: number) => Math.max(0, Math.min(100, n));
-	const leftPct = clamp01(50 - avgAsymmetry / 2);
-	const rightPct = clamp01(50 + avgAsymmetry / 2);
-
-	return (
-		<div className="flex flex-col items-center gap-4 py-6">
-			{/* Large center number */}
-			<div className="text-5xl font-bold" style={{ color }}>
-				{Math.abs(avgAsymmetry).toFixed(1)}%
-			</div>
-
-			{/* Status badge */}
-			<span
-				className="rounded-full px-4 py-1.5 text-sm font-medium"
-				style={{
-					backgroundColor: `${color}20`,
-					color,
-					border: `1px solid ${color}40`,
-				}}
-			>
-				{label}
-			</span>
-
-			{/* Horizontal bar showing L/R split */}
-			<div className="w-full max-w-xs">
-				<div
-					className="mb-1 flex justify-between text-xs"
-					style={{ color: COLOR_TEXT }}
-				>
-					<span>Left {leftPct.toFixed(0)}%</span>
-					<span>Right {rightPct.toFixed(0)}%</span>
-				</div>
-				<div className="flex h-4 overflow-hidden rounded-full">
-					<div
-						className="transition-all duration-300"
-						style={{
-							width: `${leftPct}%`,
-							backgroundColor: avgAsymmetry < 0 ? color : COLOR_BALANCED,
-						}}
-					/>
-					<div
-						className="transition-all duration-300"
-						style={{
-							width: `${rightPct}%`,
-							backgroundColor: avgAsymmetry > 0 ? color : COLOR_BALANCED,
-						}}
-					/>
-				</div>
-			</div>
-
-			{/* Rep count */}
-			<div className="text-xs" style={{ color: COLOR_AXIS }}>
-				Based on {repSummaries.length} rep{repSummaries.length !== 1 ? "s" : ""}
-			</div>
-		</div>
-	);
-}
-
 // -- Main Component --
-export function AsymmetryGauge({
-	repSummaries,
-	height = 300,
-	mode = "per-rep",
-}: AsymmetryGaugeProps) {
+export function AsymmetryGauge({ repSummaries }: AsymmetryGaugeProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	if (!repSummaries || repSummaries.length === 0) {
 		return (
 			<div
 				className="flex items-center justify-center text-sm"
-				style={{ height, color: COLOR_AXIS }}
+				style={{ height: CHART_HEIGHT, color: getAsymmetryColors().axis }}
 			>
 				No asymmetry data
 			</div>
@@ -375,56 +302,19 @@ export function AsymmetryGauge({
 
 	const repCount = repSummaries.length;
 
-	if (mode === "summary") {
-		const avgAsymmetry =
-			repSummaries.reduce((sum, rep) => sum + getAsymmetry(rep), 0) / repCount;
-		return (
-			<div
-				role="img"
-				aria-label={`Left-right force asymmetry summary. Average asymmetry: ${Math.abs(avgAsymmetry).toFixed(1)}% across ${repCount} rep${repCount !== 1 ? "s" : ""}.`}
-			>
-				<div aria-hidden="true">
-					<SummaryDisplay repSummaries={repSummaries} />
-				</div>
-				<table className="sr-only">
-					<caption>Asymmetry data by rep</caption>
-					<thead>
-						<tr>
-							<th>Rep</th>
-							<th>Left Force (N)</th>
-							<th>Right Force (N)</th>
-							<th>Asymmetry (%)</th>
-						</tr>
-					</thead>
-					<tbody>
-						{repSummaries.map((rep, i) => (
-							<tr key={rep.id}>
-								<td>Rep {rep.rep_number ?? i + 1}</td>
-								<td>{rep.left_force_avg.toFixed(1)}</td>
-								<td>{rep.right_force_avg.toFixed(1)}</td>
-								<td>{getAsymmetry(rep).toFixed(1)}</td>
-							</tr>
-						))}
-					</tbody>
-				</table>
-			</div>
-		);
-	}
-
 	return (
 		<div
 			role="img"
 			aria-label={`Left-right force asymmetry chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}.`}
 		>
-			<div aria-hidden="true" style={{ position: "relative", height }}>
+			<div
+				aria-hidden="true"
+				style={{ position: "relative", height: CHART_HEIGHT }}
+			>
 				<ParentSize>
 					{({ width }) =>
 						width > 0 ? (
-							<PerRepChart
-								repSummaries={repSummaries}
-								width={width}
-								height={height}
-							/>
+							<PerRepChart repSummaries={repSummaries} width={width} />
 						) : null
 					}
 				</ParentSize>

@@ -2,9 +2,8 @@ import { describe, expect, it } from "vitest";
 import { estimateOneRepMaxKg } from "../../../supabase/functions/_shared/exerciseProgressRows.ts";
 import {
 	ASYMMETRY_THRESHOLD,
-	calculateAsymmetry,
 	authoritativeRepPower,
-	calculateRom,
+	calculateAsymmetry,
 	estimateOneRepMax,
 } from "../biomechanics";
 import {
@@ -117,48 +116,33 @@ describe("estimateOneRepMax", () => {
 
 describe("authoritativeRepPower", () => {
 	it("preserves exact signed paired watts including zero", () => {
-		expect(authoritativeRepPower({
-			power_method: "PAIRED_CABLE_WORK_V1",
-			power_watts: 19.6133,
-			peak_power_watts: -2.5,
-		})).toEqual({ meanWatts: 19.6133, peakWatts: -2.5 });
-		expect(authoritativeRepPower({
-			power_method: "PAIRED_CABLE_WORK_V1", power_watts: 0,
-		})).toEqual({ meanWatts: 0, peakWatts: null });
+		expect(
+			authoritativeRepPower({
+				power_method: "PAIRED_CABLE_WORK_V1",
+				power_watts: 19.6133,
+				peak_power_watts: -2.5,
+			}),
+		).toEqual({ meanWatts: 19.6133, peakWatts: -2.5 });
+		expect(
+			authoritativeRepPower({
+				power_method: "PAIRED_CABLE_WORK_V1",
+				power_watts: 0,
+			}),
+		).toEqual({ meanWatts: 0, peakWatts: null });
 	});
 
-	it.each([undefined, null, "LEGACY_UNKNOWN_V0", "UNAVAILABLE"])(
-		"never interprets historical or unavailable values as watts (%s)",
-		(power_method) => {
-			expect(authoritativeRepPower({
-				power_method, power_watts: 90000, peak_power_watts: 90000,
-			})).toEqual({ meanWatts: null, peakWatts: null });
-		},
-	);
-});
-
-describe("calculateRom", () => {
-	it("returns 0 for empty array", () => {
-		expect(calculateRom([])).toBe(0);
-	});
-
-	it("returns 0 for single position", () => {
-		expect(calculateRom([150])).toBe(0);
-	});
-
-	it("returns max - min for multiple positions", () => {
-		expect(calculateRom([100, 200, 300])).toBe(200);
-	});
-
-	it("handles negative positions", () => {
-		expect(calculateRom([-50, 0, 50])).toBe(100);
-	});
-
-	it("handles unordered positions", () => {
-		expect(calculateRom([300, 100, 200, 400, 150])).toBe(300);
-	});
-
-	it("rounds to nearest integer", () => {
-		expect(calculateRom([0.1, 0.9])).toBe(1);
+	it.each([
+		undefined,
+		null,
+		"LEGACY_UNKNOWN_V0",
+		"UNAVAILABLE",
+	])("never interprets historical or unavailable values as watts (%s)", (power_method) => {
+		expect(
+			authoritativeRepPower({
+				power_method,
+				power_watts: 90000,
+				peak_power_watts: 90000,
+			}),
+		).toEqual({ meanWatts: null, peakWatts: null });
 	});
 });

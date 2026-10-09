@@ -27,16 +27,13 @@ vi.mock("@/hooks/useSubscription", () => mockUseSubscription);
 vi.mock("@/app/components/UpgradePrompt", () => ({
 	UpgradePrompt: ({
 		requiredTier,
-		currentTier,
 		featureName,
 	}: {
 		requiredTier: string;
-		currentTier: string;
 		featureName?: string;
 	}) => (
 		<div data-testid="upgrade-prompt">
 			<span data-testid="required-tier">{requiredTier}</span>
-			<span data-testid="current-tier">{currentTier}</span>
 			{featureName && <span data-testid="feature-name">{featureName}</span>}
 		</div>
 	),
@@ -57,7 +54,7 @@ function setupSubscription(overrides: {
 		isLoading: overrides.isLoading ?? false,
 		isError: overrides.isError ?? false,
 		refetch: overrides.refetch ?? vi.fn(),
-		isPremium: (overrides.tier ?? "FREE") !== "FREE",
+		isEntitled: (overrides.tier ?? "FREE") !== "FREE",
 		isFlame: overrides.tier === "FLAME" || overrides.tier === "INFERNO",
 		isInferno: overrides.tier === "INFERNO",
 	});
@@ -88,8 +85,10 @@ describe("SubscriptionGate", () => {
 				<p>Protected</p>
 			</SubscriptionGate>,
 		);
-		// Skeleton renders as a div with rounded-lg and bg-[#1a1a1a] classes
-		const skeleton = container.querySelector(".rounded-lg.bg-\\[\\#1a1a1a\\]");
+		// Skeleton uses the active surface token for its background.
+		const skeleton = container.querySelector(
+			'[class*="bg-[var(--surface-1)]"]',
+		);
 		expect(skeleton).toBeInTheDocument();
 		expect(screen.queryByText("Protected")).not.toBeInTheDocument();
 	});
@@ -134,7 +133,6 @@ describe("SubscriptionGate", () => {
 		expect(screen.queryByText("Inferno content")).not.toBeInTheDocument();
 		expect(screen.getByTestId("upgrade-prompt")).toBeInTheDocument();
 		expect(screen.getByTestId("required-tier")).toHaveTextContent("INFERNO");
-		expect(screen.getByTestId("current-tier")).toHaveTextContent("EMBER");
 		expect(screen.getByTestId("feature-name")).toHaveTextContent(
 			"Session Replay",
 		);

@@ -10,7 +10,7 @@
  * Row/Insert/Update helpers (Tables<>, Json, ...) stay in database.types.ts;
  * import `Database` from this module when typing a Supabase client.
  */
-import type { Database as GeneratedDatabase, Json } from "./database.types";
+import type { Database as GeneratedDatabase } from "./database.types";
 
 type GeneratedPublic = GeneratedDatabase["public"];
 type GeneratedFunctions = GeneratedPublic["Functions"];
@@ -82,10 +82,12 @@ type FunctionOverrides = {
 			sessions: number;
 		}>;
 	};
-	// Same 20260920004000 shape as exercise_frequency (names only).
+	// 20260920004000: `RETURNS jsonb`, jsonb_agg of distinct
+	// exercise_progress.exercise_name text values (A-Z). The generator
+	// records a jsonb scalar as `Json`.
 	exercise_names: {
 		Args: GeneratedFunctions["exercise_names"]["Args"];
-		Returns: Array<{ exercise_name: string | null }>;
+		Returns: string[];
 	};
 };
 
@@ -104,5 +106,3 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
 			FunctionOverrides;
 	};
 };
-
-export type { Json };

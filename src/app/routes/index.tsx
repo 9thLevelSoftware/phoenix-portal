@@ -243,9 +243,11 @@ export function AppRoutes() {
 							}
 						>
 							<Route path="/analytics" element={<Analytics />} />
+							{/* Legacy path. `?tab=biomechanics` is only an Analytics
+							    alias for Performance, so land on that tab directly. */}
 							<Route
 								path="/biomechanics"
-								element={<Navigate to="/analytics?tab=biomechanics" replace />}
+								element={<Navigate to="/analytics?tab=performance" replace />}
 							/>
 						</Route>
 						<Route

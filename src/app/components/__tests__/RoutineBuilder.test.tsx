@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
@@ -210,6 +210,14 @@ describe("RoutineBuilder", () => {
 		renderWithProviders(<RoutineBuilder />);
 		// Should show the default routine name
 		expect(screen.getByDisplayValue("Untitled Routine")).toBeInTheDocument();
+	});
+
+	it("associates the routine name label with its input", () => {
+		renderWithProviders(<RoutineBuilder />);
+		expect(screen.getByLabelText("Routine name")).toHaveAttribute(
+			"id",
+			"routine-name",
+		);
 	});
 
 	// ---------------------------------------------------------------
@@ -897,8 +905,13 @@ describe("RoutineBuilder", () => {
 			);
 		}
 		await user.click(screen.getByRole("button", { name: "Create Superset" }));
-		for (const name of screen.getAllByText("Triceps Pushdown")) {
-			await user.click(name);
+		await screen.findByText("Select at least 2 exercises");
+		const exerciseCards = screen
+			.getAllByRole("heading", { name: "Triceps Pushdown" })
+			.map((heading) => heading.closest("[data-slot='card']"));
+		expect(exerciseCards.filter(Boolean)).toHaveLength(2);
+		for (const card of exerciseCards) {
+			if (card) fireEvent.click(card);
 		}
 		// The selection bar's button stays disabled until both selections have
 		// re-rendered. Clicking it earlier is a silent no-op on a slow runner,

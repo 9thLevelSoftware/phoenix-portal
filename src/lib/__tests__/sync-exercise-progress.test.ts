@@ -167,4 +167,84 @@ describe("buildExerciseProgressRows", () => {
 		);
 		expect(rows).toHaveLength(0);
 	});
+
+	it("writes no progress row when every set is the unmeasured Echo sentinel (#1182)", () => {
+		const rows = buildExerciseProgressRows(
+			[
+				{
+					id: "s3",
+					startedAt: "2026-04-20T12:00:00.000Z",
+					exercises: [
+						{
+							name: "Squat",
+							exerciseId: null,
+							estimatedOneRepMaxKg: null,
+							sets: [
+								{ weightKg: 0, actualReps: 9, workoutMode: "ECHO" },
+								{ weightKg: 0, actualReps: 8, workoutMode: "ECHO" },
+							],
+						},
+					],
+				},
+			],
+			USER_ID,
+			null,
+		);
+		expect(rows).toHaveLength(0);
+	});
+
+	it("ignores unmeasured Echo sets next to measured ones", () => {
+		const rows = buildExerciseProgressRows(
+			[
+				{
+					id: "s4",
+					startedAt: "2026-04-20T12:00:00.000Z",
+					exercises: [
+						{
+							name: "Squat",
+							exerciseId: null,
+							sets: [
+								{ weightKg: 80, actualReps: 9, workoutMode: "ECHO" },
+								{ weightKg: 0, actualReps: 9, workoutMode: "ECHO" },
+							],
+						},
+					],
+				},
+			],
+			USER_ID,
+			null,
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0].max_weight_kg).toBe(80);
+		expect(rows[0].total_volume_kg).toBe(720);
+		// Recomputed (legacy) estimates are rounded to 2dp; only the measured set counts.
+		expect(rows[0].estimated_1rm_kg).toBe(
+			Math.round(estimateOneRepMaxKg(80, 9) * 100) / 100,
+		);
+		expect(rows[0].set_count).toBe(2);
+	});
+
+	it("keeps a 0 kg set outside Echo as a real 0 kg set", () => {
+		const rows = buildExerciseProgressRows(
+			[
+				{
+					id: "s5",
+					startedAt: "2026-04-20T12:00:00.000Z",
+					exercises: [
+						{
+							name: "Row",
+							exerciseId: null,
+							sets: [
+								{ weightKg: 0, actualReps: 10, workoutMode: "OLD_SCHOOL" },
+							],
+						},
+					],
+				},
+			],
+			USER_ID,
+			null,
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0].max_weight_kg).toBe(0);
+	});
 });

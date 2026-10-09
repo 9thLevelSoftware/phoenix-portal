@@ -3,8 +3,8 @@
  *
  * Covers invariants the push/pull Edge Functions enforce but the sync test
  * suite previously left untested:
- *   - Payload > 10 MB → 413
- *   - sessions.length > 10_000 → 400
+ *   - Payload over MAX_MOBILE_SYNC_REQUEST_BYTES (9_500_000) → 413
+ *   - sessions.length > MAX_ENTITIES_PER_TYPE (10_000) → 400
  *   - telemetry.length > 50_000 → 400 (raised from 10_000; see issue #381)
  *   - routines.length > 10_000 → 400
  *   - cycles.length > 10_000 → 400 (aligned with other entities; audit #6)
@@ -83,10 +83,9 @@ function buildRoutines(userId: string, count: number): RoutineDto[] {
  * Build N minimal telemetry points all pointing at a single fake set ID.
  * Shape matches RepTelemetryDto; values are irrelevant for cap-guard tests.
  *
- * Uses `crypto.randomUUID()` because pushPayloadSchema enforces strict UUIDs
- * on `id` / `setId` — the generic `generateTestId()` helper produces a
- * timestamp-based string that would fail Zod validation before the array
- * cap guard runs, making the live-mode telemetry-cap test ineffective.
+ * `id` and `setId` must match pushPayloadSchema's UUID regex.
+ * `generateTestId()` returns `crypto.randomUUID()`, so it satisfies that
+ * schema; this helper calls `crypto.randomUUID()` directly for the same shape.
  */
 function buildTelemetry(count: number): RepTelemetryDto[] {
 	const setId = crypto.randomUUID();
@@ -133,21 +132,24 @@ describe("Server-Side Validation Invariants", () => {
 		testUser = await createTestUser();
 	});
 
-	describe("Payload size (>10 MB)", () => {
+	describe("Payload size (> 9_500_000 bytes)", () => {
 		liveIt(
-			"rejects payloads > 10 MB with 413 — requires live Edge Function",
+			"rejects payloads over 9_500_000 bytes with 413 — requires live Edge Function",
 			async () => {
-				// The real Edge Function reads Content-Length and short-circuits at
-				// 10 MB (mobile-sync-push/index.ts lines 477-484). The mock harness
-				// does not inspect Content-Length because the test harness serializes
-				// the payload to in-memory JSON before dispatch. Flag as a regression
-				// marker for when live mode is enabled.
+				// The real Edge Function rejects bodies over
+				// MAX_MOBILE_SYNC_REQUEST_BYTES (9_500_000) in
+				// readBoundedRequestBody (mobile-sync-push/index.ts lines
+				// 1355-1386, answered at 1566-1570). A Content-Length above the
+				// cap short-circuits, and the stream is counted while reading.
+				// The 413 body is { error: "Request too large" }. The mock
+				// harness does not inspect size because the test harness
+				// serializes the payload to in-memory JSON before dispatch.
 				//
-				// To execute: run `npm run test:sync:live` and craft a payload that
-				// serializes >10MB (e.g., 100k telemetry rows w/ notes padding).
+				// To execute: run `npm run test:sync:live` with a payload that
+				// serializes past 9_500_000 bytes.
 				//
-				// Expected: status === 413 with message matching /Payload too large/i.
-				const big = "x".repeat(11 * 1024 * 1024); // ~11MB string
+				// Expected: status === 413 with message matching /Request too large/i.
+				const big = "x".repeat(11 * 1024 * 1024); // ~11MB, above the 9_500_000 cap
 				const session = createTestSession(testUser.id, { notes: big });
 				const payload = createMinimalPushPayload(testUser.id, {
 					sessions: [session],
@@ -162,7 +164,8 @@ describe("Server-Side Validation Invariants", () => {
 		liveIt(
 			"rejects sessions.length > 10_000 with 400 — requires live Edge Function",
 			async () => {
-				// Enforced in mobile-sync-push/index.ts lines 510-516. Mock does
+				// Enforced in mobile-sync-push/index.ts against
+				// MAX_ENTITIES_PER_TYPE (10_000), lines 1665-1671. Mock does
 				// not reproduce this validation because it would allocate 10k+
 				// dummy sessions on every suite run. Run against live Supabase by
 				// pushing createMinimalPushPayload with 10_001 sessions; expect
@@ -374,8 +377,9 @@ describe("Server-Side Validation Invariants", () => {
 			async () => {
 				// Mock mode returns UNAUTHORIZED for any empty token, but does not
 				// validate JWT signatures. A truly expired token (exp < now) hits
-				// supabaseAuth.auth.getUser() and returns { user: null } which
-				// short-circuits to 401 (mobile-sync-push/index.ts lines 436-445).
+				// auth.getUser(); a 400/401/403 auth error short-circuits to 401
+				// with { error: "Invalid bearer token" }
+				// (mobile-sync-push/index.ts lines 1528-1534).
 				//
 				// To exercise: forge a Supabase JWT with `exp: Math.floor(Date.now()
 				// / 1000) - 60` using the local JWT secret, then submit it.

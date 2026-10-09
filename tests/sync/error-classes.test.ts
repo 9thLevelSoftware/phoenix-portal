@@ -43,11 +43,10 @@ describe("Sync wire-level error class signals", () => {
 
 	describe("TRANSIENT (5xx)", () => {
 		it.skip("5xx from server surfaces as transient error with retry guidance — depends on live fault injection", async () => {
-			// The Edge Function surfaces transient DB failures as 500 with a
-			// generic message (mobile-sync-push/index.ts lines 1495-1504).
-			// Mobile's Kotlin classifier maps 500/502/503 to TRANSIENT and
-			// backs off per the policy defined in CLAUDE.md:
-			//   5 → 15 → 30 → 60 minutes for transient errors.
+			// Unexpected push failures surface as 500. Outside verbose
+			// environments the body is { error: "Internal server error" }
+			// (mobile-sync-push/index.ts lines 4485-4498). Mobile's Kotlin
+			// classifier maps 500/502/503 to TRANSIENT.
 			//
 			// Live-mode trigger: tear down the DB or rename a target table.
 			// Kotlin-side proof: see SyncErrorClassifierTest in mobile
@@ -58,28 +57,18 @@ describe("Sync wire-level error class signals", () => {
 
 		it("mock server-error mode returns status 500 (transient wire signal)", async () => {
 			setMockErrorMode("server");
-			// The mock's `checkMockError` returns a 500 at every call (see
-			// mock-edge-functions.ts lines 364-372). Even though the default
-			// mockPushEndpoint path doesn't invoke checkMockError, we can still
-			// assert the flag round-trips via a pull to exercise shape.
-			//
-			// NOTE: setMockErrorMode only affects functions that call
-			// checkMockError. Neither mockPushEndpoint nor mockPullEndpoint
-			// invoke it directly today — this is an observable gap. Flag for
-			// follow-up so the mock stays useful for classifier testing.
-			//
-			// Regression marker until the mock wires in checkMockError at the
-			// top of push/pull: expect a successful call (current behavior),
-			// not the injected 500. When the wiring lands, flip these
-			// expectations.
-			const result = await callPushEndpoint(
+			const push = await callPushEndpoint(
 				createMinimalPushPayload(testUser.id),
 				testUser.accessToken,
 			);
-			// Current mock behavior: succeeds despite setMockErrorMode('server')
-			// TODO(mock): wire checkMockError into mockPushEndpoint, then flip
-			// this to expect result.status === 500.
-			expect(result.status).toBe(200);
+			expect(push.success).toBe(false);
+			expect(push.status).toBe(500);
+			expect(push.error?.code).toBe("SERVER_ERROR");
+
+			const pull = await callPullEndpoint(0, testUser.accessToken);
+			expect(pull.success).toBe(false);
+			expect(pull.status).toBe(500);
+			expect(pull.error?.code).toBe("SERVER_ERROR");
 		});
 	});
 
@@ -90,12 +79,20 @@ describe("Sync wire-level error class signals", () => {
 			expect(result.status).toBe(400);
 			expect(result.error?.code).toBe("VALIDATION_ERROR");
 		});
+	});
 
-		it("invalid payload (missing platform) returns 400 (permanent signal)", async () => {
-			const payload = createMinimalPushPayload(testUser.id, { platform: "" });
-			const result = await callPushEndpoint(payload, testUser.accessToken);
-			expect(result.status).toBe(400);
-			expect(result.error?.code).toBe("VALIDATION_ERROR");
+	describe("missing or blank platform", () => {
+		// mobile-sync-push parses platform with platformSchema, which maps
+		// missing and blank values to "unknown" instead of rejecting the push.
+		it("is accepted, not a 400", async () => {
+			for (const platform of [undefined, "", "   "]) {
+				const payload = createMinimalPushPayload(testUser.id, {
+					platform: platform as string,
+				});
+				const result = await callPushEndpoint(payload, testUser.accessToken);
+				expect(result.success).toBe(true);
+				expect(result.status).toBe(200);
+			}
 		});
 	});
 
@@ -114,14 +111,32 @@ describe("Sync wire-level error class signals", () => {
 			expect(result.status).toBe(401);
 			expect(result.error?.code).toBe("UNAUTHORIZED");
 		});
+
+		it("mock auth-error mode returns 401 with a bearer token present", async () => {
+			setMockErrorMode("auth");
+			const push = await callPushEndpoint(
+				createMinimalPushPayload(testUser.id),
+				testUser.accessToken,
+			);
+			expect(push.success).toBe(false);
+			expect(push.status).toBe(401);
+			expect(push.error?.code).toBe("UNAUTHORIZED");
+			expect(push.error?.message).toBe("Invalid token");
+
+			const pull = await callPullEndpoint(0, testUser.accessToken);
+			expect(pull.success).toBe(false);
+			expect(pull.status).toBe(401);
+			expect(pull.error?.code).toBe("UNAUTHORIZED");
+			expect(pull.error?.message).toBe("Invalid token");
+		});
 	});
 
 	describe("NETWORK (fetch throw / abort)", () => {
 		it.skip("fetch abort surfaces as NETWORK class — mobile-only concern", async () => {
 			// The harness wraps fetch in try/catch and returns a
 			// { status: 0, code: 'NETWORK_ERROR' } result when fetch throws
-			// (edge-function-harness.ts lines 608-618). This is the exact
-			// signal mobile's classifier reads as NETWORK.
+			// (edge-function-harness.ts callPushEndpoint, lines 812-820). This
+			// is the exact signal mobile's classifier reads as NETWORK.
 			//
 			// In mock mode, the callPushEndpoint path never invokes fetch
 			// (it hits the mock directly), so the NETWORK signal is not
@@ -131,13 +146,19 @@ describe("Sync wire-level error class signals", () => {
 		});
 
 		it("mock network-error mode exposes NETWORK_ERROR code on affected paths", async () => {
-			// Mirrors the TRANSIENT mock-wiring gap above. setMockErrorMode is
-			// honoured only by functions that call checkMockError. We assert the
-			// setter doesn't throw and document the gap so classifier-dependent
-			// tests don't silently pass.
 			setMockErrorMode("network");
-			expect(() => setMockErrorMode("network")).not.toThrow();
-			setMockErrorMode("none");
+			const push = await callPushEndpoint(
+				createMinimalPushPayload(testUser.id),
+				testUser.accessToken,
+			);
+			expect(push.success).toBe(false);
+			expect(push.status).toBe(0);
+			expect(push.error?.code).toBe("NETWORK_ERROR");
+
+			const pull = await callPullEndpoint(0, testUser.accessToken);
+			expect(pull.success).toBe(false);
+			expect(pull.status).toBe(0);
+			expect(pull.error?.code).toBe("NETWORK_ERROR");
 		});
 	});
 });

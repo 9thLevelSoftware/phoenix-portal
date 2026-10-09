@@ -5,14 +5,16 @@ import {
 	type AnalyticsRepSummaryRow,
 	type AnalyticsWorkoutExerciseSummaryRow,
 	buildWorkoutExerciseSummaryRows,
-	fetchAllSupabasePages,
-	fetchAllSupabasePagesForChunks,
 	fetchUserAnalyticsRows,
 	generateDailyExerciseSummaryCsv,
 	generateMuscleContributionCsv,
 	generateRepSummaryCsv,
 	generateWorkoutExerciseSummaryCsv,
 } from "@/lib/export/analytics-tables";
+import {
+	fetchAllSupabasePages,
+	fetchAllSupabasePagesForChunks,
+} from "@/lib/supabasePaging";
 
 function parse(csv: string) {
 	return Papa.parse<Record<string, string>>(csv, {

@@ -22,6 +22,7 @@ import { replaySessionOptions, replayTelemetryOptions } from "@/queries/replay";
 import type { RepSummary, TelemetryPointRow } from "@/schemas/telemetry";
 import { useReplayStore } from "@/stores/useReplayStore";
 import { FatigueSummary } from "./FatigueSummary";
+import { formatTime } from "./formatTime";
 import { PlaybackControls } from "./PlaybackControls";
 import { QualityBadge } from "./QualityBadge";
 import { ReplayAnnotationOverlay } from "./ReplayAnnotationOverlay";
@@ -326,7 +327,7 @@ export function SessionReplay() {
 											<p
 												className={`text-sm font-medium ${
 													currentRepQuality.isLowQuality
-														? "text-amber-500"
+														? "text-warning"
 														: "text-primary"
 												}`}
 											>
@@ -441,7 +442,9 @@ function ForceCurveNotice({ isInferno }: { isInferno: boolean }) {
 
 	return (
 		<div className="rounded-lg border border-secondary bg-surface-2 p-4 text-sm space-y-1">
-			<p className="font-medium text-white">Force curves require Inferno</p>
+			<p className="font-medium text-foreground">
+				Force curves require Inferno
+			</p>
 			<p className="text-muted-foreground">
 				Your plan includes rep-by-rep replay. Upgrade to Inferno for per-sample
 				force and velocity curves.{" "}
@@ -490,14 +493,4 @@ function deriveRepBoundaries(
 	}
 
 	return boundaries;
-}
-
-/**
- * Format milliseconds to mm:ss display
- */
-function formatTime(ms: number): string {
-	const totalSeconds = Math.floor(ms / 1000);
-	const minutes = Math.floor(totalSeconds / 60);
-	const seconds = totalSeconds % 60;
-	return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }

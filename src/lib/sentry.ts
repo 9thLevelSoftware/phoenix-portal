@@ -237,3 +237,8 @@ export function initSentry() {
  *   onUncaughtError, onCaughtError, onRecoverableError
  */
 export const sentryErrorHandler = Sentry.reactErrorHandler();
+
+/** The id of the last event captured, for correlating a user's report. */
+export function lastSentryEventId(): string | undefined {
+	return Sentry.lastEventId();
+}

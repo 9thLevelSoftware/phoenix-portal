@@ -9,8 +9,8 @@
  *
  * Key test scenarios:
  * - All 6 workout modes round-trip correctly
- * - Display name mapping accuracy
  * - Legacy CLASSIC alias handling
+ * - Zod schema display transform (the production path)
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,17 +32,6 @@ import {
 import { resetMockStore } from "../helpers/mock-edge-functions";
 
 vi.setConfig({ testTimeout: 30000 });
-
-// Mode mapping (must match src/schemas/transforms.ts)
-const workoutModeMap: Record<string, string> = {
-	OLD_SCHOOL: "Old School",
-	ECHO: "Echo",
-	PUMP: "Pump",
-	TUT: "TUT",
-	TUT_BEAST: "TUT Beast",
-	ECCENTRIC_ONLY: "Eccentric Only",
-	CLASSIC: "Old School", // Legacy alias
-};
 
 describe("Workout Mode Transform Tests", () => {
 	let testUser: { id: string; email: string; accessToken: string };
@@ -132,54 +121,7 @@ describe("Workout Mode Transform Tests", () => {
 		});
 	});
 
-	describe("Display Name Mapping", () => {
-		it('should map OLD_SCHOOL to "Old School"', () => {
-			expect(workoutModeMap["OLD_SCHOOL"]).toBe("Old School");
-		});
-
-		it('should map ECHO to "Echo"', () => {
-			expect(workoutModeMap["ECHO"]).toBe("Echo");
-		});
-
-		it('should map PUMP to "Pump"', () => {
-			expect(workoutModeMap["PUMP"]).toBe("Pump");
-		});
-
-		it('should map TUT to "TUT"', () => {
-			expect(workoutModeMap["TUT"]).toBe("TUT");
-		});
-
-		it('should map TUT_BEAST to "TUT Beast"', () => {
-			expect(workoutModeMap["TUT_BEAST"]).toBe("TUT Beast");
-		});
-
-		it('should map ECCENTRIC_ONLY to "Eccentric Only"', () => {
-			expect(workoutModeMap["ECCENTRIC_ONLY"]).toBe("Eccentric Only");
-		});
-
-		it("should have display mapping for all primary modes", () => {
-			const primaryModes = [
-				"OLD_SCHOOL",
-				"ECHO",
-				"PUMP",
-				"TUT",
-				"TUT_BEAST",
-				"ECCENTRIC_ONLY",
-			];
-
-			for (const mode of primaryModes) {
-				expect(workoutModeMap[mode]).toBeDefined();
-				expect(workoutModeMap[mode].length).toBeGreaterThan(0);
-			}
-		});
-	});
-
 	describe("CLASSIC Legacy Alias", () => {
-		it('should map CLASSIC to "Old School" (same as OLD_SCHOOL)', () => {
-			expect(workoutModeMap["CLASSIC"]).toBe("Old School");
-			expect(workoutModeMap["CLASSIC"]).toBe(workoutModeMap["OLD_SCHOOL"]);
-		});
-
 		it("should include CLASSIC in WORKOUT_MODES constant", () => {
 			expect(WORKOUT_MODES).toContain("CLASSIC");
 		});
@@ -202,15 +144,6 @@ describe("Workout Mode Transform Tests", () => {
 			const pulledMode = pullResult.data!.sessions[0].workoutMode;
 			// Either CLASSIC (stored as-is) or OLD_SCHOOL (normalized) is acceptable
 			expect(["CLASSIC", "OLD_SCHOOL"]).toContain(pulledMode);
-		});
-
-		it("should display CLASSIC and OLD_SCHOOL identically", () => {
-			// Both should show "Old School" to the user
-			const classicDisplay = workoutModeMap["CLASSIC"];
-			const oldSchoolDisplay = workoutModeMap["OLD_SCHOOL"];
-
-			expect(classicDisplay).toBe(oldSchoolDisplay);
-			expect(classicDisplay).toBe("Old School");
 		});
 	});
 
@@ -309,46 +242,6 @@ describe("Workout Mode Transform Tests", () => {
 			const pulledMode = pullResult.data!.sessions[0].workoutMode;
 			expect(pulledMode).toBeNull();
 		});
-
-		it("should transform null mode to null display value", () => {
-			// When mode is null, display should also be null (not a string like "null")
-			const nullMode = null;
-			const displayValue = nullMode ? workoutModeMap[nullMode] : null;
-
-			expect(displayValue).toBeNull();
-		});
-	});
-
-	describe("Unknown Mode Handling", () => {
-		it("should pass through unknown modes unchanged", () => {
-			// If a new mode is added to mobile before portal update,
-			// it should pass through rather than crash
-			const unknownMode = "FUTURE_MODE";
-			const displayValue = workoutModeMap[unknownMode] ?? unknownMode;
-
-			expect(displayValue).toBe("FUTURE_MODE");
-		});
-
-		it("should handle case sensitivity correctly", () => {
-			// Modes are stored uppercase in DB
-			const lowercaseMode = "old_school";
-			const uppercaseMode = "OLD_SCHOOL";
-
-			// Only uppercase should match the map
-			expect(workoutModeMap[uppercaseMode]).toBe("Old School");
-			expect(workoutModeMap[lowercaseMode]).toBeUndefined();
-		});
-
-		it("should handle mixed case modes by falling back to raw value", () => {
-			// Mixed case should not match and should pass through raw
-			const mixedCaseModes = ["Old_School", "OLD_school", "Tut", "tut_BEAST"];
-
-			for (const mode of mixedCaseModes) {
-				const displayValue = workoutModeMap[mode] ?? mode;
-				// Should return raw value since no match
-				expect(displayValue).toBe(mode);
-			}
-		});
 	});
 
 	describe("Edge Case Mode Handling", () => {
@@ -374,53 +267,6 @@ describe("Workout Mode Transform Tests", () => {
 			// Pull should succeed and return the empty string
 			const pulledSession = pullResult.data!.sessions[0];
 			expect(pulledSession.workoutMode).toBe("");
-		});
-
-		it("should transform empty string mode to empty string display value", () => {
-			// Empty string should not match any mode in the map
-			const emptyMode = "";
-			const displayValue = emptyMode
-				? (workoutModeMap[emptyMode] ?? emptyMode)
-				: null;
-
-			// Empty string is falsy, so with our null-check pattern it becomes null
-			expect(displayValue).toBeNull();
-		});
-
-		it("should handle whitespace-padded modes by passing through raw", () => {
-			// Whitespace-padded modes should not match and pass through
-			const paddedModes = [" OLD_SCHOOL", "OLD_SCHOOL ", " OLD_SCHOOL "];
-
-			for (const mode of paddedModes) {
-				const displayValue = workoutModeMap[mode] ?? mode;
-				// Should return raw value since no exact match
-				expect(displayValue).toBe(mode);
-				expect(displayValue).not.toBe("Old School");
-			}
-		});
-
-		it("should handle special characters in mode gracefully", () => {
-			// Special characters should pass through without crashing
-			const specialModes = [
-				"OLD-SCHOOL",
-				"OLD.SCHOOL",
-				"OLD@SCHOOL",
-				"OLD#SCHOOL",
-			];
-
-			for (const mode of specialModes) {
-				const displayValue = workoutModeMap[mode] ?? mode;
-				// Should return raw value
-				expect(displayValue).toBe(mode);
-			}
-		});
-
-		it("should handle very long mode strings without crashing", () => {
-			// Very long strings should pass through
-			const longMode = "A".repeat(1000);
-			const displayValue = workoutModeMap[longMode] ?? longMode;
-
-			expect(displayValue).toBe(longMode);
 		});
 	});
 

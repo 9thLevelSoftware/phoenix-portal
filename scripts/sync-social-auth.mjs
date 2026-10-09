@@ -17,7 +17,9 @@ loadDotenv({ path: path.join(repoRoot, ".env.local"), override: true });
 
 export const DEFAULT_LOCAL_SITE_URL = "http://localhost:5173";
 export const OAUTH_CALLBACK_PATH = "/auth/callback";
+export const RESET_PASSWORD_PATH = "/auth/reset-password";
 export const SUPABASE_CALLBACK_PATH = "/auth/v1/callback";
+export const SOCIAL_AUTH_REDIRECT_PROVIDERS = ["google", "apple"];
 export const MANAGED_BLOCK_START = "# BEGIN_MANAGED_SOCIAL_AUTH";
 export const MANAGED_BLOCK_END = "# END_MANAGED_SOCIAL_AUTH";
 
@@ -72,17 +74,55 @@ export function buildPortalCallbackUrl(siteUrl) {
 	return new URL(OAUTH_CALLBACK_PATH, siteUrl).toString();
 }
 
+export function buildPortalResetPasswordUrl(siteUrl) {
+	return new URL(RESET_PASSWORD_PATH, siteUrl).toString();
+}
+
+// Supabase Auth allow lists are glob patterns: an unescaped `?` matches one
+// character. A literal query delimiter has to be stored as `\?`.
+export function toRedirectAllowlistPattern(url) {
+	return url.replaceAll("?", "\\?");
+}
+
+function addAllowlistUrl(allowedRedirectUrls, url) {
+	allowedRedirectUrls.add(toRedirectAllowlistPattern(url));
+}
+
+function addAllowlistUrlWithProviderVariants(allowedRedirectUrls, url) {
+	addAllowlistUrl(allowedRedirectUrls, url);
+
+	for (const provider of SOCIAL_AUTH_REDIRECT_PROVIDERS) {
+		const withProvider = new URL(url);
+		withProvider.searchParams.set("provider", provider);
+		addAllowlistUrl(allowedRedirectUrls, withProvider.toString());
+	}
+}
+
 export function buildAllowedRedirectUrls({
 	siteUrl,
 	additionalRedirectUrls = "",
 } = {}) {
-	const allowedRedirectUrls = new Set([
+	const allowedRedirectUrls = new Set();
+
+	addAllowlistUrlWithProviderVariants(
+		allowedRedirectUrls,
 		buildPortalCallbackUrl(DEFAULT_LOCAL_SITE_URL),
+	);
+	addAllowlistUrlWithProviderVariants(
+		allowedRedirectUrls,
 		buildPortalCallbackUrl(siteUrl),
-	]);
+	);
+	addAllowlistUrl(
+		allowedRedirectUrls,
+		buildPortalResetPasswordUrl(DEFAULT_LOCAL_SITE_URL),
+	);
+	addAllowlistUrl(
+		allowedRedirectUrls,
+		buildPortalResetPasswordUrl(siteUrl),
+	);
 
 	for (const redirectUrl of parseCsvUrls(additionalRedirectUrls)) {
-		allowedRedirectUrls.add(redirectUrl);
+		addAllowlistUrlWithProviderVariants(allowedRedirectUrls, redirectUrl);
 	}
 
 	return [...allowedRedirectUrls];

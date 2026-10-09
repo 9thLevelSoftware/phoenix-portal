@@ -147,7 +147,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 									<Rocket className="size-16 text-accent" />
 								</div>
 							)}
-							<DialogTitle className="text-xl text-center text-white">
+							<DialogTitle className="text-xl text-center text-foreground">
 								{step.title}
 							</DialogTitle>
 							<DialogDescription className="text-center text-muted-foreground">
@@ -160,11 +160,11 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 								{step.features.map((feature) => (
 									<div
 										key={feature.label}
-										className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-3"
+										className="flex items-start gap-3 rounded-lg border border-foreground/10 bg-foreground/5 p-3"
 									>
 										<feature.icon className="size-5 shrink-0 text-primary mt-0.5" />
 										<div>
-											<p className="text-sm font-medium text-white">
+											<p className="text-sm font-medium text-foreground">
 												{feature.label}
 											</p>
 											<p className="text-xs text-muted-foreground">
@@ -196,7 +196,7 @@ export function OnboardingOverlay({ onComplete }: OnboardingOverlayProps) {
 										? "bg-primary"
 										: i < currentStep
 											? "bg-primary/50"
-											: "bg-white/20"
+											: "bg-foreground/20"
 								}`}
 							/>
 						))}

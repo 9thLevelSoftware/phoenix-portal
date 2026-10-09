@@ -97,6 +97,17 @@ describe("insightsOptions", () => {
 		expect(chain.eq).toHaveBeenCalledWith("period", "7d");
 	});
 
+	// A batch shares created_at, so a created_at order plus a row cap can
+	// drop part of it. id is a stable order for the whole set.
+	it("returns the full batch ordered by id with no row cap", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { insightsOptions } = await import("../insights");
+		await insightsOptions("user-1").queryFn?.({} as never);
+		expect(chain.order).toHaveBeenCalledTimes(1);
+		expect(chain.order).toHaveBeenCalledWith("id", { ascending: true });
+		expect(chain.limit).not.toHaveBeenCalled();
+	});
+
 	// KD-14: an expired batch must not reach the Analytics feed at all — the
 	// portal falls back to the browser rules instead of showing stale server
 	// text as if it were current.

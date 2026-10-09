@@ -180,7 +180,7 @@ describe("profileStatsOptions", () => {
 		expect(rpcFn).toHaveBeenCalledTimes(1);
 		expect(rpcFn).toHaveBeenCalledWith("profile_workout_stats", {
 			// UTC on purpose: best_streak is account-wide and the current streak
-			// beside it (useStreak/utcDateKey) is UTC-only, so the browser zone
+			// beside it (workout_current_streak) is UTC-only, so the browser zone
 			// here could make the current streak exceed the best one.
 			p_tz: "UTC",
 			p_profile_id: "profile-1",
@@ -263,6 +263,14 @@ describe("profileStatsOptions", () => {
 	});
 });
 
+async function readTopExercises(userId: string, profileId?: string | null) {
+	const { topExercisesOptions } = await import("../profile");
+	const opts = topExercisesOptions(userId, profileId);
+	const rows = await opts.queryFn!({} as never);
+	if (!opts.select) throw new Error("topExercisesOptions select missing");
+	return opts.select(rows);
+}
+
 describe("topExercisesOptions", () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
@@ -270,11 +278,13 @@ describe("topExercisesOptions", () => {
 		fromFn.mockImplementation(() => chain);
 	});
 
-	it("uses profile.topExercises query key", async () => {
+	it("shares the exercise frequency query key", async () => {
 		mockRpc({ data: [], error: null });
 		const { topExercisesOptions } = await import("../profile");
 		const opts = topExercisesOptions("user-1");
-		expect(opts.queryKey).toEqual(queryKeys.profile.topExercises("user-1"));
+		expect(opts.queryKey).toEqual(
+			queryKeys.analytics.exerciseFrequency("user-1"),
+		);
 	});
 
 	it("returns the top 5 exercises from one RPC with no session id list", async () => {
@@ -293,10 +303,7 @@ describe("topExercisesOptions", () => {
 			error: null,
 		});
 
-		const { topExercisesOptions } = await import("../profile");
-		const result = await topExercisesOptions("user-1", "profile-1").queryFn!(
-			{} as never,
-		);
+		const result = await readTopExercises("user-1", "profile-1");
 
 		expect(rpcFn).toHaveBeenCalledTimes(1);
 		expect(rpcFn).toHaveBeenCalledWith("exercise_frequency", {
@@ -318,9 +325,7 @@ describe("topExercisesOptions", () => {
 
 	it("returns empty array when no sessions exist", async () => {
 		mockRpc({ data: [], error: null });
-		const { topExercisesOptions } = await import("../profile");
-		const opts = topExercisesOptions("user-1");
-		const result = await opts.queryFn!({} as never);
+		const result = await readTopExercises("user-1");
 		expect(result).toEqual([]);
 	});
 
@@ -364,6 +369,28 @@ describe("earnedBadgesOptions", () => {
 		const opts = earnedBadgesOptions("user-1");
 		const result = await opts.queryFn!({} as never);
 		expect(result).toEqual([]);
+	});
+
+	it("defaults a null badge_tier to bronze instead of failing the list", async () => {
+		chain = buildChain({
+			data: [
+				{ ...badgeRow, badge_tier: null },
+				{
+					...badgeRow,
+					badge_id: "tenth-workout",
+					badge_name: "Tenth Flame",
+					badge_tier: "gold",
+				},
+			],
+			error: null,
+		});
+		const { earnedBadgesOptions } = await import("../profile");
+		const opts = earnedBadgesOptions("user-1");
+		const result = await opts.queryFn!({} as never);
+
+		expect(result).toHaveLength(2);
+		expect(result[0].badge_tier).toBe("bronze");
+		expect(result[1].badge_tier).toBe("gold");
 	});
 });
 

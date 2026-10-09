@@ -264,10 +264,7 @@ export async function openCheckout({
 	}
 
 	if (!window.Paddle) {
-		console.error(
-			"[Paddle] Cannot open checkout: Paddle SDK is not available.",
-		);
-		return;
+		throw new Error("Billing checkout is unavailable. Please try again.");
 	}
 
 	const {

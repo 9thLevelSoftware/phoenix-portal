@@ -1,11 +1,5 @@
 import { buildAllowedOrigins } from './corsOrigins.ts';
 
-export {
-  buildAllowedOrigins,
-  isHostedSupabaseUrl,
-  shouldAllowLocalhostOrigins,
-} from './corsOrigins.ts';
-
 function readEnv(name: string): string | undefined {
   try {
     return Deno.env.get(name);
@@ -30,7 +24,14 @@ function getAllowedOrigins(): string[] {
  *
  * Security headers added:
  * - X-Frame-Options: DENY (clickjacking protection)
- * - Content-Security-Policy: default-src 'self' (XSS mitigation)
+ * - Content-Security-Policy (XSS mitigation). The header value sent is
+ *   `default-src 'self'; connect-src 'self' https://*.paddle.com
+ *   https://*.supabase.co https://api.phoenix-portal.com
+ *   wss://api.phoenix-portal.com; script-src 'self' 'unsafe-inline';
+ *   style-src 'self' 'unsafe-inline'; base-uri 'none'; object-src 'none';
+ *   frame-ancestors 'none'`.
+ *   The SPA Content-Security-Policy is a separate header and lives in
+ *   `public/_headers`.
  * - Strict-Transport-Security: max-age=31536000 (HSTS for HTTPS enforcement)
  * - X-Content-Type-Options: nosniff (MIME sniffing protection)
  * - Referrer-Policy: strict-origin-when-cross-origin (privacy)
@@ -46,13 +47,15 @@ export function getCorsHeaders(req: Request): Record<string, string> {
     ...(isAllowed ? { 'Access-Control-Allow-Origin': origin } : {}),
     'Access-Control-Allow-Headers':
       'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
+    // Browser callers send only POST (plus the OPTIONS preflight), and
+    // garmin-webhook also serves GET. No caller sends PUT or DELETE.
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
     // Lets browser clients read the wait on a 429/503 (PR 37 R-1).
     'Access-Control-Expose-Headers': 'Retry-After',
     'Vary': 'Origin',
     // Security headers
     'X-Frame-Options': 'DENY',
-    'Content-Security-Policy': "default-src 'self'; connect-src 'self' https://*.paddle.com https://*.supabase.co https://api.phoenix-portal.com wss://api.phoenix-portal.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+    'Content-Security-Policy': "default-src 'self'; connect-src 'self' https://*.paddle.com https://*.supabase.co https://api.phoenix-portal.com wss://api.phoenix-portal.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'",
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     // HSTS only in production

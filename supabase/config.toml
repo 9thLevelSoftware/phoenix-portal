@@ -19,6 +19,11 @@ refresh_token_reuse_interval = 60
 
 # BEGIN_MANAGED_SOCIAL_AUTH
 # Generated only in a temporary config by scripts/sync-social-auth.mjs.
+# additional_redirect_urls then includes /auth/callback and
+# /auth/callback\?provider=google|apple for localhost and the site URL,
+# plus each SUPABASE_AUTH_ADDITIONAL_REDIRECT_URLS entry and its
+# provider=google|apple variants. The `\?` is a literal query delimiter:
+# an unescaped `?` is a one-character glob wildcard.
 # END_MANAGED_SOCIAL_AUTH
 
 # Keep every deployed Edge Function listed here so Supabase production and
@@ -28,6 +33,12 @@ refresh_token_reuse_interval = 60
 # auth.getUser() with it; no valid user returns 401.
 verify_jwt = false
 
+# The session-bound OAuth completion endpoint (KD-13). It must only ever run
+# with the completing user's JWT — that binding is the whole point (F-046).
+[functions.complete-oauth]
+verify_jwt = true
+
+[functions.delete-account]
 # Auth: two modes, both checked in the handler. The hourly pg_cron job
 # (`delete-due-accounts`, via private.invoke_edge_function) POSTs
 # {"mode":"process_due"} with no JWT and the `x-cron-secret` header, compared
@@ -35,12 +46,6 @@ verify_jwt = false
 # from the portal sends the user's JWT, verified with auth.getUser(); only
 # that user can be deleted. verify_jwt must stay false or the gateway returns
 # 401 to pg_net and no scheduled deletion ever runs.
-# The session-bound OAuth completion endpoint (KD-13). It must only ever run
-# with the completing user's JWT — that binding is the whole point (F-046).
-[functions.complete-oauth]
-verify_jwt = true
-
-[functions.delete-account]
 verify_jwt = false
 
 [functions.disconnect-integration]
@@ -116,22 +121,20 @@ verify_jwt = true
 # 5-minute timestamp window (constant-time compare).
 verify_jwt = false
 
-# Gateway verification is intentionally disabled (KD-10 / R-18): pg_cron calls
-# this through private.invoke_edge_function with no JWT. The handler accepts
-# either the `x-cron-secret` header (constant-time compare against CRON_SECRET)
-# or an exact service-role bearer key, and returns 401 otherwise.
 [functions.process-sync-queue]
-# Auth: cron secret. The handler requires x-cron-secret to equal
-# PROCESS_SYNC_QUEUE_SECRET (or CRON_SYNC_QUEUE_SECRET), or
-# Authorization: Bearer <service-role key> (constant-time compare);
-# otherwise it returns 401.
+# Gateway verification is intentionally disabled (KD-10 / R-18): pg_cron calls
+# this through private.invoke_edge_function with no JWT. The handler compares
+# `x-cron-secret` in constant time to CRON_SECRET first; PROCESS_SYNC_QUEUE_SECRET
+# and CRON_SYNC_QUEUE_SECRET are used only when CRON_SECRET is unset. An exact
+# service-role bearer (Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>) is
+# also accepted. Anything else returns 401.
 verify_jwt = false
 
 [functions.strava-oauth]
 # Auth: none of handler JWT, HMAC, or cron secret. This is the browser
-# redirect from Strava, which carries no JWT. The handler accepts only an
-# unexpired oauth_states token issued to the user by initiate-oauth for
-# provider 'strava'; the token is deleted after a successful exchange.
+# redirect from Strava, which carries no JWT. The callback checks an unexpired
+# oauth_states row minted by initiate-oauth for provider 'strava' and 302s to
+# the portal; complete-oauth deletes the row.
 verify_jwt = false
 
 # Gateway verification is intentionally disabled (KD-14 / R-18): pg_cron calls

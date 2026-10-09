@@ -5,14 +5,15 @@ import { scaleBand, scaleLinear } from "@visx/scale";
 import { Bar } from "@visx/shape";
 import { useMemo } from "react";
 import { authoritativeRepPower } from "@/lib/biomechanics";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import type { RepSummary } from "@/schemas/telemetry";
 import { CHART_COLORS, CHART_MARGINS, FONT_SIZES } from "./shared/ChartTheme";
 import { ChartTooltipContent, useChartTooltip } from "./shared/ChartTooltip";
 
+const CHART_HEIGHT = 250;
+
 export interface PowerOutputProps {
 	repSummaries: RepSummary[];
-	height?: number;
-	highlightPeak?: boolean;
 }
 
 interface PowerRep {
@@ -22,10 +23,10 @@ interface PowerRep {
 
 function PowerOutputInner({
 	repSummaries,
-	height = 250,
-	highlightPeak = true,
 	width,
 }: PowerOutputProps & { width: number }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const {
 		showTooltip,
 		hideTooltip,
@@ -37,16 +38,20 @@ function PowerOutputInner({
 
 	const margin = CHART_MARGINS;
 	const innerWidth = width - margin.left - margin.right;
-	const innerHeight = height - margin.top - margin.bottom;
+	const innerHeight = CHART_HEIGHT - margin.top - margin.bottom;
 
 	const powerData = useMemo<PowerRep[]>(
 		() =>
 			repSummaries.flatMap((rep, i) => {
 				const watts = authoritativeRepPower(rep).meanWatts;
-				return watts === null ? [] : [{
-					repNumber: rep.rep_number ?? i + 1,
-					watts,
-				}];
+				return watts === null
+					? []
+					: [
+							{
+								repNumber: rep.rep_number ?? i + 1,
+								watts,
+							},
+						];
 			}),
 		[repSummaries],
 	);
@@ -75,10 +80,13 @@ function PowerOutputInner({
 		[repLabels, innerWidth],
 	);
 
-	const powerExtent = useMemo(() => [
-		Math.min(0, ...powerData.map((d) => d.watts)) * 1.2,
-		Math.max(100, ...powerData.map((d) => d.watts)) * 1.2,
-	], [powerData]);
+	const powerExtent = useMemo(
+		() => [
+			Math.min(0, ...powerData.map((d) => d.watts)) * 1.2,
+			Math.max(100, ...powerData.map((d) => d.watts)) * 1.2,
+		],
+		[powerData],
+	);
 
 	const yScale = useMemo(
 		() =>
@@ -93,8 +101,8 @@ function PowerOutputInner({
 	if (powerData.length === 0) {
 		return (
 			<div
-				className="flex items-center justify-center text-gray-500"
-				style={{ height }}
+				className="flex items-center justify-center text-muted-foreground"
+				style={{ height: CHART_HEIGHT }}
 			>
 				Paired cable-work power unavailable
 			</div>
@@ -105,7 +113,7 @@ function PowerOutputInner({
 		<div style={{ position: "relative" }}>
 			<svg
 				width={width}
-				height={height}
+				height={CHART_HEIGHT}
 				role="img"
 				aria-label="Mean paired cable-work power proxy"
 			>
@@ -117,11 +125,11 @@ function PowerOutputInner({
 						const barHeight = Math.abs(yScale(0) - yScale(d.watts));
 						const barY = Math.min(yScale(0), yScale(d.watts));
 
-						const isPeak = highlightPeak && i === peakIndex;
+						const isPeak = i === peakIndex;
 						const barColor = isPeak
-							? CHART_COLORS.secondary
-							: CHART_COLORS.primary;
-						const barOpacity = highlightPeak && !isPeak ? 0.6 : 1;
+							? CHART_COLORS().secondary
+							: CHART_COLORS().primary;
+						const barOpacity = isPeak ? 1 : 0.6;
 
 						return (
 							// biome-ignore lint/suspicious/noArrayIndexKey: derived sequential chart data with no unique ID
@@ -156,7 +164,9 @@ function PowerOutputInner({
 									x={barX + barWidth / 2}
 									y={barY - 6}
 									textAnchor="middle"
-									fill={isPeak ? CHART_COLORS.secondary : CHART_COLORS.axisText}
+									fill={
+										isPeak ? CHART_COLORS().secondary : CHART_COLORS().axisText
+									}
 									fontSize={10}
 									fontWeight={isPeak ? 700 : 500}
 								>
@@ -171,34 +181,34 @@ function PowerOutputInner({
 						scale={xScale}
 						label="Rep"
 						labelProps={{
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.label,
 							textAnchor: "middle",
 						}}
 						tickLabelProps={() => ({
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.axis,
 							textAnchor: "middle" as const,
 						})}
-						stroke={CHART_COLORS.gridLine}
-						tickStroke={CHART_COLORS.gridLine}
+						stroke={CHART_COLORS().gridLine}
+						tickStroke={CHART_COLORS().gridLine}
 					/>
 
 					<AxisLeft
 						scale={yScale}
 						label="Mean cable-work proxy (W)"
 						labelProps={{
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.label,
 							textAnchor: "middle",
 						}}
 						tickLabelProps={() => ({
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.axis,
 							textAnchor: "end" as const,
 						})}
-						stroke={CHART_COLORS.gridLine}
-						tickStroke={CHART_COLORS.gridLine}
+						stroke={CHART_COLORS().gridLine}
+						tickStroke={CHART_COLORS().gridLine}
 						numTicks={5}
 					/>
 				</Group>
@@ -233,7 +243,8 @@ export function PowerOutput(props: PowerOutputProps) {
 		>
 			<p className="text-sm text-muted-foreground">
 				Signed cable-work proxy, not muscle or body power.
-				{unknownCount > 0 && ` ${unknownCount} reps unavailable; historical power is unverified.`}
+				{unknownCount > 0 &&
+					` ${unknownCount} reps unavailable; historical power is unverified.`}
 			</p>
 			<div aria-hidden="true">
 				<ParentSize>
@@ -257,8 +268,16 @@ export function PowerOutput(props: PowerOutputProps) {
 						return (
 							<tr key={rep.id}>
 								<td>Rep {rep.rep_number ?? i + 1}</td>
-								<td>{power.meanWatts === null ? "Unavailable" : power.meanWatts.toFixed(2)}</td>
-								<td>{power.peakWatts === null ? "Unavailable" : power.peakWatts.toFixed(2)}</td>
+								<td>
+									{power.meanWatts === null
+										? "Unavailable"
+										: power.meanWatts.toFixed(2)}
+								</td>
+								<td>
+									{power.peakWatts === null
+										? "Unavailable"
+										: power.peakWatts.toFixed(2)}
+								</td>
 							</tr>
 						);
 					})}

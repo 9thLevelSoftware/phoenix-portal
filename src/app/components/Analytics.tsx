@@ -15,10 +15,8 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { DataFreshnessStrip } from "@/app/components/analytics/DataFreshnessStrip";
-import {
-	CHART_COLORS,
-	ECHARTS_GRID,
-} from "@/app/components/charts/shared/EChartsTheme";
+import { useChartColors } from "@/app/components/charts/shared/ChartTheme";
+import { ECHARTS_GRID } from "@/app/components/charts/shared/EChartsTheme";
 import type { InsightItem } from "@/app/components/InsightsFeed";
 import { PageShell } from "@/app/components/PageShell";
 import { Badge } from "@/app/components/ui/badge";
@@ -62,6 +60,7 @@ import {
 } from "@/lib/recommendations";
 import type { MuscleRecovery } from "@/lib/sra-recovery";
 import { computeSraStatus } from "@/lib/sra-recovery";
+import { withAlpha } from "@/lib/theme-tokens";
 import { calculateRTL, classifyTrainingLoad } from "@/lib/training-load";
 import {
 	convertWeight,
@@ -87,7 +86,7 @@ import {
 import { bodyIntelligenceOptions } from "@/queries/body-intelligence";
 import { dashboardFreshnessOptions } from "@/queries/freshness";
 import { insightsOptions } from "@/queries/insights";
-import { externalActivitiesOptions } from "@/queries/integrations";
+import { externalActivitiesChartOptions } from "@/queries/integrations";
 import { profileOptions } from "@/queries/profile";
 import { progressionWorkbenchOptions } from "@/queries/progress";
 import { personalRecordsOptions } from "@/queries/records";
@@ -141,24 +140,25 @@ function AnalyticsTabSkeleton() {
 	);
 }
 
+// CSS variables, not resolved values: this map is built once at module load,
+// so resolved colours would stay on whichever theme was active then. SVG and
+// DOM styles take var() directly and EChartsWrapper resolves it per theme.
 const MUSCLE_GROUP_COLORS: Record<string, string> = {
-	Chest: PHOENIX.ember,
-	Back: PHOENIX.flameRed,
-	Legs: PHOENIX.gold,
-	Shoulders: PHOENIX.forgeGreen,
-	Arms: PHOENIX.ashGray,
-	Core: PHOENIX.flameYellow,
+	Chest: "var(--chart-1)",
+	Back: "var(--destructive)",
+	Legs: "var(--chart-3)",
+	Shoulders: "var(--chart-4)",
+	Arms: "var(--chart-2)",
+	Core: "var(--chart-6)",
 };
 
-// Map old tab names to new tab names for backward compatibility
+// Legacy `?tab=` aliases. `biomechanics` still opens Performance;
+// `/biomechanics` redirects straight to `?tab=performance`.
 const TAB_MIGRATION: Record<string, string> = {
-	overview: "overview",
 	strength: "progress",
 	insights: "progress",
-	body: "body",
 	external: "overview",
 	biomechanics: "performance",
-	performance: "performance",
 };
 
 const VALID_TABS = ["overview", "progress", "body", "performance", "records"];
@@ -394,7 +394,10 @@ export function selectInsightsFeed(
 	};
 }
 
-const EXERCISE_COLORS = [PHOENIX.ember, PHOENIX.flameRed, PHOENIX.gold];
+function getExerciseColors(): [string, string, string] {
+	const colors = PHOENIX();
+	return [colors.ember, colors.flameRed, colors.gold];
+}
 
 interface Insight {
 	type: "positive" | "warning" | "neutral";
@@ -494,13 +497,14 @@ function toWeeklyVolumeSeriesMobile(buckets: VolumeBucket[]) {
 	}));
 }
 
+// CSS variables for the same reason as MUSCLE_GROUP_COLORS above.
 const MUSCLE_GROUP_COLORS_MOBILE: Record<string, string> = {
-	Chest: PHOENIX.ember,
-	Back: PHOENIX.gold,
-	Legs: PHOENIX.forgeGreen,
-	Shoulders: "#6366F1",
-	Arms: "#EC4899",
-	Core: "#8B5CF6",
+	Chest: "var(--primary)",
+	Back: "var(--accent)",
+	Legs: "var(--success)",
+	Shoulders: "var(--chart-2)",
+	Arms: "var(--chart-6)",
+	Core: "var(--chart-5)",
 };
 
 interface MobileStatCardProps {
@@ -512,11 +516,11 @@ interface MobileStatCardProps {
 
 function MobileStatCard({ label, value, icon, delta }: MobileStatCardProps) {
 	return (
-		<Card className="min-w-[120px] p-4 bg-surface-2 border-secondary">
+		<Card variant="stat" padding="sm" className="min-w-[120px]">
 			<div className="flex flex-col">
 				<div className="text-muted-foreground text-xs mb-1">{label}</div>
 				<div className="flex items-center justify-between">
-					<span className="text-2xl font-bold text-white font-data">
+					<span className="text-2xl font-bold text-foreground font-data">
 						{value}
 					</span>
 					<div className="text-primary">{icon}</div>
@@ -548,13 +552,17 @@ function percentDelta(current: number, previous: number): number | null {
 }
 
 export function Analytics() {
+	// Theme-aware colours; a dependency of the chart options below so the
+	// options are rebuilt when the theme changes.
+	const chartColors = useChartColors();
 	const { user } = useAuth();
 	const [timePeriod, setTimePeriod] = useState("30D");
 	const [selectedProgressionExercise, setSelectedProgressionExercise] =
 		useState<string | null>(null);
 	const [searchParams, setSearchParams] = useSearchParams();
 
-	// Map old tab names to new ones for backward compatibility
+	// Resolve legacy `?tab=` aliases (see TAB_MIGRATION). `/biomechanics`
+	// already arrives as `performance`.
 	const rawTab = searchParams.get("tab") || "overview";
 	const activeTab = VALID_TABS.includes(rawTab)
 		? rawTab
@@ -624,7 +632,7 @@ export function Analytics() {
 		phaseStatisticsTrendOptions(userId, queryPeriod, activeProfileId),
 	);
 	const { data: externalActivities } = useQuery({
-		...externalActivitiesOptions(userId),
+		...externalActivitiesChartOptions(userId),
 		enabled: !!user,
 	});
 	// The chart's window (4w = 28 days): totals, deltas, training load,
@@ -815,7 +823,7 @@ export function Analytics() {
 	const volumeData = toWeeklyVolumeSeries(volumeRaw ?? [], queryPeriod);
 	const muscleGroupData = (muscleGroupRaw ?? []).map((m) => ({
 		...m,
-		color: MUSCLE_GROUP_COLORS[m.name] ?? PHOENIX.ashGray,
+		color: MUSCLE_GROUP_COLORS[m.name] ?? "var(--muted-foreground)",
 	}));
 
 	const strengthSeries = useMemo(
@@ -901,7 +909,6 @@ export function Analytics() {
 	const trainingLoad = useMemo(() => {
 		const sessions = (volumeComparison?.current ?? []).map((s) => ({
 			totalVolume: s.total_volume ?? 0,
-			durationSeconds: s.duration_seconds ?? 0,
 			setCount: s.set_count ?? 0,
 		}));
 		const rtl = calculateRTL(sessions);
@@ -995,12 +1002,12 @@ export function Analytics() {
 				{
 					type: "value" as const,
 					name: `Volume (${unit})`,
-					nameTextStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
+					nameTextStyle: { color: chartColors.axisText, fontSize: 11 },
 				},
 				{
 					type: "value" as const,
 					name: "Sessions",
-					nameTextStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
+					nameTextStyle: { color: chartColors.axisText, fontSize: 11 },
 					splitLine: { show: false },
 				},
 			],
@@ -1020,13 +1027,13 @@ export function Analytics() {
 							x2: 0,
 							y2: 1,
 							colorStops: [
-								{ offset: 0, color: `${CHART_COLORS.primary}80` },
-								{ offset: 1, color: `${CHART_COLORS.primary}08` },
+								{ offset: 0, color: withAlpha(chartColors.primary, 0.5) },
+								{ offset: 1, color: withAlpha(chartColors.primary, 0.03) },
 							],
 						},
 					},
-					lineStyle: { color: CHART_COLORS.primary, width: 2 },
-					itemStyle: { color: CHART_COLORS.primary },
+					lineStyle: { color: chartColors.primary, width: 2 },
+					itemStyle: { color: chartColors.primary },
 				},
 				{
 					name: "Sessions",
@@ -1035,13 +1042,13 @@ export function Analytics() {
 					data: volumeData.map((d) => d.workouts),
 					barWidth: "40%",
 					itemStyle: {
-						color: `${CHART_COLORS.secondary}99`,
+						color: withAlpha(chartColors.secondary, 0.6),
 						borderRadius: [4, 4, 0, 0],
 					},
 				},
 			],
 		};
-	}, [volumeData, unit]);
+	}, [chartColors, volumeData, unit]);
 
 	// --- ECharts: Muscle Distribution donut ---
 	const muscleDonutOption = useMemo(() => {
@@ -1054,7 +1061,7 @@ export function Analytics() {
 			},
 			legend: {
 				bottom: 0,
-				textStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
+				textStyle: { color: chartColors.axisText, fontSize: 11 },
 			},
 			series: [
 				{
@@ -1068,7 +1075,8 @@ export function Analytics() {
 						formatter: sorted[0]?.name ?? "",
 						fontSize: 14,
 						fontWeight: 600,
-						color: "#fff",
+						// Drawn in the donut hole, on the card: normal text colour.
+						color: "var(--foreground)",
 					},
 					emphasis: {
 						label: {
@@ -1086,25 +1094,26 @@ export function Analytics() {
 				},
 			],
 		};
-	}, [muscleGroupData]);
+	}, [chartColors, muscleGroupData]);
 
 	// --- ECharts: 1RM Progression line chart ---
 	const strengthEChartsOption = useMemo(() => {
 		if (strengthProgressData.length === 0) return null;
 		const dates = strengthProgressData.map((d) => d.date as string);
+		const exerciseColors = getExerciseColors();
 		return {
 			tooltip: { trigger: "axis" as const },
 			legend: {
 				data: strengthExercises,
 				bottom: 0,
-				textStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
+				textStyle: { color: chartColors.axisText, fontSize: 11 },
 			},
 			grid: { ...ECHARTS_GRID, bottom: 60 },
 			xAxis: { type: "category" as const, data: dates },
 			yAxis: {
 				type: "value" as const,
 				name: unit,
-				nameTextStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
+				nameTextStyle: { color: chartColors.axisText, fontSize: 11 },
 			},
 			series: strengthSeries.series.map((item, i) => ({
 				name: item.name,
@@ -1113,13 +1122,19 @@ export function Analytics() {
 				smooth: true,
 				lineStyle: { width: 2 },
 				itemStyle: {
-					color: EXERCISE_COLORS[i % EXERCISE_COLORS.length],
+					color: exerciseColors[i % exerciseColors.length],
 				},
 				symbol: "circle",
 				symbolSize: 6,
 			})),
 		};
-	}, [strengthProgressData, strengthExercises, strengthSeries.series, unit]);
+	}, [
+		chartColors,
+		strengthProgressData,
+		strengthExercises,
+		strengthSeries.series,
+		unit,
+	]);
 
 	// --- ECharts: Volume trend area (for Progress tab) ---
 	const volumeAreaOption = useMemo(() => {
@@ -1134,7 +1149,7 @@ export function Analytics() {
 			yAxis: {
 				type: "value" as const,
 				name: `Volume (${unit})`,
-				nameTextStyle: { color: CHART_COLORS.axisText, fontSize: 11 },
+				nameTextStyle: { color: chartColors.axisText, fontSize: 11 },
 			},
 			series: [
 				{
@@ -1152,17 +1167,17 @@ export function Analytics() {
 							x2: 0,
 							y2: 1,
 							colorStops: [
-								{ offset: 0, color: `${CHART_COLORS.success}60` },
-								{ offset: 1, color: `${CHART_COLORS.success}08` },
+								{ offset: 0, color: withAlpha(chartColors.success, 0.38) },
+								{ offset: 1, color: withAlpha(chartColors.success, 0.03) },
 							],
 						},
 					},
-					lineStyle: { color: CHART_COLORS.success, width: 2 },
-					itemStyle: { color: CHART_COLORS.success },
+					lineStyle: { color: chartColors.success, width: 2 },
+					itemStyle: { color: chartColors.success },
 				},
 			],
 		};
-	}, [volumeData, unit]);
+	}, [chartColors, volumeData, unit]);
 
 	// --- Insights feed: a fresh server batch OR local, never both (KD-14) ---
 	const { items: insightsFeedItems, source: insightsSource } = useMemo(
@@ -1270,10 +1285,10 @@ export function Analytics() {
 			volume: Math.round(convertWeight(entry.volume, unit) * 10) / 10,
 		}),
 	);
-	const mobileMusclData = (muscleGroupRaw ?? []).map((m) => ({
+	const mobileMuscleData = (muscleGroupRaw ?? []).map((m) => ({
 		...m,
-		color: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX.ashGray,
-		fill: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? PHOENIX.ashGray,
+		color: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? "var(--muted-foreground)",
+		fill: MUSCLE_GROUP_COLORS_MOBILE[m.name] ?? "var(--muted-foreground)",
 	}));
 	const mobileStrengthData = buildMobileStrengthPhaseData(
 		strengthRaw ?? [],
@@ -1300,7 +1315,7 @@ export function Analytics() {
 		(personalRecords?.length ?? 0) > 0 ||
 		(bodyIntelData?.length ?? 0) > 0;
 	const mobileHasData =
-		mobileVolumeData.length > 0 || mobileMusclData.length > 0 || hasTabData;
+		mobileVolumeData.length > 0 || mobileMuscleData.length > 0 || hasTabData;
 
 	if (isPending) {
 		return (
@@ -1364,7 +1379,7 @@ export function Analytics() {
 
 	const analyticsEmpty = hasLoadError ? (
 		<div className="text-center py-16">
-			<p className="text-lg text-white mb-2">Couldn't load analytics</p>
+			<p className="text-lg text-foreground mb-2">Couldn't load analytics</p>
 			<p className="text-sm text-muted-foreground mb-6">
 				Something went wrong while loading your training data. Please try again.
 			</p>
@@ -1387,7 +1402,7 @@ export function Analytics() {
 				{/* Compact Header */}
 				<div className="sticky top-0 bg-surface-1 z-10 px-4 py-3 border-b border-secondary">
 					<div className="flex items-center justify-between">
-						<h1 className="text-xl font-bold text-white">Analytics Hub</h1>
+						<h1 className="text-h1 font-bold text-foreground">Analytics Hub</h1>
 						<div className="flex items-center gap-2">
 							<Select value={timePeriod} onValueChange={setTimePeriod}>
 								<SelectTrigger className="w-20 h-8 text-sm bg-surface-2 border-secondary">
@@ -1403,7 +1418,7 @@ export function Analytics() {
 							</Select>
 							<button
 								type="button"
-								className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-white transition-colors"
+								className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
 								onClick={() => {
 									const rows = mobileVolumeData.map((d) =>
 										[d.date, d.volume].join(","),
@@ -1466,7 +1481,7 @@ export function Analytics() {
 						},
 						{
 							label: "Groups",
-							value: `${mobileMusclData.length}`,
+							value: `${mobileMuscleData.length}`,
 							icon: <Zap className="w-5 h-5" />,
 						},
 					].map((stat) => (
@@ -1496,7 +1511,7 @@ export function Analytics() {
 								onClick={() => setActiveTab(tab.value)}
 								className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
 									activeTab === tab.value
-										? "text-white border-primary"
+										? "text-foreground border-primary"
 										: "text-muted-foreground border-transparent"
 								}`}
 							>
@@ -1548,17 +1563,14 @@ export function Analytics() {
 									<MobileBodyTab
 										muscleGroupData={muscleGroupData}
 										muscleRadarData={muscleRadarData}
-										mobileMusclData={mobileMusclData}
+										mobileMuscleData={mobileMuscleData}
 										weeklyVolume={weeklyVolume}
 										bodyMuscleModel={bodyMuscleModel}
 										bodyMuscleMapFailed={bodyMuscleMapFailed}
 										totalSessions={totalSessions}
 										muscleRecoveries={muscleRecoveries}
 										recommendations={recommendations}
-										exercisesByMuscle={exercisesByMuscle}
-										userId={userId}
 										unit={unit}
-										profileId={activeProfileId}
 									/>
 								</Suspense>
 							)}
@@ -1583,7 +1595,7 @@ export function Analytics() {
 					{/* Header */}
 					<div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 						<div>
-							<h1 className="text-display-2 mb-2 text-white">Analytics Hub</h1>
+							<h1 className="text-h1 mb-2 text-foreground">Analytics Hub</h1>
 							<p className="text-muted-foreground">
 								Comprehensive insights into your training
 							</p>
@@ -1592,7 +1604,7 @@ export function Analytics() {
 							<Select value={timePeriod} onValueChange={setTimePeriod}>
 								<SelectTrigger
 									aria-label="Time period"
-									className="w-32 bg-surface-2 border-secondary text-white"
+									className="w-32 bg-surface-2 border-secondary text-foreground"
 								>
 									<SelectValue />
 								</SelectTrigger>
@@ -1678,14 +1690,14 @@ export function Analytics() {
 										animate={{ opacity: 1, y: 0 }}
 										transition={{ delay: index * 0.08 }}
 									>
-										<Card className="p-4 bg-surface-2 border-secondary">
+										<Card variant="stat" padding="sm">
 											<div className="flex items-center justify-between mb-1">
 												<span className="text-sm text-muted-foreground">
 													{stat.label}
 												</span>
 												<span className="text-primary">{stat.icon}</span>
 											</div>
-											<div className="text-2xl text-white mb-1">
+											<div className="text-2xl text-foreground mb-1">
 												{stat.value}
 											</div>
 											<div className="flex items-center gap-2">

@@ -382,6 +382,34 @@ describe("createHevyPageFetcher", () => {
 		await expect(promise).rejects.toThrow("Hevy API returned 500");
 		await expect(promise).rejects.not.toThrow(HevyAuthError);
 	});
+
+	it("replaces an unreadable body with a fixed error that omits the provider text", async () => {
+		// Short enough that an unguarded response.json() quotes it in full.
+		const providerBody = "SECRET_PROVIDER_BODY";
+		const fetchImpl = vi.fn(
+			async () =>
+				new Response(providerBody, {
+					status: 200,
+					headers: { "Content-Type": "text/html" },
+				}),
+		);
+		const fetchPage = createHevyPageFetcher(
+			"key",
+			fetchImpl as unknown as typeof fetch,
+		);
+
+		let caught: unknown;
+		try {
+			await fetchPage("/workouts", new URLSearchParams());
+		} catch (error) {
+			caught = error;
+		}
+		expect(caught).toBeInstanceOf(Error);
+		const error = caught as Error;
+		expect(error.message).toBe("Hevy API returned an unreadable response");
+		expect(error.message).not.toContain("SECRET_PROVIDER_BODY");
+		expect(error.cause).toBeUndefined();
+	});
 });
 
 // ─── row mapping ─────────────────────────────────────────────────────────────

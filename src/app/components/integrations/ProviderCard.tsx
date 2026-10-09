@@ -14,6 +14,7 @@ import {
 	PROVIDER_METADATA,
 	type UserIntegration,
 } from "@/lib/integrations/types";
+import { formatRelative } from "./formatRelative";
 
 // Map PROVIDER_METADATA icon string to actual lucide component
 const ICON_MAP: Record<string, typeof Activity> = {
@@ -34,20 +35,19 @@ interface ProviderCardProps {
 	comingSoon?: boolean;
 }
 
-function formatRelative(dateStr: string | null): string {
-	if (!dateStr) return "Never";
-	const date = new Date(dateStr);
-	const now = new Date();
-	const diffMs = now.getTime() - date.getTime();
-	const diffMin = Math.floor(diffMs / 60000);
-	const diffHr = Math.floor(diffMs / 3600000);
-	const diffDays = Math.floor(diffMs / 86400000);
-
-	if (diffMin < 1) return "Just now";
-	if (diffMin < 60) return `${diffMin}m ago`;
-	if (diffHr < 24) return `${diffHr}h ago`;
-	if (diffDays < 7) return `${diffDays}d ago`;
-	return date.toLocaleDateString();
+function attentionFallback(
+	providerName: string,
+	isTokenExpired: boolean,
+	comingSoon: boolean,
+): string {
+	if (comingSoon) {
+		return isTokenExpired
+			? `Your ${providerName} authorization has expired. Disconnect to remove this connection.`
+			: `${providerName} syncing stopped after an error. Disconnect to remove this connection.`;
+	}
+	return isTokenExpired
+		? `Your ${providerName} authorization has expired. Reconnect to resume syncing.`
+		: `${providerName} syncing stopped after an error. Reconnect to try again.`;
 }
 
 export function ProviderCard({
@@ -66,8 +66,9 @@ export function ProviderCard({
 
 	// A lapsed connection is distinct from never having connected. `token_expired`
 	// means the provider revoked or aged out our grant; `error` means syncing hit
-	// a failure the sync function could not recover from. Both need a reconnect
-	// prompt rather than the first-run Connect button.
+	// a failure the sync function could not recover from. A launched provider
+	// gets a reconnect prompt. A coming-soon provider cannot start OAuth, so the
+	// card offers Disconnect instead of Reconnect.
 	const isTokenExpired = integration?.status === "token_expired";
 	const needsAttention = isTokenExpired || integration?.status === "error";
 
@@ -75,14 +76,14 @@ export function ProviderCard({
 		<Card className="border-border/50">
 			<CardHeader>
 				<div className="flex items-center gap-3">
-					<div className="flex items-center justify-center size-10 rounded-lg bg-[var(--color-phoenix-primary)]/10">
-						<Icon className="size-5 text-[var(--color-phoenix-primary)]" />
+					<div className="flex items-center justify-center size-10 rounded-lg bg-primary/10">
+						<Icon className="size-5 text-primary" />
 					</div>
 					<div className="flex-1">
 						<div className="flex items-center gap-2">
 							<CardTitle className="text-base">{meta.name}</CardTitle>
 							{comingSoon && (
-								<Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+								<Badge className="bg-warning/20 text-warning border-warning/30">
 									Coming Soon
 								</Badge>
 							)}
@@ -94,7 +95,7 @@ export function ProviderCard({
 			<CardContent>
 				{integration?.status === "connected" ? (
 					<div className="space-y-4">
-						<Badge className="bg-[var(--color-forge-green)]/20 text-[var(--color-forge-green)] border-transparent">
+						<Badge className="bg-success/20 text-success border-transparent">
 							Connected
 						</Badge>
 						<p className="text-sm text-muted-foreground">
@@ -131,30 +132,40 @@ export function ProviderCard({
 						<Badge
 							className={
 								isTokenExpired
-									? "bg-amber-500/20 text-amber-400 border-amber-500/30"
+									? "bg-warning/20 text-warning border-warning/30"
 									: "bg-destructive/20 text-destructive border-destructive/30"
 							}
 						>
-							{isTokenExpired ? "Reconnection needed" : "Sync error"}
+							{isTokenExpired
+								? comingSoon
+									? "Authorization expired"
+									: "Reconnection needed"
+								: "Sync error"}
 						</Badge>
 						<Alert variant="destructive">
 							<AlertDescription>
 								{integration?.error_message ??
-									(isTokenExpired
-										? `Your ${meta.name} authorization has expired. Reconnect to resume syncing.`
-										: `${meta.name} syncing stopped after an error. Reconnect to try again.`)}
+									attentionFallback(meta.name, isTokenExpired, !!comingSoon)}
 							</AlertDescription>
 						</Alert>
 						<p className="text-sm text-muted-foreground">
 							Last synced: {formatRelative(integration?.last_sync_at ?? null)}
 						</p>
 						<div className="flex gap-2">
-							<Button onClick={onConnect} size="sm" disabled={isLoading}>
-								Reconnect {meta.name}
-							</Button>
-							<Button onClick={onDisconnect} variant="outline" size="sm">
-								Disconnect
-							</Button>
+							{comingSoon ? (
+								<Button onClick={onDisconnect} variant="outline" size="sm">
+									Disconnect
+								</Button>
+							) : (
+								<>
+									<Button onClick={onConnect} size="sm" disabled={isLoading}>
+										Reconnect {meta.name}
+									</Button>
+									<Button onClick={onDisconnect} variant="outline" size="sm">
+										Disconnect
+									</Button>
+								</>
+							)}
 						</div>
 					</div>
 				) : comingSoon ? (

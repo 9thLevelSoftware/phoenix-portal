@@ -7,11 +7,10 @@ import {
 } from "@/hooks/useSubscription";
 
 const TIER_STYLES: Record<SubscriptionTier, string> = {
-	FREE: "border-zinc-700 bg-zinc-800 text-zinc-400",
-	EMBER:
-		"border-[var(--color-forge-green)] bg-emerald-950 text-[var(--color-forge-green)]",
-	FLAME: "border-orange-800 bg-orange-950 text-orange-400",
-	INFERNO: "border-yellow-800 bg-yellow-950 text-yellow-400",
+	FREE: "border-border bg-secondary text-muted-foreground",
+	EMBER: "border-success bg-success/10 text-success",
+	FLAME: "border-primary/60 bg-primary/10 text-sidebar-accent-foreground",
+	INFERNO: "border-rank-gold/60 bg-rank-gold/10 text-rank-gold",
 };
 
 const TIER_LABELS: Record<SubscriptionTier, string> = {

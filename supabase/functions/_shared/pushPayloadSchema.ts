@@ -30,6 +30,7 @@
 // alias to the node_modules "zod" package via vitest.config.ts.
 import { z } from "npm:zod@4.3.6";
 import { PERSONAL_RECORD_TYPES, resolvePersonalRecordType } from "./personalRecordRow.ts";
+import { normalizeSyncPlatform } from "./syncPlatform.ts";
 import { DEFAULT_WIRE_MODE } from "./workoutModes.ts";
 
 // ─── Primitives ──────────────────────────────────────────────────────────
@@ -56,19 +57,14 @@ export const localProfileIdSchema = z
 
 /**
  * Platform normalizer. Accepts any input; always returns a canonical
- * "android" | "ios" | "unknown". Mirrors the prior `normalizeSyncPlatform`
- * contract but expressed declaratively.
+ * "android" | "ios" | "unknown". Delegates to `normalizeSyncPlatform` so
+ * blank and unknown inputs stay one source of truth.
  */
 export const platformSchema = z
 	.unknown()
-	.transform<"android" | "ios" | "unknown">((value: unknown) => {
-		if (typeof value !== "string") return "unknown";
-		const normalized = value.trim().toLowerCase();
-		if (!normalized) return "unknown";
-		if (normalized.includes("android")) return "android";
-		if (normalized.includes("ios")) return "ios";
-		return "unknown";
-	});
+	.transform<"android" | "ios" | "unknown">((value: unknown) =>
+		normalizeSyncPlatform(value),
+	);
 
 // ─── Wire timestamps ─────────────────────────────────────────────────────
 // Mobile ships timestamps as ISO-8601 strings. Validate them at ingress so a

@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import type { ComponentProps, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/test-utils";
 import { Dashboard } from "../Dashboard";
@@ -54,8 +55,58 @@ const mockAuth = vi.hoisted(() => ({
 	}),
 }));
 
+const mockDashboard = vi.hoisted(() => ({
+	hasWorkouts: true,
+}));
+
 vi.mock("@/app/hooks/useAuth", () => mockAuth);
 vi.mock("@/providers/AuthProvider", () => mockAuth);
+vi.mock("motion/react", async () => {
+	const { forwardRef } = await vi.importActual<typeof import("react")>("react");
+	type MockMotionDivProps = ComponentProps<"div"> & {
+		initial?: unknown;
+		animate?: unknown;
+		exit?: unknown;
+		variants?: unknown;
+		transition?: unknown;
+		whileHover?: unknown;
+	};
+	const MockMotionDiv = forwardRef<HTMLDivElement, MockMotionDivProps>(
+		(
+			{
+				children,
+				initial: _initial,
+				animate: _animate,
+				exit: _exit,
+				variants,
+				transition: _transition,
+				whileHover: _whileHover,
+				...props
+			},
+			ref,
+		) => (
+			<div
+				ref={ref}
+				{...props}
+				data-motion-initial={
+					typeof _initial === "string" ? _initial : undefined
+				}
+				data-motion-animate={
+					typeof _animate === "string" ? _animate : undefined
+				}
+				data-motion-variants={variants ? "present" : undefined}
+			>
+				{children}
+			</div>
+		),
+	);
+
+	return {
+		AnimatePresence: ({ children }: { children: ReactNode }) => children,
+		MotionConfig: ({ children }: { children: ReactNode }) => children,
+		motion: { div: MockMotionDiv },
+	};
+});
 vi.mock("@tanstack/react-query", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@tanstack/react-query")>();
 	return {
@@ -150,6 +201,37 @@ describe("Dashboard", () => {
 		).toBeGreaterThan(0);
 	});
 
+	it("propagates stagger variants from both dashboard grids", () => {
+		const assertStaggeredGrid = () => {
+			const grids = Array.from(
+				document.querySelectorAll(
+					'[data-motion-variants="present"]:has(> [data-motion-variants="present"])',
+				),
+			);
+
+			expect(grids).toHaveLength(1);
+			for (const grid of grids) {
+				expect(grid.getAttribute("data-motion-initial")).toBe("hidden");
+				expect(grid.getAttribute("data-motion-animate")).toBe("visible");
+				expect(
+					Array.from(grid.children).every(
+						(child) => child.getAttribute("data-motion-variants") === "present",
+					),
+				).toBe(true);
+			}
+		};
+
+		const withWorkouts = renderWithProviders(<Dashboard />);
+		assertStaggeredGrid();
+		withWorkouts.unmount();
+
+		mockDashboard.hasWorkouts = false;
+		const withoutWorkouts = renderWithProviders(<Dashboard />);
+		assertStaggeredGrid();
+		withoutWorkouts.unmount();
+		mockDashboard.hasWorkouts = true;
+	});
+
 	it("shows workout phase on recent PR cards", () => {
 		renderWithProviders(<Dashboard />);
 
@@ -175,6 +257,66 @@ describe("Dashboard", () => {
 			screen.queryByRole("heading", { name: /welcome to phoenix portal/i }),
 		).not.toBeInTheDocument();
 		expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+	});
+
+	it("uses matching foreground tokens on solid fills", () => {
+		const populated = renderWithProviders(<Dashboard />);
+
+		const statWells = Array.from(document.querySelectorAll("div")).filter(
+			(el) =>
+				el.classList.contains("bg-gradient-to-br") &&
+				(el.classList.contains("bg-primary") ||
+					el.classList.contains("bg-accent") ||
+					el.classList.contains("bg-success")),
+		);
+		expect(
+			statWells.map((el) =>
+				Array.from(el.classList).find((token) => token.startsWith("text-")),
+			),
+		).toEqual([
+			"text-primary-foreground",
+			"text-accent-foreground",
+			"text-success-foreground",
+		]);
+
+		const calorieWells = Array.from(document.querySelectorAll("div")).filter(
+			(el) =>
+				el.classList.contains("from-chart-2") &&
+				el.classList.contains("to-primary"),
+		);
+		expect(calorieWells.length).toBeGreaterThan(0);
+		for (const well of calorieWells) {
+			expect(well.classList.contains("text-white")).toBe(true);
+		}
+
+		populated.unmount();
+
+		mockWorkoutList.result = {
+			data: [],
+			isPending: false,
+			isLoading: false,
+			isError: false,
+			refetch: () => Promise.resolve(),
+		};
+		renderWithProviders(<Dashboard />);
+
+		const progressIcons = document.querySelectorAll(".bg-primary svg");
+		expect(progressIcons.length).toBeGreaterThan(0);
+		for (const icon of progressIcons) {
+			expect(icon.classList.contains("text-primary-foreground")).toBe(true);
+		}
+
+		const recoveryIcons = document.querySelectorAll(".bg-accent svg");
+		expect(recoveryIcons.length).toBeGreaterThan(0);
+		for (const icon of recoveryIcons) {
+			expect(icon.classList.contains("text-accent-foreground")).toBe(true);
+		}
+
+		const goalIcons = document.querySelectorAll(".from-chart-2.to-accent svg");
+		expect(goalIcons.length).toBeGreaterThan(0);
+		for (const icon of goalIcons) {
+			expect(icon.classList.contains("text-white")).toBe(true);
+		}
 	});
 
 	it("shows the welcome empty only after a successful zero-row fetch", () => {

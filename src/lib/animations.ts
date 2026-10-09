@@ -4,40 +4,31 @@
  * These are plain objects — no runtime dependency on motion/react.
  */
 
-// --- Spring presets (Framer Motion transition configs) ---
+// --- Motion recipes (spread directly into motion.* props) ---
 
-export const springs = {
-	/** Standard interaction — buttons, cards, toggles */
-	snappy: { type: "spring", damping: 30, stiffness: 500 } as const,
-	/** Content transitions — panels opening, route changes */
-	smooth: { type: "spring", damping: 28, stiffness: 250 } as const,
-	/** Quick micro-interactions — checkboxes, small state changes */
-	quick: { type: "spring", damping: 35, stiffness: 600 } as const,
-} as const;
-
-// --- Variant presets (Framer Motion variants objects) ---
-
-/** Single element entrance: opacity 0→1, y 8→0 (tighter than before) */
+/** Snappy opacity + translate entrance/exit for content and cards. */
 export const fadeUp = {
+	initial: { opacity: 0, y: 8 },
+	animate: { opacity: 1, y: 0 },
+	exit: { opacity: 0 },
+	transition: { duration: 0.18, ease: "easeOut" },
+} as const;
+
+/** Variants-shaped opacity + translate entrance for staggered children. */
+export const fadeUpVariants = {
 	hidden: { opacity: 0, y: 8 },
-	visible: { opacity: 1, y: 0, transition: springs.smooth },
-} as const;
-
-/** Simple opacity entrance */
-export const fadeIn = {
-	hidden: { opacity: 0 },
-	visible: { opacity: 1, transition: { duration: 0.2 } },
-} as const;
-
-/** Parent variant for staggered children */
-export const staggerContainer = {
-	hidden: { opacity: 0 },
 	visible: {
 		opacity: 1,
-		transition: {
-			staggerChildren: 0.04,
-			delayChildren: 0.05,
-		},
+		y: 0,
+		transition: { duration: 0.18, ease: "easeOut" },
+	},
+} as const;
+
+/** Parent variants for staggered children. Use with `variants={staggerContainer}` and `initial="hidden" animate="visible"`. */
+export const staggerContainer = {
+	hidden: {},
+	visible: {
+		transition: { staggerChildren: 0.05 },
 	},
 } as const;
 
@@ -56,50 +47,10 @@ export const pageTransition = {
 	},
 } as const;
 
-// --- Exit presets (mirror entries with ease-in) ---
+// --- Hover & tap recipes ---
 
-/** Single element exit: opacity 1→0, y 0→-8 (reverse of fadeUp) */
-export const fadeOut = {
-	visible: { opacity: 1, y: 0 },
-	exit: {
-		opacity: 0,
-		y: -8,
-		transition: { duration: 0.15, ease: [0.7, 0, 0.84, 0] },
-	},
-} as const;
+/** Subtle scale lift for interactive cards and panels. */
+export const hover = { scale: 1.02 } as const;
 
-/** Combined entry/exit for AnimatePresence wrappers */
-export const fadeUpDown = {
-	hidden: { opacity: 0, y: 8 },
-	visible: { opacity: 1, y: 0, transition: springs.smooth },
-	exit: {
-		opacity: 0,
-		y: -8,
-		transition: { duration: 0.15, ease: [0.7, 0, 0.84, 0] },
-	},
-} as const;
-
-// --- Hover & tap presets ---
-
-export const hover = {
-	/** Subtle lift — cards, interactive panels */
-	lift: { scale: 1.005, y: -1, transition: springs.snappy },
-} as const;
-
-export const tap = {
-	press: { scale: 0.98 },
-} as const;
-
-// --- Breathing animation (scroll indicator) ---
-
-export const breathing = {
-	animate: {
-		y: [0, 4, 0] as number[],
-		opacity: [0.5, 1, 0.5] as number[],
-		transition: {
-			duration: 2.5,
-			repeat: Number.POSITIVE_INFINITY,
-			ease: "easeInOut",
-		},
-	},
-} as const;
+/** Small press feedback for buttons and touch targets. */
+export const tap = { scale: 0.97 } as const;

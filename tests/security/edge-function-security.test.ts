@@ -24,9 +24,6 @@ import {
 import { buildSubscriptionUpsertFromPaddleState } from "../../supabase/functions/_shared/paddleSubscriptionState.ts";
 import {
 	buildPaddleSubscriptionPatch,
-	decidePlanChangeGate,
-	PAYMENT_PAST_DUE_HTTP_STATUS,
-	paymentPastDueResponseBody,
 	resolvePaddleCancelRequest,
 } from "../../supabase/functions/_shared/paddleSubscriptionUpdate.ts";
 import {
@@ -276,54 +273,6 @@ describe("Paddle webhook security helpers", () => {
 		if (!gate.allowed) {
 			expect(gate.response.status).toBe(402);
 		}
-	});
-
-	it("refuses plan changes for past_due with 409 payment_past_due, not checkout", () => {
-		const now = new Date("2026-05-17T12:00:00Z");
-		const pastDue = {
-			paddle_subscription_id: "sub_1",
-			status: "past_due",
-			current_period_end: "2026-05-07T12:00:00Z",
-			cancel_at_period_end: false,
-		};
-		expect(decidePlanChangeGate(pastDue, now)).toEqual({
-			action: "payment_past_due",
-		});
-		expect(PAYMENT_PAST_DUE_HTTP_STATUS).toBe(409);
-		const body = paymentPastDueResponseBody();
-		expect(body.code).toBe("payment_past_due");
-		expect(body.message).toMatch(/payment method/i);
-
-		expect(
-			decidePlanChangeGate(
-				{
-					...pastDue,
-					status: "active",
-					current_period_end: "2026-06-17T00:00:00Z",
-				},
-				now,
-			),
-		).toEqual({ action: "proceed", paddleSubscriptionId: "sub_1" });
-		expect(
-			decidePlanChangeGate(
-				{
-					...pastDue,
-					status: "canceled",
-					current_period_end: "2026-06-17T00:00:00Z",
-				},
-				now,
-			),
-		).toEqual({
-			action: "checkout_required",
-			reason: "inactive_or_expired_subscription",
-		});
-		expect(decidePlanChangeGate(null, now)).toEqual({
-			action: "checkout_required",
-			reason: "missing_subscription",
-		});
-		expect(
-			decidePlanChangeGate({ ...pastDue, paddle_subscription_id: null }, now),
-		).toEqual({ action: "checkout_required", reason: "missing_subscription" });
 	});
 
 	it("routes past_due to manage-with-a-card-update, never to a new checkout", () => {

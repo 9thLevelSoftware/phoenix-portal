@@ -5,6 +5,7 @@ import {
   findCrossTierDuplicatePriceIds,
   getAllAllowedPriceIds,
   mapPriceIdToTier,
+  PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL,
   paddlePriceIdsConfigured,
 } from "../_shared/paddlePriceIds.ts";
 import {
@@ -17,6 +18,8 @@ import {
   syntheticSubscriptionEventId,
 } from "../_shared/paddleSubscriptionState.ts";
 import { verifyPaddleCustomDataSignature } from "../_shared/paddleWebhookSecurity.ts";
+import { bindCheckoutSubscription, type CheckoutBinding, verifyCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
+import { paddleBaseUrl } from "../_shared/accountPurge.ts";
 
 /** Anything with `get(key)`, e.g. `Deno.env`. */
 export interface EnvReader {
@@ -58,6 +61,9 @@ function defaultPaddleRefreshSubscriptionHandlerDependencies(): PaddleRefreshSub
 interface PaddleTransactionState {
   id: string;
   subscription_id?: string | null;
+  status?: string;
+  customer_id?: string | null;
+  items?: PaddleSubscriptionState["items"];
   custom_data?: {
     user_id?: string | null;
     cd_sig?: string | null;
@@ -193,7 +199,7 @@ async function paddleRefreshSubscriptionHandler(
     }
 
     if (!paddlePriceIdsConfigured(deps.env)) {
-      console.error("[FATAL] Paddle price IDs are not configured");
+      console.error(PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL);
       return new Response(
         JSON.stringify({ error: "Billing configuration incomplete" }),
         { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
@@ -248,10 +254,7 @@ async function paddleRefreshSubscriptionHandler(
       );
     }
 
-    const paddleEnv = deps.env.get("PADDLE_ENVIRONMENT") ?? "production";
-    const baseUrl = paddleEnv === "sandbox"
-      ? "https://sandbox-api.paddle.com"
-      : "https://api.paddle.com";
+    const baseUrl = paddleBaseUrl(deps.env.get("PADDLE_ENVIRONMENT"));
 
     const { data: storedSubscription, error: subError } = await supabaseAdmin
       .from("subscriptions")
@@ -274,6 +277,10 @@ async function paddleRefreshSubscriptionHandler(
     const storedSubscriptionId = localSubscription?.paddle_subscription_id ?? null;
     let paddleSubscriptionId = storedSubscriptionId;
     let existingTier = localSubscription?.tier ?? undefined;
+    let checkoutTransaction: PaddleTransactionState | undefined;
+    let checkoutSecret: string | undefined;
+    let transactionHasV2Binding = false;
+    const environment = deps.env.get("PADDLE_ENVIRONMENT") === "sandbox" ? "sandbox" : "production";
 
     if (requestedTransactionId) {
       const transactionResponse = await deps.fetch(
@@ -338,7 +345,8 @@ async function paddleRefreshSubscriptionHandler(
           { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
         );
       }
-      const signedCustomDataValid = await verifyPaddleCustomDataSignature(
+      transactionHasV2Binding = await verifyCheckoutBinding(transaction.custom_data, customDataSecret);
+      const signedCustomDataValid = transactionHasV2Binding || await verifyPaddleCustomDataSignature(
         user.id,
         transaction.custom_data?.cd_sig,
         customDataSecret,
@@ -354,7 +362,29 @@ async function paddleRefreshSubscriptionHandler(
         );
       }
 
-      if (!transaction.subscription_id) {
+      const binding = transaction.custom_data as CheckoutBinding;
+      if (transactionHasV2Binding && (binding.cd_transaction_id !== requestedTransactionId ||
+        binding.cd_environment !== environment || !getAllAllowedPriceIds(deps.env).has(binding.cd_price_id) ||
+        transaction.items?.length !== 1 || transaction.items[0]?.price?.id !== binding.cd_price_id || transaction.items[0]?.quantity !== 1)) {
+        return new Response(JSON.stringify({ error: "Invalid checkout transaction context" }),
+          { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+      }
+
+      if (!transaction.subscription_id || (transactionHasV2Binding && transaction.status !== "completed")) {
+        // A valid identity signature alone is not proof this checkout was issued.
+        const { data: issued, error: issuedError } = transactionHasV2Binding
+          ? await supabaseAdmin.from("paddle_checkout_authorizations")
+            .select("state, price_id, environment, expires_at")
+            .eq("user_id", user.id).eq("nonce", binding.cd_nonce).eq("transaction_id", requestedTransactionId).maybeSingle()
+          : { data: null, error: null };
+        if (issuedError) throw new Error("Checkout issuance lookup failed");
+        const issuedExpiry = Date.parse(issued?.expires_at ?? "");
+        if (!issued || !["ready", "closing"].includes(issued.state) || issued.price_id !== binding.cd_price_id ||
+          issued.environment !== environment || !Number.isFinite(issuedExpiry) || issuedExpiry !== Date.parse(binding.cd_expires_at) ||
+          issuedExpiry < deps.now().getTime() || !["draft", "ready", "billed", "paid", "completed"].includes(transaction.status ?? "")) {
+          return new Response(JSON.stringify({ error: "Checkout transaction was not issued or has expired" }),
+            { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+        }
         return new Response(
           JSON.stringify({ status: "no_subscription", reason: "transaction_pending" }),
           { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
@@ -363,6 +393,8 @@ async function paddleRefreshSubscriptionHandler(
 
       paddleSubscriptionId = transaction.subscription_id;
       existingTier = undefined;
+      checkoutTransaction = transaction;
+      checkoutSecret = customDataSecret;
     }
 
     if (!paddleSubscriptionId) {
@@ -394,6 +426,10 @@ async function paddleRefreshSubscriptionHandler(
     );
 
     if (paddleResponse.status === 404) {
+      if (requestedTransactionId && paddleSubscriptionId !== storedSubscriptionId) {
+        return new Response(JSON.stringify({ error: "Checkout subscription is not yet available" }),
+          { status: 502, headers: { ...cors, "Content-Type": "application/json" } });
+      }
       console.error(
         "[BILLING_ALERT] Paddle subscription not found (404), clearing provider identifiers:",
         paddleSubscriptionId,
@@ -483,7 +519,7 @@ async function paddleRefreshSubscriptionHandler(
       );
     }
     const subscription = paddleBody?.data as PaddleSubscriptionState | undefined;
-    if (!subscription?.id) {
+    if (!subscription?.id || subscription.id !== paddleSubscriptionId) {
       console.error("Paddle subscription response missing data.id");
       return new Response(
         JSON.stringify({ error: "Invalid Paddle response" }),
@@ -495,6 +531,38 @@ async function paddleRefreshSubscriptionHandler(
       subscription,
       getAllAllowedPriceIds(deps.env),
     );
+    if (checkoutTransaction && checkoutSecret) {
+      // The provider's current subscription/customer and original paid transaction
+      // must agree before adopting anything. Legacy signatures only refresh a
+      // tracked or durably established subscription; they cannot buy adoption.
+      if (checkoutTransaction.customer_id !== subscription.customer_id) {
+        return new Response(JSON.stringify({ error: "Checkout subscription ownership could not be confirmed" }),
+          { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      let trusted: boolean;
+      let bindingConflict = false;
+      try {
+        trusted = !transactionHasV2Binding && storedSubscriptionId === subscription.id
+          ? true
+          : await bindCheckoutSubscription({ data: checkoutTransaction.custom_data, userId: user.id,
+            subscriptionId: subscription.id, customerId: subscription.customer_id, priceId,
+            environment, secret: checkoutSecret, apiKey, fetchImpl: deps.fetch, db: {
+              rpc: async (name, args) => {
+                const result = await supabaseAdmin.rpc(name, args);
+                if (name === "bind_paddle_checkout" && result.error?.code === "23505") bindingConflict = true;
+                return result;
+              },
+            } });
+      } catch (error) {
+        if (!bindingConflict) throw error;
+        return new Response(JSON.stringify({ error: "Subscription already linked to another account", code: "subscription_already_bound" }),
+          { status: 409, headers: { ...cors, "Content-Type": "application/json" } });
+      }
+      if (!trusted) {
+        return new Response(JSON.stringify({ error: "Checkout subscription ownership could not be confirmed" }),
+          { status: 403, headers: { ...cors, "Content-Type": "application/json" } });
+      }
+    }
     let tier = mapPriceIdToTier(priceId, deps.env);
     if (priceId && tier === "FREE") {
       if (existingTier && existingTier !== "FREE" && existingTier !== "free") {

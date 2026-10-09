@@ -30,13 +30,11 @@ export function EmptyState({
 			</p>
 			{actionLabel &&
 				(actionHref ? (
-					<Button asChild variant="cta">
+					<Button asChild>
 						<Link to={actionHref}>{actionLabel}</Link>
 					</Button>
 				) : onAction ? (
-					<Button onClick={onAction} variant="cta">
-						{actionLabel}
-					</Button>
+					<Button onClick={onAction}>{actionLabel}</Button>
 				) : null)}
 		</div>
 	);

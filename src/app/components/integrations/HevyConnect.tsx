@@ -34,6 +34,7 @@ import { importHevyActivities, parseHevyCSV } from "@/lib/integrations/hevy";
 import type { NormalizedActivity } from "@/lib/integrations/types";
 import { supabase } from "@/lib/supabase";
 import { queryKeys } from "@/queries/keys";
+import { getDateRange, getTotalDuration } from "./activityPreview";
 
 interface HevyConnectProps {
 	userId: string;
@@ -220,7 +221,8 @@ export function HevyConnect({
 	const handleExport = useCallback(async () => {
 		setIsExporting(true);
 		try {
-			// Hevy uses lbs internally, so export in lbs for Hevy import
+			// Hevy's workout CSV column is weight_lbs, so this Strong-format export
+			// uses pounds. The Hevy API stores kilograms and is not this path.
 			const result = await exportWorkoutsAsCSV(userId, { weightUnit: "lbs" });
 
 			if (result.sessionCount === 0) {
@@ -243,29 +245,6 @@ export function HevyConnect({
 	}, [userId]);
 
 	// =========================================================================
-	// Preview Helpers
-	// =========================================================================
-
-	function getDateRange(activities: NormalizedActivity[]): string {
-		if (activities.length === 0) return "";
-		const dates = activities.map((a) => new Date(a.started_at).getTime());
-		const earliest = new Date(Math.min(...dates));
-		const latest = new Date(Math.max(...dates));
-		return `${earliest.toLocaleDateString()} - ${latest.toLocaleDateString()}`;
-	}
-
-	function getTotalDuration(activities: NormalizedActivity[]): string {
-		const totalSeconds = activities.reduce(
-			(sum, a) => sum + a.duration_seconds,
-			0,
-		);
-		const hours = Math.floor(totalSeconds / 3600);
-		const minutes = Math.floor((totalSeconds % 3600) / 60);
-		if (hours > 0) return `${hours}h ${minutes}m`;
-		return `${minutes}m`;
-	}
-
-	// =========================================================================
 	// Render
 	// =========================================================================
 
@@ -273,8 +252,8 @@ export function HevyConnect({
 		<Card className="border-border/50">
 			<CardHeader>
 				<div className="flex items-center gap-3">
-					<div className="flex items-center justify-center size-10 rounded-lg bg-[#2563EB]/10">
-						<Dumbbell className="size-5 text-[#2563EB]" />
+					<div className="flex items-center justify-center size-10 rounded-lg bg-[var(--cable-b)]/10">
+						<Dumbbell className="size-5 text-[var(--cable-b)]" />
 					</div>
 					<div>
 						<CardTitle className="text-base">Hevy</CardTitle>
@@ -282,7 +261,7 @@ export function HevyConnect({
 					</div>
 					{isConnected && (
 						<div className="flex items-center gap-2">
-							<span className="text-xs text-[var(--color-forge-green)] flex items-center gap-1">
+							<span className="text-xs text-success flex items-center gap-1">
 								<CheckCircle className="size-3" />
 								Connected
 							</span>
@@ -316,14 +295,15 @@ export function HevyConnect({
 					<TabsContent value="export" className="space-y-4 mt-4">
 						<p className="text-sm text-muted-foreground">
 							Download your Phoenix workouts as a CSV file that can be imported
-							directly into Hevy. Weights are exported in lbs (Hevy's default).
+							directly into Hevy. Weights are exported in lbs (Hevy's weight_lbs
+							column).
 						</p>
 
 						<Button
 							onClick={handleExport}
 							disabled={isExporting}
 							size="sm"
-							className="bg-[#2563EB] hover:bg-[#2563EB]/90 text-white"
+							className="bg-cable-b hover:bg-cable-b/90 text-background"
 						>
 							{isExporting ? (
 								"Exporting..."
@@ -359,7 +339,7 @@ export function HevyConnect({
 						{parsedActivities && parsedActivities.length > 0 && (
 							<div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-3">
 								<div className="flex items-center gap-2 text-sm font-medium">
-									<FileText className="size-4 text-[var(--color-phoenix-primary)]" />
+									<FileText className="size-4 text-primary" />
 									Import Preview
 									{csvFileName && (
 										<span className="text-muted-foreground font-normal">
@@ -392,7 +372,7 @@ export function HevyConnect({
 										onClick={handleImport}
 										disabled={isImporting}
 										size="sm"
-										className="bg-[var(--color-phoenix-primary)] hover:bg-[var(--color-phoenix-primary)]/90 text-white"
+										className="bg-primary hover:bg-primary/90 text-primary-foreground"
 									>
 										{isImporting
 											? "Importing..."
@@ -413,11 +393,11 @@ export function HevyConnect({
 
 					{/* API Tab */}
 					<TabsContent value="api" className="space-y-4 mt-4">
-						<div className="flex items-start gap-2 rounded-md bg-amber-500/10 p-3 text-sm">
-							<AlertCircle className="size-4 text-amber-500 shrink-0 mt-0.5" />
+						<div className="flex items-start gap-2 rounded-md bg-warning/10 p-3 text-sm">
+							<AlertCircle className="size-4 text-warning shrink-0 mt-0.5" />
 							<p className="text-muted-foreground">
 								Requires{" "}
-								<span className="font-medium text-amber-500">Hevy PRO</span>{" "}
+								<span className="font-medium text-warning">Hevy PRO</span>{" "}
 								subscription. Generate an API key in Hevy Settings &rarr; API.
 							</p>
 						</div>

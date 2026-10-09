@@ -82,7 +82,7 @@ function computeDelta(values: number[]): number | null {
 // ---------------------------------------------------------------------------
 
 // Velocity (VBT) accent + help copy, kept distinct from the rep-based estimate.
-const VELOCITY_VALUE_CLASS = "text-[#8B7CF6]";
+const VELOCITY_VALUE_CLASS = "text-chart-5";
 const REP_BASED_HELP =
 	"Estimated from weight × reps via a formula (Brzycki / Epley).";
 const VELOCITY_HELP =
@@ -97,7 +97,7 @@ function InfoTooltip({ text }: { text: string }) {
 					<button
 						type="button"
 						aria-label="More info"
-						className="text-muted-foreground hover:text-white focus:outline-none"
+						className="text-muted-foreground hover:text-foreground focus:outline-none"
 					>
 						<Info className="w-3 h-3" />
 					</button>
@@ -126,7 +126,7 @@ function StatCard({
 				{info && <InfoTooltip text={info} />}
 			</span>
 			<span
-				className={`text-sm font-semibold tabular-nums ${valueClass ?? "text-white"}`}
+				className={`text-sm font-semibold tabular-nums ${valueClass ?? "text-foreground"}`}
 			>
 				{value}
 			</span>
@@ -271,7 +271,7 @@ export function ExerciseDeepDive({
 									"text-left px-3 py-2 rounded-r-md text-[11px] leading-tight transition-colors cursor-pointer",
 									isActive
 										? "bg-primary/15 border-l-2 border-primary text-primary font-medium"
-										: "text-muted-foreground hover:text-white border-l-2 border-transparent",
+										: "text-muted-foreground hover:text-foreground border-l-2 border-transparent",
 								].join(" ")}
 							>
 								<div className="truncate">{ex.name}</div>
@@ -295,12 +295,12 @@ export function ExerciseDeepDive({
 							<span className="flex items-center gap-1.5 text-[11px]">
 								<span
 									className="w-2.5 h-2.5 rounded-full shrink-0"
-									style={{ backgroundColor: "#DC2626" }}
+									style={{ backgroundColor: "var(--destructive)" }}
 								/>
 								<span className="text-muted-foreground">
 									{profile.primary.displayName ?? profile.primary.group}
 								</span>
-								<span className="text-white font-medium">100%</span>
+								<span className="text-foreground font-medium">100%</span>
 							</span>
 							{/* Secondaries */}
 							{profile.secondary.map((s, i) => (
@@ -310,12 +310,12 @@ export function ExerciseDeepDive({
 								>
 									<span
 										className="w-2.5 h-2.5 rounded-full shrink-0"
-										style={{ backgroundColor: "#F59E0B" }}
+										style={{ backgroundColor: "var(--accent)" }}
 									/>
 									<span className="text-muted-foreground">
 										{s.displayName ?? s.group}
 									</span>
-									<span className="text-white font-medium">
+									<span className="text-foreground font-medium">
 										{Math.round(s.activation * 100)}%
 									</span>
 								</span>
@@ -339,7 +339,7 @@ export function ExerciseDeepDive({
 											"text-[10px] px-2 py-0.5 rounded transition-colors",
 											timeRange === r
 												? "bg-primary/20 text-primary"
-												: "text-muted-foreground hover:text-white",
+												: "text-muted-foreground hover:text-foreground",
 										].join(" ")}
 									>
 										{r}
@@ -373,38 +373,38 @@ export function ExerciseDeepDive({
 												>
 													<stop
 														offset="5%"
-														stopColor="#FF6B35"
+														stopColor="var(--primary)"
 														stopOpacity={0.35}
 													/>
 													<stop
 														offset="95%"
-														stopColor="#FF6B35"
+														stopColor="var(--primary)"
 														stopOpacity={0}
 													/>
 												</linearGradient>
 											</defs>
 											<XAxis
 												dataKey="date"
-												tick={{ fontSize: 9, fill: "#888894" }}
+												tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
 												axisLine={false}
 												tickLine={false}
 												interval="preserveStartEnd"
 											/>
 											<YAxis
-												tick={{ fontSize: 9, fill: "#888894" }}
+												tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
 												axisLine={false}
 												tickLine={false}
 												width={40}
 											/>
 											<Tooltip
 												contentStyle={{
-													backgroundColor: "#0a0a10",
-													border: "1px solid #374151",
+													backgroundColor: "var(--surface-1)",
+													border: "1px solid var(--border)",
 													borderRadius: 6,
 													fontSize: 11,
 												}}
-												labelStyle={{ color: "#e0e0e8" }}
-												itemStyle={{ color: "#FF6B35" }}
+												labelStyle={{ color: "var(--foreground)" }}
+												itemStyle={{ color: "var(--primary)" }}
 												formatter={(v: number) =>
 													`${unit === "lbs" ? v.toFixed(1) : Math.round(v)} ${perCableUnitLabel(unit)}`
 												}
@@ -412,11 +412,11 @@ export function ExerciseDeepDive({
 											<Area
 												type="monotone"
 												dataKey="oneRM"
-												stroke="#FF6B35"
+												stroke="var(--primary)"
 												strokeWidth={2}
 												fill={`url(#${gradientId})`}
 												dot={false}
-												activeDot={{ r: 4, fill: "#FF6B35" }}
+												activeDot={{ r: 4, fill: "var(--primary)" }}
 											/>
 										</AreaChart>
 									</ResponsiveContainer>
@@ -428,9 +428,9 @@ export function ExerciseDeepDive({
 										className={[
 											"shrink-0 text-[11px] font-semibold px-2 py-1 rounded-md mt-2",
 											delta > 0
-												? "bg-emerald-500/15 text-emerald-400"
+												? "bg-success/15 text-success"
 												: delta < 0
-													? "bg-red-500/15 text-red-400"
+													? "bg-destructive/15 text-destructive"
 													: "bg-secondary/20 text-muted-foreground",
 										].join(" ")}
 										data-testid="delta-badge"
@@ -472,10 +472,10 @@ export function ExerciseDeepDive({
 							value={delta !== null ? `${delta > 0 ? "+" : ""}${delta}%` : "—"}
 							valueClass={
 								delta !== null && delta > 0
-									? "text-emerald-400"
+									? "text-success"
 									: delta !== null && delta < 0
-										? "text-red-400"
-										: "text-white"
+										? "text-destructive"
+										: "text-foreground"
 							}
 						/>
 						<StatCard label="Sessions" value={sessionCount} />
@@ -494,7 +494,7 @@ export function ExerciseDeepDive({
 										key={phase}
 										className="rounded-full border border-secondary bg-muted/10 px-2 py-1 text-[10px] text-muted-foreground"
 									>
-										{phase}: <span className="text-white">{count}</span>
+										{phase}: <span className="text-foreground">{count}</span>
 									</span>
 								);
 							})}

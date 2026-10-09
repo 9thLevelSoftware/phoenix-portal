@@ -9,18 +9,13 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
-import { ConsistencyCalendar } from "@/app/components/ConsistencyCalendar";
 import { AsymmetryGauge } from "@/app/components/charts/AsymmetryGauge";
 import { ForceCurve } from "@/app/components/charts/ForceCurve";
 import { PowerOutput } from "@/app/components/charts/PowerOutput";
 import { RomTrend } from "@/app/components/charts/RomTrend";
 import { VelocityProfile } from "@/app/components/charts/VelocityProfile";
-import { ExerciseProgress } from "@/app/components/ExerciseProgress";
 import { FormAnalysis } from "@/app/components/FormAnalysis";
 import { MuscleHeatmap } from "@/app/components/MuscleHeatmap";
-import { PageShell } from "@/app/components/PageShell";
-import { SubscriptionGate } from "@/app/components/SubscriptionGate";
-import { SummaryReport } from "@/app/components/SummaryReport";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Label } from "@/app/components/ui/label";
@@ -34,11 +29,11 @@ import {
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { Switch } from "@/app/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
-
 import { useAuth } from "@/app/hooks/useAuth";
 import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
+import { fadeUp } from "@/lib/animations";
 import { PHOENIX } from "@/lib/colors";
-import { FEATURE_MIN_TIER } from "@/lib/tierMatrix";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { repSummariesOptions, repTelemetryOptions } from "@/queries/telemetry";
 import { sessionDetailOptions, workoutListOptions } from "@/queries/workouts";
 
@@ -55,14 +50,9 @@ function Section({
 	className?: string;
 }) {
 	return (
-		<motion.div
-			initial={{ opacity: 0, y: 16 }}
-			animate={{ opacity: 1, y: 0 }}
-			transition={{ duration: 0.3 }}
-			className={className}
-		>
+		<motion.div {...fadeUp} className={className}>
 			<Card className="p-5 bg-surface-2 border-secondary">
-				<h3 className="flex items-center gap-2 text-lg font-medium text-white mb-4">
+				<h3 className="flex items-center gap-2 text-lg font-medium text-foreground mb-4">
 					<Icon className="w-5 h-5 text-primary" />
 					{title}
 				</h3>
@@ -108,19 +98,18 @@ function SectionSkeleton() {
 }
 
 interface BiomechanicsContentProps {
-	view?: "all" | "biomechanics" | "performance";
+	view: "biomechanics" | "performance";
 }
 
 // -- Main page content --
-export function BiomechanicsContent({
-	view = "all",
-}: BiomechanicsContentProps) {
+export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
 	const unit = usePreferredWeightUnit();
-	const showBiomechanics = view === "all" || view === "biomechanics";
-	const showPerformance = view === "all" || view === "performance";
-	const showExpandedSections = view === "all";
+	const showBiomechanics = view === "biomechanics";
+	const showPerformance = view === "performance";
 
 	// ---- Session/exercise selectors ----
 	const [selectedSessionId, setSelectedSessionId] = useState<string>("");
@@ -236,12 +225,6 @@ export function BiomechanicsContent({
 		return volumes;
 	}, [exercises]);
 
-	// Workout dates for consistency calendar
-	const workoutDates = useMemo(
-		() => (workouts ?? []).map((w) => new Date(w.started_at)),
-		[workouts],
-	);
-
 	// Asymmetry session average
 	const avgAsymmetry = useMemo(() => {
 		if (!repSummaries || repSummaries.length === 0) return null;
@@ -283,7 +266,7 @@ export function BiomechanicsContent({
 				<div className="w-24 h-24 mx-auto mb-6 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
 					<Activity className="w-12 h-12 text-primary" />
 				</div>
-				<h3 className="text-2xl font-semibold text-white mb-2">
+				<h3 className="text-2xl font-semibold text-foreground mb-2">
 					No workout data yet
 				</h3>
 				<p className="text-muted-foreground max-w-md mx-auto">
@@ -307,7 +290,7 @@ export function BiomechanicsContent({
 						setSelectedSetId("");
 					}}
 				>
-					<SelectTrigger className="w-64 bg-surface-2 border-secondary text-white">
+					<SelectTrigger className="w-64 bg-surface-2 border-secondary text-foreground">
 						<SelectValue placeholder="Select session" />
 					</SelectTrigger>
 					<SelectContent>
@@ -333,7 +316,7 @@ export function BiomechanicsContent({
 							setSelectedSetId("");
 						}}
 					>
-						<SelectTrigger className="w-64 bg-surface-2 border-secondary text-white">
+						<SelectTrigger className="w-64 bg-surface-2 border-secondary text-foreground">
 							<SelectValue placeholder="Select exercise" />
 						</SelectTrigger>
 						<SelectContent>
@@ -430,10 +413,7 @@ export function BiomechanicsContent({
 									<Skeleton className="h-[300px] w-full" />
 								) : (
 									<>
-										<AsymmetryGauge
-											repSummaries={repSummaries ?? []}
-											mode="per-rep"
-										/>
+										<AsymmetryGauge repSummaries={repSummaries ?? []} />
 										{avgAsymmetry !== null && (
 											<div className="mt-4 flex justify-center">
 												<span
@@ -441,13 +421,13 @@ export function BiomechanicsContent({
 													style={{
 														backgroundColor:
 															parseFloat(avgAsymmetry) <= 10
-																? "#10B98120"
-																: "#DC262620",
+																? "color-mix(in srgb, var(--success) 13%, transparent)"
+																: "color-mix(in srgb, var(--destructive) 13%, transparent)",
 														color:
 															parseFloat(avgAsymmetry) <= 10
-																? PHOENIX.forgeGreen
-																: PHOENIX.flameRed,
-														border: `1px solid ${parseFloat(avgAsymmetry) <= 10 ? "#10B98140" : "#DC262640"}`,
+																? PHOENIX().forgeGreen
+																: PHOENIX().flameRed,
+														border: `1px solid ${parseFloat(avgAsymmetry) <= 10 ? "color-mix(in srgb, var(--success) 25%, transparent)" : "color-mix(in srgb, var(--destructive) 25%, transparent)"}`,
 													}}
 												>
 													Session Average: {avgAsymmetry}% asymmetry
@@ -505,7 +485,7 @@ export function BiomechanicsContent({
 												className="rounded-lg border border-secondary bg-background p-3"
 											>
 												<div className="mb-2 flex items-center justify-between">
-													<span className="text-sm font-medium text-white">
+													<span className="text-sm font-medium text-foreground">
 														Rep {rep.rep_number}
 													</span>
 													<span className="text-sm text-primary">
@@ -565,57 +545,8 @@ export function BiomechanicsContent({
 							</Section>
 						</>
 					)}
-
-					{showExpandedSections && (
-						<>
-							<Section
-								title="Exercise Progress"
-								icon={Activity}
-								className="col-span-full"
-							>
-								<ExerciseProgress
-									userId={userId}
-									initialExercise={selectedExercise?.name}
-								/>
-							</Section>
-
-							<Section
-								title="Summary Report"
-								icon={Activity}
-								className="col-span-full"
-							>
-								<SummaryReport userId={userId} unit={unit} />
-							</Section>
-
-							<Section
-								title="Workout Consistency"
-								icon={Activity}
-								className="col-span-full"
-							>
-								<ConsistencyCalendar workoutDates={workoutDates} />
-							</Section>
-						</>
-					)}
 				</>
 			)}
 		</div>
-	);
-}
-
-// -- Exported page component with subscription gate --
-export function Biomechanics() {
-	return (
-		<PageShell className="min-h-screen">
-			<div className="mb-8">
-				<h1 className="text-display-2 text-white">Biomechanics</h1>
-				<p className="text-muted-foreground mt-1">
-					Advanced training analytics
-				</p>
-			</div>
-
-			<SubscriptionGate requiredTier={FEATURE_MIN_TIER.biomechanics}>
-				<BiomechanicsContent />
-			</SubscriptionGate>
-		</PageShell>
 	);
 }

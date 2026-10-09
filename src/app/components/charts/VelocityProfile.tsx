@@ -5,43 +5,28 @@ import { scaleBand, scaleLinear } from "@visx/scale";
 import { Bar } from "@visx/shape";
 import { useMemo } from "react";
 import { ZoneBadge, ZoneIndicator } from "@/app/components/ui/ZoneBadge";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import {
-	classifyMannZone,
 	classifyVbtZone,
-	getDominantMannZone,
 	getDominantSimplifiedZone,
-	MANN_ZONES,
-	type MannZoneInfo,
 	SIMPLIFIED_ZONES,
-	type SimplifiedZoneInfo,
 } from "@/lib/vbt";
 import type { RepSummary } from "@/schemas/telemetry";
 import { CHART_COLORS, CHART_MARGINS, FONT_SIZES } from "./shared/ChartTheme";
 import { ChartTooltipContent, useChartTooltip } from "./shared/ChartTooltip";
 
+const CHART_HEIGHT = 280;
+
 export interface VelocityProfileProps {
 	repSummaries: RepSummary[];
-	height?: number;
-	showPeakVelocity?: boolean;
-	showZoneLabels?: boolean;
-	/** Zone system — simplified matches mobile; Mann is advanced overlay */
-	zoneSystem?: "mann" | "simplified";
-	/** Show zone indicator badge */
-	showZoneIndicator?: boolean;
-	/** Show dominant zone badge */
-	showDominantZone?: boolean;
 }
 
 function VelocityProfileInner({
 	repSummaries,
-	height = 280,
-	showPeakVelocity = true,
-	showZoneLabels = true,
-	zoneSystem = "simplified",
-	showZoneIndicator = true,
-	showDominantZone = true,
 	width,
 }: VelocityProfileProps & { width: number }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const {
 		showTooltip,
 		hideTooltip,
@@ -53,7 +38,7 @@ function VelocityProfileInner({
 
 	const margin = CHART_MARGINS;
 	const innerWidth = width - margin.left - margin.right;
-	const innerHeight = height - margin.top - margin.bottom;
+	const innerHeight = CHART_HEIGHT - margin.top - margin.bottom;
 
 	const repLabels = useMemo(
 		() => repSummaries.map((_, i) => String(i + 1)),
@@ -74,15 +59,13 @@ function VelocityProfileInner({
 		if (repSummaries.length === 0) return 1;
 		const peak = Math.max(
 			...repSummaries.map((r) =>
-				showPeakVelocity
-					? Math.max(r.mean_velocity_mps, r.peak_velocity_mps)
-					: r.mean_velocity_mps,
+				Math.max(r.mean_velocity_mps, r.peak_velocity_mps),
 			),
 		);
 		// Clamp to a positive minimum so an all-zero (or negative) velocity
 		// stream can't collapse the y-domain to [0, 0].
 		return Math.max(1, peak * 1.15); // headroom
-	}, [repSummaries, showPeakVelocity]);
+	}, [repSummaries]);
 
 	const yScale = useMemo(
 		() =>
@@ -101,16 +84,14 @@ function VelocityProfileInner({
 	);
 	const dominantZone = useMemo(() => {
 		if (repSummaries.length === 0) return null;
-		return zoneSystem === "mann"
-			? getDominantMannZone(velocities)
-			: getDominantSimplifiedZone(velocities);
-	}, [repSummaries.length, velocities, zoneSystem]);
+		return getDominantSimplifiedZone(velocities);
+	}, [repSummaries.length, velocities]);
 
 	if (repSummaries.length === 0) {
 		return (
 			<div
-				className="flex items-center justify-center text-gray-500"
-				style={{ height }}
+				className="flex items-center justify-center text-muted-foreground"
+				style={{ height: CHART_HEIGHT }}
 			>
 				No velocity data available
 			</div>
@@ -119,23 +100,13 @@ function VelocityProfileInner({
 
 	return (
 		<div style={{ position: "relative" }}>
-			{/* Zone indicator header */}
-			{(showZoneIndicator || showDominantZone) && (
-				<div className="flex items-center justify-between px-2 mb-2">
-					{showDominantZone && dominantZone && (
-						<ZoneBadge
-							zone={dominantZone}
-							system={zoneSystem}
-							size="sm"
-							showDot
-						/>
-					)}
-					{showZoneIndicator && <ZoneIndicator system={zoneSystem} />}
-				</div>
-			)}
+			<div className="flex items-center justify-between px-2 mb-2">
+				{dominantZone && <ZoneBadge zone={dominantZone} />}
+				<ZoneIndicator />
+			</div>
 			<svg
 				width={width}
-				height={height}
+				height={CHART_HEIGHT}
 				role="img"
 				aria-label="Velocity profile chart"
 			>
@@ -144,10 +115,7 @@ function VelocityProfileInner({
 						const label = String(i + 1);
 						const barX = xScale(label) ?? 0;
 						const barWidth = xScale.bandwidth();
-						const zone: MannZoneInfo | SimplifiedZoneInfo =
-							zoneSystem === "mann"
-								? classifyMannZone(rep.mean_velocity_mps)
-								: classifyVbtZone(rep.mean_velocity_mps);
+						const zone = classifyVbtZone(rep.mean_velocity_mps);
 
 						const meanBarHeight =
 							innerHeight - (yScale(rep.mean_velocity_mps) ?? 0);
@@ -156,20 +124,17 @@ function VelocityProfileInner({
 						return (
 							<Group key={rep.id ?? i}>
 								{/* Peak velocity bar (behind, lighter) */}
-								{showPeakVelocity &&
-									rep.peak_velocity_mps > rep.mean_velocity_mps && (
-										<Bar
-											x={barX}
-											y={yScale(rep.peak_velocity_mps) ?? 0}
-											width={barWidth}
-											height={
-												innerHeight - (yScale(rep.peak_velocity_mps) ?? 0)
-											}
-											fill={zone.color}
-											opacity={0.25}
-											rx={2}
-										/>
-									)}
+								{rep.peak_velocity_mps > rep.mean_velocity_mps && (
+									<Bar
+										x={barX}
+										y={yScale(rep.peak_velocity_mps) ?? 0}
+										width={barWidth}
+										height={innerHeight - (yScale(rep.peak_velocity_mps) ?? 0)}
+										fill={zone.color}
+										opacity={0.25}
+										rx={2}
+									/>
+								)}
 
 								{/* Mean velocity bar (primary) */}
 								<Bar
@@ -198,35 +163,16 @@ function VelocityProfileInner({
 								/>
 
 								{/* Zone label above bar group */}
-								{showZoneLabels && (
-									<text
-										x={barX + barWidth / 2}
-										y={
-											(yScale(
-												showPeakVelocity
-													? rep.peak_velocity_mps
-													: rep.mean_velocity_mps,
-											) ?? 0) - 6
-										}
-										textAnchor="middle"
-										fill={zone.color}
-										fontSize={9}
-										fontWeight={500}
-									>
-										{zoneSystem === "mann"
-											? (zone as MannZoneInfo).zone === "absolute-strength"
-												? "Abs"
-												: (zone as MannZoneInfo).zone ===
-														"accelerative-strength"
-													? "Acc"
-													: (zone as MannZoneInfo).zone === "strength-speed"
-														? "SS"
-														: (zone as MannZoneInfo).zone === "speed-strength"
-															? "SpS"
-															: "Sta"
-											: (zone as SimplifiedZoneInfo).zone.slice(0, 3)}
-									</text>
-								)}
+								<text
+									x={barX + barWidth / 2}
+									y={(yScale(rep.peak_velocity_mps) ?? 0) - 6}
+									textAnchor="middle"
+									fill={zone.color}
+									fontSize={9}
+									fontWeight={500}
+								>
+									{zone.zone.slice(0, 3)}
+								</text>
 							</Group>
 						);
 					})}
@@ -236,34 +182,34 @@ function VelocityProfileInner({
 						scale={xScale}
 						label="Rep"
 						labelProps={{
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.label,
 							textAnchor: "middle",
 						}}
 						tickLabelProps={() => ({
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.axis,
 							textAnchor: "middle" as const,
 						})}
-						stroke={CHART_COLORS.gridLine}
-						tickStroke={CHART_COLORS.gridLine}
+						stroke={CHART_COLORS().gridLine}
+						tickStroke={CHART_COLORS().gridLine}
 					/>
 
 					<AxisLeft
 						scale={yScale}
 						label="Velocity (m/s)"
 						labelProps={{
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.label,
 							textAnchor: "middle",
 						}}
 						tickLabelProps={() => ({
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: FONT_SIZES.axis,
 							textAnchor: "end" as const,
 						})}
-						stroke={CHART_COLORS.gridLine}
-						tickStroke={CHART_COLORS.gridLine}
+						stroke={CHART_COLORS().gridLine}
+						tickStroke={CHART_COLORS().gridLine}
 						numTicks={5}
 					/>
 				</Group>
@@ -273,13 +219,13 @@ function VelocityProfileInner({
 				className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-2"
 				style={{ height: legendHeight }}
 			>
-				{(zoneSystem === "mann" ? MANN_ZONES : SIMPLIFIED_ZONES).map((z) => (
+				{SIMPLIFIED_ZONES().map((z) => (
 					<div key={z.zone} className="flex items-center gap-1.5 text-xs">
 						<span
 							className="inline-block h-2.5 w-2.5 rounded-sm"
 							style={{ backgroundColor: z.color }}
 						/>
-						<span className="text-gray-400">{z.label}</span>
+						<span className="text-muted-foreground">{z.label}</span>
 					</div>
 				))}
 			</div>
@@ -296,21 +242,15 @@ function VelocityProfileInner({
 
 export function VelocityProfile(props: VelocityProfileProps) {
 	const repCount = props.repSummaries.length;
-	const showPeakVelocity = props.showPeakVelocity ?? true;
 	const peakVelocity =
 		repCount > 0
-			? Math.max(
-					...props.repSummaries.map((r) =>
-						showPeakVelocity ? r.peak_velocity_mps : r.mean_velocity_mps,
-					),
-				)
+			? Math.max(...props.repSummaries.map((r) => r.peak_velocity_mps))
 			: 0;
-	const peakLabel = showPeakVelocity ? "Peak velocity" : "Peak mean velocity";
 
 	return (
 		<div
 			role="img"
-			aria-label={`Velocity profile chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}. ${peakLabel}: ${peakVelocity.toFixed(2)} m/s.`}
+			aria-label={`Velocity profile chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}. Peak velocity: ${peakVelocity.toFixed(2)} m/s.`}
 		>
 			<div aria-hidden="true">
 				<ParentSize>

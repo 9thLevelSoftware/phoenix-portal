@@ -204,7 +204,9 @@ describe("buildReplayIntelligence", () => {
 	it("does not treat force-only history as slow measured motion or sticking points", () => {
 		const result = buildReplayIntelligence({
 			telemetry: telemetry.map((point) => ({
-				...point, velocity_mps: null, position_mm: null,
+				...point,
+				velocity_mps: null,
+				position_mm: null,
 			})),
 			repSummaries,
 			repBoundaries: [0, 1500, 3000, 4500],

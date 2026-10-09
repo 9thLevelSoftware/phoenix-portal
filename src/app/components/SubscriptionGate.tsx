@@ -2,17 +2,8 @@ import type { ReactNode } from "react";
 import { UpgradePrompt } from "@/app/components/UpgradePrompt";
 import { Button } from "@/app/components/ui/button";
 import { Skeleton } from "@/app/components/ui/skeleton";
-import {
-	type SubscriptionTier,
-	useSubscription,
-} from "@/hooks/useSubscription";
-
-const TIER_LEVEL: Record<SubscriptionTier, number> = {
-	FREE: 0,
-	EMBER: 1,
-	FLAME: 2,
-	INFERNO: 3,
-};
+import { useSubscription } from "@/hooks/useSubscription";
+import { TIER_LEVEL } from "@/lib/subscription-entitlement";
 
 interface SubscriptionGateProps {
 	requiredTier: "EMBER" | "FLAME" | "INFERNO";
@@ -39,7 +30,7 @@ export function SubscriptionGate({
 				className="flex flex-col items-center justify-center py-16 text-center"
 				data-testid="subscription-error"
 			>
-				<p className="mb-2 text-lg text-white">
+				<p className="mb-2 text-lg text-foreground">
 					Couldn't load your subscription
 				</p>
 				<p className="mb-6 max-w-sm text-sm text-muted-foreground">
@@ -60,11 +51,7 @@ export function SubscriptionGate({
 	return (
 		<>
 			{fallback ?? (
-				<UpgradePrompt
-					requiredTier={requiredTier}
-					currentTier={tier}
-					featureName={featureName}
-				/>
+				<UpgradePrompt requiredTier={requiredTier} featureName={featureName} />
 			)}
 		</>
 	);

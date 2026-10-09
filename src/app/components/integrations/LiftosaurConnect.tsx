@@ -105,8 +105,8 @@ export function LiftosaurConnect({
 		<Card className="border-border/50">
 			<CardHeader>
 				<div className="flex items-center gap-3">
-					<div className="flex items-center justify-center size-10 rounded-lg bg-[#8B5CF6]/10">
-						<Dumbbell className="size-5 text-[#8B5CF6]" />
+					<div className="flex items-center justify-center size-10 rounded-lg bg-[var(--chart-5)]/10">
+						<Dumbbell className="size-5 text-[var(--chart-5)]" />
 					</div>
 					<div className="flex-1">
 						<CardTitle className="text-base">Liftosaur</CardTitle>
@@ -114,7 +114,7 @@ export function LiftosaurConnect({
 					</div>
 					{isConnected && (
 						<div className="flex items-center gap-2">
-							<span className="text-xs text-[var(--color-forge-green)] flex items-center gap-1">
+							<span className="text-xs text-success flex items-center gap-1">
 								<CheckCircle className="size-3" />
 								Connected
 							</span>
@@ -128,14 +128,12 @@ export function LiftosaurConnect({
 				</div>
 			</CardHeader>
 			<CardContent className="space-y-4">
-				<div className="flex items-start gap-2 rounded-md bg-purple-500/10 p-3 text-sm">
-					<AlertCircle className="size-4 text-purple-500 shrink-0 mt-0.5" />
+				<div className="flex items-start gap-2 rounded-md bg-chart-5/10 p-3 text-sm">
+					<AlertCircle className="size-4 text-chart-5 shrink-0 mt-0.5" />
 					<p className="text-muted-foreground">
 						Requires{" "}
-						<span className="font-medium text-purple-500">
-							Liftosaur Premium
-						</span>
-						. Create an API key in Liftosaur Settings &rarr; API Keys.
+						<span className="font-medium text-chart-5">Liftosaur Premium</span>.
+						Create an API key in Liftosaur Settings &rarr; API Keys.
 					</p>
 				</div>
 

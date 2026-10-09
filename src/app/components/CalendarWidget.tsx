@@ -3,7 +3,9 @@ import { CalendarWidgetMobile } from "@/app/components/CalendarWidgetMobile";
 import { Button } from "@/app/components/ui/button";
 import { cn } from "@/app/components/ui/utils";
 import {
+	CALENDAR_WEEKDAY_LABELS,
 	createDayStateHelpers,
+	navigateMonth,
 	useCalendarState,
 } from "@/app/hooks/useCalendarState";
 import { useIsMobile } from "@/app/hooks/useIsMobile";
@@ -18,10 +20,7 @@ interface CalendarWidgetProps {
 	workoutDates: Set<string>;
 	selectedDate: Date | null;
 	onDateSelect: (date: Date) => void;
-	isDateLocked?: (date: Date) => boolean;
 }
-
-const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 export function CalendarWidget({
 	currentMonth,
@@ -29,7 +28,6 @@ export function CalendarWidget({
 	workoutDates,
 	selectedDate,
 	onDateSelect,
-	isDateLocked,
 }: CalendarWidgetProps) {
 	const isMobile = useIsMobile();
 
@@ -45,21 +43,9 @@ export function CalendarWidget({
 				workoutDates={workoutDates}
 				selectedDate={selectedDate}
 				onDateSelect={onDateSelect}
-				isDateLocked={isDateLocked}
 			/>
 		);
 	}
-
-	const navigateMonth = (direction: "prev" | "next") => {
-		// Set day to 1 first to avoid month overflow (e.g., Jan 31 + 1 month = Mar 3)
-		const newDate = new Date(
-			currentMonth.getFullYear(),
-			currentMonth.getMonth(),
-			1,
-		);
-		newDate.setMonth(newDate.getMonth() + (direction === "prev" ? -1 : 1));
-		onMonthChange(newDate);
-	};
 
 	const { hasWorkout, isSelected, isToday } = createDayStateHelpers(
 		selectedDate,
@@ -80,17 +66,19 @@ export function CalendarWidget({
 				<Button
 					variant="ghost"
 					size="icon"
-					onClick={() => navigateMonth("prev")}
+					onClick={() => onMonthChange(navigateMonth(currentMonth, "prev"))}
 					className="h-8 w-8"
 					aria-label="Previous month"
 				>
 					<ChevronLeft className="h-4 w-4" />
 				</Button>
-				<span className="text-sm font-medium text-white">{monthLabel}</span>
+				<span className="text-sm font-medium text-foreground">
+					{monthLabel}
+				</span>
 				<Button
 					variant="ghost"
 					size="icon"
-					onClick={() => navigateMonth("next")}
+					onClick={() => onMonthChange(navigateMonth(currentMonth, "next"))}
 					className="h-8 w-8"
 					aria-label="Next month"
 				>
@@ -100,7 +88,7 @@ export function CalendarWidget({
 
 			{/* Day headers */}
 			<div className="grid grid-cols-7 gap-1 mb-2">
-				{DAYS.map((day) => (
+				{CALENDAR_WEEKDAY_LABELS.map((day) => (
 					<div
 						key={day}
 						className="text-center text-xs text-muted-foreground font-medium"
@@ -122,7 +110,6 @@ export function CalendarWidget({
 				{Array.from({ length: daysInMonth }).map((_, i) => {
 					const day = i + 1;
 					const date = new Date(year, month, day);
-					const locked = isDateLocked?.(date) ?? false;
 					const workout = hasWorkout(day);
 					const selected = isSelected(day);
 					const today = isToday(day);
@@ -131,16 +118,14 @@ export function CalendarWidget({
 						<button
 							type="button"
 							key={day}
-							onClick={() => !locked && onDateSelect(date)}
-							disabled={locked}
+							onClick={() => onDateSelect(date)}
 							aria-pressed={selected}
 							aria-current={today ? "date" : undefined}
 							className={cn(
 								"h-8 w-full rounded text-xs font-medium transition-colors motion-reduce:transition-none relative",
 								"hover:bg-secondary focus:outline-none focus:ring-1 focus:ring-primary",
-								selected && "bg-primary text-white",
+								selected && "bg-primary text-on-primary",
 								today && !selected && "ring-1 ring-primary/50",
-								locked && "opacity-40 cursor-not-allowed",
 							)}
 						>
 							{day}

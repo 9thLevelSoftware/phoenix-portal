@@ -103,13 +103,13 @@ export function RoutinesEnhanced() {
 			<div className="min-h-screen pb-24 md:pb-8">
 				<div className="bg-gradient-to-b from-surface-2 to-background border-b border-secondary sticky top-0 z-40">
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-						<h1 className="text-display-2 mb-2 text-white">My Routines</h1>
+						<h1 className="text-display-2 mb-2 text-foreground">My Routines</h1>
 						<p className="text-muted-foreground">Build your perfect workout</p>
 					</div>
 				</div>
 				<PageShell>
 					<div className="text-center py-16">
-						<p className="text-lg text-white mb-2">
+						<p className="text-lg text-foreground mb-2">
 							Couldn't load your routines
 						</p>
 						<p className="text-sm text-muted-foreground mb-6">
@@ -131,7 +131,9 @@ export function RoutinesEnhanced() {
 					<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 						<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 							<div>
-								<h1 className="text-display-2 mb-2 text-white">My Routines</h1>
+								<h1 className="text-display-2 mb-2 text-foreground">
+									My Routines
+								</h1>
 								<p className="text-muted-foreground">
 									Build your perfect workout
 								</p>
@@ -162,13 +164,15 @@ export function RoutinesEnhanced() {
 						className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
 					>
 						<div>
-							<h1 className="text-display-2 mb-2 text-white">My Routines</h1>
+							<h1 className="text-display-2 mb-2 text-foreground">
+								My Routines
+							</h1>
 							<p className="text-muted-foreground">
 								Build your perfect workout
 							</p>
 						</div>
 
-						<Button onClick={() => navigate("/routines/new")} variant="cta">
+						<Button onClick={() => navigate("/routines/new")}>
 							<Plus className="w-4 h-4 mr-2" />
 							Create Routine
 						</Button>
@@ -208,10 +212,13 @@ export function RoutinesEnhanced() {
 
 					<TabsContent value="favorites">
 						{favoriteRoutines.length === 0 ? (
-							<div className="text-center py-12 text-muted-foreground">
-								<Heart className="w-12 h-12 mx-auto mb-3 opacity-50" />
-								<p>No favorite routines yet. Heart a routine to add it here.</p>
-							</div>
+							<EmptyState
+								icon={Heart}
+								title="Save your favorite routines"
+								description="Mark a routine as a favorite to keep your go-to workouts in one place."
+								actionLabel="Create a routine"
+								actionHref="/routines/new"
+							/>
 						) : (
 							<RoutineGrid
 								routines={favoriteRoutines}
@@ -292,7 +299,7 @@ function RoutineGrid({
 							{/* Header */}
 							<div className="flex items-start justify-between mb-3">
 								<div className="flex-1">
-									<h3 className="text-lg font-semibold text-white mb-1">
+									<h3 className="text-lg font-semibold text-foreground mb-1">
 										{routine.name}
 									</h3>
 									<p className="text-sm text-muted-foreground line-clamp-2">
@@ -313,7 +320,7 @@ function RoutineGrid({
 												className="text-muted-foreground hover:text-accent transition-colors"
 											>
 												<Heart
-													className={`w-5 h-5 ${favorite ? "fill-[#F59E0B] text-accent" : ""}`}
+													className={`w-5 h-5 ${favorite ? "fill-[var(--accent)] text-accent" : ""}`}
 												/>
 											</button>
 										</TooltipTrigger>
@@ -325,7 +332,7 @@ function RoutineGrid({
 										<DropdownMenuTrigger asChild>
 											<button
 												type="button"
-												className="text-muted-foreground hover:text-white transition-colors"
+												className="text-muted-foreground hover:text-foreground transition-colors"
 											>
 												<MoreVertical className="w-5 h-5" />
 											</button>
@@ -343,7 +350,7 @@ function RoutineGrid({
 												Share
 											</DropdownMenuItem>
 											<DropdownMenuItem
-												className="text-red-400 hover:bg-red-900/20 cursor-pointer"
+												className="text-destructive hover:bg-destructive/10 cursor-pointer"
 												onClick={() =>
 													onDelete({ id: routine.id, name: routine.name })
 												}
@@ -391,18 +398,16 @@ function RoutineGrid({
 								</div>
 								<div className="flex gap-2">
 									<Button
-										size="sm"
 										variant="outline"
 										onClick={() => onEdit(routine.id)}
-										className="border-secondary text-muted-foreground hover:border-primary hover:text-primary"
+										className="min-h-11 px-4 border-secondary text-muted-foreground hover:border-primary hover:text-primary"
 									>
 										<Edit className="w-4 h-4 mr-1" />
 										Edit
 									</Button>
 									<Button
-										size="sm"
-										variant="cta"
 										onClick={() => onView(routine.id)}
+										className="min-h-11 px-4"
 									>
 										<Eye className="w-4 h-4 mr-1" />
 										View

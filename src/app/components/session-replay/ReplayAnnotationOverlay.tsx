@@ -78,11 +78,11 @@ export function ReplayAnnotationOverlay({
 							stroke="rgba(245, 158, 11, 0.8)"
 							strokeWidth="1.5"
 						/>
-						<circle cx={x} cy={MARGIN.top + 12} r="4" fill="#F59E0B" />
+						<circle cx={x} cy={MARGIN.top + 12} r="4" fill="var(--accent)" />
 						<text
 							x={Math.min(width - 44, x + 6)}
 							y={MARGIN.top + 16}
-							fill="#F59E0B"
+							fill="var(--accent)"
 							fontSize="10"
 							fontWeight="700"
 						>

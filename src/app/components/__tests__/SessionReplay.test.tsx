@@ -65,19 +65,27 @@ vi.mock("@/queries/telemetry", async (importOriginal) => {
 
 vi.mock("@/lib/supabase", () => {
 	const chainFor = (table: string) => {
-		const chain = {
-			select: () => chain,
-			eq: () => chain,
-			maybeSingle: () => Promise.resolve({ data: null, error: null }),
-			order: () =>
-				Promise.resolve({ data: mockDb.rows[table] ?? [], error: null }),
-			single: () =>
-				Promise.resolve(
-					mockDb.session
-						? { data: mockDb.session, error: null }
-						: { data: null, error: { message: "not found" } },
-				),
-		};
+		// A real promise so a terminal .order() (rep summaries) still resolves
+		// to rows, with chain methods so the session embed can order
+		// exercises and sets before single().
+		const chain = Object.assign(
+			Promise.resolve({
+				data: mockDb.rows[table] ?? [],
+				error: null as null,
+			}),
+			{
+				select: () => chain,
+				eq: () => chain,
+				maybeSingle: () => Promise.resolve({ data: null, error: null }),
+				order: () => chain,
+				single: () =>
+					Promise.resolve(
+						mockDb.session
+							? { data: mockDb.session, error: null }
+							: { data: null, error: { message: "not found" } },
+					),
+			},
+		);
 		return chain;
 	};
 
@@ -144,7 +152,6 @@ vi.mock("@/app/components/UpgradePrompt", () => ({
 		requiredTier,
 	}: {
 		requiredTier: string;
-		currentTier: string;
 		featureName?: string;
 	}) => <div data-testid="upgrade-prompt">{requiredTier}</div>,
 }));
@@ -200,7 +207,7 @@ function setupSubscription(tier: string) {
 		currentPeriodEnd: null,
 		cancelAtPeriodEnd: false,
 		isLoading: false,
-		isPremium: tier !== "FREE",
+		isEntitled: tier !== "FREE",
 		isFlame: tier === "FLAME" || tier === "INFERNO",
 		isInferno: tier === "INFERNO",
 	});
@@ -272,9 +279,9 @@ describe("SessionReplay", () => {
 	it("shows loading skeletons while data loads", () => {
 		setupSubscription("FLAME");
 		const { container } = renderWithProviders(<SessionReplay />);
-		// Skeleton uses bg-[#1a1a1a] class from custom Skeleton component
+		// Skeleton uses the active surface token for its background.
 		const skeletons = container.querySelectorAll(
-			".rounded-lg.bg-\\[\\#1a1a1a\\]",
+			'[class*="bg-[var(--surface-1)]"]',
 		);
 		expect(skeletons.length).toBeGreaterThan(0);
 	});
@@ -468,12 +475,6 @@ describe("PlaybackControls", () => {
 		for (const speed of ["0.25x", "0.5x", "1x", "2x", "4x"]) {
 			expect(screen.getByText(speed)).toBeInTheDocument();
 		}
-	});
-
-	it("disables controls when disabled prop is true", () => {
-		renderWithProviders(<PlaybackControls disabled={true} />);
-		const playBtn = screen.getByRole("button", { name: /play/i });
-		expect(playBtn).toBeDisabled();
 	});
 });
 

@@ -6,6 +6,7 @@ import {
   getConfiguredPriceIdForTierInterval,
   getAllAllowedPriceIds,
   mapPriceIdToTier,
+  PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL,
   paddlePriceIdsConfigured,
   parsePaddleBillingInterval,
   parsePaddlePaidTier,
@@ -23,6 +24,7 @@ import {
   checkoutRequiredResponseBody,
 } from "../_shared/paddleSubscriptionUpdate.ts";
 import { billingAction } from "../_shared/billingAction.ts";
+import { paddleBaseUrl } from "../_shared/accountPurge.ts";
 
 /** Anything with `get(key)`, e.g. `Deno.env`. */
 export interface EnvReader {
@@ -82,9 +84,7 @@ async function paddleUpdateSubscriptionHandler(
 
   try {
     if (!paddlePriceIdsConfigured(deps.env)) {
-      console.error(
-        "[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set",
-      );
+      console.error(PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL);
       return new Response(
         JSON.stringify({ error: "Billing configuration incomplete" }),
         { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
@@ -152,10 +152,7 @@ async function paddleUpdateSubscriptionHandler(
 
     // Paddle API config, needed by both the update-payment route and the
     // plan change below.
-    const paddleEnv = deps.env.get("PADDLE_ENVIRONMENT") ?? "production";
-    const baseUrl = paddleEnv === "sandbox"
-      ? "https://sandbox-api.paddle.com"
-      : "https://api.paddle.com";
+    const baseUrl = paddleBaseUrl(deps.env.get("PADDLE_ENVIRONMENT"));
     const apiKey = deps.env.get("PADDLE_API_KEY");
 
     if (!apiKey) {

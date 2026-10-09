@@ -192,8 +192,6 @@ export const communityVoteSchema = z.object({
 	created_at: z.string().transform((s) => new Date(s)),
 });
 
-export type CommunityVote = z.infer<typeof communityVoteSchema>;
-
 // --- Saved Item ---
 
 export const savedItemSchema = z.object({
@@ -206,20 +204,21 @@ export const savedItemSchema = z.object({
 	saved_at: z.string().transform((s) => new Date(s)),
 });
 
-export type SavedItem = z.infer<typeof savedItemSchema>;
-
 // --- Creator Stats ---
 
 export const creatorStatsSchema = z.object({
 	user_id: z.string().uuid(),
-	display_name: z.string(),
+	// profiles.display_name is nullable and creator_stats passes it through.
+	// A null or missing name must not fail the featured list or creator profile.
+	display_name: z
+		.string()
+		.nullish()
+		.transform((value) => value ?? ""),
 	avatar_url: z.string().nullable(),
 	total_shares: z.number(),
 	total_upvotes: z.number(),
 	featured_count: z.number(),
 });
-
-export type CreatorStats = z.infer<typeof creatorStatsSchema>;
 
 // --- Report & Block ---
 

@@ -12,16 +12,19 @@
  * phase enum coverage as a priority gap (#4).
  *
  * Contract:
- *   - mobile-sync-push/index.ts SetDto.prPhase (line 258)
- *   - PersonalRecordDto.workoutPhase (edge-function-harness.ts line 366)
- *   - shared biomechanics docs: PR can be any of COMBINED | CONCENTRIC |
- *     ECCENTRIC per CLAUDE.md "Personal Record Phases"
+ *   - mobile-sync-push/index.ts SetDto.prPhase (line 1069):
+ *     "COMBINED" | "CONCENTRIC" | "ECCENTRIC"
+ *   - PersonalRecordDto.workoutPhase (edge-function-harness.ts line 458)
+ *   - workout_phase defaults to COMBINED in
+ *     supabase/functions/_shared/personalRecordRow.ts
  *
- * NOTE: The mock push handler stores SetDto as-is (mock-edge-functions.ts
- * lines 123-133) but does NOT derive personal_records from isPr sets.
+ * NOTE: The mock push handler spreads each SetDto onto the stored session
+ * (mockPushEndpoint in mock-edge-functions.ts) but does NOT derive
+ * personal_records from isPr sets. The pull fixture returns
+ * personalRecords: [] (mockPullEndpoint).
  * Tests that depend on the server deriving a PersonalRecordDto from a set
- * are marked `test.skip` with a pointer to the live Edge Function. The
- * round-trip of the `prPhase` field on the SetDto itself runs in mock mode.
+ * use `liveIt` (skipped unless live sync tests are enabled). The round-trip
+ * of the `prPhase` field on the SetDto itself runs in mock mode.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -137,7 +140,7 @@ describe("WorkoutPhase round-trip", () => {
 			// The real push function derives a PersonalRecordDto from SetDto.isPr
 			// and surfaces it via the pull response's `personalRecords` array.
 			// The mock returns an empty `personalRecords` array unconditionally
-			// (mock-edge-functions.ts line 237).
+			// (mockPullEndpoint in mock-edge-functions.ts).
 			//
 			// Live-mode trigger: push a session with isPr=true + prPhase=CONCENTRIC,
 			// then pull and assert data.personalRecords[0].workoutPhase ===
@@ -153,11 +156,11 @@ describe("WorkoutPhase round-trip", () => {
 		},
 	);
 
-	it("default phase is COMBINED when prPhase is omitted", async () => {
-		// CLAUDE.md documents COMBINED as the default. Confirm the harness
-		// preserves `undefined`/null prPhase (i.e., does not spuriously
-		// normalise it to something else) so the mobile classifier can apply
-		// its own default.
+	it("preserves an omitted prPhase instead of filling COMBINED", async () => {
+		// personalRecordRow.ts documents COMBINED as the workout_phase default.
+		// Confirm the harness preserves `undefined`/null prPhase (i.e., does not
+		// spuriously normalise it to something else) so the mobile classifier
+		// can apply its own default.
 		const session = buildPrSessionForPhase(testUser.id, "COMBINED");
 		const prSet = session.exercises[0].sets[0] as unknown as SetDtoWithPhase;
 		delete prSet.prPhase;

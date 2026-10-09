@@ -1,6 +1,6 @@
 # Billing Incident Response Runbook
 
-> Last updated: 2026-09-20
+> Last updated: 2026-10-08
 > Webhook handler: `supabase/functions/paddle-webhooks/index.ts`
 
 ## 1. Identifying Affected Users
@@ -75,9 +75,6 @@ and writes through the ordering guard. See §2's caution before reaching for
 ---
 
 ## 2. Manually Fixing Subscription State
-
-> Last verified against `8f7d3b8` (PR 44 `apply_subscription_event` guard +
-> `subscriptions_paddle_subscription_id_key`; PR 45 ordered writers).
 
 **Read this before running anything in this section.** Every code path that
 writes `subscriptions` now goes through `public.apply_subscription_event`,
@@ -317,15 +314,8 @@ curl -X POST "https://api.paddle.com/notifications/{notification_id}/replay" \
 2. View recent invocations and their HTTP status codes.
 3. Click individual invocations to see `console.log` and `console.error` output.
 
-### Via Supabase CLI
-
-```bash
-# Tail live logs
-supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF
-
-# View recent logs
-supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --limit 100
-```
+The Supabase CLI has no `functions logs` subcommand, so Edge Function logs are
+read in the Dashboard as above. The same applies to every log check in this runbook.
 
 ### Key log messages to search for
 
@@ -339,19 +329,13 @@ supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --li
 
 ### `[BILLING_ALERT]` catalogue
 
-> Last verified against `8f7d3b8` (PR 44 + PR 45).
-
-Every alert in this section is logged verbatim with a `[BILLING_ALERT]` prefix,
-so the whole channel is one grep. The four billing functions log separately:
-
-```bash
-for fn in paddle-webhooks paddle-refresh-subscription \
-          paddle-update-subscription paddle-cancel-subscription; do
-  echo "== $fn"
-  supabase functions logs "$fn" --project-ref $SUPABASE_PROJECT_REF --limit 200 \
-    | grep BILLING_ALERT
-done
-```
+Every alert in this section is logged verbatim with a `[BILLING_ALERT]` prefix.
+The four billing functions log separately. Open each of
+**Edge Functions > paddle-webhooks > Logs/Invocations**,
+**Edge Functions > paddle-refresh-subscription > Logs/Invocations**,
+**Edge Functions > paddle-update-subscription > Logs/Invocations**, and
+**Edge Functions > paddle-cancel-subscription > Logs/Invocations**, and filter
+on `[BILLING_ALERT]`.
 
 #### Double-subscription alerts (`paddle-webhooks`)
 
@@ -365,6 +349,8 @@ portal keeps a single row per user. Work them through §10.
 | `[BILLING_ALERT] untracked_subscription_not_adopted:`   | A live sibling was found but could not be adopted: its `custom_data.user_id` is someone else, or the `cd_sig` did not verify. The cancellation proceeds and the user drops to FREE.          | Check whether a real second subscription of theirs exists in Paddle (a shared Paddle customer is only an email match, so an unadoptable candidate may belong to a different person). If theirs, resolve via §10.     |
 | `[BILLING_ALERT] Untracked live subscription has no usable price ID; not adopting it:` | The sibling's price is not in the `PADDLE_*_PRICE_IDS` env vars, so adopting it would put a paying user on FREE.                                                | Add the price id to that function's env and redeploy. Note that a plain refresh will **not** fix the user: the cancellation already applied, so the row points at the cancelled subscription and re-reading it changes nothing. The sibling is picked up by its own next Paddle event, or by a refresh against the sibling's transaction. Resolve via §10. |
 | `[BILLING_ALERT] untracked_subscription_lookup_failed:` | Paddle could not be asked whether a live sibling exists (429/5xx/timeout). The handler returns 500 and **does not** apply the cancellation, so the user keeps access.                       | Self-healing: Paddle redelivers and the listing is retried. If it persists, check `PADDLE_API_KEY` is set in `paddle-webhooks`' secrets — this function did not call the Paddle API before PR 44, so the key may never have been set there. |
+| `[BILLING_ALERT] Paddle listing returned a subscription for another customer:` | The live-sibling listing returned a row whose `customer_id` is not the customer the query asked for. The line names `requested=` and `returned=`. That row is dropped and is never an adoption candidate. | Filter regression or a wrong page. The adoption walk continues over the remaining candidates; if none is adoptable, the cancellation applies. Do not adopt the returned subscription by hand — it belongs to a different Paddle customer. If it keeps firing, the `customer_id=` filter on the list call is not being honored. |
+| `[BILLING_ALERT] Paddle listing returned a non-live subscription:` | The same listing returned a subscription whose status is outside `active`, `trialing`, and `past_due` (the `status=` set the request asks for). The line is `<id>=<status>`. The row is dropped. | The status filter was not honored, so a canceled or paused sibling is not written onto the row. A single line is one excluded row; a burst means the `status=` filter regressed. |
 | `[BILLING_ALERT] switch_to_untracked_subscription_failed:` | The adoption write itself errored. The row is left **untouched** — still the (now cancelled in Paddle) tracked subscription, so the user keeps access rather than dropping to FREE.       | Self-healing: the 500 makes Paddle redeliver, `last_event_occurred_at` did not move, so the redelivery is accepted and the whole rescue runs again. Act only if it keeps firing across Paddle's retry window (§9) — then fix the DB error and run `paddle-refresh-subscription`. |
 
 **Known silent case, no alert.** If the sibling's cancellation `occurred_at` is
@@ -380,7 +366,7 @@ is documented in the handler, not a defect introduced by the rescue.
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `[BILLING_ALERT] subscription_guard_rejected_write:`      | `apply_subscription_event` refused a write because the subscription id differed from the stored one and the incoming status would not keep the user entitled. From `paddle-webhooks` the line carries `path=direct`; from the other three it carries `source=refresh`, `source=update` or `source=cancel`. Each line also names `attempted_subscription_id` and `tracked_subscription_id`. | Same situation as `foreign_subscription_event_ignored`, reached by a different route: two subscription ids for one user. Go to §10. From `source=refresh`/`update` the caller is told (`applied:false`, `reason:'untracked_subscription'`) and the stored row is returned unchanged, so the UI is honest — no user-facing repair needed. |
 | `[BILLING_ALERT] subscription_already_bound_to_another_user:` | The write hit `23505` on `subscriptions_paddle_subscription_id_key`: this Paddle subscription is already bound to a **different portal user**. The line carries `source=refresh\|update\|cancel` and the `paddle_subscription_id`. | **Needs a human decision — the system deliberately will not guess.** See §10 "One subscription, two claimants". From `refresh` and `update` the caller gets `409 {"code":"subscription_already_bound"}` and sees "This subscription is linked to a different account. Contact support." From `cancel` it is logged only: Paddle has already cancelled, and the call still reports success. |
-| `[BILLING_ALERT] cancel_response_mismatch:`               | Paddle's `POST /subscriptions/{id}/cancel` did not return the cancelled subscription entity in `data` (or returned a different id), so there was no trustworthy post-cancel state to store. The cancellation itself succeeded; the local write was skipped. | Usually nothing: the `subscription.canceled` webhook reconciles the row within Paddle's delivery window. Confirm the row does flip to `canceled`. **If this fires on every cancel**, the assumption that Paddle returns the full entity is wrong for this account/API version — the cancel UI will silently stop updating until the webhook lands. A sandbox cancel settles it; that assumption was never confirmed against live Paddle. |
+| `[BILLING_ALERT] Paddle cancel response id mismatch; local write skipped:` | Paddle's `POST /subscriptions/{id}/cancel` did not return the cancelled subscription entity in `data` (or returned a different id), so there was no trustworthy post-cancel state to store. The cancellation itself succeeded; the local write was skipped. | Usually nothing: the `subscription.canceled` webhook reconciles the row within Paddle's delivery window. Confirm the row does flip to `canceled`. **If this fires on every cancel**, the assumption that Paddle returns the full entity is wrong for this account/API version — the cancel UI will silently stop updating until the webhook lands. A sandbox cancel settles it; that assumption was never confirmed against live Paddle. |
 | `[BILLING_ALERT] Paddle update response subscription mismatch:` | `paddle-update-subscription` got back a subscription whose id is not the one it changed.                                                                                                                       | Same class as above: verify in Paddle, let the webhook reconcile.                                                                                                     |
 
 #### Configuration and trust alerts
@@ -388,7 +374,7 @@ is documented in the handler, not a defect introduced by the rescue.
 | Alert string                                                    | What happened                                                                                                                         | What the operator does                                                                                                 |
 | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `[BILLING_ALERT] Unknown price ID <id> — preserving existing tier <tier>` (and the `during refresh` / `after update` variants) | A price id is not in the `PADDLE_*_PRICE_IDS` env vars. The existing tier is kept rather than dropping the user to FREE. | Add the price id to the env of **every** billing function and redeploy, then refresh the affected users.                     |
-| `[BILLING_ALERT] Unknown price ID — no existing tier to preserve:` | Same, but there was no tier to fall back on, so the user lands on FREE while paying.                                                 | HIGH. Fix the env immediately, then run `paddle-refresh-subscription` for each affected user.                                 |
+| `[BILLING_ALERT] Unknown price ID — no existing tier to preserve:` | Same, but there was no paid tier to fall back on. The function answers 500 and writes nothing, so a paying user with no row stays unbound (§8.5). | HIGH. Fix the env immediately, then run `paddle-refresh-subscription` for each affected user.                                 |
 | `[BILLING_ALERT] Missing or invalid cd_sig in custom_data (user_id spoofing attempt?):` | An event's `custom_data.user_id` was not accompanied by a valid signature.                                       | Security signal. Investigate before touching data; do not hand-apply the event.                                              |
 | `[BILLING_ALERT] Malformed custom_data.user_id in Paddle event:` | `custom_data.user_id` is not a UUID.                                                                                                 | A checkout flow is passing the wrong value. Find the caller.                                                                 |
 | `[BILLING_ALERT] Missing or invalid Paddle occurred_at:`        | The event carries no usable ordering clock, so it cannot be ordered against the stored row.                                          | Rare; check the Paddle notification payload before replaying.                                                                |
@@ -408,36 +394,74 @@ is documented in the handler, not a defect introduced by the rescue.
 ### 8.1 Upsert failure (500 response)
 
 - **What happens:** Paddle receives HTTP 500 and retries with exponential backoff (up to 60 retries over 3 days on live, 3 retries over 15 minutes on sandbox).
-- **Is retry safe?** Yes, the retry is idempotent in the success path. However, see 8.2 for a subtle gap.
+- **Is retry safe?** Yes. `apply_subscription_event` moves `last_event_id` and `last_event_occurred_at` in the same statement as the subscription columns, and only when that statement updates a row. A 500 leaves both clocks unchanged, so the redelivery is accepted and the write runs again. Overlapping deliveries are ordered as in §8.2.
 
-### 8.2 Race condition between idempotency check and upsert
+### 8.2 Concurrent deliveries (`classifyPaddleEventOrder`, then `apply_subscription_event`)
 
-- **Gap:** Lines 196-207 perform a SELECT to check `last_event_id`. Lines 237-239 perform the upsert that writes `last_event_id`. If the first attempt passes the idempotency check, then the upsert fails, the `last_event_id` was never written. On retry, the same event passes the idempotency check again and the upsert is re-attempted. **This is actually safe** -- the check-then-write gap works correctly because a failed upsert means `last_event_id` was not updated, so the retry correctly re-attempts the full operation.
-- **True risk:** If two different events for the same user arrive nearly simultaneously, both could pass the idempotency check (since they have different `event_id` values), and the second upsert could overwrite the first with stale data. This is a **last-write-wins** scenario with no event ordering guarantee.
-- **Mitigation:** Paddle generally delivers events in order, but under retry conditions ordering is not guaranteed. Consider adding an `occurred_at` timestamp comparison to prevent older events from overwriting newer state.
+The handler loads the stored `subscriptions` row, then writes through `public.apply_subscription_event`. The read is unlocked. A user with no row is inserted. When the row already exists, the update runs when the stored `last_event_occurred_at` is null, the incoming clock is null, or the incoming clock is strictly later, and `last_event_id` moves in that same statement. The pre-check below returns 400 for a missing or unparseable `occurred_at`, so a webhook delivery reaches the RPC with a parseable clock. The function returns `false` for a stale write and for an untracked-subscription refusal.
 
-### 8.3 JSON.parse failure (line 157)
+**Pre-check.** `classifyPaddleEventOrder` (`supabase/functions/_shared/paddleWebhookSecurity.ts`) compares this event with the row just loaded. A duplicate or a stale event returns before the RPC.
 
-- **What happens:** Falls into the outer catch block (line 253), returns 500.
-- **When:** Paddle sends a malformed body, or network truncation corrupts the payload.
-- **Consequence:** Paddle retries. Since the issue is in the payload, retries will succeed if the corruption was transient, or keep failing if Paddle is sending bad data.
-- **Severity:** Low. Paddle payloads are well-formed in practice.
+| Result    | When                                                                              | Response                                                                                                                                          |
+| --------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| duplicate | `event_id` equals stored `last_event_id`                                         | 200 `{ "received": true, "duplicate": true }`. No write.                                                                                          |
+| invalid   | `occurred_at` is missing or not a parseable timestamp                            | 400 `{ "error": "Invalid occurred_at" }`. `[BILLING_ALERT] Missing or invalid Paddle occurred_at:`. No write. Paddle retries (§9).               |
+| stale     | `occurred_at` is earlier than or equal to stored `last_event_occurred_at`        | 200 `{ "received": true, "stale": true }`. A warn names both clocks. No write.                                                                    |
+| accept    | anything else, including a row with no stored clock                              | the handler continues to the write                                                                                                                |
 
-### 8.4 Missing custom_data.user_id (lines 186-193)
+**Write outcomes.**
 
-- **What happens:** Returns 400.
-- **When:** Checkout session was created without passing `customData: { user_id }` in the client-side Paddle.Checkout.open() call.
-- **Consequence:** Paddle does NOT retry on 400 responses (only 5xx triggers retry). The subscription is created in Paddle but never reflected in the portal. The user pays but gets no access.
-- **Severity:** HIGH. This is a data loss scenario with no automatic recovery.
-- **Mitigation:** Verify all checkout flows pass `user_id` in custom_data. Add an alert on this log message. Consider a reconciliation cron job that queries Paddle API for subscriptions missing from the portal.
+- RPC error: 500 `{ "error": "Database upsert failed" }`, logged as `[BILLING_ALERT] Error applying subscription event for <event_type>:`. On the live-sibling adoption path the status is 500 `{ "error": "Failed to adopt live subscription" }` and the log is `[BILLING_ALERT] switch_to_untracked_subscription_failed:`. The clocks stay put, so the redelivery passes the pre-check and the write is attempted again (§8.1).
+- `false` on the direct path, when the subscription id being written differs from the id read at the start of the request: `[BILLING_ALERT] subscription_guard_rejected_write:` with `path=direct`, and 200 `{ "received": true, "ignored": "untracked_subscription" }`. A concurrent delivery re-pointed the row between the read and the write. Go to §10.
+- `false` in every other case, including every refusal on the adoption path: warn `Skipped stale event <event_id> at write time (lost ordering race)`, and 200 `{ "received": true, "stale": true }`. A newer `occurred_at` already won. The adoption path labels this as a lost ordering race because a live sibling's status is one the SQL guard admits.
 
-### 8.5 Price ID maps to "FREE" (line 92)
+Two different `event_id`s for the same user can both pass the pre-check. The conditional update keeps the strictly later `occurred_at`. An equal timestamp is stale at the pre-check (`<=`). If two equal-timestamp deliveries both pass that check before either commits, SQL (`>`) keeps the first committed clock.
 
-- **What happens:** The subscription is upserted with `tier = 'FREE'` even though the user is paying.
-- **When:** A new price ID is created in Paddle but the `PADDLE_INFERNO_PRICE_IDS`, `PADDLE_FLAME_PRICE_IDS`, or `PADDLE_EMBER_PRICE_IDS` environment variables were not updated.
-- **Consequence:** User pays but gets FREE tier access. No error is logged -- this is a silent failure.
-- **Severity:** HIGH. Silent data corruption.
-- **Mitigation:** Add a warning log when `mapPriceIdToTier` returns "FREE" for a subscription event (subscription events should always have a paid tier). Add monitoring/alerting on subscriptions where `tier = 'FREE'` but `paddle_subscription_id IS NOT NULL`.
+The adoption residual is the known silent case in the double-subscription alerts above. The sibling write is stamped with the cancellation event's `occurred_at`, so an earlier sibling clock comes back stale and the row stays active on the cancelled subscription until period end. `paddle-refresh-subscription`, or the sibling's own later event, corrects it.
+
+### 8.3 JSON parse failure
+
+- **What happens:** `JSON.parse` runs on the raw body only after `verifyPaddleSignature` accepts it. A throw is caught by the handler's outer `catch`, which logs `Paddle webhook handler error:` and returns 500 `{ "error": "Internal server error" }`. No row is written.
+- **When:** The signed bytes are not JSON. A truncated or substituted body fails the signature check first and returns 401 `{ "error": "Invalid signature" }` with no parse. JSON `null` throws on field access and takes the same 500 catch. Any other JSON value missing `event_id`, `event_type`, or `data` is 400 `{ "error": "Invalid event payload" }`.
+- **Consequence:** Paddle retries the 500 and the 400 (§9). A durable bad body fails the same way on every attempt. The subscription row is unchanged.
+- **Severity:** Low. A signature-valid Paddle notification is JSON in practice. Repeated failures on one notification are worth reading that error log before replaying it.
+
+### 8.4 Missing or malformed `custom_data.user_id` (`paddleWebhookResponseForCustomUserId`)
+
+`paddleWebhookResponseForCustomUserId` (`supabase/functions/_shared/paddleWebhookUserId.ts`) runs after the signature check and before any database read. A missing id and a malformed id leave the handler on different status codes, so Paddle treats them differently (§9).
+
+**Missing or empty `user_id`** (absent, not a string, or `""`):
+
+- **What happens:** 200 `{ "ignored": true }`. Warn: `[Paddle] Ignoring event with missing custom_data.user_id:` plus the `event_id` and `event_type`. No `subscriptions` read and no write. The `cd_sig` check does not run.
+- **When:** The notification's `custom_data` carries no user id. Portal checkout does not open in that shape. `openCheckout` (`src/lib/paddle-client.ts`) calls `paddle-checkout-custom-data` and refuses `Paddle.Checkout.open` unless the signed payload's `user_id` is the signed-in user and `cd_sig` is present. This path is a simulation, or a checkout that never went through that signer.
+- **Consequence:** Paddle records the notification as delivered and does not retry. The subscription can exist in Paddle with no portal row: the customer pays and has no access. Replaying the same body is ignored again.
+- **Severity:** HIGH when a real charge lands here. Nothing binds the row automatically.
+- **What the operator does:** Find the subscription in Paddle. `paddle-refresh-subscription` with that `transaction_id` binds it only when the transaction's `custom_data.user_id` is this user and `cd_sig` verifies. A transaction that also has no `user_id` is refused (`[BILLING_ALERT] Paddle transaction custom_data.user_id mismatch:`, §7). This warn is not a `[BILLING_ALERT]` and is not in the §7 alert table.
+
+**Malformed `user_id`** (non-empty, and not a UUID):
+
+- **What happens:** 400 `{ "error": "Invalid user_id in custom_data" }`. `[BILLING_ALERT] Malformed custom_data.user_id in Paddle event:` (§7). No database call.
+- **Consequence:** Paddle retries the 400 until the notification is marked failed (§9). Every retry of the same body fails the same check.
+- **What the operator does:** Find the checkout that wrote the non-UUID. Replaying the same payload does not repair the row.
+
+### 8.5 Unknown or missing price id (`mapPriceIdToTier`)
+
+`mapPriceIdToTier` (`supabase/functions/_shared/paddlePriceIds.ts`) returns `FREE` when the price id is absent from the configured sets: `PADDLE_EMBER_PRICE_IDS`, `PADDLE_FLAME_PRICE_IDS`, `PADDLE_INFERNO_PRICE_IDS`, plus each tier's `PADDLE_*_MONTHLY_PRICE_ID` and `PADDLE_*_ANNUAL_PRICE_ID`.
+
+Two checks refuse the request before the body is read:
+
+- No paid price id is configured: 500 `{ "error": "Billing configuration incomplete" }`, logged as `[FATAL] At least one paid Paddle price ID must be set (PADDLE_*_PRICE_IDS or PADDLE_*_MONTHLY_PRICE_ID / PADDLE_*_ANNUAL_PRICE_ID)`. `paddlePriceIdsConfigured` passes when any one paid id is set, so a single configured tier is enough to get past this check.
+- The same id is listed under more than one tier: 500 `{ "error": "Billing configuration invalid" }`. The log names the duplicated ids. That collision never falls through to `mapPriceIdToTier` precedence (INFERNO, then FLAME, then EMBER).
+
+**A present price id that maps to `FREE`.** `resolveBasePlanPriceId` returned a non-empty id, and it is not in those sets.
+
+- The stored tier is `EMBER`, `FLAME`, or `INFERNO`: warn `[BILLING_ALERT] Unknown price ID <id> — preserving existing tier <tier>` (§7). The handler keeps that tier and continues. The ordered write still records the unknown price id on the row.
+- There is no stored paid tier (no row, or the tier is null, `FREE`, or `free`): `[BILLING_ALERT] Unknown price ID — no existing tier to preserve (check PADDLE_* price envs):` and 500 `{ "error": "Unknown price_id — configuration error" }`. No RPC. The portal row stays as it was, so a customer with no row remains unbound while Paddle has the subscription. Paddle retries (§9). Add the price id to the billing functions' secrets, redeploy, and the redelivery maps the tier and writes the row. A `paddle-refresh-subscription` call before that redeploy hits the same unknown-price 500.
+
+**No price id on the event.** `resolveBasePlanPriceId` returns `""` when the subscription has no items, or when no item carries a configured price id and the first item has no `price.id`. The unknown-price guard applies only when a price id is present, so this delivery is written as `tier = 'FREE'` and `price_id` null, and this check logs no `[BILLING_ALERT]`.
+
+- **Severity:** HIGH for a paying subscription that arrives with an unmapped price and no paid tier to keep, and for an event with no item price (that one is a silent `FREE` write). The preserve path keeps the previous paid tier, which is the wrong tier when the new price is a different plan.
+- **What the operator does:** Add the price id to every billing function's `PADDLE_*_PRICE_IDS` (and the matching single-id secrets), redeploy, then let the retry land or run `paddle-refresh-subscription`. For an event with no item price, confirm the payload in Paddle before refreshing: the webhook has already stored `FREE`.
 
 ---
 
@@ -448,22 +472,20 @@ is documented in the handler, not a defect introduced by the rescue.
 | Sandbox     | 3           | 15 minutes | Exponential backoff                                  |
 | Live        | 60          | 3 days     | 20 attempts in first hour, 47 in first day, 60 total |
 
-- Paddle expects an HTTP 200 response within **5 seconds**.
-- Only **5xx responses** and **timeouts** trigger retries.
-- **4xx responses** (400, 401, etc.) do NOT trigger retries.
+- Paddle marks a notification delivered only when the endpoint returns HTTP **200** within **5 seconds**.
+- Every other status is retried on the schedule above. **4xx responses retry**, including **400**, **401**, and **404**.
+- A response that takes longer than **5 seconds** is retried on that same schedule.
 - After all retry attempts are exhausted, the notification status is set to **failed**.
 - Failed notifications can be manually replayed via the Paddle API or dashboard.
 
 Sources:
-- [Handle webhook delivery - Paddle Developer](https://developer.paddle.com/webhooks/respond-to-webhooks)
-- [Webhooks overview - Paddle Developer](https://developer.paddle.com/webhooks/overview)
-- [Simulate webhooks - Paddle Developer](https://developer.paddle.com/webhooks/test-webhooks)
+- [Handle webhook delivery - Paddle Developer](https://developer.paddle.com/webhooks/about/respond-to-webhooks/)
+- [How webhooks work - Paddle Developer](https://developer.paddle.com/webhooks/about/how-webhooks-work/)
+- [Simulate webhooks - Paddle Developer](https://developer.paddle.com/webhooks/simulator/test-webhooks/)
 
 ---
 
 ## 10. One Customer, Two Subscriptions
-
-> Last verified against `8f7d3b8` (PR 44 + PR 45).
 
 The portal stores exactly one `subscriptions` row per user, but a Paddle
 customer can hold several subscriptions — a customer is keyed by the email

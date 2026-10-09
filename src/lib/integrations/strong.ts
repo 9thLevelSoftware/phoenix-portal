@@ -1,5 +1,6 @@
 import Papa from "papaparse";
-import { supabase } from "@/lib/supabase";
+import { groupBy, MILES_TO_METERS } from "./csvShared";
+import { upsertExternalActivities } from "./externalActivities";
 import type { NormalizedActivity } from "./types";
 
 // =============================================================================
@@ -23,12 +24,6 @@ interface StrongCSVRow {
 	Notes: string;
 	"Workout Notes": string;
 }
-
-/** Pounds to kilograms conversion factor */
-const LBS_TO_KG = 0.453592;
-
-/** Miles to meters conversion factor */
-const MILES_TO_METERS = 1609.344;
 
 /**
  * Parse a Strong duration string into seconds.
@@ -55,40 +50,18 @@ function parseDurationToSeconds(duration: string): number {
 }
 
 /**
- * Group an array of items by a key function.
- */
-function groupBy<T>(
-	items: T[],
-	keyFn: (item: T) => string,
-): Record<string, T[]> {
-	const groups: Record<string, T[]> = {};
-	for (const item of items) {
-		const key = keyFn(item);
-		if (!groups[key]) {
-			groups[key] = [];
-		}
-		groups[key].push(item);
-	}
-	return groups;
-}
-
-/**
  * Parse a Strong CSV export into normalized activities.
  *
  * CSV rows represent individual sets -- multiple rows share the same workout
  * (identified by Workout Name + Date). This function groups rows by workout
- * and produces one NormalizedActivity per workout.
+ * and produces one NormalizedActivity per workout. Set loads are not imported.
  *
  * @param csvContent  Raw CSV text from a Strong export file.
- * @param weightUnit    The unit the user's Strong app was set to ("kg" or "lbs").
- *                      Strong exports in whatever unit the user has configured --
- *                      there is no standardization in the export.
  * @param distanceUnit  The unit Strong used for the Distance column ("km" or "miles").
  *                      Defaults to "km". Values are converted to meters for storage.
  */
 export function parseStrongCSV(
 	csvContent: string,
-	_weightUnit: "kg" | "lbs" = "kg",
 	distanceUnit: "km" | "miles" = "km",
 ): NormalizedActivity[] {
 	const result = Papa.parse<StrongCSVRow>(csvContent, {
@@ -135,9 +108,7 @@ export function parseStrongCSV(
 		// Generate a deterministic external_id from workout name + timestamp
 		const externalId = `strong-${first["Workout Name"]}-${startTime.getTime()}`;
 
-		// Weight is already in the user's chosen unit -- convert if lbs
-		// (We don't aggregate weight into the activity, but we note the unit for set detail)
-		// Distance aggregation for cardio exercises.
+		// Distance aggregation for cardio exercises. Set loads are not imported.
 		// Strong exports distance in the user's locale unit (km or miles) so we
 		// must convert to meters before storing. The caller supplies distanceUnit.
 		const distanceMultiplier =
@@ -170,61 +141,6 @@ export function parseStrongCSV(
 	return activities;
 }
 
-/**
- * Detailed exercise/set information from parsed Strong CSV rows for preview.
- */
-export interface StrongExerciseDetail {
-	name: string;
-	sets: Array<{
-		setOrder: number;
-		weightKg: number;
-		reps: number;
-		durationSeconds: number;
-		notes: string;
-	}>;
-}
-
-/**
- * Parse exercise-level detail from Strong CSV for a specific workout.
- * Used for import preview with set-level detail.
- */
-export function parseStrongExercises(
-	csvContent: string,
-	workoutName: string,
-	date: string,
-	weightUnit: "kg" | "lbs" = "kg",
-): StrongExerciseDetail[] {
-	const result = Papa.parse<StrongCSVRow>(csvContent, {
-		header: true,
-		skipEmptyLines: true,
-	});
-
-	const workoutRows = result.data.filter(
-		(row) => row["Workout Name"] === workoutName && row.Date === date,
-	);
-
-	const exerciseGroups = groupBy(workoutRows, (row) => row["Exercise Name"]);
-
-	return Object.entries(exerciseGroups).map(([name, rows]) => ({
-		name,
-		sets: rows.map((row) => {
-			const rawWeight = parseFloat(row.Weight) || 0;
-			const weightKg =
-				weightUnit === "lbs"
-					? Math.round(rawWeight * LBS_TO_KG * 100) / 100
-					: rawWeight;
-
-			return {
-				setOrder: parseInt(row["Set Order"], 10) || 0,
-				weightKg,
-				reps: parseInt(row.Reps, 10) || 0,
-				durationSeconds: parseInt(row.Seconds, 10) || 0,
-				notes: row.Notes || "",
-			};
-		}),
-	}));
-}
-
 // =============================================================================
 // Strong CSV Import (Supabase persistence)
 // =============================================================================
@@ -241,28 +157,5 @@ export async function importStrongActivities(
 	userId: string,
 	activities: NormalizedActivity[],
 ): Promise<number> {
-	if (activities.length === 0) return 0;
-
-	const rows = activities.map((a) => ({
-		user_id: userId,
-		external_id: a.external_id,
-		provider: "strong",
-		name: a.name,
-		activity_type: a.activity_type,
-		started_at: a.started_at,
-		duration_seconds: a.duration_seconds,
-		distance_meters: a.distance_meters,
-		calories: a.calories,
-		avg_heart_rate: a.avg_heart_rate,
-		max_heart_rate: a.max_heart_rate,
-		elevation_gain_meters: a.elevation_gain_meters,
-	}));
-
-	const { error } = await supabase
-		.from("external_activities")
-		.upsert(rows, { onConflict: "user_id,provider,external_id" });
-
-	if (error) throw error;
-
-	return activities.length;
+	return upsertExternalActivities(userId, "strong", activities);
 }

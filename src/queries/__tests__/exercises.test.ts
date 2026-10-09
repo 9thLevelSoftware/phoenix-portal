@@ -69,6 +69,7 @@ describe("fetchExerciseCatalog", () => {
 	});
 
 	it("filters archived exercises by default", async () => {
+		const { SUPABASE_PAGE_SIZE } = await import("@/lib/supabasePaging");
 		const { fetchExerciseCatalog } = await import("../exercises");
 
 		await fetchExerciseCatalog();
@@ -79,7 +80,7 @@ describe("fetchExerciseCatalog", () => {
 			ascending: false,
 		});
 		expect(query.order).toHaveBeenCalledWith("id", { ascending: true });
-		expect(query.range).toHaveBeenCalledWith(0, 999);
+		expect(query.range).toHaveBeenCalledWith(0, SUPABASE_PAGE_SIZE - 1);
 	});
 
 	it("omits the archived filter when includeArchived is true", async () => {
@@ -108,18 +109,18 @@ describe("fetchExerciseCatalog", () => {
 		);
 	});
 
-	it("pages past the PostgREST 1000-row cap with a stable secondary order", async () => {
-		const { CATALOG_PAGE_SIZE, fetchExerciseCatalog } = await import(
-			"../exercises"
-		);
-		const pageOne = Array.from({ length: CATALOG_PAGE_SIZE }, (_, i) => ({
+	it("pages past the PostgREST cap on popularity then id and returns one array", async () => {
+		const { SUPABASE_PAGE_SIZE } = await import("@/lib/supabasePaging");
+		const { fetchExerciseCatalog } = await import("../exercises");
+		const pageOne = Array.from({ length: SUPABASE_PAGE_SIZE }, (_, i) => ({
 			...catalogRow,
 			id: `ex_${String(i).padStart(4, "0")}`,
 			name: `Exercise ${i}`,
 			display_name: `Exercise ${i}`,
 		}));
+		const tailId = `ex_${String(SUPABASE_PAGE_SIZE).padStart(4, "0")}`;
 		const pageTwo = [
-			{ ...catalogRow, id: "ex_1000", name: "Tail", display_name: "Tail" },
+			{ ...catalogRow, id: tailId, name: "Tail", display_name: "Tail" },
 		];
 		query = buildAwaitableQuery((from = 0) => ({
 			data: from === 0 ? pageOne : pageTwo,
@@ -128,13 +129,25 @@ describe("fetchExerciseCatalog", () => {
 
 		const result = await fetchExerciseCatalog();
 
-		expect(query.range).toHaveBeenCalledWith(0, CATALOG_PAGE_SIZE - 1);
+		expect(query.range).toHaveBeenCalledWith(0, SUPABASE_PAGE_SIZE - 1);
 		expect(query.range).toHaveBeenCalledWith(
-			CATALOG_PAGE_SIZE,
-			CATALOG_PAGE_SIZE * 2 - 1,
+			SUPABASE_PAGE_SIZE,
+			SUPABASE_PAGE_SIZE * 2 - 1,
 		);
-		expect(result).toHaveLength(CATALOG_PAGE_SIZE + 1);
+		expect(result).toHaveLength(SUPABASE_PAGE_SIZE + 1);
 		expect(result[0]?.id).toBe("ex_0000");
-		expect(result.at(-1)?.id).toBe("ex_1000");
+		expect(result.at(-1)?.id).toBe(tailId);
+	});
+
+	it("throws on Supabase error", async () => {
+		query = buildAwaitableQuery(() => ({
+			data: null,
+			error: { message: "fetch failed" },
+		}));
+		const { fetchExerciseCatalog } = await import("../exercises");
+
+		await expect(fetchExerciseCatalog()).rejects.toEqual(
+			expect.objectContaining({ message: "fetch failed" }),
+		);
 	});
 });

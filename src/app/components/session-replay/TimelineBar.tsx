@@ -8,13 +8,12 @@ import {
 } from "@/app/components/ui/tooltip";
 import type { FatigueAnalysis } from "@/lib/fatigue-detection";
 import { useReplayStore } from "@/stores/useReplayStore";
+import { formatTime } from "./formatTime";
 
 interface TimelineBarProps {
 	durationMs: number;
 	repBoundaries: number[]; // Start timestamp for each rep
 	fatigue: FatigueAnalysis;
-	onScrubStart?: () => void;
-	onScrubEnd?: () => void;
 }
 
 /**
@@ -25,8 +24,6 @@ export function TimelineBar({
 	durationMs,
 	repBoundaries,
 	fatigue,
-	onScrubStart,
-	onScrubEnd,
 }: TimelineBarProps) {
 	const { currentTimeMs, seek } = useReplayStore();
 	const wasPlayingRef = useRef(false);
@@ -53,15 +50,13 @@ export function TimelineBar({
 		if (isPlaying) {
 			pause();
 		}
-		onScrubStart?.();
-	}, [isPlaying, pause, onScrubStart]);
+	}, [isPlaying, pause]);
 
 	const handlePointerUp = useCallback(() => {
 		if (wasPlayingRef.current) {
 			play();
 		}
-		onScrubEnd?.();
-	}, [play, onScrubEnd]);
+	}, [play]);
 
 	const handleValueChange = useCallback(
 		(values: number[]) => {
@@ -89,7 +84,9 @@ export function TimelineBar({
 				{fatigueStartPercent !== null && (
 					<div
 						className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-r ${
-							fatigue.severity === "high" ? "bg-red-500/20" : "bg-amber-500/20"
+							fatigue.severity === "high"
+								? "bg-destructive/20"
+								: "bg-warning/20"
 						}`}
 						style={{
 							left: `${fatigueStartPercent}%`,
@@ -139,14 +136,4 @@ export function TimelineBar({
 			</div>
 		</div>
 	);
-}
-
-/**
- * Format milliseconds to mm:ss display
- */
-function formatTime(ms: number): string {
-	const totalSeconds = Math.floor(ms / 1000);
-	const minutes = Math.floor(totalSeconds / 60);
-	const seconds = totalSeconds % 60;
-	return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }

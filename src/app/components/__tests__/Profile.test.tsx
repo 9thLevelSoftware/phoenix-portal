@@ -1,4 +1,7 @@
-import { screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SubscriptionTier } from "@/hooks/useSubscription";
 import { renderWithProviders } from "@/test/test-utils";
@@ -13,7 +16,11 @@ const mockAuth = vi.hoisted(() => ({
 	}),
 }));
 
-const mockData = vi.hoisted(() => ({ enabled: false }));
+const mockData = vi.hoisted(() => ({
+	enabled: false,
+	streak: undefined as number | undefined,
+	keys: [] as unknown[][],
+}));
 
 vi.mock("@/app/hooks/useAuth", () => mockAuth);
 vi.mock("@/providers/AuthProvider", () => mockAuth);
@@ -23,13 +30,16 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 		...actual,
 		useQuery: (options: { queryKey?: unknown[] }) => {
 			const key = options.queryKey ?? [];
+			mockData.keys.push(key);
 			const data = !mockData.enabled
 				? undefined
 				: key[1] === "stats"
 					? { totalWorkouts: 3, totalVolume: 1500, bestStreak: 1, prCount: 0 }
 					: key[1] === "gamification"
 						? { total_volume_kg: 99000, total_workouts: 3, total_reps: 10 }
-						: undefined;
+						: key[1] === "streak"
+							? mockData.streak
+							: undefined;
 			return {
 				data,
 				isPending: false,
@@ -57,7 +67,6 @@ const mockSubscription = vi.hoisted(() => ({
 		isError: false,
 		error: null,
 		refetch: vi.fn(),
-		isPremium: false,
 		isFlame: false,
 		isInferno: false,
 	},
@@ -75,6 +84,8 @@ function setSubscription(
 
 describe("Profile", () => {
 	beforeEach(() => {
+		mockData.streak = undefined;
+		mockData.keys = [];
 		setSubscription({
 			tier: "FREE",
 			rawTier: "FREE",
@@ -86,7 +97,6 @@ describe("Profile", () => {
 			billingAction: "checkout",
 			needsPaymentUpdate: false,
 			isStale: false,
-			isPremium: false,
 			isFlame: false,
 			isInferno: false,
 		});
@@ -98,9 +108,53 @@ describe("Profile", () => {
 		expect(container.firstChild).toBeTruthy();
 	});
 
+	it("opens the tab named in ?tab= (the sidebar's Settings link)", () => {
+		mockData.enabled = false;
+		render(
+			<QueryClientProvider client={new QueryClient()}>
+				<MemoryRouter initialEntries={["/profile?tab=settings"]}>
+					<Profile />
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+		expect(screen.getByRole("tab", { name: "Settings" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+	});
+
+	it("falls back to the stats tab for an unknown ?tab=", () => {
+		mockData.enabled = false;
+		render(
+			<QueryClientProvider client={new QueryClient()}>
+				<MemoryRouter initialEntries={["/profile?tab=nope"]}>
+					<Profile />
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+		expect(screen.getByRole("tab", { name: "Public Stats" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
+	});
+
 	it("formats profile volume per cable", () => {
 		expect(formatProfileVolume(1500, "kg")).toBe("1.5K kg per cable");
 		expect(formatProfileVolume(null, "kg")).toBe("0 kg per cable");
+	});
+
+	it("shows the workout_current_streak value, not a reduction of the capped workout list", () => {
+		// Golden case from workout_current_streak: 51 consecutive UTC days.
+		// workoutListOptions is capped at 50, so useStreak on that list cannot
+		// report 51.
+		mockData.enabled = true;
+		mockData.streak = 51;
+		renderWithProviders(<Profile />);
+		expect(screen.getByText("51 day streak")).toBeInTheDocument();
+		expect(screen.getByText("51d")).toBeInTheDocument();
+		expect(mockData.keys.some((key) => key[1] === "streak")).toBe(true);
+		expect(mockData.keys.some((key) => key[1] === "list")).toBe(false);
+		mockData.enabled = false;
 	});
 
 	it("shows only the session-derived per-cable volume, never the device total", () => {
@@ -126,7 +180,6 @@ describe("Profile", () => {
 			billingAction: "manage",
 			needsPaymentUpdate: true,
 			isStale: false,
-			isPremium: true,
 			isFlame: true,
 		});
 
@@ -151,7 +204,6 @@ describe("Profile", () => {
 			isEntitled: true,
 			billingAction: "manage",
 			needsPaymentUpdate: false,
-			isPremium: true,
 			isFlame: true,
 		});
 
@@ -163,5 +215,15 @@ describe("Profile", () => {
 		expect(
 			screen.getByRole("link", { name: /manage plan/i }),
 		).toBeInTheDocument();
+	});
+
+	it("associates the display name label with its input", async () => {
+		const user = userEvent.setup();
+		renderWithProviders(<Profile />);
+		await user.click(screen.getByRole("tab", { name: "Settings" }));
+		expect(screen.getByLabelText("Display Name")).toHaveAttribute(
+			"id",
+			"profile-display-name",
+		);
 	});
 });

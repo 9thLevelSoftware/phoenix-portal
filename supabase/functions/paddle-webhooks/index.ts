@@ -5,6 +5,7 @@ import {
   findCrossTierDuplicatePriceIds,
   getAllAllowedPriceIds,
   mapPriceIdToTier,
+  PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL,
   paddlePriceIdsConfigured,
 } from "../_shared/paddlePriceIds.ts";
 import { paddleWebhookResponseForCustomUserId } from "../_shared/paddleWebhookUserId.ts";
@@ -25,6 +26,7 @@ import {
   verifyPaddleCustomDataSignature,
   verifyPaddleSignature,
 } from "../_shared/paddleWebhookSecurity.ts";
+import { paddleBaseUrl } from "../_shared/accountPurge.ts";
 
 const responseHeaders = {
   "Content-Type": "application/json",
@@ -128,9 +130,7 @@ async function listLiveCustomerSubscriptions(
     );
     return null;
   }
-  const baseUrl = env.get("PADDLE_ENVIRONMENT") === "sandbox"
-    ? "https://sandbox-api.paddle.com"
-    : "https://api.paddle.com";
+  const baseUrl = paddleBaseUrl(env.get("PADDLE_ENVIRONMENT"));
   // order_by makes "newest first" what we actually asked for, so two live
   // subscriptions resolve deterministically instead of by page order.
   const url =
@@ -219,9 +219,7 @@ async function paddleWebhooksHandler(
 
   try {
     if (!paddlePriceIdsConfigured(env)) {
-      console.error(
-        "[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set",
-      );
+      console.error(PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL);
       return new Response(
         JSON.stringify({ error: "Billing configuration incomplete" }),
         { status: 500, headers: responseHeaders },

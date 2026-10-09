@@ -24,8 +24,9 @@ const channelTeardown = new Map<string, Promise<unknown>>();
 /**
  * Realtime sync bridge — listens for Supabase Broadcast events from the mobile app.
  * On `sync_complete`, invalidates only query families that mobile sync can change
- * (workouts, records, routines, cycles, analytics, profile, challenges, external
- * activities, local profiles, onboarding, goals, and insights).
+ * (workouts, records, routines, cycles, analytics, telemetry, progress,
+ * recovery, replay, profile, challenges, external activities, local profiles,
+ * onboarding, goals, and insights).
  *
  * Subscribes to the exact private topic `sync:{userId}`. The first SUBSCRIBED
  * for a user in this mount does not invalidate (queries just fetched on mount);
@@ -83,9 +84,6 @@ export function useRealtimeSync() {
 					}),
 					queryClient.invalidateQueries({
 						queryKey: queryKeys.telemetry.all,
-					}),
-					queryClient.invalidateQueries({
-						queryKey: queryKeys.biomechanics.all,
 					}),
 					queryClient.invalidateQueries({ queryKey: queryKeys.progress.all }),
 					queryClient.invalidateQueries({ queryKey: queryKeys.recovery.all }),

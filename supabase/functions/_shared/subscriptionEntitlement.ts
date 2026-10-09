@@ -9,6 +9,19 @@ export type SubscriptionStatus =
 export type SubscriptionTier = 'FREE' | 'EMBER' | 'FLAME' | 'INFERNO';
 
 /**
+ * Rank ladder shared by requireSubscription, SubscriptionGate, and
+ * PricingPlans. A higher number is a higher tier:
+ * FREE < EMBER < FLAME < INFERNO. Each tier includes itself and everything
+ * below it.
+ */
+export const TIER_LEVEL: Record<SubscriptionTier, number> = {
+  FREE: 0,
+  EMBER: 1,
+  FLAME: 2,
+  INFERNO: 3,
+};
+
+/**
  * Renewal grace for `status = 'active'` rows that will renew
  * (`cancel_at_period_end = false`): access continues while
  * `now < current_period_end + ENTITLEMENT_GRACE_HOURS`, covering the gap

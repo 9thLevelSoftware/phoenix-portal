@@ -1,9 +1,10 @@
 /**
  * Minimal in-memory stand-in for a supabase-js client, for Edge handler tests
  * (no network, no live secrets). Supports the PostgREST builder subset the
- * sync handlers use: select / insert / update / upsert(onConflict), eq / is /
- * lt / lte / gt / gte / in, order / limit, single / maybeSingle, awaiting the
- * builder, unique-index enforcement, and `rpc()` against registered stubs.
+ * sync handlers use: select / insert / update / upsert(onConflict), eq / neq /
+ * is / lt / lte / gt / gte / in, or (top-level `col.op.value` conditions),
+ * order / limit, single / maybeSingle, awaiting the builder, unique-index
+ * enforcement, and `rpc()` against registered stubs.
  */
 
 export type Row = Record<string, unknown>;
@@ -101,6 +102,70 @@ function compare(a: unknown, b: unknown): number {
   return Number(a) - Number(b);
 }
 
+/** Split a PostgREST filter string on top-level commas (parens stay intact). */
+function splitTopLevel(raw: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of raw) {
+    if (ch === '(') depth += 1;
+    if (ch === ')') depth -= 1;
+    if (ch === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  parts.push(current);
+  return parts.map((p) => p.trim()).filter((p) => p.length > 0);
+}
+
+/** A literal from a PostgREST filter: `null` / booleans / unquoted or quoted. */
+function parseOrValue(raw: string): unknown {
+  if (raw === 'null') return null;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return raw.startsWith('(') && raw.endsWith(')')
+    ? splitTopLevel(raw.slice(1, -1)).map(parseOrValue)
+    : raw.replaceAll('"', '');
+}
+
+/** One `col.op.value` condition from a PostgREST `or=(...)` string. */
+function parseOrCondition(condition: string): Filter {
+  const match = /^([^.]+)\.([^.]+)\.(.+)$/.exec(condition);
+  if (!match) {
+    throw new Error(`fakeSupabase: unsupported or() condition "${condition}"`);
+  }
+  const [, col, op, rawValue] = match;
+  if (op === 'in') {
+    const values = parseOrValue(rawValue);
+    if (!Array.isArray(values)) {
+      throw new Error(`fakeSupabase: or() in needs a list, got "${rawValue}"`);
+    }
+    return (r) => values.includes(r[col]);
+  }
+  const value = parseOrValue(rawValue);
+  switch (op) {
+    case 'eq':
+      return (r) => r[col] === value;
+    case 'neq':
+      return (r) => r[col] != null && r[col] !== value;
+    case 'is':
+      return (r) => (r[col] ?? null) === value;
+    case 'lt':
+      return (r) => r[col] != null && compare(r[col], value) < 0;
+    case 'lte':
+      return (r) => r[col] != null && compare(r[col], value) <= 0;
+    case 'gt':
+      return (r) => r[col] != null && compare(r[col], value) > 0;
+    case 'gte':
+      return (r) => r[col] != null && compare(r[col], value) >= 0;
+    default:
+      throw new Error(`fakeSupabase: unsupported or() operator "${op}"`);
+  }
+}
+
 export class FakeQuery implements PromiseLike<Result> {
   private filters: Filter[] = [];
   private patch: Row | null = null;
@@ -138,6 +203,11 @@ export class FakeQuery implements PromiseLike<Result> {
     this.filters.push((r) => r[col] === value);
     return this;
   }
+  neq(col: string, value: unknown) {
+    // As in SQL, a NULL never compares unequal: the row is excluded.
+    this.filters.push((r) => r[col] != null && r[col] !== value);
+    return this;
+  }
   is(col: string, value: unknown) {
     this.filters.push((r) => (r[col] ?? null) === value);
     return this;
@@ -160,6 +230,16 @@ export class FakeQuery implements PromiseLike<Result> {
   }
   in(col: string, values: readonly unknown[]) {
     this.filters.push((r) => values.includes(r[col]));
+    return this;
+  }
+  /**
+   * PostgREST `or=(...)`: top-level comma-separated `col.op.value` conditions
+   * OR together (op: eq / neq / is / lt / lte / gt / gte / in). Nested groups
+   * such as `and(...)` are rejected loudly rather than mis-evaluated.
+   */
+  or(raw: string) {
+    const alternatives = splitTopLevel(raw).map(parseOrCondition);
+    this.filters.push((r) => alternatives.some((f) => f(r)));
     return this;
   }
   order(col: string, opts: { ascending: boolean }) {

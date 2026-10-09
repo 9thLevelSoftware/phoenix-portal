@@ -9,14 +9,15 @@ import { AreaClosed, Line, LinePath } from "@visx/shape";
 import { Text } from "@visx/text";
 import { TooltipWithBounds, useTooltip } from "@visx/tooltip";
 import { useMemo } from "react";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import type { RepSummary } from "@/schemas/telemetry";
 import { CHART_COLORS, CHART_MARGINS } from "./shared/ChartTheme";
+
+const CHART_HEIGHT = 250;
 
 // -- Types --
 export interface RomTrendProps {
 	repSummaries: RepSummary[];
-	height?: number;
-	showAverage?: boolean;
 }
 
 interface RomPoint {
@@ -31,23 +32,20 @@ interface TooltipData {
 }
 
 const GRADIENT_ID = "rom-area-gradient";
-const LINE_COLOR = CHART_COLORS.secondary; // Gold
-const AVG_LINE_COLOR = CHART_COLORS.axisText;
 
 // -- Main Chart --
 function RomChart({
 	data,
 	average,
-	showAverage,
 	width,
-	height,
 }: {
 	data: RomPoint[];
 	average: number;
-	showAverage: boolean;
 	width: number;
-	height: number;
 }) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
+	const colors = CHART_COLORS();
 	const {
 		tooltipOpen,
 		tooltipData,
@@ -59,7 +57,7 @@ function RomChart({
 
 	const margin = { ...CHART_MARGINS, right: 30 };
 	const innerWidth = width - margin.left - margin.right;
-	const innerHeight = height - margin.top - margin.bottom;
+	const innerHeight = CHART_HEIGHT - margin.top - margin.bottom;
 
 	const romValues = data.map((d) => d.rom);
 	const minRom = Math.min(...romValues);
@@ -91,14 +89,14 @@ function RomChart({
 		<>
 			<svg
 				width={width}
-				height={height}
+				height={CHART_HEIGHT}
 				role="img"
 				aria-label="Range of motion trend chart"
 			>
 				<LinearGradient
 					id={GRADIENT_ID}
-					from={LINE_COLOR}
-					to={LINE_COLOR}
+					from={colors.secondary}
+					to={colors.secondary}
 					fromOpacity={0.3}
 					toOpacity={0.02}
 				/>
@@ -120,33 +118,29 @@ function RomChart({
 						x={getX}
 						y={getY}
 						curve={curveMonotoneX}
-						stroke={LINE_COLOR}
+						stroke={colors.secondary}
 						strokeWidth={2}
 					/>
 
 					{/* Average line */}
-					{showAverage && (
-						<>
-							<Line
-								from={{ x: 0, y: yScale(average) }}
-								to={{ x: innerWidth, y: yScale(average) }}
-								stroke={AVG_LINE_COLOR}
-								strokeWidth={1}
-								strokeDasharray="6,4"
-								opacity={0.7}
-							/>
-							<Text
-								x={innerWidth + 4}
-								y={yScale(average)}
-								fill={AVG_LINE_COLOR}
-								fontSize={10}
-								verticalAnchor="middle"
-								fontFamily="Inter, system-ui, sans-serif"
-							>
-								Avg: {average.toFixed(0)}mm
-							</Text>
-						</>
-					)}
+					<Line
+						from={{ x: 0, y: yScale(average) }}
+						to={{ x: innerWidth, y: yScale(average) }}
+						stroke={colors.axisText}
+						strokeWidth={1}
+						strokeDasharray="6,4"
+						opacity={0.7}
+					/>
+					<Text
+						x={innerWidth + 4}
+						y={yScale(average)}
+						fill={colors.axisText}
+						fontSize={10}
+						verticalAnchor="middle"
+						fontFamily="Inter, system-ui, sans-serif"
+					>
+						Avg: {average.toFixed(0)}mm
+					</Text>
 
 					{/* Data point circles + invisible hit areas */}
 					{data.map((d) => (
@@ -158,8 +152,8 @@ function RomChart({
 							cx={getX(d)}
 							cy={getY(d)}
 							r={4}
-							fill={LINE_COLOR}
-							stroke={CHART_COLORS.background}
+							fill={colors.secondary}
+							stroke={CHART_COLORS().background}
 							strokeWidth={1.5}
 							style={{ cursor: "pointer" }}
 							onMouseMove={(e) => {
@@ -186,15 +180,15 @@ function RomChart({
 						tickFormat={(v) => `${v as number}`}
 						label="Rep"
 						labelProps={{
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: 11,
 							textAnchor: "middle" as const,
 							fontFamily: "Inter, system-ui, sans-serif",
 						}}
-						stroke={CHART_COLORS.axisText}
-						tickStroke={CHART_COLORS.axisText}
+						stroke={CHART_COLORS().axisText}
+						tickStroke={CHART_COLORS().axisText}
 						tickLabelProps={() => ({
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: 10,
 							textAnchor: "middle" as const,
 							fontFamily: "Inter, system-ui, sans-serif",
@@ -206,15 +200,15 @@ function RomChart({
 						tickFormat={(v) => `${v as number}`}
 						label="ROM (mm)"
 						labelProps={{
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: 11,
 							textAnchor: "middle" as const,
 							fontFamily: "Inter, system-ui, sans-serif",
 						}}
-						stroke={CHART_COLORS.axisText}
-						tickStroke={CHART_COLORS.axisText}
+						stroke={CHART_COLORS().axisText}
+						tickStroke={CHART_COLORS().axisText}
 						tickLabelProps={() => ({
-							fill: CHART_COLORS.axisText,
+							fill: CHART_COLORS().axisText,
 							fontSize: 10,
 							textAnchor: "end" as const,
 							fontFamily: "Inter, system-ui, sans-serif",
@@ -230,15 +224,15 @@ function RomChart({
 					left={tooltipLeft}
 					top={tooltipTop}
 					style={{
-						background: CHART_COLORS.tooltipBg,
+						background: CHART_COLORS().tooltipBg,
 						color: "var(--foreground)",
-						border: `1px solid ${CHART_COLORS.tooltipBorder}`,
+						border: `1px solid ${CHART_COLORS().tooltipBorder}`,
 						borderRadius: 6,
 						padding: "8px 12px",
 						fontSize: 12,
 						fontFamily: "Inter, system-ui, sans-serif",
 						lineHeight: 1.5,
-						boxShadow: "0 4px 12px rgba(0, 0, 0, 0.4)",
+						boxShadow: "var(--elevation-md)",
 					}}
 				>
 					<div style={{ fontWeight: 600, marginBottom: 4 }}>
@@ -249,8 +243,8 @@ function RomChart({
 						style={{
 							color:
 								tooltipData.deviation >= 0
-									? CHART_COLORS.success
-									: CHART_COLORS.danger,
+									? CHART_COLORS().success
+									: CHART_COLORS().danger,
 						}}
 					>
 						{tooltipData.deviation >= 0 ? "+" : ""}
@@ -263,16 +257,14 @@ function RomChart({
 }
 
 // -- Exported Component --
-export function RomTrend({
-	repSummaries,
-	height = 250,
-	showAverage = true,
-}: RomTrendProps) {
+export function RomTrend({ repSummaries }: RomTrendProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	if (!repSummaries || repSummaries.length === 0) {
 		return (
 			<div
 				className="flex items-center justify-center text-sm"
-				style={{ height, color: CHART_COLORS.axisText }}
+				style={{ height: CHART_HEIGHT, color: CHART_COLORS().axisText }}
 			>
 				No ROM data available
 			</div>
@@ -292,17 +284,14 @@ export function RomTrend({
 			role="img"
 			aria-label={`Range of motion trend chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}. Average ROM: ${average.toFixed(0)} mm.`}
 		>
-			<div aria-hidden="true" style={{ position: "relative", height }}>
+			<div
+				aria-hidden="true"
+				style={{ position: "relative", height: CHART_HEIGHT }}
+			>
 				<ParentSize>
 					{({ width }) =>
 						width > 0 ? (
-							<RomChart
-								data={data}
-								average={average}
-								showAverage={showAverage}
-								width={width}
-								height={height}
-							/>
+							<RomChart data={data} average={average} width={width} />
 						) : null
 					}
 				</ParentSize>

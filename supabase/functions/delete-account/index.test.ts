@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { hmacSha256Hex } from "../_shared/hmac.ts";
+import { signCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import {
   EXPLICIT_PURGE_TARGETS,
@@ -709,6 +710,29 @@ Deno.test("purgeUser: cancels both proven-owned siblings including paused, leave
   assertEquals(result.ok, true);
   assertEquals(paddle.calls.filter((call) => call.method === "POST").map((call) => call.path), [`/subscriptions/${SUBSCRIPTION_ID}/cancel`, "/subscriptions/sub_sibling/cancel"]);
   assertEquals(state.deletedUsers, [USER_ID]);
+});
+
+Deno.test("purgeUser: trimmed checkout secret verifies legacy and transaction-bound siblings", async () => {
+  const secret = "paddle-custom-test";
+  const proofs = [
+    { user_id: USER_ID, cd_sig: await hmacSha256Hex(secret, USER_ID) },
+    await signCheckoutBinding({ user_id: USER_ID, cd_version: 2, cd_nonce: crypto.randomUUID(),
+      cd_transaction_id: "txn_sibling", cd_price_id: "pri_ember", cd_environment: "sandbox",
+      cd_expires_at: "2026-10-09T18:00:00Z" }, secret),
+  ];
+  for (const custom_data of proofs) {
+    const state = withSubscription();
+    const paddle = fakePaddle({ siblings: [
+      { id: SUBSCRIPTION_ID, customer_id: CUSTOMER_ID, status: "active" },
+      { id: "sub_sibling", customer_id: CUSTOMER_ID, status: "paused", custom_data },
+    ] });
+    paddle.deps.paddleCustomDataSecret = `  ${secret}\n`;
+    const result = await silenced(() => purgeUser(fakeAdmin(state), USER_ID, paddle.deps));
+    assertEquals(result.ok, true);
+    assertEquals(paddle.calls.filter((call) => call.method === "POST").map((call) => call.path),
+      [`/subscriptions/${SUBSCRIPTION_ID}/cancel`, "/subscriptions/sub_sibling/cancel"]);
+    assertEquals(state.deletedUsers, [USER_ID]);
+  }
 });
 
 Deno.test("purgeUser: incomplete listing or ambiguous sibling preserves account and audit", async () => {

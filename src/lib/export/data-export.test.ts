@@ -16,6 +16,33 @@ vi.mock("@/lib/supabase", () => ({
 	},
 }));
 
+// zip.file() starts reading a Blob straight away. An export that fails after
+// adding some tables leaves those reads running, and if one settles after the
+// test, its rejection is unhandled and fails the run. Track every zip the code
+// under test creates and settle its reads before the next test.
+const createdZips = vi.hoisted(() => [] as JSZip[]);
+vi.mock("jszip", async (importOriginal) => {
+	const { default: RealJSZip } = await importOriginal<{
+		default: typeof import("jszip");
+	}>();
+	class TrackedJSZip extends RealJSZip {
+		constructor() {
+			super();
+			createdZips.push(this);
+		}
+	}
+	return { default: TrackedJSZip };
+});
+
+afterEach(async () => {
+	const reads = createdZips
+		.splice(0)
+		.flatMap((zip) =>
+			Object.values(zip.files).map((file) => file.async("uint8array")),
+		);
+	await Promise.allSettled(reads);
+});
+
 import {
 	buildUserDataExport,
 	cancelUserDataExport,

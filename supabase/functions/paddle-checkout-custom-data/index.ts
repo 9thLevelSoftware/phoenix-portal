@@ -80,13 +80,16 @@ async function paddleCheckoutCustomDataHandler(
   }
 
   try {
-    const secret = deps.env.get("PADDLE_CUSTOM_DATA_SECRET");
-    if (!secret?.trim()) {
-      console.error("PADDLE_CUSTOM_DATA_SECRET is not set");
-      return new Response(JSON.stringify({ error: "Billing signing not configured" }), {
-        status: 500,
-        headers: { ...cors, "Content-Type": "application/json" },
-      });
+    const secret = deps.env.get("PADDLE_CUSTOM_DATA_SECRET")?.trim();
+    if (!secret) {
+      console.error("[FATAL] PADDLE_CUSTOM_DATA_SECRET must be set");
+      return new Response(
+        JSON.stringify({ error: "Billing custom_data signing is not configured" }),
+        {
+          status: 500,
+          headers: { ...cors, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const authHeader = req.headers.get("Authorization");

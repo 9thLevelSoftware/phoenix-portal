@@ -130,11 +130,29 @@ export function perCableUnitLabel(unit: WeightUnit): string {
 	return `${unit} per cable`;
 }
 
+export const LOAD_UNAVAILABLE_TEXT = "Load unavailable";
+
+/**
+ * Mobile #1182: an Echo set with no measured load syncs the non-null 0
+ * sentinel. That is "load unavailable", never a lift of 0 kg.
+ */
+export function isUnavailableEchoLoad(
+	perCableKg: number | null | undefined,
+	workoutMode: string | null | undefined,
+): boolean {
+	return (
+		workoutMode?.toUpperCase() === "ECHO" &&
+		!(perCableKg != null && perCableKg > 0)
+	);
+}
+
 export interface LoadValueProps {
 	perCableKg: number | null | undefined;
 	cableCount?: number | null;
 	unit: WeightUnit;
 	className?: string;
+	/** Wire mode of the set or session; an unmeasured Echo load reads as unavailable. */
+	workoutMode?: string | null;
 }
 
 /** Inline element rendering {@link formatLoad}; use it wherever a load is shown. */
@@ -143,10 +161,13 @@ export function LoadValue({
 	cableCount = null,
 	unit,
 	className,
+	workoutMode = null,
 }: LoadValueProps) {
 	return createElement(
 		"span",
 		{ className, "data-testid": "load-value" },
-		formatLoad(perCableKg, cableCount, unit),
+		isUnavailableEchoLoad(perCableKg, workoutMode)
+			? LOAD_UNAVAILABLE_TEXT
+			: formatLoad(perCableKg, cableCount, unit),
 	);
 }

@@ -164,9 +164,9 @@ export const setSchema = z.object({
 	rpe: z.number().nullable(),
 	is_pr: z.boolean(),
 	notes: z.string().nullable(),
+	// Per-set wire mode (sets.workout_mode); absent on legacy rows.
+	workout_mode: z.string().nullish(),
 });
-
-export type WorkoutSet = z.infer<typeof setSchema>;
 
 // --- Personal Record ---
 
@@ -243,22 +243,6 @@ export const trainingCycleListSchema = z.array(trainingCycleSchema);
 
 export type TrainingCycle = z.infer<typeof trainingCycleSchema>;
 
-// --- Analytics Summary ---
-
-export const analyticsSummarySchema = z.object({
-	id: z.string().uuid(),
-	user_id: z.string().uuid(),
-	period: z.string(),
-	total_workouts: z.number(),
-	total_volume: z.number(), // Volume in kg, per cable as stored (KD-8).
-	total_duration: z.number(),
-	avg_session_duration: z.number(),
-	streak_days: z.number(),
-	computed_at: z.coerce.date(),
-});
-
-export type AnalyticsSummary = z.infer<typeof analyticsSummarySchema>;
-
 // --- Routine Exercise ---
 
 export const routineExerciseSchema = z.object({
@@ -314,10 +298,6 @@ export const routineExerciseSchema = z.object({
 	created_at: z.coerce.date(),
 });
 
-export const routineExerciseListSchema = z.array(routineExerciseSchema);
-
-export type RoutineExercise = z.infer<typeof routineExerciseSchema>;
-
 // --- Routine Detail (routine + exercises) ---
 
 export const routineDetailSchema = routineSchema.extend({
@@ -332,13 +312,16 @@ export const earnedBadgeSchema = z.object({
 	badge_id: z.string(),
 	badge_name: z.string(),
 	badge_description: z.string().nullable().optional(),
-	badge_tier: z.string(),
+	// Column is nullable. Push and pull already default a missing tier to
+	// "bronze"; one null row must not fail the whole earned-badges parse.
+	badge_tier: z
+		.string()
+		.nullish()
+		.transform((v) => v ?? "bronze"),
 	earned_at: z.coerce.date(),
 });
 
 export const earnedBadgeListSchema = z.array(earnedBadgeSchema);
-
-export type EarnedBadge = z.infer<typeof earnedBadgeSchema>;
 
 export const rpgAttributesSchema = z.object({
 	id: z.string().uuid().optional(),
@@ -354,8 +337,6 @@ export const rpgAttributesSchema = z.object({
 	updated_at: nullableOptionalDate,
 });
 
-export type RpgAttributes = z.infer<typeof rpgAttributesSchema>;
-
 export const gamificationStatsSchema = z.object({
 	id: z.string().uuid().optional(),
 	user_id: z.string().uuid(),
@@ -367,8 +348,6 @@ export const gamificationStatsSchema = z.object({
 	total_time_seconds: z.number(),
 	updated_at: nullableOptionalDate,
 });
-
-export type GamificationStats = z.infer<typeof gamificationStatsSchema>;
 
 // --- Cycle Day ---
 
@@ -395,8 +374,6 @@ export const cycleDetailSchema = trainingCycleSchema.extend({
 	progression_settings: z.unknown().nullable().optional(),
 	deload_settings: z.unknown().nullable().optional(),
 });
-
-export type CycleDetail = z.infer<typeof cycleDetailSchema>;
 
 // --- Cycle progression settings (shared with mobile) ---
 //
@@ -569,70 +546,6 @@ export function readCycleProgressionSettings(
 	return out;
 }
 
-// --- Challenge ---
-
-export const challengeSchema = z.object({
-	id: z.string().uuid(),
-	name: z.string(),
-	description: z.string().nullable(),
-	challenge_type: z.enum(["volume", "frequency", "streak", "pr_count"]),
-	target_value: z.number(),
-	target_unit: z.string().nullable(),
-	start_date: nullableDate,
-	end_date: nullableDate,
-	difficulty: z.string(),
-	prize: z.string().nullable(),
-	created_at: z.coerce.date(),
-	is_active: z.boolean(),
-});
-
-export const challengeListSchema = z.array(challengeSchema);
-
-export type Challenge = z.infer<typeof challengeSchema>;
-
-// --- Challenge Participant ---
-
-export const challengeParticipantSchema = z.object({
-	id: z.string().uuid(),
-	challenge_id: z.string().uuid(),
-	user_id: z.string().uuid(),
-	joined_at: z.coerce.date(),
-	completed_at: nullableDate,
-});
-
-export const challengeParticipantListSchema = z.array(
-	challengeParticipantSchema,
-);
-
-export type ChallengeParticipant = z.infer<typeof challengeParticipantSchema>;
-
-// --- Body Intelligence ---
-
-export const bodyIntelligenceRowSchema = z.object({
-	id: z.string().uuid(),
-	exercise_id: z.string().nullable().optional(),
-	name: z.string(),
-	muscle_group: z.string().nullable(),
-	session_id: z.string().uuid(),
-	setCount: z.number(),
-	sets: z
-		.array(
-			z.object({
-				id: z.string().uuid(),
-				actual_reps: z.number().nullable(),
-				weight_kg: z.number().nullable(),
-			}),
-		)
-		.optional(),
-	workout_sessions: z.object({
-		id: z.string().uuid(),
-		started_at: z.coerce.date(),
-		user_id: z.string().uuid(),
-	}),
-});
-
-export const bodyIntelligenceSchema = z.array(bodyIntelligenceRowSchema);
-
 // --- Exercise Catalog ---
 
 export const catalogExerciseSchema = z.object({
@@ -665,7 +578,3 @@ export const catalogExerciseSchema = z.object({
 export const catalogExerciseListSchema = z.array(catalogExerciseSchema);
 
 export type CatalogExercise = z.infer<typeof catalogExerciseSchema>;
-
-export function getExerciseDisplayName(exercise: CatalogExercise): string {
-	return exercise.display_name;
-}

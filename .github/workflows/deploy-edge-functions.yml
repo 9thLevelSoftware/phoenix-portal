@@ -17,7 +17,10 @@ name: Deploy Edge Functions
 #
 # Two gates run before any upload:
 #   1. `verify`: the Edge type-check and handler tests (`check:edge-functions`,
-#      `test:edge`) must pass on this exact commit. A red test blocks deploy.
+#      `test:edge` with SYNC_LWW_ENABLED=false and again with =true) must pass
+#      on this exact commit. A red test blocks deploy. Both flag values run
+#      because the push handler has a separate write path for each and the
+#      production value is unknown (NF-50, same as ci.yml).
 #   2. `Gate on prod migrations`: every local `supabase/migrations/*.sql`
 #      version must already be applied to prod (`supabase migration list
 #      --linked`). If not, the deploy fails and names the missing versions.
@@ -71,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: ".nvmrc"
@@ -82,7 +85,16 @@ jobs:
       - run: npm ci
       - name: Type-check Edge Functions
         run: npm run check:edge-functions
-      - name: Run Edge handler tests
+      - name: Run Edge handler tests (in-process doubles, SYNC_LWW_ENABLED=false)
+        env:
+          SYNC_LWW_ENABLED: "false"
+        run: npm run test:edge
+      # The push handler has a separate write path per flag value and the
+      # production value is unknown, so both run (NF-50).
+      - name: Run Edge handler tests (in-process doubles, SYNC_LWW_ENABLED=true)
+        if: ${{ !cancelled() }}
+        env:
+          SYNC_LWW_ENABLED: "true"
         run: npm run test:edge
 
   deploy:
@@ -97,7 +109,7 @@ jobs:
     # on the `production` environment in repo settings for an extra approval gate.
     environment: production
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # Production functions only ever ship from main. Guard against a
       # workflow_dispatch run selecting a feature branch or stale commit.

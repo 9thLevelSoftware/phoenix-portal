@@ -2,14 +2,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderEntitlementParityTest } from "../../scripts/gen-entitlement-parity-test.mjs";
+import { TIER_LEVEL as edgeTierLevel } from "../../supabase/functions/_shared/subscriptionEntitlement.ts";
 import {
 	ENTITLEMENT_GRACE_HOURS,
 	getEffectiveSubscriptionTier,
-	hasCurrentPeriodAccess,
 	isStaleActiveSubscription,
 	PAST_DUE_REFRESH_AFTER_DAYS,
 	type SubscriptionStatus,
 	type SubscriptionTier,
+	TIER_LEVEL,
 } from "./subscription-entitlement";
 
 describe("subscription entitlement", () => {
@@ -21,9 +22,6 @@ describe("subscription entitlement", () => {
 				now,
 			}),
 		).toBe("FLAME");
-		expect(
-			hasCurrentPeriodAccess("active", "2026-06-01T00:00:00Z", { now }),
-		).toBe(true);
 	});
 
 	it("denies the paid tier for an active subscription past the grace window", () => {
@@ -108,15 +106,9 @@ describe("subscription entitlement", () => {
 				{ now },
 			),
 		).toBe("EMBER");
-		expect(
-			hasCurrentPeriodAccess("trialing", "2026-06-01T00:00:00Z", { now }),
-		).toBe(true);
 	});
 
 	it("denies a trialing subscription when current_period_end equals now", () => {
-		expect(
-			hasCurrentPeriodAccess("trialing", "2026-05-17T12:00:00Z", { now }),
-		).toBe(false);
 		expect(
 			getEffectiveSubscriptionTier(
 				"FLAME",
@@ -246,6 +238,30 @@ describe("subscription entitlement parity fixture (client)", () => {
 				{ now, cancelAtPeriodEnd: c.cancelAtPeriodEnd },
 			),
 		).toBe(c.expectedTier);
+	});
+
+	it("shares one TIER_LEVEL ladder with the edge gate and the portal call sites", () => {
+		expect(TIER_LEVEL).toBe(edgeTierLevel);
+		expect(TIER_LEVEL).toEqual({
+			FREE: 0,
+			EMBER: 1,
+			FLAME: 2,
+			INFERNO: 3,
+		});
+		expect(TIER_LEVEL.FREE).toBeLessThan(TIER_LEVEL.EMBER);
+		expect(TIER_LEVEL.EMBER).toBeLessThan(TIER_LEVEL.FLAME);
+		expect(TIER_LEVEL.FLAME).toBeLessThan(TIER_LEVEL.INFERNO);
+
+		const callers = [
+			"supabase/functions/_shared/requireSubscription.ts",
+			"src/app/components/SubscriptionGate.tsx",
+			"src/app/components/PricingPlans.tsx",
+		];
+		for (const file of callers) {
+			const source = readFileSync(join(repoRoot, file), "utf8");
+			expect(source, file).toMatch(/\bTIER_LEVEL\b/);
+			expect(source, file).not.toMatch(/\b(?:export\s+)?const TIER_LEVEL\b/);
+		}
 	});
 
 	it("keeps the generated pgTAP parity test in sync with the fixture", () => {

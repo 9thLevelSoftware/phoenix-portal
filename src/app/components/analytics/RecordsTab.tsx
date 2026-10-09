@@ -19,6 +19,8 @@ import { Card } from "@/app/components/ui/card";
 import { EmptyState } from "@/app/components/ui/empty-state";
 import { CardSkeleton, Skeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
+import { fadeUp } from "@/lib/animations";
+import { getMuscleGroupColor } from "@/lib/muscle-group-chip";
 import type { WeightUnit } from "@/lib/units";
 import { formatLoad } from "@/lib/units/loadDisplay";
 import {
@@ -70,18 +72,6 @@ function formatRecordMeasurement(
 	}
 	// Records are per cable and carry no cable count, so no total (KD-8).
 	return formatLoad(value, null, unit);
-}
-
-function getMuscleGroupColor(muscleGroup: string): string {
-	const colors: Record<string, string> = {
-		Chest: "bg-primary",
-		Shoulders: "bg-accent",
-		Back: "bg-success",
-		Legs: "bg-chart-2",
-		Arms: "bg-warning",
-		Core: "bg-[#8B5CF6]",
-	};
-	return colors[muscleGroup] ?? "bg-muted";
 }
 
 interface ExercisePR {
@@ -259,7 +249,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 	if (isError && records == null) {
 		return (
 			<div className="text-center py-16">
-				<p className="text-lg text-white mb-2">
+				<p className="text-lg text-foreground mb-2">
 					Couldn't load personal records
 				</p>
 				<p className="text-sm text-muted-foreground mb-6">
@@ -286,11 +276,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 	return (
 		<div className="space-y-6">
 			{/* Filter bar */}
-			<motion.div
-				initial={{ opacity: 0, y: 16 }}
-				animate={{ opacity: 1, y: 0 }}
-				transition={{ duration: 0.25 }}
-			>
+			<motion.div {...fadeUp}>
 				{/* Muscle group + view toggle row */}
 				<div className="flex items-center justify-between gap-4 mb-3 flex-wrap">
 					<div className="flex gap-2 overflow-x-auto pb-1 flex-wrap">
@@ -301,7 +287,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 								size="sm"
 								className={
 									activeFilter === filter
-										? "bg-primary border-0 text-white flex-shrink-0"
+										? "bg-primary border-0 text-primary-foreground flex-shrink-0"
 										: "bg-secondary border-0 text-muted-foreground hover:bg-muted flex-shrink-0"
 								}
 							>
@@ -360,9 +346,8 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 
 			{/* Summary stats row */}
 			<motion.div
-				initial={{ opacity: 0, y: 16 }}
-				animate={{ opacity: 1, y: 0 }}
-				transition={{ duration: 0.25, delay: 0.05 }}
+				{...fadeUp}
+				transition={{ ...fadeUp.transition, delay: 0.05 }}
 				className="grid grid-cols-3 gap-4"
 			>
 				<Card className="p-4 bg-surface-2 border-secondary">
@@ -370,7 +355,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 						<Trophy className="w-4 h-4 text-accent" />
 						<span className="text-xs text-muted-foreground">Phase PRs</span>
 					</div>
-					<div className="text-2xl font-semibold text-white font-data">
+					<div className="text-2xl font-semibold text-foreground font-data">
 						{totalPRs}
 					</div>
 				</Card>
@@ -379,7 +364,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 						<Flame className="w-4 h-4 text-primary" />
 						<span className="text-xs text-muted-foreground">Exercises</span>
 					</div>
-					<div className="text-2xl font-semibold text-white font-data">
+					<div className="text-2xl font-semibold text-foreground font-data">
 						{exercisePRs.length}
 					</div>
 				</Card>
@@ -388,7 +373,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 						<Star className="w-4 h-4 text-warning" />
 						<span className="text-xs text-muted-foreground">This Month</span>
 					</div>
-					<div className="text-2xl font-semibold text-white font-data">
+					<div className="text-2xl font-semibold text-foreground font-data">
 						{
 							(records ?? []).filter(
 								(r) =>
@@ -403,14 +388,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 			{/* Main content */}
 			<AnimatePresence mode="wait">
 				{viewMode === "grouped" ? (
-					<motion.div
-						key="grouped"
-						initial={{ opacity: 0, y: 16 }}
-						animate={{ opacity: 1, y: 0 }}
-						exit={{ opacity: 0, y: -16 }}
-						transition={{ duration: 0.25 }}
-						className="space-y-3"
-					>
+					<motion.div {...fadeUp} key="grouped" className="space-y-3">
 						{filteredExercises.length === 0 ? (
 							<div className="text-center py-10 text-muted-foreground">
 								<Trophy className="w-10 h-10 mx-auto mb-3 opacity-40" />
@@ -432,12 +410,12 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 										>
 											<div className="flex items-center gap-3">
 												<div className="text-left">
-													<h3 className="text-base font-semibold text-white">
+													<h3 className="text-base font-semibold text-foreground">
 														{exercise.exercise}
 													</h3>
 													<div className="flex items-center gap-2 mt-1">
 														<Badge
-															className={`${getMuscleGroupColor(exercise.muscleGroup)} text-white border-0 text-xs`}
+															className={`${getMuscleGroupColor(exercise.muscleGroup)} border-0 text-xs`}
 														>
 															{exercise.muscleGroup}
 														</Badge>
@@ -447,7 +425,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 
 											<div className="flex items-center gap-3">
 												<div className="text-right hidden sm:block">
-													<div className="text-base font-semibold text-white font-data">
+													<div className="text-base font-semibold text-foreground font-data">
 														{formatRecordMeasurement(
 															exercise.currentValue,
 															exercise.unit,
@@ -513,7 +491,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 																		{isHovered && (
 																			<div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap">
 																				<div className="bg-surface-2 border border-secondary rounded-lg px-3 py-2 shadow-lg text-center">
-																					<div className="text-sm font-semibold text-white font-data">
+																					<div className="text-sm font-semibold text-foreground font-data">
 																						{formatRecordMeasurement(
 																							entry.value,
 																							entry.unit,
@@ -597,7 +575,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 																			},
 																		)}
 																	</td>
-																	<td className="py-2.5 text-white font-semibold font-data">
+																	<td className="py-2.5 text-foreground font-semibold font-data">
 																		{formatRecordMeasurement(
 																			entry.value,
 																			entry.unit,
@@ -643,13 +621,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 						)}
 					</motion.div>
 				) : (
-					<motion.div
-						key="timeline"
-						initial={{ opacity: 0, y: 16 }}
-						animate={{ opacity: 1, y: 0 }}
-						exit={{ opacity: 0, y: -16 }}
-						transition={{ duration: 0.25 }}
-					>
+					<motion.div {...fadeUp} key="timeline">
 						<div className="relative">
 							<div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary via-chart-2 to-accent" />
 
@@ -664,10 +636,10 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 										className="relative pl-20"
 									>
 										<div className="absolute left-4 w-8 h-8 rounded-full bg-accent flex items-center justify-center border-4 border-background">
-											<milestone.icon className="w-4 h-4 text-white" />
+											<milestone.icon className="w-4 h-4 text-foreground" />
 										</div>
 										<Card className="p-4 bg-gradient-to-br from-accent/20 to-warning/20 border-2 border-accent/50">
-											<h3 className="text-base font-semibold text-white">
+											<h3 className="text-base font-semibold text-foreground">
 												{milestone.name}
 											</h3>
 											<p className="text-sm text-secondary-foreground">
@@ -693,11 +665,11 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 											<div className="flex items-center justify-between gap-2">
 												<div className="min-w-0">
 													<div className="flex items-center gap-2 mb-1 flex-wrap">
-														<h3 className="text-base font-semibold text-white truncate">
+														<h3 className="text-base font-semibold text-foreground truncate">
 															{pr.exercise_name}
 														</h3>
 														<Badge
-															className={`${getMuscleGroupColor(pr.muscle_group)} text-white border-0 text-xs flex-shrink-0`}
+															className={`${getMuscleGroupColor(pr.muscle_group)} border-0 text-xs flex-shrink-0`}
 														>
 															{pr.muscle_group}
 														</Badge>

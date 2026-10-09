@@ -1,8 +1,14 @@
 import { queryOptions } from "@tanstack/react-query";
 import { classifyMuscleGroup } from "@/lib/exercise-muscles";
 import { supabase } from "@/lib/supabase";
-import { fetchAllKeysetPages } from "@/lib/supabasePaging";
-import { exerciseFrequencySchema } from "./exercise-frequency";
+import {
+	afterSessionFilter,
+	fetchAllKeysetPages,
+	fetchAllSupabasePages,
+	type SessionCursor,
+	sessionCursorOf,
+} from "@/lib/supabasePaging";
+import { exerciseFrequencyOptions } from "./exercise-frequency";
 import { queryKeys } from "./keys";
 import {
 	resolvePersonalRecordDisplayNames,
@@ -36,28 +42,6 @@ export function isUnknownTimeZoneError(error: unknown): boolean {
 		typeof message === "string" &&
 		message.includes("unknown time zone")
 	);
-}
-
-/** Position of the last session row a keyset page returned. */
-interface SessionCursor {
-	started_at: string;
-	id: string;
-}
-
-function sessionCursorOf(row: {
-	started_at: string;
-	id: string;
-}): SessionCursor {
-	return { started_at: row.started_at, id: row.id };
-}
-
-/**
- * PostgREST `or` filter for "strictly after this (started_at, id)". The
- * timestamp is quoted because an ISO value carries `.` and `:`, which the
- * filter grammar reserves.
- */
-function afterSessionFilter(after: SessionCursor): string {
-	return `started_at.gt."${after.started_at}",and(started_at.eq."${after.started_at}",id.gt.${after.id})`;
 }
 
 /**
@@ -100,23 +84,16 @@ export function volumeTrendOptions(
 	});
 }
 
-/** Muscle group distribution (for pie/donut chart) */
+/**
+ * Muscle group distribution (for pie/donut chart).
+ *
+ * Projects the shared `exerciseFrequencyOptions` rows. Classification stays
+ * here; the RPC itself is owned by that query.
+ */
 export function muscleGroupOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.summary(userId, "muscle-groups", profileId),
-		queryFn: async () => {
-			// One RPC, grouped in SQL. The previous "select every session id, then
-			// .in(session_id, ids)" round trip put every UUID in the GET URL and
-			// started failing at ~200 sessions (F-035), and the exercise rows it
-			// fetched were themselves capped at 1,000 rows.
-			// `sessions` counts an exercise once per session it appears in.
-			const { data: exercises, error } = await supabase.rpc(
-				"exercise_frequency",
-				profileId ? { p_profile_id: profileId } : {},
-			);
-			if (error) throw error;
-			const exerciseFrequency = exerciseFrequencySchema.parse(exercises ?? []);
-
+		...exerciseFrequencyOptions(userId, profileId),
+		select: (rows) => {
 			// Classify by exercise NAME (canonical 6 groups), falling back to a
 			// real muscle_group hint only when the name is unclassifiable. The DB
 			// muscle_group column is unreliable — historically it was hardcoded to
@@ -124,7 +101,7 @@ export function muscleGroupOptions(userId: string, profileId?: string | null) {
 			// collapsed the entire distribution into a single "General" bucket.
 			// Genuinely unclassifiable rows are dropped from the distribution.
 			const counts: Record<string, number> = {};
-			for (const ex of exerciseFrequency) {
+			for (const ex of rows) {
 				const group = classifyMuscleGroup(
 					ex.exercise_name ?? "",
 					ex.muscle_group,
@@ -284,118 +261,6 @@ function periodCutoffISO(period: string): string | null {
 	return since.toISOString();
 }
 
-/** Form score trend over time (GAP 4) */
-export function formScoreTrendOptions(
-	userId: string,
-	period: string = "4w",
-	profileId?: string | null,
-) {
-	return queryOptions({
-		queryKey: queryKeys.analytics.summary(
-			userId,
-			`form-score-${period}`,
-			profileId,
-		),
-		queryFn: async () => {
-			const cutoff = periodCutoffISO(period);
-
-			return fetchAllKeysetPages((after: SessionCursor | null, limit) => {
-				let query = supabase
-					.from("workout_sessions")
-					.select("id, started_at, form_score")
-					.eq("user_id", userId)
-					.not("form_score", "is", null);
-				if (profileId) query = query.eq("local_profile_id", profileId);
-				const since = after?.started_at ?? cutoff;
-				if (since) query = query.gte("started_at", since);
-				if (after) query = query.or(afterSessionFilter(after));
-				return query
-					.order("started_at", { ascending: true })
-					.order("id", { ascending: true })
-					.limit(limit);
-			}, sessionCursorOf);
-		},
-	});
-}
-
-/** Safety events trend (deload warnings, ROM violations, spotter activations) (GAP 4) */
-export function safetyTrendOptions(
-	userId: string,
-	period: string = "4w",
-	profileId?: string | null,
-) {
-	return queryOptions({
-		queryKey: queryKeys.analytics.summary(
-			userId,
-			`safety-${period}`,
-			profileId,
-		),
-		queryFn: async () => {
-			const cutoff = periodCutoffISO(period);
-
-			const rows = await fetchAllKeysetPages(
-				(after: SessionCursor | null, limit) => {
-					let query = supabase
-						.from("workout_sessions")
-						.select(
-							"id, started_at, deload_warnings, rom_violations, spotter_activations",
-						)
-						.eq("user_id", userId);
-					if (profileId) query = query.eq("local_profile_id", profileId);
-					const since = after?.started_at ?? cutoff;
-					if (since) query = query.gte("started_at", since);
-					if (after) query = query.or(afterSessionFilter(after));
-					return query
-						.order("started_at", { ascending: true })
-						.order("id", { ascending: true })
-						.limit(limit);
-				},
-				sessionCursorOf,
-			);
-			return rows.filter(
-				(r) =>
-					(r.deload_warnings ?? 0) > 0 ||
-					(r.rom_violations ?? 0) > 0 ||
-					(r.spotter_activations ?? 0) > 0,
-			);
-		},
-	});
-}
-
-/** Calorie burn history (GAP 5) */
-export function calorieHistoryOptions(
-	userId: string,
-	period: string = "4w",
-	profileId?: string | null,
-) {
-	return queryOptions({
-		queryKey: queryKeys.analytics.summary(
-			userId,
-			`calories-${period}`,
-			profileId,
-		),
-		queryFn: async () => {
-			const cutoff = periodCutoffISO(period);
-
-			return fetchAllKeysetPages((after: SessionCursor | null, limit) => {
-				let query = supabase
-					.from("workout_sessions")
-					.select("id, started_at, estimated_calories")
-					.eq("user_id", userId)
-					.not("estimated_calories", "is", null);
-				if (profileId) query = query.eq("local_profile_id", profileId);
-				const since = after?.started_at ?? cutoff;
-				if (since) query = query.gte("started_at", since);
-				if (after) query = query.or(afterSessionFilter(after));
-				return query
-					.order("started_at", { ascending: true })
-					.order("id", { ascending: true })
-					.limit(limit);
-			}, sessionCursorOf);
-		},
-	});
-}
-
 /** Phase statistics over time for concentric/eccentric analytics */
 export function phaseStatisticsTrendOptions(
 	userId: string,
@@ -407,40 +272,46 @@ export function phaseStatisticsTrendOptions(
 		queryFn: async () => {
 			const cutoff = periodCutoffISO(period);
 
-			let query = supabase
-				.from("session_phase_statistics")
-				.select(
-					[
-						"session_id",
-						"concentric_kg_avg",
-						"concentric_kg_max",
-						"concentric_vel_avg",
-						"concentric_vel_max",
-						"concentric_watt_avg",
-						"concentric_watt_max",
-						"eccentric_kg_avg",
-						"eccentric_kg_max",
-						"eccentric_vel_avg",
-						"eccentric_vel_max",
-						"eccentric_watt_avg",
-						"eccentric_watt_max",
-						"workout_sessions!inner(started_at, local_profile_id, name)",
-					].join(", "),
-				)
-				.eq("user_id", userId)
-				.order("created_at", { ascending: true });
+			// One response is silently capped at PostgREST max_rows. Period
+			// "all" has no date filter, so an unpaged select drops the newest
+			// rows. created_at is the trend order; id keeps a page boundary
+			// from skipping ties. Callers still receive one array.
+			return fetchAllSupabasePages((from, to) => {
+				let query = supabase
+					.from("session_phase_statistics")
+					.select(
+						[
+							"session_id",
+							"concentric_kg_avg",
+							"concentric_kg_max",
+							"concentric_vel_avg",
+							"concentric_vel_max",
+							"concentric_watt_avg",
+							"concentric_watt_max",
+							"eccentric_kg_avg",
+							"eccentric_kg_max",
+							"eccentric_vel_avg",
+							"eccentric_vel_max",
+							"eccentric_watt_avg",
+							"eccentric_watt_max",
+							"workout_sessions!inner(started_at, local_profile_id, name)",
+						].join(", "),
+					)
+					.eq("user_id", userId);
 
-			if (cutoff) {
-				query = query.gte("workout_sessions.started_at", cutoff);
-			}
+				if (cutoff) {
+					query = query.gte("workout_sessions.started_at", cutoff);
+				}
 
-			if (profileId) {
-				query = query.eq("workout_sessions.local_profile_id", profileId);
-			}
+				if (profileId) {
+					query = query.eq("workout_sessions.local_profile_id", profileId);
+				}
 
-			const { data, error } = await query;
-			if (error) throw error;
-			return data ?? [];
+				return query
+					.order("created_at", { ascending: true })
+					.order("id", { ascending: true })
+					.range(from, to);
+			});
 		},
 	});
 }

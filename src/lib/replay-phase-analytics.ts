@@ -1,4 +1,8 @@
-import { hasMeasuredKinematics, type RepSummary, type TelemetryPointRow } from "@/schemas/telemetry";
+import {
+	hasMeasuredKinematics,
+	type RepSummary,
+	type TelemetryPointRow,
+} from "@/schemas/telemetry";
 
 export type ReplayPhase = "concentric" | "eccentric";
 export type ReplayPhaseAnalyticsStatus = "empty" | "partial" | "ready";
@@ -58,7 +62,10 @@ function mean(values: number[]): number {
 }
 
 function groupTelemetryByTimestamp(
-	telemetry: (TelemetryPointRow & { velocity_mps: number; position_mm: number })[],
+	telemetry: (TelemetryPointRow & {
+		velocity_mps: number;
+		position_mm: number;
+	})[],
 ): TimestampSample[] {
 	const grouped = new Map<number, typeof telemetry>();
 	for (const point of telemetry) {
@@ -122,7 +129,8 @@ export function buildReplayPhaseAnalytics({
 	if (measured.length !== telemetry.length) {
 		return {
 			status: "partial",
-			partialReason: "Cable position or velocity is unknown; force-only history cannot establish phase or work.",
+			partialReason:
+				"Cable position or velocity is unknown; force-only history cannot establish phase or work.",
 			segments: [],
 			summary: emptySummary(),
 		};

@@ -80,7 +80,7 @@ interface ExternalActivityRow {
 	synced_at: string;
 }
 
-interface SyncQueueRow {
+type SyncQueueRow = {
 	id: string;
 	user_id: string;
 	provider: IntegrationProvider;
@@ -91,7 +91,7 @@ interface SyncQueueRow {
 	started_at: string | null;
 	completed_at: string | null;
 	retry_count: number;
-}
+};
 
 interface MockSupabaseOptions {
 	userId?: string;
@@ -187,6 +187,9 @@ export async function installMockSupabase(
 			body: "",
 			headers: {
 				"content-range": `0-0/${count}`,
+				// Cross-origin: without this the browser hides Content-Range
+				// from supabase-js and every head count reads as null.
+				"access-control-expose-headers": "content-range",
 			},
 		});
 	};
@@ -285,6 +288,33 @@ export async function installMockSupabase(
 			(session) =>
 				!profileId || String(session.local_profile_id ?? "") === profileId,
 		);
+
+	/**
+	 * Account-wide UTC streak matching `public.workout_current_streak`:
+	 * unique UTC dates, and if today is empty the run starts yesterday.
+	 * Not capped at the 50-row workout list.
+	 */
+	const workoutCurrentStreak = (now = new Date()) => {
+		const days = new Set(
+			(state.workoutSessions as Array<Record<string, unknown>>)
+				.map((session) => String(session.started_at ?? ""))
+				.filter((value) => value.length > 0)
+				.map((value) => {
+					const date = new Date(value);
+					return `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
+				}),
+		);
+		let count = 0;
+		for (let i = 0; i <= days.size; i++) {
+			const date = new Date(
+				Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i),
+			);
+			const key = `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
+			if (days.has(key)) count++;
+			else if (i > 0) break;
+		}
+		return count;
+	};
 
 	/**
 	 * The SQL aggregates the SPA reads instead of "every session id, then
@@ -387,6 +417,10 @@ export async function installMockSupabase(
 					);
 				});
 			return rows.slice(0, limit);
+		}
+
+		if (fn === "workout_current_streak") {
+			return workoutCurrentStreak();
 		}
 
 		if (fn === "profile_workout_stats") {
@@ -837,10 +871,36 @@ export async function installMockSupabase(
 					return;
 				}
 
+				// Honor status/user filters and the activity-list limit. The portal
+				// counts pending/processing with a status filter and loads the
+				// latest 10 rows separately; returning the whole queue for both
+				// would make the active count include finished rows.
+				let rows = filterRows(state.syncQueue, url);
+				if (method === "HEAD") {
+					await respondCount(route, rows.length);
+					return;
+				}
+				const order = url.searchParams.get("order");
+				if (order) {
+					const [column, direction] = order.split(",")[0].split(".");
+					const sign = direction === "desc" ? -1 : 1;
+					rows = [...rows].sort((a, b) => {
+						const av = String(a[column as keyof SyncQueueRow] ?? "");
+						const bv = String(b[column as keyof SyncQueueRow] ?? "");
+						return sign * av.localeCompare(bv);
+					});
+				}
+				const limitParam = url.searchParams.get("limit");
+				if (limitParam !== null) {
+					const limit = Number(limitParam);
+					if (Number.isFinite(limit) && limit >= 0) {
+						rows = rows.slice(0, limit);
+					}
+				}
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
-					body: JSON.stringify(state.syncQueue),
+					body: JSON.stringify(rows),
 				});
 				return;
 			}

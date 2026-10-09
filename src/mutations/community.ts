@@ -5,6 +5,11 @@ import { supabase } from "@/lib/supabase";
 import { isTierDenied, TIER_DENIED_MESSAGE } from "@/lib/tierErrors";
 import { useAuth } from "@/providers/AuthProvider";
 import { queryKeys } from "@/queries/keys";
+import {
+	blockUserSchema,
+	type ReportCategory,
+	reportContentSchema,
+} from "@/schemas/community";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import {
 	normalizeEccentricLoad,
@@ -336,10 +341,8 @@ export function useFollowCreator() {
 		mutationFn: async ({ followedId }: FollowCreatorArgs) => {
 			if (!user) throw new Error("Must be logged in to follow");
 
-			// TODO: `creator_follows` is not in the generated Supabase types (database.types.ts).
-			// Run `npm run gen:types` after adding the table to the schema to remove these casts.
 			const { data: existing, error: checkError } = await supabase
-				.from("creator_follows" as never)
+				.from("creator_follows")
 				.select("id")
 				.eq("follower_id", user.id)
 				.eq("followed_id", followedId)
@@ -349,16 +352,16 @@ export function useFollowCreator() {
 
 			if (existing) {
 				const { error } = await supabase
-					.from("creator_follows" as never)
+					.from("creator_follows")
 					.delete()
-					.eq("id", (existing as { id: string }).id);
+					.eq("id", existing.id);
 				if (error) throw error;
 				return { action: "unfollowed" as const };
 			}
-			const { error } = await supabase.from("creator_follows" as never).insert({
+			const { error } = await supabase.from("creator_follows").insert({
 				follower_id: user.id,
 				followed_id: followedId,
-			} as never);
+			});
 			if (error) throw error;
 			return { action: "followed" as const };
 		},
@@ -383,7 +386,7 @@ export function useFollowCreator() {
 interface ReportContentArgs {
 	contentId: string;
 	contentType: "routine" | "cycle" | "comment";
-	category: "harmful_content" | "impersonation" | "spam" | "malware" | "other";
+	category: ReportCategory;
 	description?: string;
 }
 
@@ -391,23 +394,22 @@ export function useReportContent() {
 	const { user } = useAuth();
 
 	return useMutation({
-		mutationFn: async ({
-			contentId,
-			contentType,
-			category,
-			description,
-		}: ReportContentArgs) => {
+		mutationFn: async (args: ReportContentArgs) => {
 			if (!user) throw new Error("Must be logged in to report content");
 
-			// TODO: `content_reports` is not in the generated Supabase types (database.types.ts).
-			// Run `npm run gen:types` after adding the table to the schema to remove these casts.
-			const { error } = await supabase.from("content_reports" as never).insert({
+			const parsed = reportContentSchema.safeParse(args);
+			if (!parsed.success) {
+				throw new Error("Invalid report");
+			}
+			const { contentId, contentType, category, description } = parsed.data;
+
+			const { error } = await supabase.from("content_reports").insert({
 				reporter_id: user.id,
 				content_id: contentId,
 				content_type: contentType,
 				category,
 				...(description ? { description } : {}),
-			} as never);
+			});
 
 			if (error) {
 				if (error.code === "23505") {
@@ -449,10 +451,14 @@ export function useBlockUser() {
 			if (!user) throw new Error("Must be logged in to block a user");
 			if (blockedId === user.id) throw new Error("You cannot block yourself");
 
-			const { error } = await supabase.from("user_blocks" as never).insert({
+			const { blockedId: parsedBlockedId } = blockUserSchema.parse({
+				blockedId,
+			});
+
+			const { error } = await supabase.from("user_blocks").insert({
 				blocker_id: user.id,
-				blocked_id: blockedId,
-			} as never);
+				blocked_id: parsedBlockedId,
+			});
 
 			if (error) throw error;
 		},
@@ -494,7 +500,7 @@ export function useUnblockUser() {
 			if (!user) throw new Error("Must be logged in to unblock a user");
 
 			const { error } = await supabase
-				.from("user_blocks" as never)
+				.from("user_blocks")
 				.delete()
 				.eq("blocker_id", user.id)
 				.eq("blocked_id", blockedId);

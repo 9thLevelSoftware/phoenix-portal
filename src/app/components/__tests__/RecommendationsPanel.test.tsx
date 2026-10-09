@@ -22,7 +22,7 @@ function setupSubscription(isInferno: boolean) {
 		currentPeriodEnd: null,
 		cancelAtPeriodEnd: false,
 		isLoading: false,
-		isPremium: true,
+		isEntitled: true,
 		isFlame: true,
 		isInferno,
 	});
@@ -154,7 +154,7 @@ describe("RecommendationsPanel", () => {
 		);
 
 		const list = screen.getByTestId("recommendations-list");
-		const titles = list.querySelectorAll("p.font-medium.text-white");
+		const titles = list.querySelectorAll("p.font-medium.text-foreground");
 		const titleTexts = Array.from(titles).map((el) => el.textContent);
 
 		// critical should appear before actionable, info, positive

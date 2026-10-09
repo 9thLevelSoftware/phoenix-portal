@@ -1,6 +1,6 @@
 # Phoenix Portal Operational Runbook
 
-> Last updated: 2026-09-20
+> Last updated: 2026-10-08
 > Audience: On-call operators, backend engineers
 
 This document covers day-to-day operational troubleshooting for Phoenix Portal.
@@ -27,15 +27,8 @@ testing, see [paddle-simulation-testing.md](paddle-simulation-testing.md).
 2. Open the **Invocations** tab. Look for non-200 status codes.
 3. Click an invocation to view `console.log` / `console.error` output.
 
-**Supabase CLI:**
-
-```bash
-# Tail live logs
-supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF
-
-# View recent entries
-supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --limit 100
-```
+The Supabase CLI has no `functions logs` subcommand, so Edge Function logs are
+read in the Dashboard as above. The same applies to every log check in this runbook.
 
 **Key log messages:**
 
@@ -43,7 +36,7 @@ supabase functions logs paddle-webhooks --project-ref $SUPABASE_PROJECT_REF --li
 | -------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------- |
 | `[Paddle] Ignoring event with missing custom_data.user_id:` | Event has no `user_id` in custom_data; answered 200 and ignored | HIGH -- user pays but gets no access     |
 | `[BILLING_ALERT] Malformed custom_data.user_id in Paddle event:` | `user_id` in custom_data is not a UUID; answered 400 | HIGH -- event is never applied           |
-| `[BILLING_ALERT] Unknown price ID`                       | Price ID not in `PADDLE_*_PRICE_IDS` env vars     | HIGH -- silent tier mismatch             |
+| `[BILLING_ALERT] Unknown price ID`                       | Price ID not in `PADDLE_*_PRICE_IDS`. A stored paid tier is kept; with none to keep, HTTP 500 and no write | HIGH -- hard failure when no paid tier can be kept |
 | `[BILLING_ALERT] Error applying subscription event for`  | Database write failed                             | MEDIUM -- Paddle retries on 5xx          |
 | `[BILLING_ALERT] Webhook signature too old:`             | Signature age > 5 minutes                         | LOW -- replay protection, retry will fix |
 | `Unhandled event type: <type>`                           | Non-subscription event (normal)                   | NONE                                     |
@@ -207,15 +200,9 @@ WHERE key = '<provider_or_endpoint>' AND user_id = '<uuid>';
 
 ### Check Edge Function logs for sync errors
 
-```bash
-# Logs for the queue processor
-supabase functions logs process-sync-queue --project-ref $SUPABASE_PROJECT_REF --limit 50
-
-# Logs for a specific provider sync function
-supabase functions logs strava-sync --project-ref $SUPABASE_PROJECT_REF --limit 50
-supabase functions logs fitbit-sync --project-ref $SUPABASE_PROJECT_REF --limit 50
-supabase functions logs hevy-sync --project-ref $SUPABASE_PROJECT_REF --limit 50
-```
+Open **Edge Functions > process-sync-queue > Logs/Invocations** for the queue
+processor, and the same Logs/Invocations view for `strava-sync`, `fitbit-sync`,
+and `hevy-sync`.
 
 **Key log messages:**
 
@@ -431,11 +418,8 @@ Hand-deleting an account is the **last** resort. Work down this list:
    below — clearing the reason usually re-arms the automatic purge.
 4. Only if all of the above are exhausted, follow the manual procedure.
 
-**Before proceeding:** Check Edge Function logs to understand why it failed.
-
-```bash
-supabase functions logs delete-account --project-ref $SUPABASE_PROJECT_REF --limit 20
-```
+**Before proceeding:** Open **Edge Functions > delete-account > Logs/Invocations**
+to see why it failed.
 
 Common failure reasons:
 - Rate limit hit (1 request/hour/user) -- wait and retry.
@@ -742,12 +726,8 @@ SELECT id, email FROM auth.users WHERE id = '<uuid>';
 ### Deletion alerts and the needs-support path
 
 Every string below is logged verbatim by `delete-account` or
-`_shared/accountPurge.ts`, so it can be grepped in the Edge Function logs:
-
-```bash
-supabase functions logs delete-account --project-ref $SUPABASE_PROJECT_REF --limit 200 \
-  | grep DELETION_ALERT
-```
+`_shared/accountPurge.ts`. Open **Edge Functions > delete-account > Logs/Invocations**
+and filter on `[DELETION_ALERT]`.
 
 `process_due`'s HTTP response body (persisted by pg_net in
 `net._http_response`) deliberately carries **counts only** — no user ids — so
@@ -764,7 +744,7 @@ the ids for every alert below live in the Edge logs and nowhere else.
 | `[DELETION_ALERT] account deleted with residual rows` | The auth user is gone, but the post-delete pass could not clear some FK-less tables. `residual_tables` names them.                      | Nothing immediately — the hourly residue sweep retries. Check those tables are empty for that user a few hours later.                           |
 | `[DELETION_ALERT] post_delete_purge_failed`       | Same class, logged from `purgeUser` itself.                                                                                                 | As above.                                                                                                                                      |
 | `[DELETION_ALERT] residue_sweep_skipped_tables`   | `sweep_deleted_account_residue` could not touch a table (missing table or missing `user_id` column — schema drift). `skipped` names each.    | Residue is silently surviving in those tables. Fix the drift, or clear them by hand with the Step 4 queries.                                    |
-| `[DELETION_ALERT] residue_sweep_failed`           | The sweep RPC itself errored, or an avatar folder could not be removed.                                                                    | Check the error; the sweep runs again next hour.                                                                                               |
+| `[DELETION_ALERT] residue_sweep_failed`           | The sweep RPC itself errored. An avatar folder that could not be removed logs `avatar_cleanup_failed`.                                      | Check the error; the sweep runs again next hour.                                                                                               |
 | `[DELETION_ALERT] overdue_check_failed`           | The overdue query errored, so **this pass produced no overdue alerts at all**.                                                             | Absence of `overdue` alerts after this one proves nothing. Run the overdue query below by hand.                                                 |
 | `[DELETION_ALERT] avatar_cleanup_failed`          | Avatar objects for a deleted user could not be removed. The `avatars` bucket is public, so those images stay publicly fetchable.            | **Act on this one.** Delete the objects by hand (Step 3's `storage.objects` query) — the residue sweep retries the folder, but do not wait.     |
 | `[DELETION_ALERT] process_due_failed`             | The whole hourly pass threw.                                                                                                               | Nothing was processed this hour. Read the error; the next pass retries everything.                                                             |
@@ -969,6 +949,14 @@ WHERE user_id = '<uuid>'
 running in production mode (`import.meta.env.PROD`). It is not initialized in
 development.
 
+**Cookie consent:** The SDK is not loaded until the user accepts cookies.
+`src/main.tsx` calls `enableErrorReporting()` only when the
+`phoenix-cookie-consent` value is `accepted` (a storage read that throws is
+treated as not consented). Accepting in `CookieConsentBanner` uses that same
+path for the rest of the session; Reject, or no choice, never fetches the
+Sentry chunk, and those errors stay on the console. A quiet Issues dashboard
+can therefore mean the visitor declined cookies.
+
 ### Supabase Dashboard
 
 **Edge Function logs:**
@@ -1083,7 +1071,10 @@ Optional:
 # Override project ref if it cannot be inferred from VITE_SUPABASE_URL
 SUPABASE_PROJECT_REF=abcdefghijklmnopqrst
 
-# Additional exact redirect URLs, comma-separated
+# Additional exact redirect URLs, comma-separated. Use a normal URL
+# (including a normal `?` when the URL already has a query). The push
+# command also allow-lists each entry with `provider=google` and
+# `provider=apple`, and writes every literal `?` as `\?`.
 SUPABASE_AUTH_ADDITIONAL_REDIRECT_URLS=https://preview.example.com/auth/callback
 ```
 
@@ -1092,7 +1083,7 @@ SUPABASE_AUTH_ADDITIONAL_REDIRECT_URLS=https://preview.example.com/auth/callback
 The repo now provides an env-driven command that:
 
 1. Generates the Google/Apple auth block in a temporary `supabase/config.toml`
-2. Runs `supabase config push` against the linked hosted project
+2. Runs `supabase config push --project-ref <project-ref>` against the hosted project
 3. Verifies the public auth settings endpoint afterward
 
 ```bash
@@ -1111,8 +1102,16 @@ npm run auth:social:check
 The helper command prints the exact values again, but the critical ones are:
 
 - Supabase OAuth callback URL: `https://<project-ref>.supabase.co/auth/v1/callback`
-- Portal redirect URL allow-list entries: `http://localhost:5173/auth/callback`
-  and your production `/auth/callback`
+- Portal redirect URL allow-list entries. Supabase matches this list as a
+  glob, so each literal `?` is stored as `\?`:
+  - `http://localhost:5173/auth/callback`
+  - `http://localhost:5173/auth/callback\?provider=google`
+  - `http://localhost:5173/auth/callback\?provider=apple`
+  - the same three forms on `${SUPABASE_AUTH_SITE_URL}/auth/callback`
+  - `http://localhost:5173/auth/reset-password` and that same path on the
+    production site URL (no `provider` query)
+  - each `SUPABASE_AUTH_ADDITIONAL_REDIRECT_URLS` entry, plus that entry
+    with `provider=google` and `provider=apple`
 - Google web app:
   - Authorized JavaScript origins: `http://localhost:5173` and your portal
     origin
@@ -1133,19 +1132,31 @@ npm run auth:social:push
 
 ### Stale Supabase project ref guard (issue #68)
 
-The build refuses to ship a known-dead Supabase project ref (currently
-`ilzlswmatadlnsuxatcv`) in executable scripts, `public/_headers`, or
-`dist/`. The check is wired into `npm run verify` as
-`assert:supabase-config` and can also be run standalone:
+`npm run assert:supabase-config` (also run by `npm run verify`) scans
+executable scripts, `public/_headers`, and `dist/` for Supabase project refs
+on a denylist. `DEFAULT_STALE_REFS` in
+`scripts/assert-live-supabase-config.mjs` is `[]`. The denylist stays empty
+unless `STALE_SUPABASE_REFS` is set to a comma-separated list of
+20-character refs. Neither CI nor `wrangler.toml` sets `STALE_SUPABASE_REFS`;
+while it is unset, the guard refuses no project ref.
 
 ```bash
 npm run assert:supabase-config
 ```
 
-If the guard fails on a ref you believe is live, override the denylist via
-`STALE_SUPABASE_REFS` (comma-separated) and re-run, or replace the
-hardcoded ref with the env-neutral `https://*.supabase.co` CSP pattern
-(see `public/_headers`).
+`ilzlswmatadlnsuxatcv` is the live production project. Preview and cleanup
+tools refuse to target it: `scripts/resolve-sync-preview.mjs` and
+`scripts/cleanup-sync-preview-users.mjs` reject the hosts
+`ilzlswmatadlnsuxatcv.supabase.co`, `ilzlswmatadlnsuxatcv.supabase.in`, and
+`api.phoenix-portal.com`. Leave that ref off `DEFAULT_STALE_REFS` and off
+`STALE_SUPABASE_REFS` for any build that ships the portal. The production
+bundle contains `VITE_SUPABASE_URL` for that host, and listing the ref
+would fail the guard.
+
+When `STALE_SUPABASE_REFS` is set and the guard fails on a ref that should
+ship, remove it from the variable and re-run, or replace a hardcoded
+hostname with the env-neutral `https://*.supabase.co` CSP pattern (see
+`public/_headers`).
 
 The committed `src/lib/database.types.ts` is generated from the migrated
 local schema (`npm run gen:types:local`) and CI (`gen:types:check` in
@@ -1158,8 +1169,8 @@ and run:
 npm run gen:types
 ```
 
-The script will refuse to run with a hardcoded fallback, so the build
-never accidentally targets a deleted project.
+The script has no hardcoded project-ref fallback. It refuses to run unless
+`SUPABASE_PROJECT_REF` is set. That value may be the production ref above.
 
 ---
 
@@ -1283,18 +1294,20 @@ into the SQL editor or a shell command line -- see
 the only supported way to move the value.
 Receivers compare it in constant time via
 `supabase/functions/_shared/cronSecret.ts`. That helper reads `CRON_SECRET`
-first and only falls back to a legacy name (`PROCESS_SYNC_QUEUE_SECRET`,
-`CRON_SYNC_QUEUE_SECRET`) when `CRON_SECRET` is unset; once `CRON_SECRET` is
-set, a caller holding only a legacy value gets 401.
+first. Only `process-sync-queue` passes the legacy names
+`PROCESS_SYNC_QUEUE_SECRET` and `CRON_SYNC_QUEUE_SECRET`, and the helper
+uses the first of them that is set only when `CRON_SECRET` is unset; once
+`CRON_SECRET` is set, a caller holding only a legacy value gets 401 from
+that function. `generate-insights` and `delete-account` pass no legacy
+names, so they accept `CRON_SECRET` alone.
 **Until the Vault secrets exist, `private.invoke_edge_function` raises a NOTICE
 and returns.** The cron run is still recorded as `succeeded` -- see
 [§10.1](#101-verify-a-jobs-last-run) for why `succeeded` alone proves nothing.
 ### Re-apply semantics
-The four migrations that schedule jobs in this series -- `20260920003100`,
-`20260920003500`, `20260920005600` and `20260920006400` -- each look their job
-up by `jobname`, call `cron.schedule` when it is absent, and
-`cron.alter_job(schedule := …, command := …)` when the stored schedule or
-command has drifted. They keep the same `jobid`.
+`20260920000200`, `20260920003100`, `20260920003500`, `20260920005600` and
+`20260920006400` each look their job up by `jobname`, call `cron.schedule`
+when it is absent, and `cron.alter_job(schedule := …, command := …)` when the
+stored schedule or command differs. They keep the same `jobid`.
 
 `process-sync-queue` and `delete-due-accounts` are created inactive so their
 compatible Edge handlers can deploy first. After creation, re-applying any of
@@ -1307,12 +1320,11 @@ schedule or command without undoing an operator pause or activation. For
 owned-row provider handlers are first deployed. Its private release-gate marker
 means re-applying that migration after activation leaves the job active.
 
-**None of them ever changes `active`, in either direction.** A re-apply repairs
-a drifted schedule or command; it never activates a job you paused, and never
-pauses a job that is running. For `generate-insights` a re-apply also preserves
-the batch cursor in `private.insights_batch_state`.
-`20260920000200` is different: it only schedules a job when no job of that name
-exists, and never alters an existing one.
+`20260920000200` is not first-apply only. When `refresh-hot-scores` or
+`refresh-community-benchmarks` already exists and its schedule or command
+differs from the captured values, the migration calls
+`cron.alter_job(schedule := …, command := …)` and keeps the same `jobid` and
+`active` flag. A job whose schedule and command already match is left unchanged.
 ### The jobs
 | Job name (`cron.job.jobname`)    | Cadence                            | What it runs                                                                                              | Migration                                             | Cron secret | Created active?                        |
 | -------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------- | -------------------------------------- |
@@ -1331,8 +1343,9 @@ exists. Tombstones are deleted with their account through the
 Cadences are pg_cron expressions, evaluated in the **database** timezone.
 Confirm it with `SHOW timezone;` before converting any of these to local time.
 The last two jobs were created from the dashboard and existed in no migration
-until `20260920000200` captured them, so their live schedule is whatever prod
-holds -- the values above are what was captured on 2026-09-18.
+until `20260920000200` captured them on 2026-09-18. The cadences above are
+those captured values. Re-applying that migration calls `cron.alter_job` when
+the stored schedule or command differs from them, and does not change `active`.
 **Prerequisites and deploy order**
 | Job                   | Must be true before it can work                                                                                                                          |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1484,9 +1497,15 @@ which path applies depends on what is enabled.
   Function secrets are **not** part of a database restore.
 - Re-run the daily health-check queries in [§7](#7-monitoring-quick-reference).
 - Re-verify sync end to end with one real device. A restore rewinds
-  `updated_at`, and `mobile-sync-pull` is a delta on `lastSync`, so a device
-  whose watermark is ahead of the restore point will not be served the rows it
-  is missing until it forces a full `lastSync=0` pull.
+  `updated_at`. `mobile-sync-pull` is a parity pull: the device sends
+  `knownEntityIds`, and the server returns rows that are not in those lists.
+  The stale arm also returns known sessions, routines and cycles changed
+  since `lastSync` minus 2 minutes. Ids the device does not already list
+  still come back after the rewind. A known session, routine or cycle whose
+  `updated_at` now sits behind that window is not refreshed, so a device
+  whose watermark is ahead of the restore point keeps its local copy until
+  it pulls with `lastSync=0` (every known row counts as stale). Empty or
+  absent `knownEntityIds` already returns the whole profile.
 ### Test restore (Operator Action 6)
 1. Restore the most recent backup or PITR point into a **new scratch project**.
 2. Confirm the restore actually contains data:
@@ -1503,10 +1522,10 @@ webhook and price mapping expect the other, and a paying customer lands on no
 tier at all.
 **The trap, stated plainly:**
 - The client treats only the exact string `sandbox` as sandbox
-  (`src/lib/paddle-client.ts:148-153`). Empty or unset means **production**.
+  (`initializePaddle` in `src/lib/paddle-client.ts`). Empty or unset means **production**.
 - Server functions default `PADDLE_ENVIRONMENT` to `"production"` when unset
-  (for example `paddle-cancel-subscription/index.ts:90`,
-  `delete-account/index.ts:16`).
+  (for example `paddle-cancel-subscription`, and `paddleBaseUrl` in
+  `_shared/accountPurge.ts`, which `delete-account` uses).
 So "I didn't set it" means production on both sides, and nothing warns you.
 ### The four groups
 Names only. Never record a value in this repo or in a ticket; a value that must
@@ -1522,7 +1541,7 @@ be shown in an example is written `[REDACTED]`.
 `PADDLE_<TIER>_ANNUAL_PRICE_ID`, so tier mapping works with either shape. The
 singles are separately required by
 `getConfiguredPriceIdForTierInterval`, whose only caller is
-`paddle-update-subscription/index.ts:116` -- **a plan change to a
+`paddle-update-subscription` -- **a plan change to a
 tier/interval whose single is unset fails there even though webhooks map that
 price correctly.** Set both shapes.
 **On `PADDLE_CUSTOM_DATA_SECRET`.** This one is **self-issued**, not obtained
@@ -1577,25 +1596,26 @@ exactly one server tier, and that the tier matches:
   environment.
 - Confirm the same value is in `PADDLE_<TIER>_PRICE_IDS` (or is the matching
   `PADDLE_<TIER>_<INTERVAL>_PRICE_ID`) for the **same** tier.
-- Confirm no price ID appears under two tiers. `mapPriceIdToTier` resolves such
-  a collision by fixed precedence (INFERNO > FLAME > EMBER), which silently maps
-  customers to the wrong tier.
+- Confirm no price ID appears under two tiers. The same id listed under more
+  than one tier returns HTTP 500 `{ "error": "Billing configuration invalid" }`
+  before `mapPriceIdToTier` runs. The log names the duplicated ids.
 **(b) Log-based.** Trigger one call to `paddle-webhooks`,
 `paddle-update-subscription` or `paddle-refresh-subscription` -- the three that
 validate the price-ID configuration on entry -- and read that function's logs.
 Both of these are fatal configuration errors and each returns 500:
-| Log line                                                                                                  | Cause                                             |
-| ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `[FATAL] PADDLE_EMBER_PRICE_IDS, PADDLE_FLAME_PRICE_IDS, and PADDLE_INFERNO_PRICE_IDS must all be set`      | No paid price ID is configured at all.              |
-| `[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence): [...]`    | A price ID was copied into more than one tier list. |
+| Log line                                                                                                                             | Cause                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| `[FATAL] At least one paid Paddle price ID must be set (PADDLE_*_PRICE_IDS or PADDLE_*_MONTHLY_PRICE_ID / PADDLE_*_ANNUAL_PRICE_ID)` | No paid price ID is configured at all.              |
+| `[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence): [...]`                             | A price ID was copied into more than one tier list. |
 **(c) Functional.** In sandbox, or with a real card in production if policy
 allows, run one checkout per tier and confirm the tier lands:
 SELECT user_id, tier, status, paddle_subscription_id, current_period_end
 FROM public.subscriptions
 WHERE user_id = '<test user id>';
-A checkout that completes while `subscriptions.tier` stays `FREE` is exactly the
-client/server mismatch this section exists to catch: the webhook arrived but
-`mapPriceIdToTier` did not recognise the price ID.
+A checkout that completes while `subscriptions.tier` stays `FREE` is the
+client/server price mismatch this section exists to catch. With no paid tier to
+keep, an unrecognised price ID is not applied: `paddle-webhooks` returns HTTP
+500 `{ "error": "Unknown price_id — configuration error" }` and writes nothing.
 See also [paddle-simulation-testing.md](paddle-simulation-testing.md) for
 webhook simulation, and [billing-incident-response.md](billing-incident-response.md)
 for what to do when a paying customer has the wrong tier.

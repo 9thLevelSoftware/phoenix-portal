@@ -9,6 +9,7 @@ import {
 } from '../_shared/garminIdentity.ts';
 import { decryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { hmacSha256Hex } from '../_shared/hmac.ts';
+import { timingSafeEqualString } from '../_shared/timingSafe.ts';
 
 /**
  * Garmin Connect webhook handler for activity push notifications.
@@ -21,7 +22,6 @@ import { hmacSha256Hex } from '../_shared/hmac.ts';
  * - activityDetails: Detailed activity data (if configured)
  *
  * NOTE: Garmin developer program approval may be pending.
- * This function is ready but untested until webhook registration is complete.
  */
 
 /**
@@ -170,7 +170,7 @@ async function garminWebhook(
       );
     }
 
-    // Garmin signs the request body with HMAC-SHA256 using the consumer secret and
+    // Garmin signs the request body with HMAC-SHA256 using GARMIN_WEBHOOK_SECRET and
     // sends the hex digest in the x-garmin-signature header.
     const providedSignature = req.headers.get('x-garmin-signature');
     if (!providedSignature) {
@@ -189,34 +189,41 @@ async function garminWebhook(
     }
     const rawBody = new TextDecoder().decode(bodyRead.bytes);
 
-    // Compute expected HMAC-SHA256 of the raw request body keyed with the consumer secret.
+    // Verify the exact wire bytes, before decoding the payload for JSON parsing.
     const expectedSignature = await hmacSha256Hex(WEBHOOK_SECRET, bodyRead.bytes);
 
-    // Timing-safe comparison: encode both hex strings and XOR byte-by-byte so the
-    // comparison time does not leak information about the correct signature.
-    const encoder = new TextEncoder();
-    const a = encoder.encode(providedSignature);
-    const b = encoder.encode(expectedSignature);
-    // Length check is safe to do outside the loop because HMAC-SHA256 hex output is
-    // always 64 chars — a length mismatch only reveals that the header was malformed.
-    if (a.length !== b.length) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
-      );
-    }
-    let mismatch = 0;
-    for (let i = 0; i < a.length; i++) {
-      mismatch |= a[i] ^ b[i];
-    }
-    if (mismatch !== 0) {
+    // Fold a wrong-length header into the same compare. A short or long
+    // signature is still rejected; the length is not a separate early return.
+    if (
+      !timingSafeEqualString({
+        expected: expectedSignature,
+        provided: providedSignature,
+      })
+    ) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
 
-    const payload: GarminWebhookPayload = JSON.parse(rawBody);
+    // V8's JSON.parse SyntaxError quotes a slice of the source. Garmin bodies
+    // carry userAccessToken, so a malformed payload must not reach the
+    // catch-all below, which logs the thrown value.
+    let payload: GarminWebhookPayload;
+    try {
+      payload = JSON.parse(rawBody);
+    } catch (parseError) {
+      if (!(parseError instanceof SyntaxError)) throw parseError;
+      console.error('[GARMIN_WEBHOOK] rejected malformed JSON body');
+      return new Response(
+        JSON.stringify({
+          received: false,
+          error: 'Processing error',
+          code: 'internal_error',
+        }),
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
     // Garmin may deliver both `activities` (summaries) and `activityDetails` in the
     // same payload. Merge and de-duplicate by activityId so detailed records are not
     // dropped whenever summaries are also present. Details win on conflict.
@@ -317,6 +324,7 @@ async function garminWebhook(
         // Subscription gate — FLAME or higher for integrations
         const gate = await requireSubscription(supabase, identity.userId, 'FLAME', cors);
         if (!gate.allowed) {
+          if (gate.response.status >= 500) persistenceFailure = true;
           console.warn(`[GARMIN_WEBHOOK] user ${identity.userId} does not have FLAME subscription`);
           errors++;
           continue;
@@ -387,7 +395,8 @@ async function garminWebhook(
     );
   } catch (err) {
     // fix(audit): C5 — stop swallowing errors. Propagate 5xx so Garmin retries.
-    // The message can carry DB or parse internals: log it, return a code.
+    // A driver error's message can carry DB internals: log it, return a code.
+    // JSON parse failures are returned above and never reach this log.
     console.error('[GARMIN_WEBHOOK] unhandled error:', err);
     return new Response(
       JSON.stringify({

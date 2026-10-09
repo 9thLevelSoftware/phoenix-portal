@@ -39,6 +39,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/app/components/ui/popover";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import {
 	Tabs,
 	TabsContent,
@@ -61,10 +62,15 @@ import {
 	useCreateGoal,
 	useUpdateGoal,
 } from "@/mutations/goals";
-import { goalPrBestsOptions, goalsOptions } from "@/queries/goals";
+import {
+	earliestGoalPeriodStart,
+	goalPeriodSessionsOptions,
+	goalPeriodStart,
+	goalPrBestsOptions,
+	goalsOptions,
+} from "@/queries/goals";
 import { personalRecordsOptions } from "@/queries/records";
-import { workoutListOptions } from "@/queries/workouts";
-import type { Goal } from "@/schemas/goals";
+import { createGoalSchema, type Goal } from "@/schemas/goals";
 import type { PersonalRecord } from "@/schemas/transforms";
 import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 import { GoalProgressRing } from "./GoalProgressRing";
@@ -102,8 +108,9 @@ export function useGoalProgress(
 ): Map<string, number> {
 	const { user } = useAuth();
 	const { data: goals } = useQuery(goalsOptions(user?.id ?? ""));
+	const sessionWindowStart = earliestGoalPeriodStart(goals ?? [], new Date());
 	const { data: workouts } = useQuery(
-		workoutListOptions(user?.id ?? "", profileId),
+		goalPeriodSessionsOptions(user?.id ?? "", profileId, sessionWindowStart),
 	);
 	const { data: records } = useQuery(
 		goalPrBestsOptions(user?.id ?? "", profileId),
@@ -120,7 +127,7 @@ export function useGoalProgress(
 			let progress = 0;
 
 			if (goal.goal_type === "frequency" && workouts) {
-				const periodStart = getPeriodStart(now, goal.period);
+				const periodStart = goalPeriodStart(now, goal.period);
 				const workoutsInPeriod = workouts.filter(
 					(w) => w.started_at >= periodStart,
 				);
@@ -130,7 +137,7 @@ export function useGoalProgress(
 				);
 				progress = (distinctDays.size / goal.target_value) * 100;
 			} else if (goal.goal_type === "volume" && workouts) {
-				const periodStart = getPeriodStart(now, goal.period);
+				const periodStart = goalPeriodStart(now, goal.period);
 				const workoutsInPeriod = workouts.filter(
 					(w) => w.started_at >= periodStart,
 				);
@@ -149,21 +156,6 @@ export function useGoalProgress(
 
 		return map;
 	}, [goals, workouts, records]);
-}
-
-function getPeriodStart(now: Date, period: string): Date {
-	const start = new Date(now);
-	if (period === "monthly") {
-		start.setDate(1);
-		start.setHours(0, 0, 0, 0);
-	} else {
-		// weekly: start of current week (Monday)
-		const day = start.getDay();
-		const diff = day === 0 ? 6 : day - 1; // Monday = 0
-		start.setDate(start.getDate() - diff);
-		start.setHours(0, 0, 0, 0);
-	}
-	return start;
 }
 
 // ---------- Goal type labels ----------
@@ -307,7 +299,7 @@ function ExerciseNameCombobox({
 export function Goals() {
 	const { user } = useAuth();
 	const unit = usePreferredWeightUnit();
-	const { isPremium, isInferno } = useSubscription();
+	const { isEntitled, isInferno } = useSubscription();
 	const { activeProfileId } = useProfileFilterStore();
 	const {
 		data: goals,
@@ -334,7 +326,7 @@ export function Goals() {
 
 	// M24: INFERNO = unlimited goals, paid (EMBER/FLAME) = 3. There is no free
 	// tier, so users without a subscription get 0 (and are gated out below).
-	const maxGoals = isInferno ? Infinity : isPremium ? 3 : 0;
+	const maxGoals = isInferno ? Infinity : isEntitled ? 3 : 0;
 	const atLimit = activeGoals.length >= maxGoals;
 
 	// M26: Derive distinct exercise names from personal records for autocomplete
@@ -437,7 +429,7 @@ export function Goals() {
 		return (
 			<div className="min-h-screen pb-20 md:pb-8">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-					<h1 className="text-xl font-semibold text-white mb-2">
+					<h1 className="text-xl font-semibold text-foreground mb-2">
 						Couldn't load your goals
 					</h1>
 					<p className="text-sm text-muted-foreground mb-6">
@@ -452,7 +444,7 @@ export function Goals() {
 	}
 
 	// Tier gate for FREE users
-	if (!isPremium && !isPending) {
+	if (!isEntitled && !isPending) {
 		return (
 			<div className="min-h-screen pb-20 md:pb-8">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -460,7 +452,9 @@ export function Goals() {
 						initial={{ opacity: 0, y: 20 }}
 						animate={{ opacity: 1, y: 0 }}
 					>
-						<h1 className="text-display-2 mb-2 text-white">Training Goals</h1>
+						<h1 className="text-display-2 mb-2 text-foreground">
+							Training Goals
+						</h1>
 						<p className="text-muted-foreground mb-8">
 							Set targets, track progress, achieve greatness.
 						</p>
@@ -494,7 +488,9 @@ export function Goals() {
 					className="flex items-center justify-between mb-8"
 				>
 					<div>
-						<h1 className="text-display-2 mb-2 text-white">Training Goals</h1>
+						<h1 className="text-display-2 mb-2 text-foreground">
+							Training Goals
+						</h1>
 						<p className="text-muted-foreground">
 							Set targets, track progress, achieve greatness.
 						</p>
@@ -507,7 +503,6 @@ export function Goals() {
 						<Button
 							onClick={() => setCreateOpen(true)}
 							disabled={atLimit}
-							variant="cta"
 							title={
 								atLimit && maxGoals !== Infinity
 									? `Maximum ${maxGoals} active goal${maxGoals > 1 ? "s" : ""} reached`
@@ -525,8 +520,8 @@ export function Goals() {
 					<div className="space-y-4">
 						{Array.from({ length: 2 }).map((_, i) => (
 							// biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list never reorders
-							<Card key={i} className="p-6 bg-surface-2 animate-pulse">
-								<div className="h-20" />
+							<Card key={i} className="p-6 bg-surface-2">
+								<Skeleton className="h-20 w-full" />
 							</Card>
 						))}
 					</div>
@@ -562,7 +557,7 @@ export function Goals() {
 											<div className="flex-1 min-w-0">
 												<div className="flex items-center gap-2 mb-1">
 													<Icon className="w-4 h-4 text-primary" />
-													<h3 className="text-lg font-semibold text-white">
+													<h3 className="text-lg font-semibold text-foreground">
 														{getGoalDescription(goal, unit)}
 													</h3>
 												</div>
@@ -613,7 +608,7 @@ export function Goals() {
 						<button
 							type="button"
 							onClick={() => setShowCompleted(!showCompleted)}
-							className="flex items-center gap-2 text-muted-foreground hover:text-white mb-4 transition-colors"
+							className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4 transition-colors"
 						>
 							{showCompleted ? (
 								<ChevronUp className="w-4 h-4" />
@@ -637,7 +632,7 @@ export function Goals() {
 												<Award className="w-4 h-4 text-success" />
 											</div>
 											<div>
-												<p className="text-sm text-white">
+												<p className="text-sm text-foreground">
 													{getGoalDescription(goal, unit)}
 												</p>
 												<p className="text-xs text-muted-foreground">
@@ -664,7 +659,7 @@ export function Goals() {
 						<button
 							type="button"
 							onClick={() => setShowArchived(!showArchived)}
-							className="flex items-center gap-2 text-muted-foreground hover:text-white mb-4 transition-colors"
+							className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4 transition-colors"
 						>
 							{showArchived ? (
 								<ChevronUp className="w-4 h-4" />
@@ -706,7 +701,7 @@ export function Goals() {
 															updates: { status: "active" },
 														})
 													}
-													className="hover:bg-primary/10 text-muted-foreground hover:text-white"
+													className="hover:bg-primary/10 text-muted-foreground hover:text-foreground"
 													title="Restore goal"
 												>
 													<RotateCcw className="w-4 h-4 mr-1" />
@@ -732,7 +727,7 @@ export function Goals() {
 						{isInferno
 							? `${activeGoals.length} active goal${activeGoals.length !== 1 ? "s" : ""} (unlimited)`
 							: `${activeGoals.length}/${maxGoals} active goal${maxGoals > 1 ? "s" : ""}`}
-						{!isPremium && " (upgrade for more)"}
+						{!isEntitled && " (upgrade for more)"}
 					</p>
 				</motion.div>
 			</div>
@@ -889,16 +884,23 @@ function GoalFormDialog({
 			goalType === "volume" || goalType === "pr"
 				? weightInputToKg(targetValue, unit)
 				: parsedValue;
-		if (Number.isNaN(value) || value <= 0) return;
-		if (goalType === "pr" && !exerciseName.trim()) return;
-
-		onSubmit({
+		const parsed = createGoalSchema.safeParse({
 			goal_type: goalType,
 			target_value: value,
 			target_unit: getTargetUnit(),
-			exercise_name: goalType === "pr" ? exerciseName.trim() : null,
-			deadline: goalType === "pr" && deadline ? deadline : null,
+			exercise_name: goalType === "pr" ? exerciseName.trim() : undefined,
+			deadline: goalType === "pr" && deadline ? deadline : undefined,
 			period,
+		});
+		if (!parsed.success) return;
+
+		onSubmit({
+			goal_type: parsed.data.goal_type,
+			target_value: parsed.data.target_value,
+			target_unit: parsed.data.target_unit,
+			exercise_name: parsed.data.exercise_name ?? null,
+			deadline: parsed.data.deadline ? parsed.data.deadline : null,
+			period: parsed.data.period,
 		});
 	};
 
@@ -906,7 +908,7 @@ function GoalFormDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="bg-background border-secondary sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle className="text-white">{title}</DialogTitle>
+					<DialogTitle className="text-foreground">{title}</DialogTitle>
 				</DialogHeader>
 
 				<div className="space-y-6 py-4">
@@ -1090,7 +1092,6 @@ function GoalFormDialog({
 					{/* Submit */}
 					<Button
 						onClick={handleSubmit}
-						variant="cta"
 						className="w-full"
 						disabled={
 							!targetValue ||

@@ -103,7 +103,6 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 interface PullRequest {
   deviceId: string;
-  /** @deprecated Use knownEntityIds for parity-based sync */
   lastSync?: number;
   profileId?: string;
   /** Optional cursor for pagination. If absent, starts from beginning. */
@@ -671,7 +670,7 @@ async function mobileSyncPullHandler(
       knownCycles: body.knownEntityIds?.cycleIds?.length ?? 0,
       knownBadges: body.knownEntityIds?.badgeIds?.length ?? 0,
       knownPersonalRecords: body.knownEntityIds?.personalRecordIds?.length ?? 0,
-      lastSync: body.lastSync, // Legacy
+      lastSync: body.lastSync,
       profileId,
       cursor: body.cursor,
     });
@@ -680,7 +679,15 @@ async function mobileSyncPullHandler(
     const startType: EntityType = cursor?.type ?? 'sessions';
     const startTypeIndex = ENTITY_ORDER.indexOf(startType);
 
-    // Track pagination state for response
+    // Track pagination state for response.
+    //
+    // Every pageable section except the last (customExercises) treats a
+    // result that exactly fills the remaining budget as "more may follow":
+    // it sets hasMore and a cursor at its own last row. Later sections all
+    // require remainingPageSize > 0, so without the continuation an exactly
+    // full page would silently skip them and tell the client it is done.
+    // The next page resumes after that row, finds nothing more of the same
+    // entity, and moves on. External activities keep their own 500-row page.
     let nextCursor: string | null = null;
     let hasMore = false;
     let remainingPageSize = pageSize;
@@ -755,7 +762,7 @@ async function mobileSyncPullHandler(
       const sessionsRaw = (sessionsData as Record<string, unknown>[]) ?? [];
 
       // Check if there are more sessions
-      if (sessionsRaw.length > remainingPageSize) {
+      if (sessionsRaw.length >= remainingPageSize) {
         hasMore = true;
         const lastSession = sessionsRaw[remainingPageSize - 1];
         const updatedAtRaw = lastSession.updated_at ?? lastSession.started_at;
@@ -970,7 +977,7 @@ async function mobileSyncPullHandler(
       if (routinesError) return readFailure('routines', routinesError, cors);
       const routinesData = (routineRows as Record<string, unknown>[]) ?? [];
 
-      if (routinesData.length > remainingPageSize) {
+      if (routinesData.length >= remainingPageSize) {
         hasMore = true;
         const lastRoutine = routinesData[remainingPageSize - 1];
         nextCursor = encodeCursor('routines', String(lastRoutine.updated_at), lastRoutine.id as string);
@@ -1081,7 +1088,7 @@ async function mobileSyncPullHandler(
       if (cyclesError) return readFailure('cycles', cyclesError, cors);
       const cyclesData = (cycleRows as Record<string, unknown>[]) ?? [];
 
-      if (cyclesData.length > remainingPageSize) {
+      if (cyclesData.length >= remainingPageSize) {
         hasMore = true;
         const lastCycle = cyclesData[remainingPageSize - 1];
         nextCursor = encodeCursor('cycles', String(lastCycle.updated_at), lastCycle.id as string);
@@ -1199,7 +1206,7 @@ async function mobileSyncPullHandler(
       const { data, error } = await query;
       if (error) return readFailure('workout deletions', error, cors);
       const rows = ((data ?? []) as Record<string, unknown>[]);
-      if (rows.length > remainingPageSize) {
+      if (rows.length >= remainingPageSize) {
         hasMore = true;
         const last = rows[remainingPageSize - 1];
         nextCursor = encodeCursor('workoutDeletions', String(last.recorded_at), String(last.mutation_id));
@@ -1235,7 +1242,7 @@ async function mobileSyncPullHandler(
       const { data, error } = await query;
       if (error) return readFailure('ownership events', error, cors);
       const rows = ((data ?? []) as Record<string, unknown>[]);
-      if (rows.length > remainingPageSize) {
+      if (rows.length >= remainingPageSize) {
         hasMore = true;
         const last = rows[remainingPageSize - 1];
         nextCursor = encodeCursor('ownershipEvents', String(last.transferred_at), String(last.mutation_id));
@@ -1275,7 +1282,7 @@ async function mobileSyncPullHandler(
       if (badgesError) return readFailure('badges', badgesError, cors);
       const badgesData = (badgeRows as Record<string, unknown>[]) ?? [];
 
-      if (badgesData.length > remainingPageSize) {
+      if (badgesData.length >= remainingPageSize) {
         hasMore = true;
         const lastBadge = badgesData[remainingPageSize - 1];
         nextCursor = encodeCursor('badges', String(lastBadge.earned_at), String(lastBadge.id));
@@ -1535,7 +1542,7 @@ async function mobileSyncPullHandler(
         return leftTime.localeCompare(rightTime) || String(left.id).localeCompare(String(right.id));
       });
 
-      if (personalRecordsData.length > remainingPageSize) {
+      if (personalRecordsData.length >= remainingPageSize) {
         hasMore = true;
         const lastPR = personalRecordsData[remainingPageSize - 1];
         nextCursor = encodeCursor('personalRecords', String(lastPR.updated_at), lastPR.id as string);

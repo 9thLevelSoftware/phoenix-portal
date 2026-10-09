@@ -130,7 +130,7 @@ function RoutineExerciseCard({
 						<span className="text-xs text-muted-foreground">
 							{String(index + 1).padStart(2, "0")}
 						</span>
-						<h5 className="text-sm font-semibold text-white">
+						<h5 className="text-sm font-semibold text-foreground">
 							{exercise.name}
 						</h5>
 						<Badge className="border-0 bg-secondary text-secondary-foreground">
@@ -237,7 +237,7 @@ export function RoutineSnapshotPreview({
 		<section className="space-y-3">
 			<div className="flex items-center gap-2">
 				<Dumbbell className="h-4 w-4 text-primary" />
-				<h4 className="text-sm font-semibold text-white">{title}</h4>
+				<h4 className="text-sm font-semibold text-foreground">{title}</h4>
 			</div>
 			<div className="space-y-3">
 				{indexedGroups.map((item) =>
@@ -295,7 +295,7 @@ function SettingList({ title, value }: { title: string; value: unknown }) {
 
 	return (
 		<div className="rounded-lg border border-secondary bg-surface-2 p-3">
-			<h5 className="mb-2 text-sm font-semibold text-white">{title}</h5>
+			<h5 className="mb-2 text-sm font-semibold text-foreground">{title}</h5>
 			<div className="grid gap-2 sm:grid-cols-2">
 				{entries.map(([key, entryValue]) => (
 					<div key={key} className="text-xs">
@@ -329,7 +329,7 @@ function CycleRoutineDetails({
 
 	return (
 		<details className="mt-3 rounded-lg border border-secondary bg-background/40 p-3">
-			<summary className="cursor-pointer text-sm font-medium text-white">
+			<summary className="cursor-pointer text-sm font-medium text-foreground">
 				View {routine.name}
 			</summary>
 			<div className="mt-3">
@@ -369,7 +369,7 @@ export function CycleSnapshotPreview({
 		<section className="space-y-3">
 			<div className="flex items-center gap-2">
 				<Calendar className="h-4 w-4 text-primary" />
-				<h4 className="text-sm font-semibold text-white">Cycle Details</h4>
+				<h4 className="text-sm font-semibold text-foreground">Cycle Details</h4>
 			</div>
 
 			<div className="grid gap-2 sm:grid-cols-3">
@@ -378,7 +378,7 @@ export function CycleSnapshotPreview({
 						<Calendar className="h-3.5 w-3.5" />
 						Duration
 					</div>
-					<p className="text-lg font-semibold text-white">
+					<p className="text-lg font-semibold text-foreground">
 						{snapshot.duration_weeks} weeks
 					</p>
 				</div>
@@ -387,14 +387,14 @@ export function CycleSnapshotPreview({
 						<Dumbbell className="h-3.5 w-3.5" />
 						Workouts
 					</div>
-					<p className="text-lg font-semibold text-white">{workoutDays}</p>
+					<p className="text-lg font-semibold text-foreground">{workoutDays}</p>
 				</div>
 				<div className="rounded-lg border border-secondary bg-surface-2 p-3">
 					<div className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
 						<Clock className="h-3.5 w-3.5" />
 						Rest Days
 					</div>
-					<p className="text-lg font-semibold text-white">{restDays}</p>
+					<p className="text-lg font-semibold text-foreground">{restDays}</p>
 				</div>
 			</div>
 
@@ -404,7 +404,7 @@ export function CycleSnapshotPreview({
 			<div className="space-y-2">
 				<div className="flex items-center gap-2">
 					<Repeat className="h-4 w-4 text-primary" />
-					<h5 className="text-sm font-semibold text-white">Schedule</h5>
+					<h5 className="text-sm font-semibold text-foreground">Schedule</h5>
 				</div>
 				{days.map((day) => {
 					const routine = day.routine;
@@ -422,13 +422,13 @@ export function CycleSnapshotPreview({
 											variant={isWorkout ? "default" : "outline"}
 											className={
 												isWorkout
-													? "border-0 bg-primary text-white"
+													? "border-0 bg-primary text-primary-foreground"
 													: "border-secondary text-muted-foreground"
 											}
 										>
 											Day {day.day_number}
 										</Badge>
-										<h6 className="text-sm font-semibold text-white">
+										<h6 className="text-sm font-semibold text-foreground">
 											{isWorkout ? (routine?.name ?? "Workout") : "Rest Day"}
 										</h6>
 									</div>

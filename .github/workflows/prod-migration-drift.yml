@@ -1,22 +1,18 @@
 name: Prod Migration Drift
 
-# Detects the migration-drift class documented in:
-#   - CLAUDE.md -> "Migration Workflow Discipline" -> "CI coverage"
-#   - .phoenix-review/ci-cd-&-workflows.md -> Finding 4
-#   - Project Phoenix RCA for mobile cloud-sync issue #602 (cross-repo link:
-#     9thLevelSoftware/Project-Phoenix-MP#602)
+# Detects unapplied local migrations on the production Supabase project.
+# Documented in CLAUDE.md -> "Migration Workflow Discipline" -> "CI coverage".
 #
-# Background: the existing `.github/workflows/migrations.yml` clean-applies
-# every migration into a fresh local stack on PRs, but it intentionally does
-# not compare against the live production project. Migration
-# `20260627000000_add_velocity_estimated_1rm_kg.sql` shipped in `phoenix-portal`
-# main without ever being pushed to live Supabase, while the matching
-# `mobile-sync-push` Edge Function was redeployed afterwards. Live PostgREST
-# then rejected inserts with:
+# Background: `.github/workflows/migrations.yml` clean-applies every migration
+# into a fresh local stack on PRs, and it does not compare against the live
+# production project. One past miss was
+# `20260627000000_add_velocity_estimated_1rm_kg.sql`, which reached
+# `phoenix-portal` main without a prod push while `mobile-sync-push` was
+# redeployed afterwards. Live PostgREST then rejected inserts with:
 #   Could not find the 'velocity_estimated_1rm_kg' column of 'exercise_progress'
 #   in the schema cache
 #
-# Scope and limits of THIS workflow (please read before merging):
+# Scope and limits of this workflow:
 #   - This is a *detector* only; its result blocks nothing. The Edge Function
 #     deploy path is gated separately: `.github/workflows/deploy-edge-functions.yml`
 #     runs its own copy of this check before every deploy.
@@ -25,16 +21,15 @@ name: Prod Migration Drift
 #     cannot reach the prod secrets required by `supabase migration list --linked`).
 #   - When it detects drift, it fails its own run and emits remediation steps.
 #     The drift is informational until a human operator pushes the missing
-#     migration via `supabase db push`. The user-visible issue #602 stays open
-#     until that operational push completes and the reporter path is verified.
+#     migration via `supabase db push`, then verifies the affected client path.
 #   - It distinguishes "drift" from "this result cannot be trusted". A CLI
 #     error, output the parser rejects, a remote version that is not a plain
 #     number, or an empty applied set all fail the run WITHOUT producing a
 #     drift list, and say so: acting on a false maximal drift report would
 #     replay the whole migration history against prod. Only a parsed,
 #     non-empty applied set ever reaches the report step.
-#   - This PR adds the detector only; it does NOT itself fix or close the
-#     live Supabase schema/cache state that drives the mobile sync error.
+#   - The detector reports drift. It does not repair the live Supabase schema
+#     or schema cache.
 #   - A second read-only step checks that no SECURITY DEFINER function in
 #     `public` is executable by anon/authenticated outside the browser
 #     allow-list (see 20260920000100_lockdown_definer_function_grants.sql).
@@ -86,7 +81,7 @@ jobs:
     environment: production
     if: github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # Defense-in-depth for workflow_dispatch: fail before installing tools or
       # touching any production secret if a run somehow starts from a non-main
@@ -167,21 +162,31 @@ jobs:
 
       - name: List local migrations
         id: local
+        shell: bash
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          # `version` is the numeric prefix that
-          # `supabase/migrations/<version>_<name>.sql` uses. Emit just the
-          # version, one per line, sorted/unique. Matches
-          # `schema_migrations.version` exactly.
+          # Local versions: the numeric prefix of <version>_<name>.sql, using
+          # the same naming regex as deploy-edge-functions.yml ("Gate on prod
+          # migrations"). Names that do not match are reported and skipped,
+          # never echoed raw into a workflow command. Emit just the version,
+          # one per line, sorted/unique, so it matches schema_migrations.version.
           : > local_migrations.txt
           for f in supabase/migrations/*.sql; do
             [ -f "$f" ] || continue
             base=$(basename "$f")
-            version=$(echo "$base" | sed -E 's/^([0-9]+)_.*/\1/')
-            echo "$version" >> local_migrations.txt
+            if [[ "$base" =~ ^([0-9]+)_[A-Za-z0-9_]+\.sql$ ]]; then
+              echo "${BASH_REMATCH[1]}" >> local_migrations.txt
+            else
+              echo "::warning::Skipping migration file with a non-standard name (expected <digits>_<name>.sql)."
+              printf '  skipped: %q\n' "$base"
+            fi
           done
           sort -u -o local_migrations.txt local_migrations.txt
+          if [ ! -s local_migrations.txt ]; then
+            echo "::error::No local migrations found under supabase/migrations/; refusing to report drift without a migration baseline. Do NOT run db push."
+            exit 1
+          fi
           count=$(wc -l < local_migrations.txt | tr -d ' ')
           echo "Local migration count: $count"
           {
@@ -204,8 +209,8 @@ jobs:
           #
           # Every failure path below is terminal and says "do NOT db push".
           # This step must never hand the report step a result it cannot
-          # trust: an empty applied set there would render as "all 90-odd
-          # local migrations are unapplied", and acting on that would replay
+          # trust: an empty applied set there would render as "all local
+          # migrations are unapplied", and acting on that would replay
           # the entire migration history against prod.
           : > remote_migrations.txt
           if ! supabase migration list --linked --output-format json > migration_list.json 2> migration_list.err; then
@@ -292,9 +297,8 @@ jobs:
           echo "After applying, reload the PostgREST schema if clients still report cache errors:"
           echo "  NOTIFY pgrst, 'reload schema';"
           echo ""
-          echo "Reminder: Edge Function deploys are blocked by their own copy of this check until this drift is fixed. Issue"
-          echo "9thLevelSoftware/Project-Phoenix-MP#602 stays open until the migration"
-          echo "is applied AND the reporter's Android Sync Now path is verified."
+          echo "Reminder: Edge Function deploys are blocked by their own copy of this check until this drift is fixed."
+          echo "Apply the missing migration, then verify the affected client path."
           exit 1
 
       # Read-only grant check (Operator Action 1 query). Fails the daily run if
@@ -314,12 +318,11 @@ jobs:
       # browser-callable SECURITY DEFINER function must be added to every one
       # of them, and nothing enforces that automatically:
       #   - supabase/migrations/20260920000100_lockdown_definer_function_grants.sql
-      #     (authoritatively restated by 20260920007600_reconcile_prod_schema_drift.sql
-      #     once PR 76 lands; restate it in the newest migration, never edit an
-      #     applied one)
+      #     (authoritatively restated by 20260920007600_reconcile_prod_schema_drift.sql;
+      #     restate a change in the newest migration, never edit an applied one)
       #   - supabase/tests/database/definer_function_grants.test.sql
-      #   - supabase/tests/database/schema_drift.test.sql (arrives with PR 76;
-      #     it carries the pgTAP counterpart of the "missing grant" check below)
+      #   - supabase/tests/database/schema_drift.test.sql
+      #     (the pgTAP counterpart of the "missing grant" check below)
       #   - this step
       # It also fails when an allow-listed browser function EXISTS in prod but
       # authenticated has lost EXECUTE on it (a missing expected grant breaks

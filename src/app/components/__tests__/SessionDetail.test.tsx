@@ -34,7 +34,7 @@ vi.mock("@/providers/AuthProvider", () => mockAuth);
 vi.mock("@/hooks/useSubscription", () => ({
 	useSubscription: () => ({
 		isFlame: mockSub.isFlame,
-		isPremium: true,
+		isEntitled: true,
 		tier: mockSub.isFlame ? "FLAME" : "EMBER",
 		isError: false,
 		isLoading: false,

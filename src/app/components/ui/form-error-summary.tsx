@@ -1,46 +1,78 @@
 import { AlertCircle } from "lucide-react";
+import { useRef } from "react";
 import { useFormContext } from "react-hook-form";
+
+interface FormErrorSummaryProps {
+	className?: string;
+	/** Use when the host form has validation errors outside react-hook-form. */
+	messages?: string[];
+}
 
 /**
  * Displays a summary of all form errors at the top of a form.
- * Place inside a <Form> (react-hook-form FormProvider) wrapper.
- *
- * Interaction design reference: long forms benefit from an error summary
- * that tells users how many errors exist and lets them jump to the first one.
- * Uses aria-live="polite" so screen readers announce when errors appear.
- *
- * Usage:
- *   <Form {...form}>
- *     <FormErrorSummary />
- *     <FormField ... />
- *     <FormField ... />
- *   </Form>
+ * Place inside a <Form> (react-hook-form FormProvider) wrapper, or pass
+ * `messages` when adapting another form state implementation.
  */
-export function FormErrorSummary({ className }: { className?: string }) {
+export function FormErrorSummary({
+	className,
+	messages,
+}: FormErrorSummaryProps) {
+	if (messages !== undefined) {
+		return <ErrorSummary messages={messages} className={className} />;
+	}
+
+	return <ReactHookFormErrorSummary className={className} />;
+}
+
+function ReactHookFormErrorSummary({ className }: { className?: string }) {
 	const {
 		formState: { errors, isSubmitted },
 	} = useFormContext();
 
-	// Flatten nested errors (e.g., exercises.0.name) into a list of messages
 	const errorMessages = flattenErrors(errors);
-
-	// Only show after first submission attempt to avoid premature error display
 	if (!isSubmitted || errorMessages.length === 0) return null;
 
+	return <ErrorSummary messages={errorMessages} className={className} />;
+}
+
+function ErrorSummary({
+	messages,
+	className,
+}: {
+	messages: string[];
+	className?: string;
+}) {
+	const containerRef = useRef<HTMLDivElement>(null);
+	if (messages.length === 0) return null;
+
+	// Jump to the invalid field nearest this summary: search its enclosing
+	// <form> if there is one, otherwise widen ancestor by ancestor. The builders
+	// render the summary in its own wrapper beside the header that holds the
+	// field, so neither the summary's own box nor its parent alone contains it.
 	const scrollToFirstError = () => {
-		const firstInvalid = document.querySelector(
-			'[aria-invalid="true"]',
-		) as HTMLElement | null;
+		const container = containerRef.current;
+		const selector = '[aria-invalid="true"]';
+		let firstInvalid =
+			container?.closest("form")?.querySelector<HTMLElement>(selector) ?? null;
+		for (
+			let scope = container?.parentElement ?? null;
+			!firstInvalid && scope;
+			scope = scope.parentElement
+		) {
+			firstInvalid = scope.querySelector<HTMLElement>(selector);
+		}
 		if (firstInvalid) {
 			firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
 			firstInvalid.focus();
 		}
 	};
 
+	// role="alert" is already an assertive live region; adding
+	// aria-live="polite" contradicted it and delayed the announcement.
 	return (
 		<div
+			ref={containerRef}
 			role="alert"
-			aria-live="polite"
 			className={`rounded-md border border-destructive/30 bg-destructive/5 p-3 ${className ?? ""}`}
 		>
 			<button
@@ -49,15 +81,15 @@ export function FormErrorSummary({ className }: { className?: string }) {
 				className="flex items-center gap-2 text-destructive text-sm font-medium hover:underline w-full text-left"
 			>
 				<AlertCircle className="w-4 h-4 shrink-0" />
-				{errorMessages.length === 1
+				{messages.length === 1
 					? "1 field needs attention"
-					: `${errorMessages.length} fields need attention`}
+					: `${messages.length} fields need attention`}
 			</button>
-			{errorMessages.length <= 5 && (
+			{messages.length <= 5 && (
 				<ul className="mt-2 ml-6 list-disc text-sm text-destructive/70 space-y-0.5">
-					{errorMessages.map((msg, i) => (
+					{messages.map((message, i) => (
 						// biome-ignore lint/suspicious/noArrayIndexKey: error messages may duplicate, index is the only stable key
-						<li key={i}>{msg}</li>
+						<li key={i}>{message}</li>
 					))}
 				</ul>
 			)}
@@ -74,12 +106,9 @@ function flattenErrors(errors: Record<string, unknown>, prefix = ""): string[] {
 
 		const fieldValue = value as Record<string, unknown>;
 
-		// Leaf error: has a `message` property
 		if (typeof fieldValue.message === "string" && fieldValue.message) {
 			messages.push(fieldValue.message);
-		}
-		// Nested object (e.g., field arrays): recurse
-		else {
+		} else {
 			messages.push(
 				...flattenErrors(
 					fieldValue as Record<string, unknown>,

@@ -5,7 +5,7 @@ import {
 	gamificationStatsSchema,
 	rpgAttributesSchema,
 } from "@/schemas/transforms";
-import { exerciseFrequencySchema } from "./exercise-frequency";
+import { exerciseFrequencyOptions } from "./exercise-frequency";
 import { queryKeys } from "./keys";
 
 /**
@@ -42,7 +42,7 @@ export function profileOptions(userId: string) {
  * the best streak from the OLDEST 1,000 sessions (F-034).
  *
  * `p_tz` is deliberately 'UTC': `best_streak` is account-wide, and the current
- * streak the Profile page shows next to it (`useStreak` / `utcDateKey`) is
+ * streak the Profile page shows next to it (`workout_current_streak`) is
  * computed in UTC. Passing the browser zone here would let the current streak
  * exceed the best one.
  */
@@ -78,29 +78,18 @@ export function profileStatsOptions(userId: string, profileId?: string | null) {
 /**
  * Top 5 exercises by the number of sessions they appear in.
  *
- * Counted in SQL by `exercise_frequency` (already ordered by sessions DESC,
- * name ASC). The previous two-step "every session id, then .in(session_id,
- * ids)" read put every UUID in the GET URL and failed at ~200 sessions
- * (F-035). An exercise repeated within one session now counts once.
+ * Reads the shared `exerciseFrequencyOptions` cache (sessions DESC, name ASC)
+ * and slices in `select`, so this card and the analytics muscle chart share
+ * one `exercise_frequency` RPC.
  */
 export function topExercisesOptions(userId: string, profileId?: string | null) {
 	return queryOptions({
-		queryKey: queryKeys.profile.topExercises(userId, profileId),
-		queryFn: async () => {
-			const { data, error } = await supabase.rpc(
-				"exercise_frequency",
-				profileId ? { p_profile_id: profileId } : {},
-			);
-			if (error) throw error;
-
-			return exerciseFrequencySchema
-				.parse(data ?? [])
-				.slice(0, 5)
-				.map((row) => ({
-					name: row.exercise_name,
-					count: row.sessions,
-				}));
-		},
+		...exerciseFrequencyOptions(userId, profileId),
+		select: (rows) =>
+			rows.slice(0, 5).map((row) => ({
+				name: row.exercise_name,
+				count: row.sessions,
+			})),
 	});
 }
 

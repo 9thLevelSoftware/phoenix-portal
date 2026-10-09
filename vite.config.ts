@@ -16,29 +16,29 @@ import {
 	shouldUploadSourcemaps,
 } from "./src/lib/build/sourcemaps";
 
-const uploadSourcemaps = shouldUploadSourcemaps(process.env);
+const sourcemapEnv = {
+	SENTRY_AUTH_TOKEN: process.env.SENTRY_AUTH_TOKEN,
+};
+const uploadSourcemaps = shouldUploadSourcemaps(sourcemapEnv);
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const pwaShell = createPwaShellPrecache();
 
 export default defineConfig({
 	plugins: [
 		stripBodyMusclesSourcemapsPlugin(),
-		// The React and Tailwind plugins are both required for Make, even if
-		// Tailwind is not being actively used – do not remove them
 		react(),
 		tailwindcss(),
 		pwaShell.plugin,
 		VitePWA({
 			registerType: "autoUpdate",
-			updateViaCache: "none",
 			includeAssets: ["pwa-192x192.png", "pwa-512x512.png"],
 			manifest: {
 				name: "Phoenix Portal",
 				short_name: "Phoenix",
 				description:
 					"Training companion dashboard for your Phoenix fitness machine",
-				theme_color: "#0D0D0D",
-				background_color: "#0D0D0D",
+				theme_color: "#06060a",
+				background_color: "#06060a",
 				display: "standalone",
 				scope: "/",
 				start_url: "/",
@@ -92,9 +92,18 @@ export default defineConfig({
 		exclude: ["body-muscles"],
 	},
 	build: {
-		sourcemap: productionSourcemapSetting(process.env),
+		sourcemap: productionSourcemapSetting(sourcemapEnv),
 		chunkSizeWarningLimit: 700,
 		rollupOptions: {
+			onwarn(warning, warn) {
+				if (warning.message.startsWith("Circular chunk")) {
+					// Log first: aborting here makes the PWA precache plugin fail
+					// in its close hook, and Rollup reports that error instead.
+					console.error(`\n[vendor chunks] ${warning.message}\n`);
+					throw new Error(warning.message);
+				}
+				warn(warning);
+			},
 			output: {
 				manualChunks: {
 					"vendor-react": [
@@ -103,6 +112,7 @@ export default defineConfig({
 						"react-dom/client",
 						"react-router",
 						"react-is",
+						"sonner",
 						"@radix-ui/react-dialog",
 						"@radix-ui/react-dropdown-menu",
 						"@radix-ui/react-select",
@@ -111,38 +121,26 @@ export default defineConfig({
 						"@radix-ui/react-popover",
 						"@radix-ui/react-accordion",
 						"@radix-ui/react-avatar",
-						"@radix-ui/react-checkbox",
 						"@radix-ui/react-label",
 						"@radix-ui/react-progress",
 						"@radix-ui/react-radio-group",
-						"@radix-ui/react-scroll-area",
 						"@radix-ui/react-separator",
 						"@radix-ui/react-slider",
 						"@radix-ui/react-slot",
 						"@radix-ui/react-switch",
-						"@radix-ui/react-toggle",
-						"@radix-ui/react-toggle-group",
-						"@radix-ui/react-hover-card",
 						"@radix-ui/react-alert-dialog",
-						"@radix-ui/react-aspect-ratio",
 						"@radix-ui/react-collapsible",
-						"@radix-ui/react-context-menu",
-						"@radix-ui/react-menubar",
-						"@radix-ui/react-navigation-menu",
 					],
 					"vendor-motion": ["motion"],
 					"vendor-supabase": ["@supabase/supabase-js"],
 					"vendor-query": ["@tanstack/react-query"],
-					"vendor-ui": [
-						"class-variance-authority",
-						"clsx",
-						"tailwind-merge",
-						"cmdk",
-						"sonner",
-						"vaul",
-						"input-otp",
-						"embla-carousel-react",
-					],
+					// React-free helpers only. A React-dependent library here
+					// (sonner, vaul, cmdk, …) can pull React internals into this
+					// chunk, so vendor-react imports vendor-ui and vendor-ui imports
+					// vendor-react: a circular chunk that leaves the production
+					// bundle unable to boot. `onwarn` above turns that into a
+					// build failure.
+					"vendor-ui": ["class-variance-authority", "clsx", "tailwind-merge"],
 					"vendor-zod": ["zod"],
 					"vendor-zustand": ["zustand"],
 					"vendor-recharts": ["recharts"],

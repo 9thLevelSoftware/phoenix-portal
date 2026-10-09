@@ -2,23 +2,24 @@ import { ArrowRight, HeartPulse, Lock } from "lucide-react";
 import { Link } from "react-router";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import { useRecoveryScore } from "@/hooks/useRecoveryScore";
 import { useSubscription } from "@/hooks/useSubscription";
 import { GATING_THRESHOLD_DAYS } from "@/lib/recovery";
 import { RecoveryScore } from "./RecoveryScore";
 
 export function RecoveryDashboardWidget() {
-	const { isPremium } = useSubscription();
+	const { isEntitled } = useSubscription();
 	const { recovery, isLoading, isError, daysSinceFirstSession } =
 		useRecoveryScore();
 
-	if (!isPremium) {
+	if (!isEntitled) {
 		return (
 			<Card className="relative overflow-hidden p-6 signal-panel">
 				<div className="absolute inset-0 bg-primary/5 pointer-events-none" />
 				<div className="relative z-10">
 					<div className="flex items-center justify-between mb-3">
-						<h3 className="text-xl text-white flex items-center gap-2">
+						<h3 className="text-xl text-foreground flex items-center gap-2">
 							<HeartPulse className="w-5 h-5 text-primary" />
 							Recovery
 						</h3>
@@ -45,13 +46,13 @@ export function RecoveryDashboardWidget() {
 		return (
 			<Card className="p-6 signal-panel">
 				<div className="flex items-center justify-between mb-4">
-					<h3 className="text-xl text-white flex items-center gap-2">
+					<h3 className="text-xl text-foreground flex items-center gap-2">
 						<HeartPulse className="w-5 h-5 text-primary" />
 						Recovery
 					</h3>
 				</div>
 				<div className="flex items-center justify-center py-6">
-					<div className="w-12 h-12 rounded-full border-2 border-secondary animate-pulse" />
+					<Skeleton className="w-12 h-12 rounded-full" />
 				</div>
 			</Card>
 		);
@@ -60,7 +61,7 @@ export function RecoveryDashboardWidget() {
 	return (
 		<Card className="p-6 signal-panel">
 			<div className="flex items-center justify-between mb-4">
-				<h3 className="text-xl text-white flex items-center gap-2">
+				<h3 className="text-xl text-foreground flex items-center gap-2">
 					<HeartPulse className="w-5 h-5 text-primary" />
 					Recovery
 				</h3>
@@ -90,7 +91,7 @@ export function RecoveryDashboardWidget() {
 				<div className="flex items-center justify-center py-2">
 					<RecoveryScore result={recovery} size="sm" />
 					<div className="ml-3">
-						<p className="text-sm text-white">
+						<p className="text-sm text-foreground">
 							{recovery.status === "elevated"
 								? "Elevated"
 								: recovery.status === "moderate"

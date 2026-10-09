@@ -82,7 +82,7 @@ export function RecoveryScore({ result, size = "lg" }: RecoveryScoreProps) {
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						transition={{ delay: 0.5 }}
-						className={`${isLarge ? "text-4xl" : "text-lg"} font-bold text-white`}
+						className={`${isLarge ? "text-4xl" : "text-lg"} font-bold text-foreground`}
 					>
 						{result.score}
 					</motion.span>

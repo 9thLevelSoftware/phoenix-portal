@@ -7,47 +7,53 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/app/components/ui/card";
-import { supabase } from "@/lib/supabase";
-import { queryKeys } from "@/queries/keys";
+import {
+	type SyncQueueActiveCount,
+	syncQueueActiveCountOptions,
+	syncQueueOptions,
+} from "@/queries/integrations";
 
 interface SyncStatusProps {
 	userId: string;
 }
 
 const STATUS_BADGE_CLASS: Record<string, string> = {
-	completed: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-	failed: "bg-red-500/20 text-red-400 border-red-500/30",
-	processing: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-	pending: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
+	completed: "bg-success/20 text-success border-success/30",
+	failed: "bg-destructive/20 text-destructive border-destructive/30",
+	processing: "bg-warning/20 text-warning border-warning/30",
+	pending:
+		"bg-muted-foreground/20 text-muted-foreground border-muted-foreground/30",
+	superseded: "bg-muted/40 text-muted-foreground border-muted",
 };
 
+const ACTIVE_POLL_MS = 15_000;
+
+function hasActiveWork(snapshot: SyncQueueActiveCount | undefined): boolean {
+	return (snapshot?.pending ?? 0) > 0 || snapshot?.processingProvider != null;
+}
+
 export function SyncStatus({ userId }: SyncStatusProps) {
-	const { data: queue, isError } = useQuery({
-		queryKey: queryKeys.integrations.syncQueue(userId),
-		queryFn: async () => {
-			const { data, error } = await supabase
-				.from("sync_queue")
-				.select("*")
-				.eq("user_id", userId)
-				.order("created_at", { ascending: false })
-				.limit(10);
-			// Surface DB/RLS/network failures instead of reporting "All synced".
-			if (error) throw error;
-			return data ?? [];
-		},
-		enabled: !!userId,
-		refetchInterval: (query) => {
-			// Only poll when there's pending or processing work
-			const items = query.state.data ?? [];
-			const hasPending = items.some(
-				(q) => q.status === "pending" || q.status === "processing",
-			);
-			return hasPending ? 15_000 : false;
-		},
+	const active = useQuery({
+		...syncQueueActiveCountOptions(userId),
+		refetchInterval: (query) =>
+			hasActiveWork(query.state.data) ? ACTIVE_POLL_MS : false,
 	});
 
-	const pending = queue?.filter((q) => q.status === "pending").length ?? 0;
-	const processing = queue?.find((q) => q.status === "processing");
+	const hasWork = hasActiveWork(active.data);
+	const { data: queue, isError: activityError } = useQuery({
+		...syncQueueOptions(userId),
+		// Refresh the activity list while status-filtered work is still open.
+		refetchInterval: hasWork ? ACTIVE_POLL_MS : false,
+	});
+
+	const countFailed = active.isError;
+	const pending = active.data?.pending ?? 0;
+	const processingProvider = active.data?.processingProvider ?? null;
+	const showAllSynced =
+		!countFailed &&
+		active.isSuccess &&
+		pending === 0 &&
+		processingProvider == null;
 
 	return (
 		<Card className="bg-surface-2 border-secondary">
@@ -56,42 +62,41 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 			</CardHeader>
 			<CardContent>
 				<div className="space-y-4">
-					{isError && (
-						<div className="flex items-center gap-2 text-sm text-red-400">
+					{(countFailed || activityError) && (
+						<div className="flex items-center gap-2 text-sm text-destructive">
 							<AlertCircle className="h-4 w-4" />
 							<span>Couldn't load sync status. Please try again.</span>
 						</div>
 					)}
 
-					{!isError && processing && (
+					{!countFailed && processingProvider && (
 						<div className="flex items-center gap-2 text-sm">
-							<Loader2 className="h-4 w-4 animate-spin text-amber-400" />
+							<Loader2 className="h-4 w-4 animate-spin text-warning" />
 							<span className="capitalize">
-								Syncing {processing.provider}...
+								Syncing {processingProvider}...
 							</span>
 						</div>
 					)}
 
-					{!isError && pending > 0 && (
+					{!countFailed && pending > 0 && (
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
 							<Clock className="h-4 w-4" />
 							<span>{pending} sync(s) pending</span>
 						</div>
 					)}
 
-					{!isError && !processing && pending === 0 && (
-						<div className="flex items-center gap-2 text-sm text-emerald-400">
+					{showAllSynced && (
+						<div className="flex items-center gap-2 text-sm text-success">
 							<CheckCircle className="h-4 w-4" />
 							<span>All synced</span>
 						</div>
 					)}
 
-					{/* Recent activity */}
-					{!isError && queue && queue.length > 0 && (
+					{!activityError && queue && queue.length > 0 && (
 						<div className="border-t border-secondary pt-4 mt-4">
 							<h4 className="text-sm font-medium mb-2">Recent Activity</h4>
 							<div className="space-y-2">
-								{queue.slice(0, 5).map((item) => (
+								{queue.map((item) => (
 									<div
 										key={item.id}
 										className="flex justify-between items-center text-xs"
@@ -99,7 +104,11 @@ export function SyncStatus({ userId }: SyncStatusProps) {
 										<span className="capitalize">{item.provider}</span>
 										<Badge
 											variant="outline"
-											className={STATUS_BADGE_CLASS[item.status] ?? ""}
+											className={
+												(item.status
+													? STATUS_BADGE_CLASS[item.status]
+													: undefined) ?? ""
+											}
 										>
 											{item.status}
 										</Badge>

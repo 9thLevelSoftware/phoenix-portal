@@ -11,8 +11,16 @@ describe("private resource cache keys", () => {
 		["routine", (user: string) => queryKeys.routines.detail(user, "resource")],
 		["cycle", (user: string) => queryKeys.cycles.detail(user, "resource")],
 		[
-			"set weights",
-			(user: string) => queryKeys.analytics.sessionSetWeights(user, "resource"),
+			"exercise frequency",
+			(user: string) => queryKeys.analytics.exerciseFrequency(user),
+		],
+		[
+			"external activity chart",
+			(user: string) => queryKeys.integrations.externalChart(user),
+		],
+		[
+			"active sync queue count",
+			(user: string) => queryKeys.integrations.syncQueueActive(user),
 		],
 		[
 			"telemetry",
@@ -22,11 +30,6 @@ describe("private resource cache keys", () => {
 			"summaries",
 			(user: string) => queryKeys.telemetry.repSummaries(user, "resource"),
 		],
-		[
-			"asymmetry",
-			(user: string) => queryKeys.biomechanics.asymmetry(user, "resource"),
-		],
-		["rom", (user: string) => queryKeys.biomechanics.rom(user, "resource")],
 		[
 			"replay session",
 			(user: string) => queryKeys.replay.session(user, "resource"),

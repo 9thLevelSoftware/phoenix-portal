@@ -5,7 +5,7 @@
  * critical feature. This file expands coverage to:
  *   - Assert every documented query key family is invalidated on a
  *     `sync_complete` broadcast (workouts, records, analytics, routines,
- *     cycles, telemetry, biomechanics, progress, replay, integrations,
+ *     cycles, telemetry, progress, replay, integrations,
  *     profile, challenges).
  *   - 400ms debounce collapses rapid-fire broadcasts into one burst.
  *   - Cleanup on unmount removes the Supabase channel.
@@ -38,7 +38,6 @@ const TARGETED_INVALIDATIONS = [
 	{ queryKey: queryKeys.cycles.all, label: "cycles" },
 	{ queryKey: queryKeys.analytics.all, label: "analytics" },
 	{ queryKey: queryKeys.telemetry.all, label: "telemetry" },
-	{ queryKey: queryKeys.biomechanics.all, label: "biomechanics" },
 	{ queryKey: queryKeys.progress.all, label: "progress" },
 	{ queryKey: queryKeys.recovery.all, label: "recovery" },
 	{ queryKey: queryKeys.replay.all, label: "replay" },

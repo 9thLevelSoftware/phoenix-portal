@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 /**
- * Schema for recovery session data (raw from Supabase, before weight doubling).
- * Recovery uses raw per-cable values for ACWR computation since the algorithm
- * cares about relative ratios, not display values.
+ * Schema for recovery session data as stored: per-cable volume.
+ * ACWR uses those values because the algorithm cares about relative
+ * ratios, not display totals.
  */
 export const recoverySessionSchema = z.object({
 	started_at: z.coerce.date(),
@@ -11,8 +11,6 @@ export const recoverySessionSchema = z.object({
 });
 
 export const recoverySessionListSchema = z.array(recoverySessionSchema);
-
-export type RecoverySessionRow = z.infer<typeof recoverySessionSchema>;
 
 /**
  * Active cycle position from training_cycles table.
@@ -22,8 +20,6 @@ export const activeCycleSchema = z.object({
 	duration_weeks: z.number(),
 	status: z.enum(["active", "completed", "draft"]),
 });
-
-export type ActiveCycleRow = z.infer<typeof activeCycleSchema>;
 
 /**
  * Wearable recovery data from external_activities table.

@@ -26,7 +26,7 @@ export function WorkoutQuickStats({
 						<Dumbbell className="h-4 w-4" />
 						<span>This week</span>
 					</div>
-					<span className="text-sm font-medium text-white font-data">
+					<span className="text-sm font-medium text-foreground font-data">
 						{weeklyWorkoutCount} workout{weeklyWorkoutCount !== 1 ? "s" : ""}
 					</span>
 				</div>
@@ -36,7 +36,7 @@ export function WorkoutQuickStats({
 						<Flame className="h-4 w-4 text-primary" />
 						<span>Streak</span>
 					</div>
-					<span className="text-sm font-medium text-white font-data">
+					<span className="text-sm font-medium text-foreground font-data">
 						{currentStreak} day{currentStreak !== 1 ? "s" : ""}
 						{currentStreak >= 7 && " 🔥"}
 					</span>
@@ -47,7 +47,7 @@ export function WorkoutQuickStats({
 						<TrendingUp className="h-4 w-4" />
 						<span>Monthly volume</span>
 					</div>
-					<span className="text-sm font-medium text-white font-data">
+					<span className="text-sm font-medium text-foreground font-data">
 						{formatVolume(monthlyVolume, unit)}
 					</span>
 				</div>

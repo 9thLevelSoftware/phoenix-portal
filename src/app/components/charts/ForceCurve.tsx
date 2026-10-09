@@ -17,7 +17,7 @@ import {
 	CHART_COLORS,
 	CHART_MARGINS,
 	FONT_SIZES,
-	REP_COLORS,
+	useRepColors,
 } from "./shared/ChartTheme";
 import { ChartTooltipContent, useChartTooltip } from "./shared/ChartTooltip";
 
@@ -28,10 +28,8 @@ interface RepData {
 
 export interface ForceCurveProps {
 	repData: RepData[];
-	width?: number;
 	height?: number;
 	normalized?: boolean;
-	showTooltip?: boolean;
 	selectedRep?: number | null;
 }
 
@@ -51,7 +49,6 @@ function ForceCurveInner({
 	width,
 	height = 300,
 	normalized = false,
-	showTooltip: showTooltipProp = true,
 	selectedRep = null,
 }: ForceCurveProps & { width: number }) {
 	const {
@@ -64,6 +61,7 @@ function ForceCurveInner({
 	} = useChartTooltip();
 
 	const margins = CHART_MARGINS;
+	const repColors = useRepColors();
 	// Component-scoped prefix so SVG gradient IDs don't collide across multiple
 	// ForceCurve instances on the same page.
 	const gradientPrefix = useId();
@@ -135,8 +133,6 @@ function ForceCurveInner({
 	// Tooltip handler: find nearest point across all reps
 	const handleMouseMove = useCallback(
 		(event: React.MouseEvent<SVGSVGElement>) => {
-			if (!showTooltipProp) return;
-
 			const point = localPoint(event);
 			if (!point) return;
 
@@ -173,14 +169,14 @@ function ForceCurveInner({
 					tooltipData: {
 						label: `Rep ${closestRep.repNumber} · ${xLabel}: ${Math.round(closestPoint.x)}`,
 						value: `${closestPoint.force_n.toFixed(1)} N`,
-						color: REP_COLORS[closestRep.colorIndex % REP_COLORS.length],
+						color: repColors[closestRep.colorIndex % repColors.length],
 					},
 					tooltipLeft: xScale(closestPoint.x),
 					tooltipTop: yScale(closestPoint.force_n),
 				});
 			}
 		},
-		[processedReps, xScale, yScale, showTooltipProp, normalized, showTooltip],
+		[processedReps, xScale, yScale, normalized, showTooltip, repColors],
 	);
 
 	const getX = (d: { x: number }) => d.x;
@@ -198,7 +194,7 @@ function ForceCurveInner({
 			>
 				{/* Gradient definitions for each rep */}
 				{processedReps.map((rep) => {
-					const color = REP_COLORS[rep.colorIndex % REP_COLORS.length];
+					const color = repColors[rep.colorIndex % repColors.length];
 					return (
 						<LinearGradient
 							key={`gradient-${rep.repNumber}`}
@@ -214,7 +210,7 @@ function ForceCurveInner({
 
 				{/* Render each rep: area fill + line stroke */}
 				{processedReps.map((rep) => {
-					const color = REP_COLORS[rep.colorIndex % REP_COLORS.length];
+					const color = repColors[rep.colorIndex % repColors.length];
 					const isSelected =
 						selectedRep === null || selectedRep === rep.repNumber;
 					const opacity = isSelected ? 1 : 0.2;
@@ -249,34 +245,34 @@ function ForceCurveInner({
 					scale={xScale}
 					label={normalized ? "Time (%)" : "Time (ms)"}
 					labelProps={{
-						fill: CHART_COLORS.axisText,
+						fill: CHART_COLORS().axisText,
 						fontSize: FONT_SIZES.label,
 						textAnchor: "middle",
 					}}
 					tickLabelProps={{
-						fill: CHART_COLORS.axisText,
+						fill: CHART_COLORS().axisText,
 						fontSize: FONT_SIZES.axis,
 						textAnchor: "middle",
 					}}
-					stroke={CHART_COLORS.gridLine}
-					tickStroke={CHART_COLORS.gridLine}
+					stroke={CHART_COLORS().gridLine}
+					tickStroke={CHART_COLORS().gridLine}
 				/>
 				<AxisLeft
 					left={margins.left}
 					scale={yScale}
 					label="Force (N)"
 					labelProps={{
-						fill: CHART_COLORS.axisText,
+						fill: CHART_COLORS().axisText,
 						fontSize: FONT_SIZES.label,
 						textAnchor: "middle",
 					}}
 					tickLabelProps={{
-						fill: CHART_COLORS.axisText,
+						fill: CHART_COLORS().axisText,
 						fontSize: FONT_SIZES.axis,
 						textAnchor: "end",
 					}}
-					stroke={CHART_COLORS.gridLine}
-					tickStroke={CHART_COLORS.gridLine}
+					stroke={CHART_COLORS().gridLine}
+					tickStroke={CHART_COLORS().gridLine}
 				/>
 			</svg>
 
@@ -313,16 +309,12 @@ export function ForceCurve(props: ForceCurveProps) {
 			aria-label={`Force curve chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}. Peak force: ${maxForce.toFixed(0)} Newtons.`}
 		>
 			<div aria-hidden="true">
-				{props.width ? (
-					<ForceCurveInner {...props} width={props.width} />
-				) : (
-					<ParentSize>
-						{({ width }) => {
-							if (width <= 0) return null;
-							return <ForceCurveInner {...props} width={width} />;
-						}}
-					</ParentSize>
-				)}
+				<ParentSize>
+					{({ width }) => {
+						if (width <= 0) return null;
+						return <ForceCurveInner {...props} width={width} />;
+					}}
+				</ParentSize>
 			</div>
 			<table className="sr-only">
 				<caption>Force curve data by rep</caption>

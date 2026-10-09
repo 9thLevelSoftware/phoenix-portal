@@ -5,13 +5,26 @@ import { queryKeys } from "@/queries/keys";
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	const methods = ["select", "eq", "order", "single"];
+	const methods = ["select", "eq", "order", "range", "single"];
 	for (const m of methods) {
 		self[m] = vi.fn();
 	}
 	for (const m of methods) {
 		self[m].mockReturnValue({ ...self, ...terminal });
 	}
+	return self;
+}
+
+function pagedChain(pages: unknown[][]) {
+	const self: Record<string, ReturnType<typeof vi.fn>> = {};
+	for (const m of ["select", "eq", "order"]) {
+		self[m] = vi.fn(() => self);
+	}
+	let call = 0;
+	self.range = vi.fn(() => {
+		const data = pages[call++] ?? [];
+		return Promise.resolve({ data, error: null });
+	});
 	return self;
 }
 
@@ -123,6 +136,35 @@ describe("routineListOptions", () => {
 		const opts = routineListOptions("user-1");
 		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
+	});
+
+	it("pages past the PostgREST cap on last_used_at then id and returns one array", async () => {
+		const { SUPABASE_PAGE_SIZE } = await import("@/lib/supabasePaging");
+		const pageOne = Array.from({ length: SUPABASE_PAGE_SIZE }, (_, i) => ({
+			...routineRow,
+			id: `11111111-1111-4111-8111-${String(i).padStart(12, "0")}`,
+		}));
+		const tailId = `11111111-1111-4111-8111-${String(SUPABASE_PAGE_SIZE).padStart(12, "0")}`;
+		const pageTwo = [{ ...routineRow, id: tailId }];
+		chain = pagedChain([pageOne, pageTwo]);
+		const { routineListOptions } = await import("../routines");
+		const opts = routineListOptions("user-1", "profile-1");
+		const result = await opts.queryFn?.({} as never);
+
+		expect(chain.eq).toHaveBeenCalledWith("user_id", "user-1");
+		expect(chain.eq).toHaveBeenCalledWith("local_profile_id", "profile-1");
+		expect(chain.order).toHaveBeenCalledWith("last_used_at", {
+			ascending: false,
+			nullsFirst: false,
+		});
+		expect(chain.order).toHaveBeenCalledWith("id", { ascending: true });
+		expect(chain.range).toHaveBeenCalledWith(0, SUPABASE_PAGE_SIZE - 1);
+		expect(chain.range).toHaveBeenCalledWith(
+			SUPABASE_PAGE_SIZE,
+			SUPABASE_PAGE_SIZE * 2 - 1,
+		);
+		expect(result).toHaveLength(SUPABASE_PAGE_SIZE + 1);
+		expect(result?.at(-1)?.id).toBe(tailId);
 	});
 });
 

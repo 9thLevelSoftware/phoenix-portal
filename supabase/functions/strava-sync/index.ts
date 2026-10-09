@@ -71,8 +71,9 @@ const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
  */
 
 // ---------------------------------------------------------------------------
-// Strava activity normalization (mirrors src/lib/integrations/normalize.ts)
-// Duplicated here because Edge Functions run in Deno, not the Vite app.
+// Strava activity normalization.
+// This Edge Function is the mapper that writes external_activities. The
+// client mirror in src/lib/integrations/normalize.ts has been removed.
 // ---------------------------------------------------------------------------
 
 const SPORT_TYPE_MAP: Record<string, string> = {
@@ -831,8 +832,12 @@ async function runStravaSync(
         }
 
         if (!activitiesResponse.ok) {
-          const errorText = await activitiesResponse.text();
-          console.error('Strava activities fetch failed:', activitiesResponse.status, errorText);
+          // Status only, same as token refresh above. The body is cancelled
+          // unread so it cannot reach a log, and it is never returned: it is
+          // attacker-influenced text that would otherwise be echoed to the
+          // browser and copied into sync_queue.error_message by the processor.
+          await activitiesResponse.body?.cancel();
+          console.error('Strava activities fetch failed:', activitiesResponse.status);
 
           if (activitiesResponse.status === 401) {
             await supabase
@@ -842,9 +847,6 @@ async function runStravaSync(
               .eq('provider', 'strava');
           }
 
-          // The provider's body is logged above and never returned: it is
-          // attacker-influenced text that would otherwise be echoed to the
-          // browser and copied into sync_queue.error_message by the processor.
           return new Response(
             JSON.stringify({
               error: 'Failed to fetch Strava activities',

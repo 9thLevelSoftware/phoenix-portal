@@ -32,7 +32,7 @@ import {
 
 export function Integrations() {
 	const { user, session, loading: authLoading } = useAuth();
-	const { isPremium, refetch: refetchSubscription } = useSubscription();
+	const { isEntitled, refetch: refetchSubscription } = useSubscription();
 	const userId = user?.id ?? "";
 	const accessToken = session?.access_token ?? "";
 	// Provider connect/sync/disconnect actions all require an authenticated user
@@ -66,11 +66,11 @@ export function Integrations() {
 
 	const { data: integrations } = useQuery({
 		...integrationsOptions(userId),
-		enabled: isPremium && !!userId,
+		enabled: isEntitled && !!userId,
 	});
 	const { data: activities } = useQuery({
 		...externalActivitiesOptions(userId),
-		enabled: isPremium && !!userId,
+		enabled: isEntitled && !!userId,
 	});
 
 	const disconnectMutation = useDisconnectIntegration();

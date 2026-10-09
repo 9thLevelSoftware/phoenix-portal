@@ -2,7 +2,9 @@ import { MotionConfig, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Button } from "@/app/components/ui/button";
+import { fadeUp } from "@/lib/animations";
 import { getConsentStatus, setConsentStatus } from "@/lib/consent";
+import { enableErrorReporting } from "@/lib/errorReporting";
 
 export function CookieConsentBanner() {
 	const [visible, setVisible] = useState(false);
@@ -33,7 +35,9 @@ export function CookieConsentBanner() {
 		} catch {
 			// ignore persistence failure
 		}
-		import("@/lib/sentry").then(({ initSentry }) => initSentry());
+		// Same path as a boot-time consent, so React's root error callbacks
+		// forward to Sentry from now on, not only after a reload.
+		void enableErrorReporting();
 		setVisible(false);
 	};
 
@@ -49,19 +53,18 @@ export function CookieConsentBanner() {
 	return (
 		<MotionConfig reducedMotion="user">
 			<motion.div
-				initial={{ y: 100, opacity: 0 }}
-				animate={{ y: 0, opacity: 1 }}
-				transition={{ duration: 0.4, ease: "easeOut" }}
-				className="fixed bottom-0 left-0 right-0 z-50 border-t border-secondary bg-[#1a1a1a] p-4"
+				{...fadeUp}
+				initial={{ ...fadeUp.initial, y: 100 }}
+				className="fixed bottom-0 left-0 right-0 z-50 border-t border-secondary bg-[var(--surface-1)] p-4"
 			>
 				<div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
 					<p className="text-sm text-secondary-foreground text-center sm:text-left">
-						We use <span className="font-semibold text-white">Sentry</span> for
-						error tracking to improve app reliability. No personal workout data
-						is collected. See our{" "}
+						We use <span className="font-semibold text-foreground">Sentry</span>{" "}
+						for error tracking to improve app reliability. No personal workout
+						data is collected. See our{" "}
 						<Link
 							to="/privacy"
-							className="text-primary hover:text-accent underline"
+							className="inline-flex min-h-11 items-center text-primary hover:text-accent underline"
 						>
 							Privacy Policy
 						</Link>{" "}
@@ -71,7 +74,7 @@ export function CookieConsentBanner() {
 						<Button
 							variant="outline"
 							onClick={handleReject}
-							className="min-w-[100px] border-secondary text-white"
+							className="min-w-[100px] border-secondary text-foreground"
 						>
 							Reject
 						</Button>

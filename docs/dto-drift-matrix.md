@@ -1,5 +1,12 @@
 # DTO Drift Matrix — Portal ⇄ Mobile
 
+> **HISTORICAL (marked 2026-10-03).** This is the 2026-04-19 DTO audit. It
+> describes the push before tombstones, the two-clock LWW model and
+> `merge_training_cycles_from_push`. It is not the current contract: read
+> `supabase/functions/mobile-sync-push/index.ts`,
+> `supabase/functions/mobile-sync-pull/index.ts` and the "mobile sync contract"
+> section of `CLAUDE.md` instead. The 2026-04-19 body below is left as written.
+
 **Generated:** 2026-04-19  
 **Status:** COMPREHENSIVE AUDIT  
 **Coverage:** 18 push DTOs, 8 pull DTOs, invariants, conflict-resolution semantics
@@ -153,7 +160,7 @@ authoritative for BLE-captured data per monorepo CLAUDE.md). Changes:
 - Portal Zod (`src/schemas/telemetry.ts:16`) now accepts `z.enum(["A","B"])`.
 - Portal TS interface (`src/lib/telemetry.ts:8`) now types `cable: "A" | "B"`.
 - New `src/lib/telemetry-display.ts` centralizes UI conversion via
-  `cableDisplayName()` and `cableSlug()` at the presentation boundary only.
+  `cableDisplayName()` at the presentation boundary only.
 - Mobile `PortalRepTelemetryDto.cable` doc comment updated to describe the
   canonical format.
 - Mobile-sync-push rep_telemetry upsert comments clarify that raw values

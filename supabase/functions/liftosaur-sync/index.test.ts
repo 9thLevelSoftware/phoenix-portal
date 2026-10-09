@@ -113,6 +113,44 @@ function descendingLiftosaur(count: number, opts: { hasMoreWithoutCursor?: boole
   return { fetch: fake, requests };
 }
 
+/**
+ * GET /history: `count` records dated one day apart, OLDEST FIRST (not the
+ * documented order — the resume path exists for exactly this), honouring
+ * `endDate` (exclusive) and `startDate`, 200 per page. Sparse: one record per
+ * day, so the 72-hour incremental lookback overlaps three days and resuming
+ * always moves the window.
+ */
+function ascendingLiftosaur(count: number) {
+  const oldest = Date.parse("2026-01-01T00:00:00.000Z");
+  const at = (index: number) => oldest + index * 24 * 60 * 60 * 1000;
+  const requests: URL[] = [];
+  const fake = (input: string | URL | Request): Promise<Response> => {
+    const url = new URL(String(input));
+    requests.push(url);
+    const end = url.searchParams.get("endDate");
+    const start = url.searchParams.get("startDate");
+    const window = Array.from({ length: count }, (_, i) => i).filter((i) =>
+      (end === null || at(i) < Date.parse(end)) &&
+      (start === null || at(i) >= Date.parse(start))
+    );
+    const cursor = Number(url.searchParams.get("cursor") ?? 0);
+    const records = window.slice(cursor, cursor + 200).map((i) => ({
+      id: i + 1,
+      text: `${new Date(at(i)).toISOString()} / program: "5/3/1" / duration: 3600s`,
+    }));
+    const nextCursor = cursor + records.length;
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          data: { records, hasMore: nextCursor < window.length, nextCursor },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+  };
+  return { fetch: fake, requests, at };
+}
+
 function harness(
   db: FakeDb,
   recordCount: number | ((input: string | URL | Request) => Promise<Response>),
@@ -490,6 +528,206 @@ Deno.test("liftosaur-sync: a history larger than one run is imported over resuma
     [null, null, null],
   );
   assertEquals(db.rows("sync_queue").map((r) => r.status), ["completed"]);
+});
+
+// ---------------------------------------------------------------------------
+// Ascending resume + initial continuation (#204): an oldest-first history over
+// one run must hand its OWN queue row on to a non-initial continuation after
+// the owned resume save, never terminate the import or leave the row `initial`.
+// ---------------------------------------------------------------------------
+
+/** The newest dated record run 1 of a 2,201-record ascending history reads. */
+function ascendingResumeAt(upstream: { at: (index: number) => number }): string {
+  return new Date(upstream.at(1999)).toISOString();
+}
+
+Deno.test("liftosaur-sync: an initial ascending history over one run hands its queue row on to an incremental continuation (#204)", async () => {
+  const db = new FakeDb(
+    // retry_count doubles as the claim generation: the handoff must keep it.
+    tables([{ ...queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT), retry_count: 2 }]),
+    [syncQueueOneActiveIndex],
+  );
+  const upstream = ascendingLiftosaur(2201);
+  const call = harness(db, upstream.fetch);
+  const resumeAt = ascendingResumeAt(upstream);
+
+  // Run 1 (initial): ten ascending pages are stored, the exact resume point is
+  // saved, and the owned row is handed on BEFORE the run reports progress.
+  const first = await call({ sync_type: "initial", queue_id: QUEUE_ID, claim_generation: 2 });
+  assertEquals(first.status, 200, await first.clone().text());
+  const firstBody = await first.json();
+  assertEquals([firstBody.truncated, firstBody.reason, firstBody.imported], [true, "page_budget", 2000]);
+  assertEquals(
+    [firstBody.continuing, firstBody.follow_up_queued, firstBody.queue_row_handed_off],
+    [true, true, true],
+  );
+  assertEquals(firstBody.resume_at, resumeAt);
+  assertEquals(db.rows("external_activities").length, 2000);
+  const [integration] = db.rows("user_integrations");
+  assertEquals(integration.last_sync_at, resumeAt, "the exact resume point is the provider window watermark");
+  assertEquals(
+    [integration.backfill_before, integration.backfill_after, integration.backfill_started_at],
+    [null, null, null],
+    "no stale chain may survive into the continuation",
+  );
+  assertEquals(
+    db.rows("sync_queue").map((r) => [r.id, r.sync_type, r.status, r.retry_count]),
+    [[QUEUE_ID, "incremental", "pending", 2]],
+    "the row this run owned is the continuation, with its claim generation kept",
+  );
+
+  // Run 2: process-sync-queue claims the handed-on row and dispatches the
+  // sync_type ON IT — no manual rescue call, and not `initial`.
+  claim(db, 0, "second");
+  const handedOn = db.rows("sync_queue")[0];
+  const second = await call({ sync_type: handedOn.sync_type, queue_id: "second", claim_generation: 2 });
+  assertEquals(second.status, 200, await second.clone().text());
+  assertEquals((await second.json()).success, true);
+  // The continuation reads from the saved lower bound (lookback overlap).
+  assertEquals(
+    upstream.requests.at(-1)!.searchParams.get("startDate"),
+    new Date(Date.parse(resumeAt) - 72 * 60 * 60 * 1000).toISOString(),
+  );
+  // ... and the unique union completes.
+  assertEquals(db.rows("external_activities").length, 2201);
+  assertEquals(db.rows("sync_queue").map((r) => r.status), ["completed"]);
+});
+
+Deno.test("liftosaur-sync: the ascending resume save clears a stale backfill chain in the same owned write (#204)", async () => {
+  const db = new FakeDb({
+    ...tables([queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)]),
+    user_integrations: [{
+      user_id: USER_ID,
+      provider: "liftosaur",
+      status: "connected",
+      last_sync_at: "2025-06-01T00:00:00.000Z",
+      backfill_before: "2025-01-01T00:00:01.000Z",
+      backfill_after: "2024-06-01T00:00:00.000Z",
+      backfill_started_at: "2025-01-01T00:00:00.000Z",
+    }],
+  });
+  const upstream = ascendingLiftosaur(2201);
+  const res = await harness(db, upstream.fetch)({ sync_type: "initial", queue_id: QUEUE_ID });
+  assertEquals(res.status, 200, await res.clone().text());
+  const [integration] = db.rows("user_integrations");
+  assertEquals(integration.last_sync_at, ascendingResumeAt(upstream));
+  assertEquals(
+    [integration.backfill_before, integration.backfill_after, integration.backfill_started_at],
+    [null, null, null],
+    "a continuation with these set plans inBackfill and completes past the unread ascending tail",
+  );
+});
+
+Deno.test("liftosaur-sync: an ascending handoff claims no continuation while the conflicting row is processing (#204)", async () => {
+  const db = new FakeDb(
+    tables([
+      { ...queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT), retry_count: 0 },
+      // sync_queue_one_active: flipping our initial row to incremental
+      // collides with this row. It has planned against the OLD window, and its
+      // completion write can overwrite the resume watermark.
+      { ...queueRow(OTHER_QUEUE_ID, "incremental", "processing", CLAIMED_AT), retry_count: 0 },
+    ]),
+    [syncQueueOneActiveIndex],
+  );
+  const upstream = ascendingLiftosaur(2201);
+  const res = await harness(db, upstream.fetch)({
+    sync_type: "initial", queue_id: QUEUE_ID, claim_generation: 0,
+  });
+  assertEquals(res.status, 502, await res.clone().text());
+  const body = await res.json();
+  assertEquals(body.code, "follow_up_conflict");
+  assertEquals([body.success, body.continuing, body.follow_up_queued], [undefined, undefined, undefined]);
+  // The owned resume save stands ...
+  assertEquals(db.rows("user_integrations")[0].last_sync_at, ascendingResumeAt(upstream));
+  // ... and neither row is touched: nothing completed, nothing claimed, and
+  // the claim generation is never reset.
+  assertEquals(
+    db.rows("sync_queue").map((r) => [r.id, r.sync_type, r.status, r.retry_count]),
+    [[QUEUE_ID, "initial", "processing", 0], [OTHER_QUEUE_ID, "incremental", "processing", 0]],
+  );
+});
+
+Deno.test("liftosaur-sync: an ascending handoff trusts a pending sibling and completes only its own row (#204)", async () => {
+  const db = new FakeDb(
+    tables([
+      { ...queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT), retry_count: 0 },
+      // Still pending, so it will re-read user_integrations and continue this
+      // chain when claimed.
+      { ...queueRow(OTHER_QUEUE_ID, "incremental", "pending", null), retry_count: 0 },
+    ]),
+    [syncQueueOneActiveIndex],
+  );
+  const upstream = ascendingLiftosaur(2201);
+  const res = await harness(db, upstream.fetch)({
+    sync_type: "initial", queue_id: QUEUE_ID, claim_generation: 0,
+  });
+  assertEquals(res.status, 200, await res.clone().text());
+  const body = await res.json();
+  assertEquals([body.continuing, body.follow_up_queued, body.queue_row_handed_off], [true, true, false]);
+  assertEquals(
+    db.rows("sync_queue").map((r) => [r.id, r.status]),
+    [[QUEUE_ID, "completed"], [OTHER_QUEUE_ID, "pending"]],
+    "only this run's own row completes; the sibling is never re-inserted or reset",
+  );
+});
+
+Deno.test("liftosaur-sync: an ascending handoff trusts a pending NULL sync_type sibling (#204)", async () => {
+  const db = new FakeDb(
+    tables([
+      { ...queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT), retry_count: 0 },
+      // sync_queue_one_active classifies with coalesce(sync_type, 'incremental')
+      // = 'initial' (migration 20260920005200): a NULL sync_type counts as
+      // non-initial, so this untyped legacy row IS the continuation and must be
+      // trusted like any other pending non-initial sibling.
+      {
+        ...queueRow(OTHER_QUEUE_ID, "incremental", "pending", null),
+        sync_type: null,
+        retry_count: 0,
+      },
+    ]),
+    [syncQueueOneActiveIndex],
+  );
+  const upstream = ascendingLiftosaur(2201);
+  const res = await harness(db, upstream.fetch)({
+    sync_type: "initial", queue_id: QUEUE_ID, claim_generation: 0,
+  });
+  assertEquals(res.status, 200, await res.clone().text());
+  const body = await res.json();
+  assertEquals([body.continuing, body.follow_up_queued, body.queue_row_handed_off], [true, true, false]);
+  assertEquals(
+    db.rows("sync_queue").map((r) => [r.id, r.status]),
+    [[QUEUE_ID, "completed"], [OTHER_QUEUE_ID, "pending"]],
+    "the NULL-classified sibling is the continuation; only this run's own row completes",
+  );
+});
+
+Deno.test("liftosaur-sync: a failed follow-up insert is never reported as a continuation (#204)", async () => {
+  // A run that owns no queue row can only secure the continuation with an
+  // insert. When that insert fails, nothing is scheduled and no continuation
+  // exists to claim.
+  const db = new FakeDb(tables([]), [syncQueueOneActiveIndex]);
+  const from = db.from.bind(db);
+  db.from = (table: string) => {
+    const query = from(table);
+    if (table === "sync_queue") {
+      query.insert = () => {
+        const failed = {
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve({ data: null, error: { code: "57014", message: "canceling statement" } })
+              .then(resolve),
+        };
+        // deno-lint-ignore no-explicit-any
+        return failed as any;
+      };
+    }
+    return query;
+  };
+  const res = await harness(db, ascendingLiftosaur(2201).fetch)({ sync_type: "initial" });
+  assertEquals(res.status, 502, await res.clone().text());
+  const body = await res.json();
+  assertEquals(body.code, "follow_up_failed");
+  assertEquals([body.success, body.continuing, body.follow_up_queued], [undefined, undefined, undefined]);
+  assertEquals(db.rows("sync_queue").length, 0, "a failed insert schedules nothing");
 });
 
 Deno.test("liftosaur-sync: a truncated history with no clear date order stores what it read and fails without advancing", async () => {

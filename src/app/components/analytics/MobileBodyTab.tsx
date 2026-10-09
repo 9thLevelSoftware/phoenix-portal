@@ -6,6 +6,7 @@ import { BiomechanicsContent } from "@/app/components/Biomechanics";
 import { MuscleRadar } from "@/app/components/charts/MuscleRadar";
 import { RechartsTooltip } from "@/app/components/charts/shared/RechartsTooltip";
 import { Card } from "@/app/components/ui/card";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import type { BodyMuscleFocusModel } from "@/lib/body-muscle-analytics";
 import type { Recommendation } from "@/lib/recommendations";
 import type { MuscleRecovery } from "@/lib/sra-recovery";
@@ -37,7 +38,7 @@ interface MuscleEntry {
 export interface MobileBodyTabProps {
 	muscleGroupData: Array<{ name: string; value: number; color: string }>;
 	muscleRadarData: Record<string, number>;
-	mobileMusclData: MuscleEntry[];
+	mobileMuscleData: MuscleEntry[];
 	/** Null while the lazily loaded body-muscle map is still downloading. */
 	bodyMuscleModel: BodyMuscleFocusModel | null;
 	bodyMuscleMapFailed?: boolean;
@@ -46,19 +47,13 @@ export interface MobileBodyTabProps {
 	totalSessions: number;
 	muscleRecoveries: MuscleRecovery[];
 	recommendations: Recommendation[];
-	exercisesByMuscle: Record<
-		string,
-		Array<{ name: string; sessionCount: number }>
-	>;
-	userId: string;
 	unit: WeightUnit;
-	profileId?: string | null;
 }
 
 export default function MobileBodyTab({
 	muscleGroupData,
 	muscleRadarData,
-	mobileMusclData,
+	mobileMuscleData,
 	bodyMuscleModel,
 	bodyMuscleMapFailed = false,
 	weeklyVolume,
@@ -96,7 +91,7 @@ export default function MobileBodyTab({
 				<ResponsiveContainer width="100%" height={200}>
 					<PieChart>
 						<Pie
-							data={mobileMusclData}
+							data={mobileMuscleData}
 							cx="50%"
 							cy="50%"
 							innerRadius={50}
@@ -110,7 +105,7 @@ export default function MobileBodyTab({
 					</PieChart>
 				</ResponsiveContainer>
 				<div className="flex flex-wrap gap-2 mt-3 justify-center">
-					{mobileMusclData.map((muscle) => (
+					{mobileMuscleData.map((muscle) => (
 						<div key={muscle.name} className="flex items-center gap-1 text-xs">
 							<div
 								className="w-3 h-3 rounded-full"
@@ -129,14 +124,14 @@ export default function MobileBodyTab({
 					<div className="flex overflow-hidden rounded-lg bg-muted/20">
 						<button
 							type="button"
-							className={`px-3 py-1 text-xs ${bodySide === "front" ? "bg-primary text-white" : "text-muted-foreground"}`}
+							className={`px-3 py-1 text-xs ${bodySide === "front" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
 							onClick={() => setBodySide("front")}
 						>
 							Front
 						</button>
 						<button
 							type="button"
-							className={`px-3 py-1 text-xs ${bodySide === "back" ? "bg-primary text-white" : "text-muted-foreground"}`}
+							className={`px-3 py-1 text-xs ${bodySide === "back" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
 							onClick={() => setBodySide("back")}
 						>
 							Back
@@ -183,7 +178,9 @@ export default function MobileBodyTab({
 							onClick={() => setSelectedMuscleId(muscle.muscleId)}
 						>
 							<div className="flex items-center justify-between gap-3">
-								<span className="text-sm text-white">{muscle.muscleName}</span>
+								<span className="text-sm text-foreground">
+									{muscle.muscleName}
+								</span>
 								<span className="text-xs text-primary">
 									{muscle.loadShare}%
 								</span>
@@ -216,11 +213,7 @@ export default function MobileBodyTab({
 			</Card>
 
 			{/* Volume Landmarks */}
-			<Suspense
-				fallback={
-					<div className="h-48 animate-pulse bg-surface-2 rounded-lg" />
-				}
-			>
+			<Suspense fallback={<Skeleton className="h-48 w-full" />}>
 				<VolumeLandmarks
 					weeklyVolume={weeklyVolume}
 					selectedMuscleGroup={null}
@@ -230,11 +223,7 @@ export default function MobileBodyTab({
 			</Suspense>
 
 			{/* SRA Recovery Matrix (self-gates for INFERNO) */}
-			<Suspense
-				fallback={
-					<div className="h-48 animate-pulse bg-surface-2 rounded-lg" />
-				}
-			>
+			<Suspense fallback={<Skeleton className="h-48 w-full" />}>
 				<SraRecoveryMatrix
 					recoveries={muscleRecoveries}
 					recommendations={recommendations}
@@ -242,11 +231,7 @@ export default function MobileBodyTab({
 			</Suspense>
 
 			{/* Recommendations Panel (self-gates for INFERNO) */}
-			<Suspense
-				fallback={
-					<div className="h-24 animate-pulse bg-surface-2 rounded-lg" />
-				}
-			>
+			<Suspense fallback={<Skeleton className="h-24 w-full" />}>
 				<RecommendationsPanel recommendations={recommendations} />
 			</Suspense>
 		</>

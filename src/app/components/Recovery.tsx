@@ -18,6 +18,7 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
+import { Skeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useRecoveryScore } from "@/hooks/useRecoveryScore";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -57,7 +58,7 @@ function FactorBar({
 					<Icon className="w-4 h-4 flex-shrink-0" />
 					<span className="truncate">{label}</span>
 				</div>
-				<span className="text-white font-medium flex-shrink-0">
+				<span className="text-foreground font-medium flex-shrink-0">
 					{displayValue}
 				</span>
 			</div>
@@ -113,7 +114,7 @@ function FreeRecoveryView() {
 				>
 					<h1 className="text-display-2 mb-2 flex items-center gap-3">
 						<HeartPulse className="w-8 h-8 text-primary" />
-						<span className="text-white">Recovery</span>
+						<span className="text-foreground">Recovery</span>
 					</h1>
 					<p className="text-muted-foreground">
 						Track your training recovery and readiness
@@ -128,7 +129,7 @@ function FreeRecoveryView() {
 					<Card className="p-4 sm:p-8 bg-surface-2 border-secondary">
 						<div className="flex items-center gap-3 mb-4 sm:mb-6">
 							<Moon className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
-							<h2 className="text-lg sm:text-xl text-white">
+							<h2 className="text-lg sm:text-xl text-foreground">
 								Rest Days This Week
 							</h2>
 						</div>
@@ -138,7 +139,7 @@ function FreeRecoveryView() {
 								{restDays}
 							</div>
 							<div>
-								<p className="text-sm sm:text-base text-white mb-1">
+								<p className="text-sm sm:text-base text-foreground mb-1">
 									{restDays >= 2
 										? "Your rest day frequency appears adequate"
 										: restDays === 1
@@ -162,14 +163,14 @@ function FreeRecoveryView() {
 					<Card className="p-6 bg-gradient-to-br from-primary/10 to-chart-2/10 border-primary/30">
 						<div className="flex items-center gap-3 mb-3">
 							<TrendingUp className="w-5 h-5 text-primary" />
-							<h3 className="text-white">Unlock Full Recovery Insights</h3>
+							<h3 className="text-foreground">Unlock Full Recovery Insights</h3>
 						</div>
 						<p className="text-sm text-muted-foreground mb-4">
 							Premium subscribers get a detailed readiness score based on
 							training load analysis, including ACWR ratio, volume trends, and
 							wearable data integration.
 						</p>
-						<Button variant="cta" asChild>
+						<Button asChild>
 							<Link to="/pricing">View Plans</Link>
 						</Button>
 					</Card>
@@ -180,9 +181,16 @@ function FreeRecoveryView() {
 }
 
 export function Recovery() {
-	const { isPremium } = useSubscription();
-	const { recovery, wearable, isLoading, isError, daysSinceFirstSession } =
-		useRecoveryScore();
+	const { isEntitled } = useSubscription();
+	const {
+		recovery,
+		wearable,
+		isLoading,
+		isError,
+		daysSinceFirstSession,
+		isWearablePending,
+		isWearableError,
+	} = useRecoveryScore();
 
 	const [showDisclaimer, setShowDisclaimer] = useState(() => {
 		if (typeof window === "undefined") return true;
@@ -190,16 +198,16 @@ export function Recovery() {
 	});
 
 	// FREE tier: simplified view
-	if (!isPremium) return <FreeRecoveryView />;
+	if (!isEntitled) return <FreeRecoveryView />;
 
 	if (isLoading) {
 		return (
 			<div className="min-h-screen pb-20 md:pb-8">
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-					<div className="animate-pulse space-y-6">
-						<div className="h-10 w-64 bg-secondary rounded" />
-						<div className="h-48 bg-secondary rounded-lg" />
-						<div className="h-32 bg-secondary rounded-lg" />
+					<div className="space-y-6">
+						<Skeleton className="h-10 w-64" />
+						<Skeleton className="h-48 w-full" />
+						<Skeleton className="h-32 w-full" />
 					</div>
 				</div>
 			</div>
@@ -213,7 +221,7 @@ export function Recovery() {
 				<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 					<Card className="p-6 sm:p-8 bg-surface-2 border-secondary text-center">
 						<HeartPulse className="w-10 h-10 text-primary mx-auto mb-4" />
-						<h2 className="text-xl text-white mb-2">
+						<h2 className="text-xl text-foreground mb-2">
 							Couldn't load recovery data
 						</h2>
 						<p className="text-sm text-muted-foreground mb-6">
@@ -243,7 +251,7 @@ export function Recovery() {
 					>
 						<h1 className="text-display-2 mb-2 flex items-center gap-3">
 							<HeartPulse className="w-8 h-8 text-primary" />
-							<span className="text-white">Recovery Readiness</span>
+							<span className="text-foreground">Recovery Readiness</span>
 						</h1>
 					</FeatureHint>
 					<p className="text-muted-foreground">
@@ -262,7 +270,7 @@ export function Recovery() {
 							<div className="flex items-start gap-2 sm:gap-3">
 								<Info className="w-5 h-5 text-accent mt-0.5 flex-shrink-0" />
 								<div className="flex-1">
-									<p className="text-sm text-white mb-2">
+									<p className="text-sm text-foreground mb-2">
 										Data Source Transparency
 									</p>
 									<p className="text-xs text-muted-foreground">
@@ -275,7 +283,7 @@ export function Recovery() {
 								<Button
 									variant="ghost"
 									size="sm"
-									className="text-muted-foreground hover:text-white"
+									className="text-muted-foreground hover:text-foreground"
 									onClick={() => {
 										localStorage.setItem(DISCLAIMER_KEY, "dismissed");
 										setShowDisclaimer(false);
@@ -298,7 +306,7 @@ export function Recovery() {
 						<Card className="p-4 sm:p-8 bg-surface-2 border-secondary">
 							<div className="flex flex-col items-center text-center">
 								<AlertTriangle className="w-10 h-10 sm:w-12 sm:h-12 text-accent mb-3 sm:mb-4" />
-								<h2 className="text-lg sm:text-xl text-white mb-2 sm:mb-3">
+								<h2 className="text-lg sm:text-xl text-foreground mb-2 sm:mb-3">
 									Building Your Recovery Baseline
 								</h2>
 								<p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6 max-w-md">
@@ -382,7 +390,7 @@ export function Recovery() {
 							className="mb-6"
 						>
 							<Card className="p-4 sm:p-6 bg-surface-2 border-secondary">
-								<h2 className="text-lg sm:text-xl text-white mb-4 sm:mb-6 flex items-center gap-2">
+								<h2 className="text-lg sm:text-xl text-foreground mb-4 sm:mb-6 flex items-center gap-2">
 									<Activity className="w-5 h-5 text-primary" />
 									Contributing Factors
 								</h2>
@@ -460,7 +468,7 @@ export function Recovery() {
 												<Calendar className="w-4 h-4" />
 												<span>Cycle Position</span>
 											</div>
-											<span className="text-white font-medium">
+											<span className="text-foreground font-medium">
 												{recovery.factors.cyclePosition ??
 													"No active training cycle"}
 											</span>
@@ -477,12 +485,21 @@ export function Recovery() {
 							transition={{ delay: 0.3 }}
 						>
 							<Card className="p-4 sm:p-6 bg-surface-2 border-secondary">
-								<h2 className="text-lg sm:text-xl text-white mb-3 sm:mb-4 flex items-center gap-2">
+								<h2 className="text-lg sm:text-xl text-foreground mb-3 sm:mb-4 flex items-center gap-2">
 									<Link2 className="w-5 h-5 text-primary" />
 									Wearable Recovery Data
 								</h2>
 
-								{wearable && wearable.length > 0 ? (
+								{isWearablePending ? (
+									<Skeleton className="h-24 w-full" />
+								) : isWearableError ? (
+									<div className="flex flex-col items-center justify-center py-6 text-center">
+										<Link2 className="w-8 h-8 text-secondary mb-2" />
+										<p className="text-sm text-muted-foreground">
+											Couldn't load wearable data
+										</p>
+									</div>
+								) : wearable && wearable.length > 0 ? (
 									<div className="space-y-3">
 										{wearable.map((w) => {
 											const rawData =
@@ -514,7 +531,7 @@ export function Recovery() {
 																	<p className="text-muted-foreground text-xs">
 																		Recovery
 																	</p>
-																	<p className="text-white">
+																	<p className="text-foreground">
 																		{String(rawData.recovery_score)}
 																	</p>
 																</div>
@@ -524,7 +541,7 @@ export function Recovery() {
 																	<p className="text-muted-foreground text-xs">
 																		HRV
 																	</p>
-																	<p className="text-white">
+																	<p className="text-foreground">
 																		{String(rawData.hrv)} ms
 																	</p>
 																</div>
@@ -534,7 +551,7 @@ export function Recovery() {
 																	<p className="text-muted-foreground text-xs">
 																		Sleep
 																	</p>
-																	<p className="text-white">
+																	<p className="text-foreground">
 																		{String(rawData.sleep_score)}
 																	</p>
 																</div>

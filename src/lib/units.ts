@@ -103,20 +103,6 @@ export function convertWeightFromUnit(
 	return convertWeight(sourceValue, toUnit);
 }
 
-export function formatWeightMetric(
-	valueKg: number | null | undefined,
-	unit: WeightUnit,
-): string {
-	return formatWeight(valueKg, unit);
-}
-
-export function formatVolumeMetric(
-	valueKg: number | null | undefined,
-	unit: WeightUnit,
-): string {
-	return formatVolume(valueKg, unit);
-}
-
 export function formatLeaderboardValue(
 	valueKg: number,
 	metric: string,

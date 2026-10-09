@@ -10,6 +10,7 @@ import { motion } from "motion/react";
 import { Badge } from "@/app/components/ui/badge";
 import { Card } from "@/app/components/ui/card";
 import { PHOENIX } from "@/lib/colors";
+import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import type { CommunityFeedItem, SharedRoutine } from "@/schemas/community";
 import { ContentActionMenu } from "./ContentActionMenu";
 
@@ -36,6 +37,8 @@ export function CommunityFeedCard({
 	currentUserId,
 	contentType = "routine",
 }: CommunityFeedCardProps) {
+	// Colours below come from the theme helpers; re-read them on a switch.
+	useRerenderOnThemeChange();
 	const isDeletedUser = item.user_id === null;
 	const authorName = isDeletedUser
 		? "[Deleted User]"
@@ -51,7 +54,7 @@ export function CommunityFeedCard({
 				{/* Header: Author + Actions */}
 				<div className="flex items-start justify-between mb-3">
 					<div className="flex items-center gap-2 min-w-0">
-						<div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-white text-xs shrink-0">
+						<div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs shrink-0">
 							{authorName.charAt(0).toUpperCase()}
 						</div>
 						<button
@@ -91,7 +94,7 @@ export function CommunityFeedCard({
 						>
 							<ArrowBigUp
 								className="w-5 h-5"
-								fill={isVoted ? PHOENIX.ember : "none"}
+								fill={isVoted ? PHOENIX().ember : "none"}
 							/>
 							<span className="text-sm font-medium">{item.vote_count}</span>
 						</button>
@@ -99,7 +102,7 @@ export function CommunityFeedCard({
 				</div>
 
 				{/* Title */}
-				<h3 className="text-white font-semibold mb-2 line-clamp-2">
+				<h3 className="text-foreground font-semibold mb-2 line-clamp-2">
 					{item.name}
 				</h3>
 

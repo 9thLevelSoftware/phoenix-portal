@@ -13,10 +13,14 @@ interface UseRecoveryScoreResult {
 	recovery: RecoveryResult | null;
 	wearable: WearableRecoveryRow[] | null;
 	isLoading: boolean;
-	/** True if any query feeding the recovery score failed. */
+	/** True if a query that feeds the readiness score failed. */
 	isError: boolean;
 	error: Error | null;
 	daysSinceFirstSession: number;
+	/** Wearable query has not settled. Independent of the readiness score. */
+	isWearablePending: boolean;
+	/** Wearable query failed. Independent of the readiness score. */
+	isWearableError: boolean;
 }
 
 export function useRecoveryScore(): UseRecoveryScoreResult {
@@ -33,7 +37,6 @@ export function useRecoveryScore(): UseRecoveryScoreResult {
 		data: wearable,
 		isPending: wearableLoading,
 		isError: wearableError,
-		error: wearableErr,
 	} = useQuery(wearableRecoveryOptions(userId));
 	const {
 		data: activeCycle,
@@ -74,16 +77,18 @@ export function useRecoveryScore(): UseRecoveryScoreResult {
 		return { recovery, daysSinceFirstSession };
 	}, [sessions, activeCycle]);
 
-	const firstError = sessionsErr ?? cycleErr ?? wearableErr ?? null;
+	const firstError = sessionsErr ?? cycleErr ?? null;
 
 	return {
 		recovery: result.recovery,
 		wearable: wearable ?? null,
-		// Wait for every input that affects the final score to resolve before
-		// presenting it, so the displayed score isn't incomplete then revised.
-		isLoading: sessionsLoading || cycleLoading || wearableLoading,
-		isError: sessionsError || cycleError || wearableError,
+		// Sessions and the active cycle are the only inputs to the score.
+		// Wearable data is rendered on its own and must not gate or fail it.
+		isLoading: sessionsLoading || cycleLoading,
+		isError: sessionsError || cycleError,
 		error: firstError instanceof Error ? firstError : null,
 		daysSinceFirstSession: result.daysSinceFirstSession,
+		isWearablePending: wearableLoading,
+		isWearableError: wearableError,
 	};
 }

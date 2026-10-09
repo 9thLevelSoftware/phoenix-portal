@@ -63,7 +63,6 @@ interface SubscriptionData {
 	error: Error | null;
 	/** Refetch billing status. Use this for retry UI — never treat isError as FREE. */
 	refetch: () => Promise<unknown>;
-	isPremium: boolean;
 	isFlame: boolean;
 	isInferno: boolean;
 }
@@ -293,7 +292,6 @@ export function useSubscription(): SubscriptionData {
 		isError: billingUnavailable,
 		error: error instanceof Error ? error : null,
 		refetch,
-		isPremium: isEntitled,
 		isFlame: !billingUnavailable && (tier === "FLAME" || tier === "INFERNO"),
 		isInferno: !billingUnavailable && tier === "INFERNO",
 	};

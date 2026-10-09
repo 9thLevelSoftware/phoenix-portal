@@ -61,5 +61,11 @@ test-results/
 stats.html
 *.tsbuildinfo
 
+# BrightSync/iCloud-style sync duplicates — keep worktree clean
+**/* 2.tsx
+**/* 2.ts
+**/* 3.tsx
+**/* 3.ts
+
 # Open-catalogue fetch cache (images + upstream JSON)
 supabase/seed-data/.cache/

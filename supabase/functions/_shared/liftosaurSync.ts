@@ -452,7 +452,22 @@ export function resolveLiftosaurTruncation(
         message,
         resumeAt,
         retryReadsFurther,
-        columns: { last_sync_at: resumeAt, status: 'connected', error_message: message },
+        // The watermark here is the provider window watermark (not
+        // `client_updated_at`, not the server pull cursor) and it IS the
+        // resume point: `nextWatermark()` withholds it on `initial`, which
+        // would leave a follow-up nothing to read. Clearing the chain columns
+        // in the same write keeps a queued continuation from planning
+        // `inBackfill` against a stale window and completing past the unread
+        // ascending tail. The descending `continue` outcome keeps its chain
+        // columns instead; only the resume save nulls them.
+        columns: {
+          last_sync_at: resumeAt,
+          backfill_before: null,
+          backfill_after: null,
+          backfill_started_at: null,
+          status: 'connected',
+          error_message: message,
+        },
       };
     }
     cannotResume = 'more records share this window than a single run can read';

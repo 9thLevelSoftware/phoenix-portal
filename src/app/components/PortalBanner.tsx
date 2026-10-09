@@ -30,7 +30,7 @@ export function PortalBanner() {
 							type="button"
 							onClick={() => setDismissed(true)}
 							aria-label="Dismiss banner"
-							className="text-muted-foreground hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded"
+							className="text-muted-foreground hover:text-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded"
 						>
 							<X className="w-4 h-4" aria-hidden="true" />
 						</button>

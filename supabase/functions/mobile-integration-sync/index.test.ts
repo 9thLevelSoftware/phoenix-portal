@@ -192,6 +192,35 @@ function liftosaurApi(records: Array<{ id: number; at: number | null }>): typeof
   }) as typeof fetch;
 }
 
+/**
+ * Liftosaur /history, OLDEST FIRST (not the documented order), honouring
+ * startDate / endDate (exclusive) and cursor. Undated records appear in every
+ * window: they have no date to filter on and must never be re-dated.
+ */
+function ascendingLiftosaurApi(records: Array<{ id: number; at: number | null }>) {
+  const requests: URL[] = [];
+  const fake = ((input: string | URL | Request) => {
+    const url = new URL(String(input));
+    requests.push(url);
+    const end = url.searchParams.get("endDate");
+    const start = url.searchParams.get("startDate");
+    const window = records.filter((r) =>
+      (end === null || r.at === null || r.at < Date.parse(end)) &&
+      (start === null || r.at === null || r.at >= Date.parse(start))
+    );
+    const cursor = Number(url.searchParams.get("cursor") ?? 0);
+    const page = window.slice(cursor, cursor + 200).map((r) => ({
+      id: r.id,
+      text: `${r.at === null ? "" : `${new Date(r.at).toISOString()} / `}program: "P" / duration: 60s`,
+    }));
+    const next = cursor + page.length;
+    return Promise.resolve(Response.json({
+      data: { records: page, hasMore: next < window.length, nextCursor: next },
+    }));
+  }) as typeof fetch;
+  return { fetch: fake, requests };
+}
+
 Deno.test("mobile-integration-sync: a Liftosaur history over one run's budget continues on the next sync, never silently truncated", async () => {
   const db = importDb("liftosaur");
   const newest = Date.parse("2026-09-01T00:00:00.000Z");
@@ -217,6 +246,65 @@ Deno.test("mobile-integration-sync: a Liftosaur history over one run's budget co
   assertEquals(integration.backfill_before, null);
   // external_activities.synced_at is the server's pull cursor (NF-10).
   assert(db.rows("external_activities").every((row) => typeof row.synced_at === "string"));
+});
+
+Deno.test("mobile-integration-sync: an ascending Liftosaur connect reports resumeAt and the next sync completes the union (#204)", async () => {
+  // Connect then sync through the real handler, like the app does: connect is
+  // HTTP 200 with `truncated` + `resumeAt` (a client sync follows; there is no
+  // portal queue row here), and losing the saved resume state must be visible.
+  const db = importDb("liftosaur");
+  const base = Date.parse("2026-01-01T00:00:00.000Z");
+  const day = 24 * 60 * 60 * 1000;
+  // One undated record up front, then 2,201 dated records oldest first.
+  const records = [
+    { id: 1, at: null },
+    ...Array.from({ length: 2201 }, (_, i) => ({ id: i + 2, at: base + i * day })),
+  ];
+  const api = ascendingLiftosaurApi(records);
+  const resumeAt = new Date(base + 1998 * day).toISOString();
+  let clock = NOW_MS;
+  const handler = importHandler(db, api.fetch, () => new Date(clock));
+
+  const first = await silenced(() => handler(post({ provider: "liftosaur", action: "connect", apiKey: "plain-api-key" })));
+  assertEquals(first.status, 200, await first.clone().text());
+  const firstBody = await first.json();
+  assertEquals([firstBody.status, firstBody.truncated, firstBody.continuing], ["connected", true, false]);
+  assertEquals(firstBody.resumeAt, resumeAt);
+  assertEquals(firstBody.activities.length, 2000, "the partial DTO is what this run read");
+  let [integration] = db.rows("user_integrations");
+  assertEquals(integration.last_sync_at, resumeAt, "the resume point must be persisted, not just reported");
+  assertEquals(
+    [integration.backfill_before, integration.backfill_after, integration.backfill_started_at],
+    [null, null, null],
+  );
+  const undatedRow = db.rows("external_activities").find((row) => row.external_id === "liftosaur-1");
+  assert(undatedRow);
+  const undatedStart = undatedRow.started_at as string;
+  assertEquals(undatedStart, new Date(NOW_MS).toISOString());
+
+  // The follow-up is a client `sync` (manual), which reads from the saved
+  // watermark's window and completes the unique union.
+  clock += 3 * 60 * 60 * 1000;
+  const second = await silenced(() => handler(post({ provider: "liftosaur", action: "sync" })));
+  assertEquals(second.status, 200, await second.clone().text());
+  const secondBody = await second.json();
+  assertEquals([secondBody.status, secondBody.truncated], ["synced", undefined]);
+  assertEquals(
+    api.requests.at(-1)!.searchParams.get("startDate"),
+    new Date(Date.parse(resumeAt) - 72 * 60 * 60 * 1000).toISOString(),
+    "the next sync reads from the saved resume point's window",
+  );
+  assertEquals(db.rows("external_activities").length, 2202);
+  [integration] = db.rows("user_integrations");
+  assert(typeof integration.last_sync_at === "string", "the completed read advances the watermark");
+  assert(db.rows("external_activities").every((row) => typeof row.synced_at === "string"));
+
+  // The undated record keeps its stored date in the store and in the DTO.
+  const undatedDto = (secondBody.activities as Array<{ externalId: string; startedAt: string }>)
+    .find((a) => a.externalId === "liftosaur-1");
+  assert(undatedDto);
+  assertEquals(undatedDto.startedAt, undatedStart, "never re-dated to this run's clock");
+  assertEquals(db.rows("external_activities").find((row) => row.external_id === "liftosaur-1")!.started_at, undatedStart);
 });
 
 Deno.test("mobile-integration-sync: an undated Liftosaur record keeps and reports one stored date across syncs", async () => {

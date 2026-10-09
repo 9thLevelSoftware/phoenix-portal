@@ -2,6 +2,7 @@ import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
 import type { SessionSummary } from "@/lib/comparison";
 import { supabase } from "@/lib/supabase";
+import { fetchAllSupabasePages } from "@/lib/supabasePaging";
 import {
 	exerciseSchema,
 	personalRecordListSchema,
@@ -17,7 +18,7 @@ import {
 
 /**
  * Paginated workout session list for a user.
- * Returns Zod-transformed WorkoutSession[] (per-cable weights, dates as Date, duration as minutes).
+ * Returns Zod-transformed WorkoutSession[] (per-cable weights, dates as Date, duration_seconds in seconds).
  */
 export const WORKOUTS_PAGE_SIZE = 50;
 
@@ -34,42 +35,12 @@ export function workoutListOptions(userId: string, profileId?: string | null) {
 				query = query.eq("local_profile_id", profileId);
 			}
 
+			// `id` is the unique tiebreak after started_at so equal timestamps
+			// keep a stable order, matching the infinite list.
 			const { data, error } = await query
 				.order("started_at", { ascending: false })
+				.order("id", { ascending: false })
 				.limit(WORKOUTS_PAGE_SIZE);
-			if (error) throw error;
-			return workoutListSchema.parse(data);
-		},
-	});
-}
-
-/**
- * Fetch the next page of workout sessions, offset by the number already loaded.
- */
-export function workoutListPageOptions(
-	userId: string,
-	offset: number,
-	profileId?: string | null,
-) {
-	return queryOptions({
-		queryKey: [
-			...queryKeys.workouts.list(userId, profileId),
-			"page",
-			offset,
-		] as const,
-		queryFn: async () => {
-			let query = supabase
-				.from("workout_sessions")
-				.select("*")
-				.eq("user_id", userId);
-
-			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
-			}
-
-			const { data, error } = await query
-				.order("started_at", { ascending: false })
-				.range(offset, offset + WORKOUTS_PAGE_SIZE - 1);
 			if (error) throw error;
 			return workoutListSchema.parse(data);
 		},
@@ -96,8 +67,11 @@ export function workoutListInfiniteOptions(
 				query = query.eq("local_profile_id", profileId);
 			}
 
+			// `id` is the unique tiebreak after started_at so equal timestamps
+			// cannot skip or repeat rows across offset pages.
 			const { data, error } = await query
 				.order("started_at", { ascending: false })
+				.order("id", { ascending: false })
 				.range(pageParam, pageParam + WORKOUTS_PAGE_SIZE - 1);
 			if (error) throw error;
 			return workoutListSchema.parse(data);
@@ -108,6 +82,27 @@ export function workoutListInfiniteOptions(
 			return allPages.reduce((total, page) => total + page.length, 0);
 		},
 	});
+}
+
+/**
+ * Every session for the profile "Export Workout History" CSV.
+ *
+ * Pages until a short page so a history longer than PostgREST `max_rows` is
+ * not silently truncated. The dashboard list stays on `workoutListOptions`,
+ * which is capped at `WORKOUTS_PAGE_SIZE`. `id` breaks `started_at` ties so
+ * offset pages neither skip nor repeat a session.
+ */
+export async function fetchWorkoutHistoryForExport(userId: string) {
+	const rows = await fetchAllSupabasePages((from, to) =>
+		supabase
+			.from("workout_sessions")
+			.select("*")
+			.eq("user_id", userId)
+			.order("started_at", { ascending: false })
+			.order("id")
+			.range(from, to),
+	);
+	return workoutListSchema.parse(rows);
 }
 
 /**
@@ -209,6 +204,20 @@ type RawSessionTree = {
 	})[];
 };
 
+/** Session detail: session row plus nested exercises and sets. */
+const SESSION_DETAIL_EMBED = "*, exercises(*, sets(*))" as const;
+
+/**
+ * Comparison: the same tree, plus the rep-summary columns the velocity
+ * average needs. Whitespace matches the request the existing tests pin.
+ */
+const SESSION_COMPARISON_EMBED =
+	"*, exercises(*, sets(*, rep_summaries(set_id, mean_velocity_mps)))" as const;
+
+type SessionEmbedSelect =
+	| typeof SESSION_DETAIL_EMBED
+	| typeof SESSION_COMPARISON_EMBED;
+
 /**
  * Split an embedded `workout_sessions -> exercises -> sets` row into flat
  * raw arrays so each level can be parsed with its existing Zod schema.
@@ -222,6 +231,33 @@ function flattenSessionTree(row: unknown) {
 }
 
 /**
+ * One embedded read of a workout session. Session detail and comparison
+ * share the filter, the exercise/set ordering, and the per-level Zod parse.
+ * The select string is the only difference between the two callers.
+ */
+async function loadSessionEmbed(sessionId: string, select: SessionEmbedSelect) {
+	const { data: session, error } = await supabase
+		.from("workout_sessions")
+		.select(select)
+		.eq("id", sessionId)
+		.order("order_index", { ascending: true, referencedTable: "exercises" })
+		.order("set_number", {
+			ascending: true,
+			referencedTable: "exercises.sets",
+		})
+		.single();
+	if (error) throw error;
+
+	const { exercises, sets, reps } = flattenSessionTree(session);
+	return {
+		session: workoutSessionSchema.parse(session),
+		exercises: z.array(exerciseSchema).parse(exercises),
+		sets: z.array(setSchema).parse(sets),
+		reps,
+	};
+}
+
+/**
  * Full session detail with exercises and sets.
  * Fetches the session, its exercises and their sets in one embedded select,
  * then parses each level with Zod and assembles the nested structure.
@@ -230,34 +266,19 @@ export function sessionDetailOptions(userId: string, sessionId: string) {
 	return queryOptions({
 		queryKey: queryKeys.workouts.detail(userId, sessionId),
 		queryFn: async () => {
-			const { data: session, error } = await supabase
-				.from("workout_sessions")
-				.select("*, exercises(*, sets(*))")
-				.eq("id", sessionId)
-				.order("order_index", { ascending: true, referencedTable: "exercises" })
-				.order("set_number", {
-					ascending: true,
-					referencedTable: "exercises.sets",
-				})
-				.single();
-			if (error) throw error;
+			const { session, exercises, sets } = await loadSessionEmbed(
+				sessionId,
+				SESSION_DETAIL_EMBED,
+			);
 
-			const { exercises, sets } = flattenSessionTree(session);
-
-			// Parse with Zod and assemble
-			const parsedSession = workoutSessionSchema.parse(session);
-			const parsedExercises = z.array(exerciseSchema).parse(exercises);
-			const parsedSets = z.array(setSchema).parse(sets);
-
-			// Group sets by exercise
-			const exercisesWithSets = parsedExercises.map((exercise) => ({
+			const exercisesWithSets = exercises.map((exercise) => ({
 				...exercise,
-				sets: parsedSets.filter((s) => s.exercise_id === exercise.id),
-				hasPR: parsedSets.some((s) => s.exercise_id === exercise.id && s.is_pr),
+				sets: sets.filter((s) => s.exercise_id === exercise.id),
+				hasPR: sets.some((s) => s.exercise_id === exercise.id && s.is_pr),
 			}));
 
 			return {
-				...parsedSession,
+				...session,
 				exercises: exercisesWithSets,
 			};
 		},
@@ -273,31 +294,13 @@ export function comparisonDetailOptions(userId: string, sessionId: string) {
 	return queryOptions({
 		queryKey: queryKeys.workouts.comparison(userId, sessionId, "detail"),
 		queryFn: async (): Promise<SessionSummary> => {
-			const { data: session, error } = await supabase
-				.from("workout_sessions")
-				.select(
-					"*, exercises(*, sets(*, rep_summaries(set_id, mean_velocity_mps)))",
-				)
-				.eq("id", sessionId)
-				.order("order_index", { ascending: true, referencedTable: "exercises" })
-				.order("set_number", {
-					ascending: true,
-					referencedTable: "exercises.sets",
-				})
-				.single();
-			if (error) throw error;
-
-			const { exercises, sets, reps } = flattenSessionTree(session);
-
-			// Parse with Zod
-			const parsedSession = workoutSessionSchema.parse(session);
-			const parsedExercises = z.array(exerciseSchema).parse(exercises);
-			const parsedSets = z.array(setSchema).parse(sets);
+			const { session, exercises, sets, reps } = await loadSessionEmbed(
+				sessionId,
+				SESSION_COMPARISON_EMBED,
+			);
 
 			// Build set-to-exercise mapping
-			const setToExercise = new Map(
-				parsedSets.map((s) => [s.id, s.exercise_id]),
-			);
+			const setToExercise = new Map(sets.map((s) => [s.id, s.exercise_id]));
 
 			// Compute per-exercise avg velocity from rep summaries
 			const velocityByExercise = new Map<string, number[]>();
@@ -310,8 +313,8 @@ export function comparisonDetailOptions(userId: string, sessionId: string) {
 			}
 
 			// Build exercise summaries
-			const exerciseSummaries = parsedExercises.map((exercise) => {
-				const exSets = parsedSets.filter((s) => s.exercise_id === exercise.id);
+			const exerciseSummaries = exercises.map((exercise) => {
+				const exSets = sets.filter((s) => s.exercise_id === exercise.id);
 				const volume = exSets.reduce(
 					(sum, s) => sum + s.weight_kg * s.actual_reps,
 					0,
@@ -336,14 +339,14 @@ export function comparisonDetailOptions(userId: string, sessionId: string) {
 			});
 
 			return {
-				id: parsedSession.id,
-				name: parsedSession.name,
-				startedAt: parsedSession.started_at,
-				totalVolume: parsedSession.total_volume,
-				duration: Math.round(parsedSession.duration_seconds / 60),
-				exerciseCount: parsedSession.exercise_count,
-				setCount: parsedSession.set_count,
-				prCount: parsedSession.pr_count,
+				id: session.id,
+				name: session.name,
+				startedAt: session.started_at,
+				totalVolume: session.total_volume,
+				duration: Math.round(session.duration_seconds / 60),
+				exerciseCount: session.exercise_count,
+				setCount: session.set_count,
+				prCount: session.pr_count,
 				exercises: exerciseSummaries,
 			};
 		},

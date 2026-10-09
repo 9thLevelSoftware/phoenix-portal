@@ -19,16 +19,8 @@
       "src/app/components/CycleBuilder.tsx": {
         "TS2345": 3
       },
-      "src/app/components/ErrorFallback.tsx": {
-        "TS18046": 1,
-        "TS2345": 2
-      },
       "src/app/components/RoutineBuilder.tsx": {
         "TS2345": 1
-      },
-      "src/app/components/SummaryReport.tsx": {
-        "TS2339": 1,
-        "TS2769": 1
       },
       "src/app/components/TrainingCycles.tsx": {
         "TS2345": 1
@@ -55,23 +47,11 @@
       "src/app/components/community/CommunityDetailDrawer.tsx": {
         "TS2322": 1
       },
-      "src/app/components/integrations/SyncStatus.tsx": {
-        "TS2538": 1
-      },
       "src/app/components/session-replay/ReplayPhaseAnalyticsPanel.tsx": {
         "TS2322": 1
       },
-      "src/app/hooks/useButtonSuccess.ts": {
-        "TS2554": 1
-      },
-      "src/hooks/useNotificationSync.ts": {
-        "TS2345": 4
-      },
       "src/lib/community-atlas.ts": {
         "TS2538": 1
-      },
-      "src/main.tsx": {
-        "TS2322": 1
       },
       "src/queries/community.ts": {
         "TS2590": 2
@@ -84,6 +64,7 @@
         "TS2554": 1
       }
     },
+    "e2e": {},
     "node": {},
     "test": {
       "src/app/components/Analytics.tsx": {
@@ -93,16 +74,8 @@
       "src/app/components/CycleBuilder.tsx": {
         "TS2345": 3
       },
-      "src/app/components/ErrorFallback.tsx": {
-        "TS18046": 1,
-        "TS2345": 2
-      },
       "src/app/components/RoutineBuilder.tsx": {
         "TS2345": 1
-      },
-      "src/app/components/SummaryReport.tsx": {
-        "TS2339": 1,
-        "TS2769": 1
       },
       "src/app/components/TrainingCycles.tsx": {
         "TS2345": 1
@@ -129,20 +102,11 @@
       "src/app/components/community/CommunityDetailDrawer.tsx": {
         "TS2322": 1
       },
-      "src/app/components/integrations/SyncStatus.tsx": {
-        "TS2538": 1
-      },
       "src/app/components/session-replay/ReplayPhaseAnalyticsPanel.tsx": {
         "TS2322": 1
       },
-      "src/app/hooks/useButtonSuccess.ts": {
-        "TS2554": 1
-      },
       "src/hooks/__tests__/useRealtimeSync.test.tsx": {
         "TS2493": 1
-      },
-      "src/hooks/useNotificationSync.ts": {
-        "TS2345": 4
       },
       "src/lib/__tests__/node-localstorage-options.test.ts": {
         "TS7016": 1
@@ -165,9 +129,6 @@
       },
       "src/lib/export/csv.test.ts": {
         "TS2741": 1
-      },
-      "src/main.tsx": {
-        "TS2322": 1
       },
       "src/mutations/__tests__/cycles.test.tsx": {
         "TS2339": 2
