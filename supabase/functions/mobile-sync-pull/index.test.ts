@@ -1570,8 +1570,8 @@ Deno.test("tombstones: real lastSync without known ids gets tombstones since las
   assertEquals(response.status, 200);
   assertEquals(body.deletedRoutineIds, [TOMB_ROUTINE_B]);
   assertEquals(body.deletedCycleIds, []);
-  // Looks back 2 minutes past lastSync to absorb device/server clock skew.
-  const since = new Date(lastSync - 2 * 60 * 1000).toISOString();
+  // Same commit-time overlap as every other lastSync filter.
+  const since = new Date(lastSync - STALE_OVERLAP_MS).toISOString();
   assertEquals(tombstoneCalls(harness), [{
     p_user_id: VALID_USER_ID,
     p_entity: "routine",
