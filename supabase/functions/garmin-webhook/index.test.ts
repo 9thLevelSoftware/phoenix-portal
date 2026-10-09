@@ -124,6 +124,56 @@ Deno.test("garmin-webhook: an unentitled user's activity is not stored", async (
   assertEquals(state.rows("external_activities"), []);
 });
 
+Deno.test("garmin-webhook: a subscription lookup outage is retryable; a 402 denial still acks 200", async () => {
+  const denied = db("FREE");
+  const deniedRes = await silenced(async () =>
+    handler(denied)(await signed(JSON.stringify({ activities: [activity()] })))
+  );
+  assertEquals(deniedRes.status, 200);
+  assertEquals(await deniedRes.json(), { received: true, processed: 0, errors: 1 });
+  assertEquals(denied.rows("external_activities"), []);
+
+  const outage = db();
+  const outageHandler = createGarminWebhookHandler({
+    env: (key) => (key === "GARMIN_WEBHOOK_SECRET" ? SECRET : undefined),
+    // deno-lint-ignore no-explicit-any
+    createAdminClient: () => {
+      const client = fakeClient(outage, null, () => new Date());
+      return {
+        from(table: string) {
+          if (table !== "subscriptions") return client.from(table);
+          const failed = {
+            select() {
+              return failed;
+            },
+            eq() {
+              return failed;
+            },
+            maybeSingle() {
+              return Promise.resolve({
+                data: null,
+                error: { message: "connection refused", code: "08006" },
+              });
+            },
+          };
+          return failed;
+        },
+      } as any;
+    },
+  });
+  const outageRes = await silenced(async () =>
+    outageHandler(await signed(JSON.stringify({ activities: [activity()] })))
+  );
+  assertEquals(outageRes.status, 503);
+  assertEquals(await outageRes.json(), {
+    received: true,
+    processed: 0,
+    errors: 1,
+    error: "Transient failure — please retry",
+  });
+  assertEquals(outage.rows("external_activities"), []);
+});
+
 Deno.test("garmin-webhook: an unparseable signed body is a 500 with a stable code, not the parser's message", async () => {
   const res = await silenced(async () => handler(db())(await signed("{not json")));
   assertEquals(res.status, 500);

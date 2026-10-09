@@ -315,9 +315,13 @@ async function garminWebhook(
           }
         }
 
-        // Subscription gate — FLAME or higher for integrations
+        // Subscription gate — FLAME or higher for integrations.
+        // A lookup outage is a 503 from requireSubscription. Acking that with
+        // 200 drops the activity: Garmin will not redeliver. A 402 (no
+        // subscription) stays a non-retryable 200 ack.
         const gate = await requireSubscription(supabase, identity.userId, 'FLAME', cors);
         if (!gate.allowed) {
+          if (gate.response.status === 503) persistenceFailure = true;
           console.warn(`[GARMIN_WEBHOOK] user ${identity.userId} does not have FLAME subscription`);
           errors++;
           continue;
