@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ReplayIntelligence } from "@/lib/replay-intelligence";
-import { renderForceCurve } from "@/lib/replay-renderer";
+import { renderForceCurve, renderVelocityBars } from "@/lib/replay-renderer";
 import type { TelemetryPointRow } from "@/schemas/telemetry";
 
 function createRecordingContext() {
@@ -102,5 +102,24 @@ describe("renderForceCurve", () => {
 
 		expect(fillRects[1]).toEqual([50, 20, 130, 60]);
 		expect(arcs[0]?.[0]).toBe(180);
+	});
+});
+
+describe("renderVelocityBars", () => {
+	it("does not draw a measured zero-velocity curve for force-only rows", () => {
+		const { context } = createRecordingContext();
+		renderVelocityBars(context, {
+			width: 200,
+			height: 120,
+			data: data.map((point) => ({
+				...point,
+				velocity_mps: null,
+				position_mm: null,
+			})),
+			currentTimeMs: 1000,
+			repBoundaries: [],
+		});
+		expect(context.lineTo).not.toHaveBeenCalled();
+		expect(context.stroke).not.toHaveBeenCalled();
 	});
 });

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { CommunityFeedCard } from "@/app/components/community/CommunityFeedCard";
+import { ProfileAvatarImage } from "@/app/components/profile/ProfileAvatarImage";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -20,11 +21,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/app/components/ui/alert-dialog";
-import {
-	Avatar,
-	AvatarFallback,
-	AvatarImage,
-} from "@/app/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
@@ -160,7 +157,11 @@ export function CreatorProfile({
 					<div className="flex items-center gap-4">
 						<Avatar className="w-16 h-16">
 							{stats.avatar_url && (
-								<AvatarImage src={stats.avatar_url} alt={stats.display_name} />
+								<ProfileAvatarImage
+									source={stats.avatar_url}
+									ownerId={stats.user_id}
+									alt={stats.display_name}
+								/>
 							)}
 							<AvatarFallback className="bg-primary text-primary-foreground text-lg">
 								{getInitials(stats.display_name)}
