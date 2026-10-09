@@ -4,6 +4,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
 import { AuthProvider, useAuth } from "@/providers/AuthProvider";
+import { queryKeys } from "@/queries/keys";
 
 function wrap(ui: ReactNode) {
 	const qc = new QueryClient({
@@ -52,6 +53,131 @@ function TestComponent() {
 describe("AuthProvider", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+	});
+
+	it.each([
+		"SIGNED_IN",
+		"PASSWORD_RECOVERY",
+		"USER_UPDATED",
+		"INITIAL_SESSION",
+	])("evicts old principal data before replacement renders for %s", async (event) => {
+		const qc = new QueryClient();
+		let callback: (event: string, session: Session | null) => void = () => {};
+		const sessionFor = (id: string) =>
+			({ user: { id }, access_token: id }) as Session;
+		mockSupabase.auth.getSession.mockResolvedValue({
+			data: { session: sessionFor("account-a") },
+		});
+		mockSupabase.auth.onAuthStateChange.mockImplementation((fn) => {
+			callback = fn;
+			return { data: { subscription: { unsubscribe: vi.fn() } } };
+		});
+		const detailKey = queryKeys.workouts.detail("account-a", "session-1");
+		const replayKey = queryKeys.replay.telemetry("account-a", "set-1");
+		function CacheConsumer() {
+			const { user } = useAuth();
+			if (user?.id === "account-b") {
+				expect(qc.getQueryData(detailKey)).toBeUndefined();
+				expect(qc.getQueryData(replayKey)).toBeUndefined();
+			}
+			return <div data-testid="principal">{user?.id}</div>;
+		}
+		render(
+			<QueryClientProvider client={qc}>
+				<AuthProvider>
+					<CacheConsumer />
+				</AuthProvider>
+			</QueryClientProvider>,
+		);
+		await waitFor(() =>
+			expect(screen.getByTestId("principal")).toHaveTextContent("account-a"),
+		);
+		qc.setQueryData(detailKey, { private: "workout" });
+		qc.setQueryData(replayKey, { private: "telemetry" });
+		const cancel = vi.spyOn(qc, "cancelQueries");
+		await act(async () => callback(event, sessionFor("account-b")));
+		expect(cancel).toHaveBeenCalledOnce();
+		expect(screen.getByTestId("principal")).toHaveTextContent("account-b");
+	});
+
+	it("preserves cached data when the same principal refreshes its token", async () => {
+		const qc = new QueryClient();
+		let callback: (event: string, session: Session | null) => void = () => {};
+		const initial = {
+			user: { id: "account-a" },
+			access_token: "old",
+		} as Session;
+		mockSupabase.auth.getSession.mockResolvedValue({
+			data: { session: initial },
+		});
+		mockSupabase.auth.onAuthStateChange.mockImplementation((fn) => {
+			callback = fn;
+			return { data: { subscription: { unsubscribe: vi.fn() } } };
+		});
+		render(
+			<QueryClientProvider client={qc}>
+				<AuthProvider>
+					<TestComponent />
+				</AuthProvider>
+			</QueryClientProvider>,
+		);
+		await waitFor(() =>
+			expect(screen.getByTestId("user")).toHaveTextContent("account-a"),
+		);
+		const key = queryKeys.workouts.detail("account-a", "session-1");
+		qc.setQueryData(key, "cached");
+		await act(async () =>
+			callback("TOKEN_REFRESHED", { ...initial, access_token: "new" }),
+		);
+		expect(qc.getQueryData(key)).toBe("cached");
+		expect(screen.getByTestId("session")).toHaveTextContent("new");
+	});
+
+	it("ignores stale hydration and late private query completion after replacement", async () => {
+		const qc = new QueryClient();
+		let callback: (event: string, session: Session | null) => void = () => {};
+		let finishHydration: (value: { data: { session: Session } }) => void =
+			() => {};
+		let finishQuery: (value: string) => void = () => {};
+		mockSupabase.auth.getSession.mockReturnValue(
+			new Promise((resolve) => {
+				finishHydration = resolve;
+			}),
+		);
+		mockSupabase.auth.onAuthStateChange.mockImplementation((fn) => {
+			callback = fn;
+			return { data: { subscription: { unsubscribe: vi.fn() } } };
+		});
+		render(
+			<QueryClientProvider client={qc}>
+				<AuthProvider>
+					<TestComponent />
+				</AuthProvider>
+			</QueryClientProvider>,
+		);
+		const sessionFor = (id: string) =>
+			({ user: { id }, access_token: id }) as Session;
+		await act(async () => callback("SIGNED_IN", sessionFor("account-a")));
+		const key = queryKeys.replay.telemetry("account-a", "set-1");
+		const pending = qc
+			.fetchQuery({
+				queryKey: key,
+				queryFn: () =>
+					new Promise<string>((resolve) => {
+						finishQuery = resolve;
+					}),
+			})
+			.catch(() => undefined);
+		await act(async () =>
+			callback("PASSWORD_RECOVERY", sessionFor("account-b")),
+		);
+		await act(async () => {
+			finishHydration({ data: { session: sessionFor("account-a") } });
+			finishQuery("old private data");
+			await pending;
+		});
+		expect(screen.getByTestId("user")).toHaveTextContent("account-b");
+		expect(qc.getQueryData(key)).toBeUndefined();
 	});
 
 	it("initializes with loading state", async () => {

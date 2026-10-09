@@ -324,6 +324,11 @@ export async function resolveSyncPreviewCredentials(
 	if (direct) {
 		return direct;
 	}
+	if (environment.SYNC_DIRECT_CREDENTIALS_ONLY === "true") {
+		throw new SafeResolverError(
+			"Dedicated staging credentials are required for live sync.",
+		);
+	}
 
 	const productionRef =
 		configuredProductionRef ??

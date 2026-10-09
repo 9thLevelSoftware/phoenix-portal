@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { readBoundedRequestBody, REQUEST_BODY_LIMITS } from '../_shared/requestBody.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
   buildGarminWebhookPersistRow,
@@ -169,10 +170,6 @@ async function garminWebhook(
       );
     }
 
-    // Read raw body text first so we can verify the signature over the exact bytes
-    // Garmin sends before we attempt JSON parsing.
-    const rawBody = await req.text();
-
     // Garmin signs the request body with HMAC-SHA256 using GARMIN_WEBHOOK_SECRET and
     // sends the hex digest in the x-garmin-signature header.
     const providedSignature = req.headers.get('x-garmin-signature');
@@ -183,8 +180,17 @@ async function garminWebhook(
       );
     }
 
-    // Compute expected HMAC-SHA256 of the raw request body keyed with GARMIN_WEBHOOK_SECRET.
-    const expectedSignature = await hmacSha256Hex(WEBHOOK_SECRET, rawBody);
+    const bodyRead = await readBoundedRequestBody(req, REQUEST_BODY_LIMITS.garminWebhook);
+    if (bodyRead.kind !== 'ok') {
+      return new Response(JSON.stringify({ error: bodyRead.kind === 'too_large' ? 'Request body too large' : 'Invalid request body' }), {
+        status: bodyRead.kind === 'too_large' ? 413 : 400,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+    const rawBody = new TextDecoder().decode(bodyRead.bytes);
+
+    // Verify the exact wire bytes, before decoding the payload for JSON parsing.
+    const expectedSignature = await hmacSha256Hex(WEBHOOK_SECRET, bodyRead.bytes);
 
     // Fold a wrong-length header into the same compare. A short or long
     // signature is still rejected; the length is not a separate early return.
@@ -318,6 +324,7 @@ async function garminWebhook(
         // Subscription gate — FLAME or higher for integrations
         const gate = await requireSubscription(supabase, identity.userId, 'FLAME', cors);
         if (!gate.allowed) {
+          if (gate.response.status >= 500) persistenceFailure = true;
           console.warn(`[GARMIN_WEBHOOK] user ${identity.userId} does not have FLAME subscription`);
           errors++;
           continue;

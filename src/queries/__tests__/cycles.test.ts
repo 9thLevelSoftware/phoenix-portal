@@ -161,8 +161,10 @@ describe("cycleDetailOptions", () => {
 
 	it("uses cycles.detail query key", async () => {
 		const { cycleDetailOptions } = await import("../cycles");
-		const opts = cycleDetailOptions("cycle-1");
-		expect(opts.queryKey).toEqual(queryKeys.cycles.detail("cycle-1"));
+		const opts = cycleDetailOptions("test-user-id", "cycle-1");
+		expect(opts.queryKey).toEqual(
+			queryKeys.cycles.detail("test-user-id", "cycle-1"),
+		);
 	});
 
 	it("returns cycle with nested cycle_days", async () => {
@@ -174,7 +176,10 @@ describe("cycleDetailOptions", () => {
 		};
 		chain = buildChain({ data: detailRow, error: null });
 		const { cycleDetailOptions } = await import("../cycles");
-		const opts = cycleDetailOptions("11111111-1111-4111-8111-111111111111");
+		const opts = cycleDetailOptions(
+			"test-user-id",
+			"11111111-1111-4111-8111-111111111111",
+		);
 		const result = await opts.queryFn?.({} as never);
 
 		expect(result.name).toBe("Strength Block");
@@ -195,7 +200,7 @@ describe("cycleDetailOptions", () => {
 			error: null,
 		});
 		const { cycleDetailOptions } = await import("../cycles");
-		const opts = cycleDetailOptions("cycle-1");
+		const opts = cycleDetailOptions("test-user-id", "cycle-1");
 		await expect(opts.queryFn?.({} as never)).rejects.toThrow();
 	});
 
@@ -205,7 +210,7 @@ describe("cycleDetailOptions", () => {
 			error: { message: "not found" },
 		});
 		const { cycleDetailOptions } = await import("../cycles");
-		const opts = cycleDetailOptions("cycle-1");
+		const opts = cycleDetailOptions("test-user-id", "cycle-1");
 		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "not found" }),
 		);
