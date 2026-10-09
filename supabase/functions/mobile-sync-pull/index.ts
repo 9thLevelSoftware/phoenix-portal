@@ -180,9 +180,6 @@ function isParityMode(body: PullRequest): boolean {
 
 // ─── Pagination Configuration ───────────────────────────────────────
 
-/** Look-back applied to since-mode tombstone lookups (client-clock skew). */
-const TOMBSTONE_SINCE_OVERLAP_MS = 2 * 60 * 1000;
-
 const DEFAULT_PAGE_SIZE = 75;
 const MAX_PAGE_SIZE = 300;
 
@@ -1628,9 +1625,9 @@ async function mobileSyncPullHandler(
     //     then. New response keys; older builds ignore them.
     //
     //     Since-mode compares the server clock (deleted_at) with the client's
-    //     lastSync, so it looks back TOMBSTONE_SINCE_OVERLAP_MS further (the
-    //     same 2-minute overlap R-14 / PR 26 applies to the stale arm). A
-    //     delete may be reported twice; deleting locally is idempotent.
+    //     lastSync, so it looks back STALE_OVERLAP_MS further (the same
+    //     2-minute overlap R-14 / PR 26 applies to the stale arm). A delete
+    //     may be reported twice; deleting locally is idempotent.
     //     Residual risk: a device whose clock runs more than the overlap
     //     ahead of the server (or that stores a local time instead of the
     //     server syncTime) can miss a delete in since-mode. Known-ids mode,
@@ -1643,7 +1640,7 @@ async function mobileSyncPullHandler(
     if (cursor === null) {
       const lastSyncMs = body.lastSync ?? 0;
       const tombstonesSinceISO = lastSyncMs > 0
-        ? new Date(Math.max(0, lastSyncMs - TOMBSTONE_SINCE_OVERLAP_MS)).toISOString()
+        ? new Date(Math.max(0, lastSyncMs - STALE_OVERLAP_MS)).toISOString()
         : null;
       const fetchTombstonedIds = async (
         entity: 'routine' | 'cycle',
