@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { ENTITLEMENT_KEEPING_STATUSES } from "../_shared/billingAction.ts";
 import { hmacSha256Hex } from "../_shared/hmac.ts";
+import { signCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
 import {
   createPaddleWebhooksHandler,
   type PaddleWebhooksDbClient,
@@ -29,6 +30,8 @@ const BASE_ENV: Record<string, string> = {
   PADDLE_EMBER_PRICE_IDS: EMBER_PRICE,
   PADDLE_FLAME_PRICE_IDS: "pri_flame_monthly_test",
   PADDLE_INFERNO_PRICE_IDS: "pri_inferno_monthly_test",
+  PADDLE_API_KEY: "pdl_test_key",
+  PADDLE_ENVIRONMENT: "sandbox",
 };
 
 interface StoredRow {
@@ -59,6 +62,8 @@ class FakeDb implements PaddleWebhooksDbClient {
   forceNotApplied = false;
   /** 1-based index of the first rpc call that must fail (null: none). */
   failRpcFrom: number | null = null;
+  bindingAllowed = true;
+  legacyBoundIds = new Set<string>();
 
   constructor(row: StoredRow | null = null) {
     this.row = row;
@@ -92,7 +97,10 @@ class FakeDb implements PaddleWebhooksDbClient {
     };
   }
 
-  rpc(_fn: "apply_subscription_event", args: Record<string, unknown>) {
+  rpc(_fn: "apply_subscription_event" | "bind_paddle_checkout" | "is_paddle_subscription_bound" | "mark_paddle_subscription_terminal", args: Record<string, unknown>) {
+    if (_fn === "mark_paddle_subscription_terminal") return Promise.resolve({ data: true, error: null });
+    if (_fn === "is_paddle_subscription_bound") return Promise.resolve({ data: this.legacyBoundIds.has(String(args.p_subscription_id)), error: null });
+    if (_fn === "bind_paddle_checkout") return Promise.resolve({ data: this.bindingAllowed, error: null });
     this.rpcCalls.push(args);
     if (this.failRpcFrom !== null && this.rpcCalls.length >= this.failRpcFrom) {
       return Promise.resolve({ data: null, error: { message: "deadlock detected" } });
@@ -164,6 +172,14 @@ function makeHandler(
     createAdminClient: () => db,
     now: () => NOW_MS,
     fetch: (input: URL | Request | string, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/transactions/")) {
+        const [subscriptionId, priceId] = decodeURIComponent(url.split("/transactions/")[1]!).slice(4).split("~");
+        return checkoutData(subscriptionId!, priceId).then((custom_data) => new Response(JSON.stringify({ data: {
+          id: custom_data.cd_transaction_id, subscription_id: subscriptionId, customer_id: "ctm_01", status: "completed",
+          billed_at: "2026-09-18T11:59:00.000Z", custom_data, items: [{ price: { id: priceId }, quantity: 1 }],
+        } })));
+      }
       paddle.calls?.push({
         url: typeof input === "string" ? input : input.toString(),
         method: init?.method ?? "GET",
@@ -176,6 +192,11 @@ function makeHandler(
   });
 }
 
+function checkoutData(subscriptionId: string, priceId = EMBER_PRICE, owner = USER_ID) {
+  return signCheckoutBinding({ user_id: owner, cd_version: 2, cd_nonce: "11111111-1111-4111-8111-111111111111",
+    cd_transaction_id: `txn_${subscriptionId}~${priceId}`, cd_price_id: priceId, cd_environment: "sandbox", cd_expires_at: "2026-09-18T12:30:00.000Z" }, CUSTOM_DATA_SECRET);
+}
+
 async function subscriptionEvent(overrides: {
   eventId?: string;
   eventType?: string;
@@ -186,9 +207,7 @@ async function subscriptionEvent(overrides: {
   /** `null` omits cd_sig; a string replaces the valid signature. */
   cdSig?: string | null;
 } = {}): Promise<string> {
-  const cdSig = overrides.cdSig === undefined
-    ? await hmacSha256Hex(CUSTOM_DATA_SECRET, USER_ID)
-    : overrides.cdSig;
+  const customData = await checkoutData(overrides.subscriptionId ?? "sub_01", overrides.priceId ?? EMBER_PRICE);
   return JSON.stringify({
     event_id: overrides.eventId ?? "evt_01",
     event_type: overrides.eventType ?? "subscription.updated",
@@ -199,8 +218,8 @@ async function subscriptionEvent(overrides: {
       status: overrides.status ?? "active",
       items: [{ price: { id: overrides.priceId ?? EMBER_PRICE }, quantity: 1 }],
       custom_data: {
-        user_id: USER_ID,
-        ...(cdSig === null ? {} : { cd_sig: cdSig }),
+        ...customData,
+        ...(overrides.cdSig === undefined ? {} : { cd_sig: overrides.cdSig }),
       },
       current_billing_period: {
         starts_at: "2026-09-01T00:00:00.000Z",
@@ -681,10 +700,7 @@ Deno.test("paddle-webhooks: two tabs — A then B active, then A canceled, the r
 
   // A is cancelled. B is still live in Paddle, so the row follows B instead
   // of downgrading the user (R-34).
-  const signedCustomData = {
-    user_id: USER_ID,
-    cd_sig: await hmacSha256Hex(CUSTOM_DATA_SECRET, USER_ID),
-  };
+  const signedCustomData = await checkoutData("sub_b");
   const calls: PaddleCall[] = [];
   const { result: cancelResponse, lines } = await captureConsoleError(async () =>
     await makeHandler(db, {
@@ -800,10 +816,7 @@ Deno.test("paddle-webhooks: a failed adoption leaves the row untouched and the r
     current_period_end: "2026-10-01T00:00:00.000Z",
     cancel_at_period_end: false,
   });
-  const bCustomData = {
-    user_id: USER_ID,
-    cd_sig: await hmacSha256Hex(CUSTOM_DATA_SECRET, USER_ID),
-  };
+  const bCustomData = await checkoutData("sub_b");
   const liveB = () =>
     new Response(
       JSON.stringify({
@@ -921,8 +934,8 @@ Deno.test("paddle-webhooks: an items-less candidate is not adopted at tier FREE"
   assertEquals(db.row?.paddle_subscription_id, "sub_a");
   assertEquals(db.row?.status, "canceled");
   assert(
-    lines.some((line) => line.includes("no usable price ID")),
-    "expected the unusable-price alert",
+    lines.some((line) => line.includes("untracked_subscription_not_adopted")),
+    "expected context-bound adoption to refuse the missing price",
   );
 });
 
@@ -942,11 +955,8 @@ async function liveCandidate(options: {
   const ownerUserId = options.ownerUserId === undefined
     ? USER_ID
     : options.ownerUserId;
-  const cdSig = options.cdSig === undefined
-    ? (ownerUserId === null
-      ? undefined
-      : await hmacSha256Hex(CUSTOM_DATA_SECRET, ownerUserId))
-    : options.cdSig;
+  const data = ownerUserId === null ? null : await checkoutData(options.id ?? "sub_candidate", EMBER_PRICE, ownerUserId);
+  const cdSig = options.cdSig === undefined ? data?.cd_sig : options.cdSig;
   return {
     id: options.id ?? "sub_candidate",
     customer_id: options.customerId ?? "ctm_01",
@@ -960,8 +970,9 @@ async function liveCandidate(options: {
     scheduled_change: null,
     ...(ownerUserId === null && cdSig === undefined ? {} : {
       custom_data: {
+        ...(data ?? {}),
         ...(ownerUserId === null ? {} : { user_id: ownerUserId }),
-        ...(cdSig === null || cdSig === undefined ? {} : { cd_sig: cdSig }),
+        cd_sig: cdSig,
       },
     }),
   };
@@ -1179,7 +1190,7 @@ Deno.test("paddle-webhooks: a valid signature for this user under a DIFFERENT cu
   assert(
     lines.some((line) =>
       line.includes("untracked_subscription_not_adopted") &&
-      line.includes("cd_sig_valid=true")
+      line.includes("cd_sig_valid=false")
     ),
     "the signature half passed, so the user_id half must be what refused it",
   );
@@ -1364,7 +1375,7 @@ Deno.test("paddle-webhooks: a missing PADDLE_API_KEY fails closed rather than do
     "warn",
     async () =>
       await captureConsoleError(async () =>
-        await makeHandler(db)(
+        await makeHandler(db, { PADDLE_API_KEY: "" })(
           await signedRequest(
             await subscriptionEvent({
               eventId: "evt_a_canceled",
@@ -1381,4 +1392,33 @@ Deno.test("paddle-webhooks: a missing PADDLE_API_KEY fails closed rather than do
   assertEquals(response.status, 500);
   assertEquals(db.rpcCalls.length, 0);
   assertEquals(db.row?.status, "active");
+});
+
+Deno.test("paddle-webhooks: a retained timeless identity proof cannot establish a new subscription", async () => {
+  const db = new FakeDb();
+  const calls: PaddleCall[] = [];
+  const response = await makeHandler(db, {}, { calls, listResponse: () => new Response(JSON.stringify({ data: { status: "canceled" } })) })(
+    await signedRequest(await subscriptionEvent({ cdSig: await hmacSha256Hex(CUSTOM_DATA_SECRET, USER_ID) })),
+  );
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).ignored, "unauthorized_checkout");
+  assertEquals(db.row, null);
+  assertEquals(calls.map((call) => call.method), ["POST"]);
+});
+
+Deno.test("paddle-webhooks: a refused atomic binding cancels replay billing without applying entitlement", async () => {
+  const db = new FakeDb();
+  db.bindingAllowed = false;
+  const response = await makeHandler(db, {}, { listResponse: () => new Response(JSON.stringify({ data: { status: "canceled" } })) })(await signedRequest(await subscriptionEvent()));
+  assertEquals(response.status, 200);
+  assertEquals(db.rpcCalls.length, 0);
+});
+
+Deno.test("paddle-webhooks: tracked renewal remains valid with an expired original checkout authorization", async () => {
+  const db = trackedActiveRow("sub_01");
+  const event = JSON.parse(await subscriptionEvent());
+  event.data.custom_data.cd_expires_at = "2020-01-01T00:00:00Z";
+  const response = await makeHandler(db)(await signedRequest(JSON.stringify(event)));
+  assertEquals(response.status, 200);
+  assertEquals(db.rpcCalls.length, 1);
 });
