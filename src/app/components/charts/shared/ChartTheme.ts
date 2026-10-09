@@ -66,7 +66,7 @@ const repColors = memoByTheme((tokens): string[] => [
 	tokens.mutedForeground,
 ]);
 
-export function REP_COLORS(tokens?: ThemeTokens): string[] {
+function REP_COLORS(tokens?: ThemeTokens): string[] {
 	return repColors(tokens);
 }
 

@@ -13,14 +13,14 @@ interface CatalogJoinRow {
 	display_name?: string | null;
 }
 
-export interface PersonalRecordCatalogJoinRow {
+interface PersonalRecordCatalogJoinRow {
 	exercise_name?: string | null;
 	exercise_id?: string | null;
 	session_id?: string | null;
 	catalog?: CatalogJoinRow | CatalogJoinRow[] | null;
 }
 
-export interface SessionExerciseCatalogJoinRow {
+interface SessionExerciseCatalogJoinRow {
 	id?: string | null;
 	session_id?: string | null;
 	name?: string | null;
@@ -50,7 +50,7 @@ function isIdentifierShaped(value: string): boolean {
 	);
 }
 
-export function normalizePersonalRecordCatalogDisplayNames<
+function normalizePersonalRecordCatalogDisplayNames<
 	T extends PersonalRecordCatalogJoinRow,
 >(rows: readonly T[] | null | undefined): T[] {
 	return (rows ?? []).map((row) => {
@@ -74,7 +74,7 @@ export function normalizePersonalRecordCatalogDisplayNames<
 	});
 }
 
-export function sessionIdsNeedingExerciseNameLookup(
+function sessionIdsNeedingExerciseNameLookup(
 	rows: readonly PersonalRecordCatalogJoinRow[] | null | undefined,
 ): string[] {
 	const sessionIds = new Set<string>();
@@ -88,7 +88,7 @@ export function sessionIdsNeedingExerciseNameLookup(
 	return [...sessionIds];
 }
 
-export function normalizePersonalRecordSessionExerciseDisplayNames<
+function normalizePersonalRecordSessionExerciseDisplayNames<
 	T extends PersonalRecordCatalogJoinRow,
 >(
 	rows: readonly T[] | null | undefined,
