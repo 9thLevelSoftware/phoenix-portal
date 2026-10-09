@@ -30,6 +30,7 @@ import {
 	type SessionSummary,
 } from "@/lib/comparison";
 import { formatVolume, type WeightUnit } from "@/lib/units";
+import { useAuth } from "@/providers/AuthProvider";
 import { comparisonDetailOptions } from "@/queries/workouts";
 
 function DeltaIndicator({
@@ -310,6 +311,7 @@ function ExerciseBreakdownMobile({
 }
 
 export function ComparisonView() {
+	const { user } = useAuth();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const navigate = useNavigate();
 	const isMobile = useIsMobile();
@@ -324,16 +326,16 @@ export function ComparisonView() {
 		isPending: pendingA,
 		error: errorA,
 	} = useQuery({
-		...comparisonDetailOptions(sessionAId),
-		enabled: isEntitled && !!sessionAId,
+		...comparisonDetailOptions(user?.id ?? "", sessionAId),
+		enabled: !!user && isEntitled && !!sessionAId,
 	});
 	const {
 		data: summaryB,
 		isPending: pendingB,
 		error: errorB,
 	} = useQuery({
-		...comparisonDetailOptions(sessionBId),
-		enabled: isEntitled && !!sessionBId,
+		...comparisonDetailOptions(user?.id ?? "", sessionBId),
+		enabled: !!user && isEntitled && !!sessionBId,
 	});
 
 	// Tier gate: FREE users see upgrade prompt

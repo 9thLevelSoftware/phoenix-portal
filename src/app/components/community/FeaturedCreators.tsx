@@ -1,11 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-	Avatar,
-	AvatarFallback,
-	AvatarImage,
-} from "@/app/components/ui/avatar";
+import { ProfileAvatarImage } from "@/app/components/profile/ProfileAvatarImage";
+import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { useBlockedUsers } from "@/hooks/useBlockedUsers";
 import { featuredCreatorsOptions } from "@/queries/community";
@@ -117,8 +114,9 @@ export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {
 									<div className="ring-2 ring-primary/50 rounded-full p-0.5 group-hover:ring-primary transition-all">
 										<Avatar className="w-12 h-12">
 											{creator.avatar_url && (
-												<AvatarImage
-													src={creator.avatar_url}
+												<ProfileAvatarImage
+													source={creator.avatar_url}
+													ownerId={creator.user_id}
 													alt={creator.display_name}
 												/>
 											)}
