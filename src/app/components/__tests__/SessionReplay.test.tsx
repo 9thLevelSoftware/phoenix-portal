@@ -375,6 +375,38 @@ describe("SessionReplay", () => {
 		).not.toBeInTheDocument();
 		expect(screen.getByText("Set 1 of 1")).toBeInTheDocument();
 	});
+
+	it("shows an empty state when the loaded session has no sets", async () => {
+		setupSubscription("FLAME");
+		mockDb.session = {
+			id: "test-session-123",
+			started_at: "2026-09-01T10:00:00Z",
+			exercises: [
+				{
+					id: "ex-1",
+					exercise_name: "Barbell Squat",
+					sets: [],
+				},
+			],
+		};
+
+		renderWithProviders(<SessionReplay />);
+
+		expect(
+			await screen.findByText(/no sets recorded for this session/i),
+		).toBeInTheDocument();
+		expect(screen.getByText("Session Replay")).toBeInTheDocument();
+		expect(screen.queryByTestId("replay-canvas")).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/no telemetry data available/i),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/failed to load replay data/i),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/that set is no longer available/i),
+		).not.toBeInTheDocument();
+	});
 });
 
 // ===================================================================
