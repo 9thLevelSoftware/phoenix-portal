@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { readBoundedRequestBody, REQUEST_BODY_LIMITS } from '../_shared/requestBody.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
   isValidLocalProfileId,
@@ -579,11 +580,27 @@ async function mobileSyncPullHandler(
     const userId = verifiedUserId;
 
     // =========================================================================
-    // 2. Strict request parsing before privileged construction
+    // 2. Charge the authenticated principal before buffering or parsing input.
     // =========================================================================
+    const supabase = dependencies.createAdminClient();
+    const rateCheck = await checkRateLimit(supabase, {
+      key: 'mobile-sync-pull',
+      userId,
+      maxRequests: 20,
+      windowSeconds: 60,
+    }, cors);
+    if (!rateCheck.allowed) return rateCheck.response!;
+
+    const bodyRead = await readBoundedRequestBody(req, REQUEST_BODY_LIMITS.mobileSyncPull);
+    if (bodyRead.kind !== 'ok') {
+      return new Response(JSON.stringify({ error: bodyRead.kind === 'too_large' ? 'Request body too large' : 'Invalid sync request' }), {
+        status: bodyRead.kind === 'too_large' ? 413 : 400,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
     let parsedRequest: ParsedPullRequest;
     try {
-      parsedRequest = parseMobileSyncPullRequest(await req.json());
+      parsedRequest = parseMobileSyncPullRequest(JSON.parse(new TextDecoder().decode(bodyRead.bytes)));
     } catch (error) {
       if (error instanceof PullRequestParseFailure) {
         return new Response(JSON.stringify(error.body), {
@@ -607,16 +624,6 @@ async function mobileSyncPullHandler(
     // SECURITY: Using service role key bypasses Row Level Security.
     // ALL queries MUST include .eq('user_id', userId) for user isolation.
     // Review any new query additions for this requirement.
-    const supabase = dependencies.createAdminClient();
-
-    const rateCheck = await checkRateLimit(supabase, {
-      key: 'mobile-sync-pull',
-      userId,
-      maxRequests: 20,
-      windowSeconds: 60,
-    }, cors);
-    if (!rateCheck.allowed) return rateCheck.response!;
-
     const emberGate = await requireSubscription(supabase, userId, 'EMBER', cors);
     if (!emberGate.allowed) return emberGate.response!;
 
@@ -668,7 +675,7 @@ async function mobileSyncPullHandler(
       cursor: body.cursor,
     });
 
-    // Pagination has already been validated before privileged construction.
+    // Pagination has already been validated before data access.
     const startType: EntityType = cursor?.type ?? 'sessions';
     const startTypeIndex = ENTITY_ORDER.indexOf(startType);
 
@@ -934,7 +941,9 @@ async function mobileSyncPullHandler(
                 peakVelocityMps: rs.peak_velocity_mps,
                 meanForceN: rs.mean_force_n,
                 peakForceN: rs.peak_force_n,
-                powerWatts: rs.power_watts,
+                powerWatts: rs.power_method === 'PAIRED_CABLE_WORK_V1' ? rs.power_watts ?? null : null,
+                peakPowerWatts: rs.power_method === 'PAIRED_CABLE_WORK_V1' ? rs.peak_power_watts ?? null : null,
+                powerMethod: rs.power_method ?? 'LEGACY_UNKNOWN_V0',
                 romMm: rs.rom_mm,
                 tutMs: rs.tut_ms,
                 leftForceAvg: rs.left_force_avg,

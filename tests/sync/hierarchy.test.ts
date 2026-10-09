@@ -83,6 +83,7 @@ function createFullHierarchySession(
 					meanForceN: 450 + Math.random() * 50,
 					peakForceN: 600 + Math.random() * 50,
 					powerWatts: 350,
+					powerMethod: "PAIRED_CABLE_WORK_V1",
 					romMm: 800,
 					tutMs: 2500,
 					leftForceAvg: 225,
