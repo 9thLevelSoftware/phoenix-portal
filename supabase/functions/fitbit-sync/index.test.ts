@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { createFitbitSyncHandler } from "./index.ts";
+import { decryptOAuthSecret } from "../_shared/oauthTokenCrypto.ts";
 import { FakeDb, fakeClient, type Row } from "../_shared/testing/fakeSupabase.ts";
 
 // F-053: handler tests for the not-yet-launched Fitbit sync. In-process DB
@@ -47,7 +48,7 @@ interface FakeFitbit {
 /** Fitbit API: `pages` of activity lists (100 per page), then an empty page. */
 function fitbit(
   pages: Row[][],
-  options: { status?: number; tokenStatus?: number; errorBody?: string } = {},
+  options: { status?: number; tokenStatus?: number; errorBody?: string; tokenBody?: Row } = {},
 ): FakeFitbit {
   const calls: FakeFitbit["calls"] = [];
   const errorBody = options.errorBody ?? "nope";
@@ -59,7 +60,7 @@ function fitbit(
       if (options.tokenStatus) {
         return Promise.resolve(new Response(errorBody, { status: options.tokenStatus }));
       }
-      return Promise.resolve(Response.json({
+      return Promise.resolve(Response.json(options.tokenBody ?? {
         access_token: "access-2",
         refresh_token: "refresh-2",
         expires_in: 28_800,
@@ -195,6 +196,30 @@ Deno.test("fitbit-sync: an expiring token is refreshed with Basic client auth an
   assertEquals(api.calls.at(-1)?.auth, "Bearer access-2");
   const [token] = state.rows("oauth_tokens");
   assert(token.access_token !== "access-1" && token.refresh_token !== "refresh-1");
+});
+
+Deno.test("fitbit-sync: a refresh missing expires_in keeps the rotated refresh token and marks token_expired", async () => {
+  const state = db({ tokenExpiresAt: new Date(Date.now() + 60_000).toISOString() });
+  const previousExpiry = state.rows("oauth_tokens")[0].token_expires_at;
+  const api = fitbit([], {
+    tokenBody: { access_token: "access-2", refresh_token: "refresh-2" },
+  });
+  const refresh = await captured(() => handler(state, api)(request({ queue_id: QUEUE_ID })));
+  assertEquals(refresh.result.status, 500);
+  const integration = state.rows("user_integrations")[0];
+  assertEquals(integration.status, "token_expired");
+  assertEquals(integration.error_message, "Token refresh response missing required fields");
+  const [token] = state.rows("oauth_tokens");
+  // Fitbit already rotated the refresh token. Keep that value even though the
+  // rest of the body cannot be stored; leave the previous access token alone.
+  assertEquals(await decryptOAuthSecret(token.refresh_token as string), "refresh-2");
+  assertEquals(await decryptOAuthSecret(token.access_token as string), "access-1");
+  assertEquals(token.token_expires_at, previousExpiry);
+  assertEquals(api.calls.length, 1);
+  assertStringIncludes(refresh.logs, "Fitbit token refresh response missing required fields");
+  assert(!refresh.logs.includes("refresh-2"), refresh.logs);
+  assert(!refresh.logs.includes("access-2"), refresh.logs);
+  assert(!refresh.logs.includes("Invalid time"), refresh.logs);
 });
 
 /** A body Fitbit might return; it must never be written to a log. */
