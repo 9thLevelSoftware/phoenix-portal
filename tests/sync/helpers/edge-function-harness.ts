@@ -212,6 +212,12 @@ export interface RepSummaryDto {
 	meanForceN: number | null;
 	peakForceN: number | null;
 	powerWatts: number | null;
+	peakPowerWatts?: number | null;
+	powerMethod?:
+		| "PAIRED_CABLE_WORK_V1"
+		| "UNAVAILABLE"
+		| "LEGACY_UNKNOWN_V0"
+		| null;
 	romMm: number | null;
 	tutMs: number | null;
 	leftForceAvg: number | null;

@@ -17,6 +17,7 @@ import { calculateRepQualityScore } from "@/lib/rep-quality";
 import { buildReplayIntelligence } from "@/lib/replay-intelligence";
 import { buildReplayPhaseAnalytics } from "@/lib/replay-phase-analytics";
 import { FEATURE_MIN_TIER } from "@/lib/tierMatrix";
+import { useAuth } from "@/providers/AuthProvider";
 import { replaySessionOptions, replayTelemetryOptions } from "@/queries/replay";
 import type { RepSummary, TelemetryPointRow } from "@/schemas/telemetry";
 import { useReplayStore } from "@/stores/useReplayStore";
@@ -38,6 +39,7 @@ import { TimelineBar } from "./TimelineBar";
  * Gated behind FLAME+ subscription tier.
  */
 export function SessionReplay() {
+	const { user } = useAuth();
 	const { sessionId } = useParams<{ sessionId: string }>();
 	const navigate = useNavigate();
 	const isMobile = useIsMobile();
@@ -62,8 +64,8 @@ export function SessionReplay() {
 
 	// Fetch session structure
 	const sessionQuery = useQuery({
-		...replaySessionOptions(sessionId ?? ""),
-		enabled: isFlame && !!sessionId,
+		...replaySessionOptions(user?.id ?? "", sessionId ?? ""),
+		enabled: !!user && isFlame && !!sessionId,
 	});
 
 	// Derive all sets from session exercises
@@ -83,8 +85,8 @@ export function SessionReplay() {
 
 	// Fetch telemetry for current set
 	const telemetryQuery = useQuery({
-		...replayTelemetryOptions(currentSet?.setId ?? ""),
-		enabled: isFlame && !!currentSet?.setId,
+		...replayTelemetryOptions(user?.id ?? "", currentSet?.setId ?? ""),
+		enabled: !!user && isFlame && !!currentSet?.setId,
 	});
 
 	// Process telemetry data
@@ -264,6 +266,16 @@ export function SessionReplay() {
 							currentRepIndex={currentRepIndex}
 						/>
 
+						{telemetryData.telemetry.some(
+							(point) =>
+								point.velocity_mps === null || point.position_mm === null,
+						) && (
+							<p className="text-sm text-muted-foreground">
+								Historical kinematics are aggregated or unknown. Known cable
+								forces remain available; unknown velocity and position are not
+								reconstructed.
+							</p>
+						)}
 						{/* Chart type toggle */}
 						<Tabs
 							value={activeChart}

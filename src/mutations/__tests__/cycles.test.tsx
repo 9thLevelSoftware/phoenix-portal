@@ -259,7 +259,7 @@ describe("useUpdateCycle", () => {
 			queryKey: queryKeys.cycles.all,
 		});
 		expect(invalidateSpy).toHaveBeenCalledWith({
-			queryKey: queryKeys.cycles.detail("cycle-1"),
+			queryKey: queryKeys.cycles.detail("test-user-id", "cycle-1"),
 		});
 	});
 
