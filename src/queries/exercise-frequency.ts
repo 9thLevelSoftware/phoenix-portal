@@ -18,7 +18,7 @@ import { queryKeys } from "./keys";
  * query. Each screen projects the cached rows with `select`, so opening the
  * other does not issue a second RPC while the entry is fresh.
  */
-export const exerciseFrequencySchema = z.array(
+const exerciseFrequencySchema = z.array(
 	z.object({
 		exercise_name: z.string().nullable(),
 		muscle_group: z.string().nullable(),
@@ -26,7 +26,7 @@ export const exerciseFrequencySchema = z.array(
 	}),
 );
 
-export type ExerciseFrequency = z.infer<typeof exerciseFrequencySchema>;
+type ExerciseFrequency = z.infer<typeof exerciseFrequencySchema>;
 
 export function exerciseFrequencyOptions(
 	userId: string,

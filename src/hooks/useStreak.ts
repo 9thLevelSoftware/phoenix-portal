@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { WorkoutSession } from "@/schemas/transforms";
 
 /** UTC calendar key matching SQL `(started_at AT TIME ZONE 'UTC')::date`. */
-export function utcDateKey(date: Date): string {
+function utcDateKey(date: Date): string {
 	return `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
 }
 
