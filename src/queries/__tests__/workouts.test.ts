@@ -105,6 +105,14 @@ describe("workoutListOptions", () => {
 		expect(result).toEqual([]);
 	});
 
+	it("returns an empty list when Supabase returns null data and no error", async () => {
+		chain = buildChain({ data: null, error: null });
+		const { workoutListOptions } = await import("../workouts");
+		const opts = workoutListOptions("user-abc");
+		const result = await opts.queryFn!({} as never);
+		expect(result).toEqual([]);
+	});
+
 	it("keeps the dashboard list capped at 50 sessions", async () => {
 		chain = buildChain({ data: [], error: null });
 		const { workoutListOptions, WORKOUTS_PAGE_SIZE } = await import(

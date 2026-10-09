@@ -79,7 +79,7 @@ export function goalsOptions(userId: string) {
 				.in("status", ["active", "completed", "archived"])
 				.order("created_at", { ascending: false });
 			if (error) throw error;
-			return goalListSchema.parse(data);
+			return goalListSchema.parse(data ?? []);
 		},
 		enabled: !!userId,
 	});

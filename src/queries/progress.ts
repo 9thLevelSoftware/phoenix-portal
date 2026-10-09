@@ -138,7 +138,7 @@ export function weeklySummaryOptions(
 				.gte("recorded_at", since.toISOString())
 				.order("recorded_at", { ascending: true });
 			if (error) throw error;
-			return z.array(exerciseProgressSchema).parse(data);
+			return z.array(exerciseProgressSchema).parse(data ?? []);
 		},
 	});
 }

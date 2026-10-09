@@ -42,7 +42,7 @@ export function workoutListOptions(userId: string, profileId?: string | null) {
 				.order("id", { ascending: false })
 				.limit(WORKOUTS_PAGE_SIZE);
 			if (error) throw error;
-			return workoutListSchema.parse(data);
+			return workoutListSchema.parse(data ?? []);
 		},
 	});
 }
@@ -74,7 +74,7 @@ export function workoutListInfiniteOptions(
 				.order("id", { ascending: false })
 				.range(pageParam, pageParam + WORKOUTS_PAGE_SIZE - 1);
 			if (error) throw error;
-			return workoutListSchema.parse(data);
+			return workoutListSchema.parse(data ?? []);
 		},
 		initialPageParam: 0,
 		getNextPageParam: (lastPage, allPages) => {

@@ -25,7 +25,7 @@ export function recoverySessionsOptions(userId: string) {
 				.gte("started_at", cutoff.toISOString())
 				.order("started_at", { ascending: false });
 			if (error) throw error;
-			return recoverySessionListSchema.parse(data);
+			return recoverySessionListSchema.parse(data ?? []);
 		},
 		enabled: !!userId,
 	});
