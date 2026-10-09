@@ -283,7 +283,7 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 			<div className="flex flex-col sm:flex-row gap-4 flex-wrap">
 				{/* Session selector */}
 				<Select
-					value={selectedSessionId}
+					value={effectiveSessionId}
 					onValueChange={(id) => {
 						setSelectedSessionId(id);
 						setSelectedExerciseId("");
@@ -310,7 +310,7 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 				{/* Exercise selector */}
 				{exercises.length > 0 && (
 					<Select
-						value={selectedExerciseId}
+						value={effectiveExerciseId}
 						onValueChange={(id) => {
 							setSelectedExerciseId(id);
 							setSelectedSetId("");
