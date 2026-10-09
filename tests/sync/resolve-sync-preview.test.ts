@@ -596,11 +596,11 @@ describe("sync preview credential resolver", () => {
 		expect(workflow.match(/scripts\/resolve-sync-preview\.mjs/g)).toHaveLength(
 			3,
 		);
+		expect(workflow).not.toContain("secrets.SUPABASE_ACCESS_TOKEN");
+		expect(workflow).not.toContain("SYNC_STAGING_SUPABASE_ACCESS_TOKEN");
+		expect(workflow).toContain("SYNC_DIRECT_CREDENTIALS_ONLY: 'true'");
 		expect(workflow).toMatch(
-			/SUPABASE_ACCESS_TOKEN: \$\{\{ secrets\.SUPABASE_ACCESS_TOKEN \}\}/,
-		);
-		expect(workflow).toMatch(
-			/SUPABASE_PROD_PROJECT_REF: \$\{\{ secrets\.SUPABASE_PROD_PROJECT_REF \}\}/,
+			/SUPABASE_PROD_PROJECT_REF: \$\{\{ vars\.SUPABASE_PROD_PROJECT_REF \}\}/,
 		);
 		expect(workflow).toMatch(
 			/STAGING_PROJECT_REF_INPUT: \$\{\{ inputs\.staging_project_ref \}\}/,
@@ -615,5 +615,35 @@ describe("sync preview credential resolver", () => {
 		expect(resolver).toContain("api.phoenix-portal.com");
 		expect(resolver).toContain(".supabase.co");
 		expect(resolver).toContain(".supabase.in");
+	});
+
+	it("rejects Management API fallback in direct-only live mode", async () => {
+		const fetcher = vi.fn();
+		await expect(
+			resolveSyncPreviewCredentials(
+				fallbackEnvironment({
+					SYNC_DIRECT_CREDENTIALS_ONLY: "true",
+				}),
+				{ fetch: fetcher },
+			),
+		).rejects.toThrow("Dedicated staging credentials are required");
+		expect(fetcher).not.toHaveBeenCalled();
+	});
+
+	it("isolates live credentials behind a main-only environment job before checkout", async () => {
+		const workflow = await readFile(workflowPath, "utf8");
+		const mockJob = workflow.split("  sync-tests-live:")[0];
+		const liveJob = workflow
+			.split("  sync-tests-live:")[1]
+			.split("  sync-tests-matrix:")[0];
+		expect(mockJob).not.toContain("environment:");
+		expect(mockJob).not.toContain("secrets.");
+		expect(liveJob).toContain(
+			"github.event_name == 'workflow_dispatch' && inputs.use_mocks == 'false' && github.ref == 'refs/heads/main'",
+		);
+		expect(liveJob).toContain("environment: sync-live-staging");
+		expect(
+			liveJob.indexOf('if [[ "$GITHUB_REF" != "refs/heads/main"'),
+		).toBeLessThan(liveJob.indexOf("uses: actions/checkout"));
 	});
 });

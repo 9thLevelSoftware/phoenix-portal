@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { type EnvReader, hasValidCronSecret } from '../_shared/cronSecret.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { readBoundedRequestBody, REQUEST_BODY_LIMITS } from '../_shared/requestBody.ts';
 import {
   defaultPurgeUserDependencies,
   purgeUser,
@@ -446,15 +447,6 @@ async function processDue(
   return report;
 }
 
-async function readJsonBody(req: Request): Promise<unknown> {
-  try {
-    const text = await req.text();
-    return text ? JSON.parse(text) : null;
-  } catch {
-    return null;
-  }
-}
-
 async function deleteAccountHandler(
   req: Request,
   deps: DeleteAccountHandlerDependencies,
@@ -480,7 +472,21 @@ async function deleteAccountHandler(
 
   // Scheduled executor. Authenticated only by the cron secret: the gateway's
   // verify_jwt is off for this function (config.toml).
-  const body = await readJsonBody(req);
+  if (!hasValidCronSecret(req, deps.env) && !req.headers.get('Authorization')) {
+    return json({ error: 'Unauthorized' }, 401);
+  }
+  const bodyRead = await readBoundedRequestBody(req, REQUEST_BODY_LIMITS.deleteAccount);
+  if (bodyRead.kind !== 'ok') {
+    return json({ error: bodyRead.kind === 'too_large' ? 'Request body too large' : 'Invalid request body' },
+      bodyRead.kind === 'too_large' ? 413 : 400);
+  }
+  let body: unknown = null;
+  try {
+    const text = new TextDecoder().decode(bodyRead.bytes);
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    // Preserve the user path's historical empty/malformed-body behavior.
+  }
   if ((body as { mode?: unknown } | null)?.mode === 'process_due') {
     if (!hasValidCronSecret(req, deps.env)) {
       return json({ error: 'Unauthorized' }, 401);
