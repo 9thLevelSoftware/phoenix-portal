@@ -49,7 +49,10 @@ import { isServiceRoleBearer } from '../_shared/timingSafe.ts';
  * process-sync-queue reclaims a hevy task after HEARTBEAT_LEASE_MS (5 minutes)
  * without a heartbeat. The lease is renewed on entry, after every fetched page
  * and after every upsert chunk, so the longest silent window is one request
- * (capped by PROVIDER_REQUEST_TIMEOUT_MS) or one upsert chunk.
+ * (capped by PROVIDER_REQUEST_TIMEOUT_MS) or one upsert chunk. The body may
+ * also carry `claim_generation` (`sync_queue.retry_count` of the claim this
+ * dispatch holds). In-run `user_integrations` state writes go through
+ * `save_sync_state_if_queue_owned` and must still match it.
  *
  * A browser-initiated run (user JWT, no `queue_id`) creates its OWN queue row
  * instead, directly in `processing`, and owns it exactly the same way. A
@@ -213,6 +216,77 @@ async function runHevySync(
       owned.userId = userId;
     }
 
+    // The claim generation of this run's row. process-sync-queue's stale-
+    // lease reclaim increments retry_count before another worker takes the
+    // same id, so a state save that also matches retry_count cannot be made
+    // by a worker whose lease was reclaimed. process-sync-queue passes the
+    // generation it claimed; a row this run created itself starts at 0. Only
+    // a dispatcher that predates claim_generation makes the run read it (and
+    // fail retryably if it cannot).
+    let ownedAttempt: number | null = null;
+    if (dispatchedQueueId && Number.isInteger(body.claim_generation)) {
+      ownedAttempt = body.claim_generation as number;
+    } else if (dispatchedQueueId) {
+      const { data: claimRow, error: claimError } = await supabase
+        .from('sync_queue')
+        .select('retry_count')
+        .eq('id', dispatchedQueueId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (claimError) {
+        console.error('Failed to read the sync queue claim:', claimError);
+        return new Response(
+          JSON.stringify({ error: 'Sync temporarily unavailable', code: 'queue_claim_unreadable' }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      ownedAttempt = Number((claimRow as { retry_count?: number } | null)?.retry_count ?? 0);
+    } else if (ownedQueueId) {
+      ownedAttempt = 0;
+    }
+
+    const notOwned = () =>
+      new Response(
+        JSON.stringify({
+          error: "Sync queue entry is no longer this run's",
+          code: 'queue_not_owned',
+        }),
+        { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+
+    // Sync state is saved only while this run still owns its queue row,
+    // atomically under the row lock (20260924150000). A disconnect or a
+    // lease reclaim between a check and the write can no longer be undone.
+    // A run with no queue row (p_queue_id null) always saves — that is the
+    // RPC's contract, so a dispatch that never had a row still records state.
+    const saveStateIfOwned = async (values: Record<string, unknown>) => {
+      const { data, error } = await supabase.rpc('save_sync_state_if_queue_owned', {
+        p_user_id: userId,
+        p_provider: 'hevy',
+        p_queue_id: ownedQueueId ?? null,
+        p_attempt: ownedAttempt,
+        p_state: values,
+      });
+      return { owned: data !== false, error };
+    };
+
+    const stopUnlessStateSaved = async (
+      values: Record<string, unknown>,
+      failureCode: string,
+    ): Promise<Response | null> => {
+      const save = await saveStateIfOwned(values);
+      if (save.error) {
+        // No plain follow-up write: that is the window this RPC exists to close.
+        console.error('Hevy sync state save failed:', save.error);
+        return new Response(
+          JSON.stringify({ error: 'Hevy sync failed; will retry', code: failureCode }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      if (!save.owned) return notOwned();
+      return null;
+    };
+
     // If api_key provided, store it in oauth_tokens (server-only table)
     if (api_key) {
       const { error: tokenUpsertError } = await supabase
@@ -238,7 +312,10 @@ async function runHevySync(
         );
       }
 
-      // Update user_integrations with non-sensitive status only
+      // Connect record, not an in-run state write: this upsert creates the
+      // integration row and stamps connected_at, which
+      // save_sync_state_if_queue_owned does not write. oauth_tokens above
+      // stays a direct write too.
       await supabase
         .from('user_integrations')
         .upsert(
@@ -318,15 +395,16 @@ async function runHevySync(
     } catch (fetchError) {
       console.error('Hevy API fetch error:', fetchError);
       if (fetchError instanceof HevyAuthError) {
-        // API key invalid or Hevy PRO required
-        await supabase
-          .from('user_integrations')
-          .update({
+        // API key invalid or Hevy PRO required. A run that no longer owns
+        // its queue row must not mark the integration errored.
+        const stopped = await stopUnlessStateSaved(
+          {
             status: 'error',
             error_message: 'API key invalid or Hevy PRO subscription required',
-          })
-          .eq('user_id', userId)
-          .eq('provider', 'hevy');
+          },
+          'state_save_failed',
+        );
+        if (stopped) return stopped;
 
         return new Response(
           JSON.stringify({
@@ -344,14 +422,14 @@ async function runHevySync(
       // still can. `user_integrations.error_message` is rendered by
       // ProviderCard and the response body is copied into
       // `sync_queue.error_message` by the processor, so both get fixed text.
-      await supabase
-        .from('user_integrations')
-        .update({
+      const stopped = await stopUnlessStateSaved(
+        {
           status: 'error',
           error_message: 'Hevy sync failed; will retry',
-        })
-        .eq('user_id', userId)
-        .eq('provider', 'hevy');
+        },
+        'state_save_failed',
+      );
+      if (stopped) return stopped;
 
       return new Response(
         JSON.stringify({ error: 'Hevy API error', code: 'provider_fetch_failed' }),
@@ -380,14 +458,14 @@ async function runHevySync(
 
       if (deleteError) {
         console.error('Failed to apply Hevy deletions:', deleteError);
-        await supabase
-          .from('user_integrations')
-          .update({
+        const stopped = await stopUnlessStateSaved(
+          {
             status: 'error',
             error_message: `Failed to apply ${deletedIds.length} deletion(s)`,
-          })
-          .eq('user_id', userId)
-          .eq('provider', 'hevy');
+          },
+          'state_save_failed',
+        );
+        if (stopped) return stopped;
 
         return new Response(
           JSON.stringify({ error: 'Failed to apply Hevy deletions' }),
@@ -430,11 +508,11 @@ async function runHevySync(
     // Returning non-2xx lets the queue processor retry (upserts are idempotent).
     if (failedCount > 0) {
       const failMessage = `Failed to persist ${failedCount} of ${workouts.length} workouts`;
-      await supabase
-        .from('user_integrations')
-        .update({ status: 'error', error_message: failMessage })
-        .eq('user_id', userId)
-        .eq('provider', 'hevy');
+      const stopped = await stopUnlessStateSaved(
+        { status: 'error', error_message: failMessage },
+        'state_save_failed',
+      );
+      if (stopped) return stopped;
 
       return new Response(
         JSON.stringify({ error: failMessage, imported: importedCount, failed: failedCount }),
@@ -461,29 +539,29 @@ async function runHevySync(
       const canResume = useEvents && !!latestEventAt;
 
       if (canResume) {
-        await supabase
-          .from('user_integrations')
-          .update({
+        const stopped = await stopUnlessStateSaved(
+          {
             last_sync_at: latestEventAt,
             status: 'connected',
             error_message:
               `Hevy fetch hit the ${HEVY_MAX_PAGES}-page budget; ` +
               `${importedCount} workouts stored, resuming from ${latestEventAt}`,
-          })
-          .eq('user_id', userId)
-          .eq('provider', 'hevy');
+          },
+          'state_save_failed',
+        );
+        if (stopped) return stopped;
       } else {
-        await supabase
-          .from('user_integrations')
-          .update({
+        const stopped = await stopUnlessStateSaved(
+          {
             status: 'error',
             error_message:
               `Hevy backfill exceeded the ${HEVY_MAX_PAGES}-page budget ` +
               `(${importedCount} workouts stored). Retrying would repeat the ` +
               'same request; resumable backfill is required for accounts this large.',
-          })
-          .eq('user_id', userId)
-          .eq('provider', 'hevy');
+          },
+          'state_save_failed',
+        );
+        if (stopped) return stopped;
       }
 
       const truncMessage = canResume
@@ -504,23 +582,35 @@ async function runHevySync(
 
     // Update last sync timestamp and status (all activities persisted). Uses the
     // pre-fetch timestamp so concurrent Hevy writes land in the next window.
-    await supabase
-      .from('user_integrations')
-      .update({
+    // Saved only while this run still owns its queue row.
+    const stopped = await stopUnlessStateSaved(
+      {
         last_sync_at: syncStartedAt,
         status: 'connected',
         error_message: null,
-      })
-      .eq('user_id', userId)
-      .eq('provider', 'hevy');
+      },
+      'watermark_save_failed',
+    );
+    if (stopped) return stopped;
 
-    // Complete only the row this run owns. Never sweep every pending row:
-    // a second queued task (a kept `initial`) must still run.
-    await completeSyncQueueEntry(supabase, {
+    // Complete only the row this run owns, and only in the claim generation
+    // the state save just matched. Never sweep every pending row: a second
+    // queued task (a kept `initial`) must still run.
+    const completed = await completeSyncQueueEntry(supabase, {
       userId,
       provider: 'hevy',
       queueId: ownedQueueId,
+      claimGeneration: ownedAttempt,
     });
+    if (!completed) {
+      return new Response(
+        JSON.stringify({
+          error: 'Failed to complete the sync queue entry',
+          code: 'queue_complete_failed',
+        }),
+        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
 
     return new Response(
       JSON.stringify({
