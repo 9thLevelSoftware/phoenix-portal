@@ -1,4 +1,4 @@
-import { AnimatePresence, MotionConfig, motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { useLocation, useOutlet } from "react-router";
@@ -47,7 +47,7 @@ export function AppLayout() {
 
 	return (
 		<SidebarProvider defaultOpen={true}>
-			<MotionConfig reducedMotion="user">
+			{
 				<div className="min-h-screen relative z-[10] flex w-full">
 					<SkipToContent />
 					<OfflineBanner />
@@ -89,7 +89,7 @@ export function AppLayout() {
 						</div>
 					</SidebarInset>
 				</div>
-			</MotionConfig>
+			}
 		</SidebarProvider>
 	);
 }
