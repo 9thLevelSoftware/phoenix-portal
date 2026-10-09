@@ -79,6 +79,7 @@ interface DayConfig {
 }
 
 export function CycleBuilder() {
+	const { user } = useAuth();
 	const { cycleId } = useParams<{ cycleId: string }>();
 	const navigate = useNavigate();
 	const saveMutation = useSaveCycle();
@@ -87,8 +88,8 @@ export function CycleBuilder() {
 
 	// Fetch existing cycle for editing
 	const { data: existingCycle, isLoading: isLoadingCycle } = useQuery({
-		...cycleDetailOptions(cycleId ?? ""),
-		enabled: !!cycleId,
+		...cycleDetailOptions(user?.id ?? "", cycleId ?? ""),
+		enabled: !!user && !!cycleId,
 	});
 
 	const [cycleName, setCycleName] = useState("Untitled Cycle");
@@ -140,7 +141,7 @@ export function CycleBuilder() {
 	const [deloadVolume, setDeloadVolume] = useState(50);
 
 	// Fetch real routines from Supabase
-	const { user } = useAuth();
+
 	const unit = usePreferredWeightUnit();
 	const { data: routinesRaw } = useQuery({
 		...routineListOptions(user?.id ?? ""),

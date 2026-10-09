@@ -358,6 +358,8 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"mean_force_n",
 		"peak_force_n",
 		"power_watts",
+		"peak_power_watts",
+		"power_method",
 		"rom_mm",
 		"tut_ms",
 		"left_force_avg",
@@ -1036,6 +1038,12 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
  * account deletion removes its rows.
  */
 export const EXCLUDED: readonly ExcludedUserDataTable[] = [
+	{
+		table: "paddle_checkout_authorizations",
+		reason: "Short-lived server-owned checkout authorizations and cancellation evidence; operational security state. Billing history is exported via subscriptions and subscription_events.",
+		purge: "cascade",
+		purgeMatch: { column: "user_id" },
+	},
 	{
 		table: "set_telemetry",
 		reason: "Storage for force-curve samples, one row per set as arrays (20260925200000). Every sample is exported once, per row, through the rep_telemetry view in the manifest.",
