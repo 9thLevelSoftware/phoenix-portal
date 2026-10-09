@@ -35,8 +35,50 @@ function db(overrides: { tokenExpiresAt?: string; status?: string; lastSyncAt?: 
       status: "processing",
       started_at: new Date().toISOString(),
       completed_at: null,
+      retry_count: 0,
     }],
   });
+}
+
+/**
+ * save_sync_state_if_queue_owned (20260924150000): write the listed state
+ * keys only while the queue row is still this run's processing claim.
+ * A null queue id always saves.
+ */
+function installQueueOwnedStateSave(state: FakeDb): void {
+  if (state.rpcHandlers.save_sync_state_if_queue_owned) return;
+  const stateKeys = [
+    "status",
+    "error_message",
+    "last_sync_at",
+    "backfill_before",
+    "backfill_after",
+    "backfill_started_at",
+  ] as const;
+  state.rpcHandlers.save_sync_state_if_queue_owned = (args: Row) => {
+    if (args.p_queue_id != null) {
+      const owned = state.rows("sync_queue").some((row) =>
+        row.id === args.p_queue_id &&
+        row.user_id === args.p_user_id &&
+        row.provider === args.p_provider &&
+        row.status === "processing" &&
+        (args.p_attempt == null || Number(row.retry_count ?? 0) === args.p_attempt)
+      );
+      if (!owned) return { data: false, error: null };
+    }
+    const patch = args.p_state;
+    if (!patch || typeof patch !== "object") {
+      return { data: null, error: { message: "state object required" } };
+    }
+    const written = patch as Row;
+    for (const row of state.rows("user_integrations")) {
+      if (row.user_id !== args.p_user_id || row.provider !== args.p_provider) continue;
+      for (const key of stateKeys) {
+        if (Object.hasOwn(written, key)) row[key] = written[key];
+      }
+    }
+    return { data: true, error: null };
+  };
 }
 
 interface FakeFitbit {
@@ -83,6 +125,7 @@ const fitbitActivity = (logId: number): Row => ({
 });
 
 function handler(state: FakeDb, api: FakeFitbit, jwtUserId: string | null = null) {
+  installQueueOwnedStateSave(state);
   return createFitbitSyncHandler({
     env: (key) =>
       ({
@@ -162,6 +205,83 @@ Deno.test("fitbit-sync: a dispatched sync pages through Fitbit, stores every act
   assertEquals([row.duration_seconds, row.distance_meters, row.activity_type], [1800, 2500, "walking"]);
   assertEquals(state.rows("sync_queue")[0].status, "completed");
   assert(api.calls.every((call) => call.auth === "Bearer access-1"));
+  const save = state.rpcCalls.find((call) => call.name === "save_sync_state_if_queue_owned");
+  assertEquals(save?.args.p_queue_id, QUEUE_ID);
+  assertEquals(save?.args.p_attempt, 0);
+  assertEquals(save?.args.p_provider, "fitbit");
+  assertEquals(state.rows("user_integrations")[0].status, "connected");
+  assertEquals(state.rows("user_integrations")[0].error_message, null);
+});
+
+Deno.test("fitbit-sync: a run that no longer owns its queue row writes no integration state and stops", async () => {
+  const state = db();
+  state.rows("sync_queue")[0].retry_count = 1;
+  const before = { ...state.rows("user_integrations")[0] };
+  const api = fitbit([[fitbitActivity(1)]]);
+
+  const res = await silenced(() =>
+    handler(state, api)(request({ sync_type: "incremental", queue_id: QUEUE_ID, claim_generation: 0 }))
+  );
+
+  assertEquals(res.status, 409, await res.clone().text());
+  assertEquals(await res.json(), {
+    error: "Sync queue entry is no longer this run's",
+    code: "queue_not_owned",
+  });
+  assertEquals(state.rows("user_integrations")[0], before);
+  const [row] = state.rows("sync_queue");
+  assertEquals(row.status, "processing");
+  assertEquals(row.retry_count, 1);
+  assertEquals(row.completed_at, null);
+  const saves = state.rpcCalls.filter((call) => call.name === "save_sync_state_if_queue_owned");
+  assertEquals(saves.length, 1);
+  assertEquals(saves[0].args.p_queue_id, QUEUE_ID);
+  assertEquals(saves[0].args.p_attempt, 0);
+  assertEquals(saves[0].args.p_user_id, USER_ID);
+});
+
+Deno.test("fitbit-sync: a sync state save that errors is a retryable 502 and writes nothing", async () => {
+  const state = db();
+  state.rpcHandlers.save_sync_state_if_queue_owned = () => ({
+    data: null,
+    error: { message: "rpc failed" },
+  });
+  const before = { ...state.rows("user_integrations")[0] };
+  const api = fitbit([[fitbitActivity(1)]]);
+
+  const res = await silenced(() =>
+    handler(state, api)(request({ queue_id: QUEUE_ID, claim_generation: 0 }))
+  );
+
+  assertEquals(res.status, 502, await res.clone().text());
+  assertEquals(await res.json(), {
+    error: "Fitbit sync failed; will retry",
+    code: "watermark_save_failed",
+  });
+  assertEquals(state.rows("user_integrations")[0], before);
+  assertEquals(state.rows("sync_queue")[0].status, "processing");
+  assertEquals(state.rows("sync_queue")[0].completed_at, null);
+});
+
+Deno.test("fitbit-sync: a cancelled queue row is not marked token_expired", async () => {
+  const state = db({ tokenExpiresAt: new Date(Date.now() + 60_000).toISOString() });
+  const before = { ...state.rows("user_integrations")[0] };
+  const api = fitbit([], { tokenStatus: 400 });
+  const inner = api.fetch;
+  api.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    state.rows("sync_queue")[0].status = "cancelled";
+    return inner(input, init);
+  }) as typeof fetch;
+
+  const res = await silenced(() =>
+    handler(state, api)(request({ queue_id: QUEUE_ID, claim_generation: 0 }))
+  );
+
+  assertEquals(res.status, 409, await res.clone().text());
+  assertEquals((await res.json()).code, "queue_not_owned");
+  assertEquals(state.rows("user_integrations")[0], before);
+  assertEquals(state.rows("sync_queue")[0].status, "cancelled");
+  assertEquals(api.calls.filter((call) => call.url.includes("/activities/")), []);
 });
 
 Deno.test("fitbit-sync: an integration that is not connected is 404 and calls no provider", async () => {

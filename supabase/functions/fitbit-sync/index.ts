@@ -81,16 +81,29 @@ interface FitbitTokens {
 }
 
 /**
+ * Save in-run integration state, or a response that stops the run.
+ * `null` means the save landed and the caller should continue.
+ */
+type FitbitStateSave = (
+  values: Record<string, unknown>,
+  failureCode: string,
+) => Promise<Response | null>;
+
+/**
  * Refresh Fitbit access token if expired or about to expire (<10 min remaining).
  * Fitbit uses Basic auth for token refresh, same as initial exchange.
- * Returns updated tokens or throws on failure.
+ * Returns updated tokens, a response that stops the run (the state save was
+ * refused or failed), or throws on failure after a successful state save.
+ * `oauth_tokens` writes stay direct; only integration status goes through
+ * `saveState`.
  */
 async function refreshTokenIfNeeded(
   supabase: DbClient,
   userId: string,
   tokens: FitbitTokens,
   deps: FitbitSyncDependencies,
-): Promise<FitbitTokens> {
+  saveState: FitbitStateSave,
+): Promise<FitbitTokens | Response> {
   const expiresAt = new Date(tokens.token_expires_at).getTime();
   const tenMinutesFromNow = Date.now() + 10 * 60 * 1000;
 
@@ -120,12 +133,13 @@ async function refreshTokenIfNeeded(
     await response.body?.cancel();
     console.error('Fitbit token refresh failed:', response.status);
 
-    // Mark integration as error
-    await supabase
-      .from('user_integrations')
-      .update({ status: 'token_expired', error_message: 'Token refresh failed' })
-      .eq('user_id', userId)
-      .eq('provider', 'fitbit');
+    // A run that no longer owns its queue row must not mark the integration
+    // token_expired. The oauth response itself is not stored.
+    const stopped = await saveState(
+      { status: 'token_expired', error_message: 'Token refresh failed' },
+      'state_save_failed',
+    );
+    if (stopped) return stopped;
 
     throw new Error(`Fitbit token refresh failed: ${response.status}`);
   }
@@ -149,11 +163,11 @@ async function refreshTokenIfNeeded(
 
   if (tokenPersistError) {
     console.error('Failed to persist refreshed Fitbit tokens:', tokenPersistError);
-    await supabase
-      .from('user_integrations')
-      .update({ status: 'error', error_message: 'Failed to persist refreshed tokens' })
-      .eq('user_id', userId)
-      .eq('provider', 'fitbit');
+    const stopped = await saveState(
+      { status: 'error', error_message: 'Failed to persist refreshed tokens' },
+      'state_save_failed',
+    );
+    if (stopped) return stopped;
     throw new Error('Failed to persist refreshed Fitbit tokens');
   }
 
@@ -260,6 +274,10 @@ async function upsertFitbitRateLimitRow(
  * Handles pagination (offset-based) and token refresh.
  *
  * Called by the sync queue processor or manually via integration management UI.
+ * The body may also carry `claim_generation` (`sync_queue.retry_count` of the
+ * claim this dispatch holds). In-run `user_integrations` state writes go
+ * through `save_sync_state_if_queue_owned` and must still match it.
+ * `oauth_tokens` writes stay direct.
  */
 async function runFitbitSync(
   req: Request,
@@ -319,8 +337,11 @@ async function runFitbitSync(
 
     const sync_type = body.sync_type ?? 'incremental';
     const calledByQueueProcessor = !jwtUser;
-    let ownedQueueId =
+    // The dispatched row (queue path only): a browser caller's `queue_id` is
+    // ignored — it may name any row at all — and replaced by its own below.
+    const dispatchedQueueId =
       calledByQueueProcessor && typeof body.queue_id === 'string' ? body.queue_id : null;
+    let ownedQueueId = dispatchedQueueId;
 
     const supabase = deps.createClient(
       deps.env('SUPABASE_URL')!,
@@ -357,6 +378,77 @@ async function runFitbitSync(
       owned.userId = userId;
     }
 
+    // The claim generation of this run's row. process-sync-queue's stale-
+    // lease reclaim increments retry_count before another worker takes the
+    // same id, so a state save that also matches retry_count cannot be made
+    // by a worker whose lease was reclaimed. process-sync-queue passes the
+    // generation it claimed; a row this run created itself starts at 0. Only
+    // a dispatcher that predates claim_generation makes the run read it (and
+    // fail retryably if it cannot).
+    let ownedAttempt: number | null = null;
+    if (dispatchedQueueId && Number.isInteger(body.claim_generation)) {
+      ownedAttempt = body.claim_generation as number;
+    } else if (dispatchedQueueId) {
+      const { data: claimRow, error: claimError } = await supabase
+        .from('sync_queue')
+        .select('retry_count')
+        .eq('id', dispatchedQueueId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (claimError) {
+        console.error('Failed to read the sync queue claim:', claimError);
+        return new Response(
+          JSON.stringify({ error: 'Sync temporarily unavailable', code: 'queue_claim_unreadable' }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      ownedAttempt = Number((claimRow as { retry_count?: number } | null)?.retry_count ?? 0);
+    } else if (ownedQueueId) {
+      ownedAttempt = 0;
+    }
+
+    const notOwned = () =>
+      new Response(
+        JSON.stringify({
+          error: "Sync queue entry is no longer this run's",
+          code: 'queue_not_owned',
+        }),
+        { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+
+    // Sync state is saved only while this run still owns its queue row,
+    // atomically under the row lock (20260924150000). A disconnect or a
+    // lease reclaim between a check and the write can no longer be undone.
+    // A run with no queue row (p_queue_id null) always saves — that is the
+    // RPC's contract, so a dispatch that never had a row still records state.
+    const saveStateIfOwned = async (values: Record<string, unknown>) => {
+      const { data, error } = await supabase.rpc('save_sync_state_if_queue_owned', {
+        p_user_id: userId,
+        p_provider: 'fitbit',
+        p_queue_id: ownedQueueId ?? null,
+        p_attempt: ownedAttempt,
+        p_state: values,
+      });
+      return { owned: data !== false, error };
+    };
+
+    const stopUnlessStateSaved = async (
+      values: Record<string, unknown>,
+      failureCode: string,
+    ): Promise<Response | null> => {
+      const save = await saveStateIfOwned(values);
+      if (save.error) {
+        // No plain follow-up write: that is the window this RPC exists to close.
+        console.error('Fitbit sync state save failed:', save.error);
+        return new Response(
+          JSON.stringify({ error: 'Fitbit sync failed; will retry', code: failureCode }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      if (!save.owned) return notOwned();
+      return null;
+    };
+
     // Get user's Fitbit tokens from oauth_tokens (server-only table)
     const { data: tokenData, error: tokenFetchError } = await supabase
       .from('oauth_tokens')
@@ -386,8 +478,18 @@ async function runFitbitSync(
       token_expires_at: rawTok.token_expires_at,
     };
 
-    // Refresh token if needed
-    const tokens = await refreshTokenIfNeeded(supabase, userId, decrypted, deps);
+    // Refresh token if needed. A refused or failed state save stops the run
+    // before any activity fetch; a refresh that saved its state still throws
+    // and lands in the handler's 500 below.
+    const refreshed = await refreshTokenIfNeeded(
+      supabase,
+      userId,
+      decrypted,
+      deps,
+      stopUnlessStateSaved,
+    );
+    if (refreshed instanceof Response) return refreshed;
+    const tokens = refreshed;
 
     // Captured before fetching: the next incremental window starts here.
     const syncStartedAt = new Date().toISOString();
@@ -488,25 +590,39 @@ async function runFitbitSync(
       previous: (integration?.last_sync_at as string | null) ?? null,
       contiguousUpTo: syncStartedAt,
     });
-    await supabase
-      .from('user_integrations')
-      .update({
+    // Saved only while this run still owns its queue row.
+    const stopped = await stopUnlessStateSaved(
+      {
         ...(watermark ? { last_sync_at: watermark } : {}),
         status: 'connected',
         error_message: null,
-      })
-      .eq('user_id', userId)
-      .eq('provider', 'fitbit');
+      },
+      'watermark_save_failed',
+    );
+    if (stopped) return stopped;
 
     await upsertFitbitRateLimitRow(supabase, userId, {
       last_request_at: new Date().toISOString(),
     });
 
-    await completeSyncQueueEntry(supabase, {
+    // Complete only the row this run owns, and only in the claim generation
+    // the state save just matched. Never sweep every pending row: a second
+    // queued task (a kept `initial`) must still run.
+    const completed = await completeSyncQueueEntry(supabase, {
       userId,
       provider: 'fitbit',
       queueId: ownedQueueId,
+      claimGeneration: ownedAttempt,
     });
+    if (!completed) {
+      return new Response(
+        JSON.stringify({
+          error: 'Failed to complete the sync queue entry',
+          code: 'queue_complete_failed',
+        }),
+        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
 
     return new Response(
       JSON.stringify({ success: true, synced: totalSynced }),
