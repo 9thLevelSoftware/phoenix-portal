@@ -112,7 +112,7 @@ export function repSummariesOptions(userId: string, setId: string) {
 				.eq("set_id", setId)
 				.order("rep_number", { ascending: true });
 			if (error) throw error;
-			return z.array(repSummarySchema).parse(data);
+			return z.array(repSummarySchema).parse(data ?? []);
 		},
 		enabled: !!userId && !!setId,
 	});

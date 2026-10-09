@@ -35,7 +35,7 @@ export function recoverySessionsOptions(
 				ascending: false,
 			});
 			if (error) throw error;
-			return recoverySessionListSchema.parse(data);
+			return recoverySessionListSchema.parse(data ?? []);
 		},
 		enabled: !!userId,
 	});

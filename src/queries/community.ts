@@ -253,7 +253,7 @@ export function featuredCreatorsOptions() {
 				.order("total_upvotes", { ascending: false })
 				.limit(10);
 			if (error) throw error;
-			return z.array(creatorStatsSchema).parse(data);
+			return z.array(creatorStatsSchema).parse(data ?? []);
 		},
 	});
 }
@@ -273,7 +273,7 @@ export function savedItemsOptions(userId: string) {
 					.order("id", { ascending: false })
 					.range(from, to),
 			);
-			return z.array(savedItemSchema).parse(data);
+			return z.array(savedItemSchema).parse(data ?? []);
 		},
 	});
 }
