@@ -17,6 +17,7 @@ vi.mock("@/app/hooks/useAuth", () => mockAuth);
 vi.mock("@/providers/AuthProvider", () => mockAuth);
 
 const mockSignInWithOAuth = vi.hoisted(() => vi.fn());
+const mockSignUp = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/supabase", async () => {
 	const actual =
@@ -28,7 +29,7 @@ vi.mock("@/lib/supabase", async () => {
 			auth: {
 				signInWithOAuth: mockSignInWithOAuth,
 				signInWithPassword: vi.fn(),
-				signUp: vi.fn(),
+				signUp: mockSignUp,
 				resetPasswordForEmail: vi.fn(),
 			},
 		},
@@ -90,6 +91,8 @@ describe("LandingPage", () => {
 		fetchMock.mockReset();
 		mockSignInWithOAuth.mockReset();
 		mockSignInWithOAuth.mockResolvedValue({ error: null });
+		mockSignUp.mockReset();
+		mockSignUp.mockResolvedValue({ error: null });
 		vi.stubGlobal("fetch", fetchMock);
 	});
 
@@ -228,6 +231,35 @@ describe("LandingPage", () => {
 				redirectTo: `${window.location.origin}/auth/callback?provider=google`,
 				scopes: "https://www.googleapis.com/auth/userinfo.email",
 			},
+		});
+	});
+
+	it("sends the confirmation-link target with sign-up, since the page sends no Referer", async () => {
+		const user = userEvent.setup();
+		await renderLandingPage();
+
+		await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+		await user.click(screen.getByRole("tab", { name: /sign up/i }));
+		await user.type(
+			screen.getByLabelText(/email/i, { selector: "#signup-email" }),
+			"new@example.com",
+		);
+		await user.type(
+			screen.getByLabelText(/password/i, { selector: "#signup-password" }),
+			"hunter22",
+		);
+		await user.type(
+			screen.getByLabelText(/confirm/i, { selector: "#signup-confirm" }),
+			"hunter22",
+		);
+		await user.click(screen.getByRole("button", { name: /create account/i }));
+
+		await waitFor(() => {
+			expect(mockSignUp).toHaveBeenCalledWith({
+				email: "new@example.com",
+				password: "hunter22",
+				options: { emailRedirectTo: `${window.location.origin}/` },
+			});
 		});
 	});
 
