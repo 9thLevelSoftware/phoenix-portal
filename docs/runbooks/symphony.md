@@ -114,6 +114,7 @@ Run the surface tests that apply:
 ```bash
 npm run test:sync   # sync, schema, or DTO changes
 npm run test:edge   # any change under supabase/functions/
+npm run test:edge:mutation-bar   # Liftosaur resumable-backfill mutation bar (#204)
 npm run test:db     # migrations
 ```
 
