@@ -21,13 +21,17 @@ Web companion dashboard for [Project Phoenix](https://github.com/9thLevelSoftwar
 - **Biomechanics Analysis** — Velocity zones, ROM trends, asymmetry detection
 - **Training Load Gauge** — Acute:chronic workload ratio monitoring
 - **Muscle Heatmap** — Visual muscle group coverage
-- **Force Curves** — Concentric/eccentric power output visualization
+- **Force Curves** — Per-cable forces and method-aware signed cable-work proxy power; unverified watts remain unavailable
 
 ### Session Replay
-- **50Hz Telemetry Playback** — Rep-by-rep motion replay canvas
+- **Telemetry Playback** — Rep-by-rep motion replay canvas; measured receipt timing is distinct from unverified legacy timing
 - **Timeline Navigation** — Scrub through workout timeline
 - **Fatigue Summary** — Per-set fatigue analysis
 - **Quality Badges** — Rep quality indicators
+
+Power summaries accept `PAIRED_CABLE_WORK_V1`, `UNAVAILABLE` and `LEGACY_UNKNOWN_V0`. Only the first projects mean/peak watts; genuine zero and signed negative values are preserved. Historical collapsed curves retain known cable forces, but unknown position/velocity cannot establish phase or work. This is not muscle/body power or physical measurement validation.
+
+Deploy [`20261002100000_paired_rep_power_contract.sql`](supabase/migrations/20261002100000_paired_rep_power_contract.sql) with the coordinated sync handlers before new mobile uploads; regenerate types from the migrated local stack. Inferno raw-curve gating is unchanged. The performance review is at `/analytics?tab=performance`; software checks and synthetic localhost UI examples are not physical pilots.
 
 ### Routine Builder
 - **Visual Routine Editor** — Drag-and-drop exercise ordering

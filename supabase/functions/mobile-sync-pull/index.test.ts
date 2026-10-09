@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { CHILD_PAGE_SIZE } from "../_shared/pagedByParent.ts";
 import { createMobileSyncPullHandler, STALE_OVERLAP_MS } from "./index.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
+import { REQUEST_BODY_LIMITS } from "../_shared/requestBody.ts";
 
 type AuthBehavior = (jwt: string) => Promise<unknown>;
 
@@ -29,6 +30,27 @@ function validPullBody(): Record<string, unknown> {
     },
   };
 }
+
+Deno.test('pull body: rate rejection occurs before any body consumption', async () => {
+  const harness = makeHarness(undefined, { rpcImpl: (name) => name === 'check_rate_limit'
+    ? { data: { allowed: false, remaining: 0, retry_after_seconds: 60 }, error: null }
+    : undefined });
+  const request = requestFromBody(validPullBody());
+  const response = await harness.handler(request);
+  assertEquals(response.status, 429);
+  assertEquals(request.bodyUsed, false);
+  assertEquals(harness.adminCalls.map((call) => call.name), ['check_rate_limit']);
+});
+
+Deno.test('pull body: FREE user consumes the rate budget before oversized body rejection', async () => {
+  const harness = makeHarness(undefined, { subscriptionResult: { data: null, error: null } });
+  const request = requestFromBody(validPullBody());
+  request.headers.set('content-length', String(REQUEST_BODY_LIMITS.mobileSyncPull + 1));
+  const response = await harness.handler(request);
+  assertEquals(response.status, 413);
+  assertEquals(request.bodyUsed, false);
+  assertEquals(harness.adminCalls.map((call) => call.name), ['check_rate_limit']);
+});
 
 function requestFromBody(
   body: unknown,
@@ -496,7 +518,7 @@ for (
   });
 }
 
-Deno.test("malformed final ordinary item is rejected before admin construction", async () => {
+Deno.test("malformed final ordinary item is rejected before data access", async () => {
   const harness = makeHarness();
   const validId = "00000000-0000-4000-8000-000000000010";
   const response = await harness.handler(requestFromBody({
@@ -512,7 +534,7 @@ Deno.test("malformed final ordinary item is rejected before admin construction",
 
   assertEquals(response.status, 400);
   assertEquals(harness.getUserJwts, [VALID_JWT]);
-  assertEquals(harness.adminConstructionCount.value, 0);
+  assertEquals(harness.adminConstructionCount.value, 1);
 });
 
 for (
@@ -526,12 +548,12 @@ for (
     ["non-object body", []],
   ] as const
 ) {
-  Deno.test(`strict pull body: ${label} is rejected before admin construction`, async () => {
+  Deno.test(`strict pull body: ${label} is rejected before data access`, async () => {
     const harness = makeHarness();
     const response = await harness.handler(requestFromBody(body));
 
     assertEquals(response.status, 400);
-    assertEquals(harness.adminConstructionCount.value, 0);
+    assertEquals(harness.adminConstructionCount.value, 1);
   });
 }
 
@@ -581,18 +603,18 @@ for (
     }],
   ] as const
 ) {
-  Deno.test(`strict pull parser: ${label} is rejected before privilege`, async () => {
+  Deno.test(`strict pull parser: ${label} is rejected before data access`, async () => {
     const harness = makeHarness();
     const response = await harness.handler(requestFromBody(body));
 
     assertEquals(response.status, 400);
     assertEquals(harness.getUserJwts, [VALID_JWT]);
-    assertEquals(harness.adminConstructionCount.value, 0);
-    assertEquals(harness.adminCalls, []);
+    assertEquals(harness.adminConstructionCount.value, 1);
+    assertEquals(harness.adminCalls.map((call) => call.name), ["check_rate_limit"]);
   });
 }
 
-Deno.test("strict pull parser rejects malformed JSON before privilege", async () => {
+Deno.test("strict pull parser rejects malformed JSON before data access", async () => {
   const harness = makeHarness();
   const response = await harness.handler(
     new Request(
@@ -609,10 +631,10 @@ Deno.test("strict pull parser rejects malformed JSON before privilege", async ()
   );
 
   assertEquals(response.status, 400);
-  assertEquals(harness.adminConstructionCount.value, 0);
+  assertEquals(harness.adminConstructionCount.value, 1);
 });
 
-Deno.test("strict pull parser rejects every oversize parity list before privilege", async () => {
+Deno.test("strict pull parser rejects every oversize parity list before data access", async () => {
   const validId = "00000000-0000-4000-8000-000000000010";
   for (
     const field of [
@@ -630,8 +652,8 @@ Deno.test("strict pull parser rejects every oversize parity list before privileg
     }));
 
     assertEquals(response.status, 413, field);
-    assertEquals(harness.adminConstructionCount.value, 0, field);
-    assertEquals(harness.adminCalls, [], field);
+    assertEquals(harness.adminConstructionCount.value, 1, field);
+    assertEquals(harness.adminCalls.map((call) => call.name), ["check_rate_limit"], field);
   }
 });
 
