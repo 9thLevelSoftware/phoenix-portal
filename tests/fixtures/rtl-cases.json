@@ -1,0 +1,57 @@
+{
+	"$comment": "Golden parity fixture for supabase/functions/_shared/trainingLoad.ts. Asserted from Deno (trainingLoad.test.ts) and Vitest (src/lib/__tests__/training-load.test.ts). Regenerate deliberately when the formula changes.",
+	"cases": [
+		{
+			"id": "empty",
+			"sessions": [],
+			"expected": 0
+		},
+		{
+			"id": "typical-week",
+			"sessions": [
+				{ "totalVolume": 5000, "setCount": 16 },
+				{ "totalVolume": 6000, "setCount": 20 },
+				{ "totalVolume": 4500, "setCount": 14 }
+			],
+			"expected": 72
+		},
+		{
+			"id": "overtraining-week",
+			"sessions": [
+				{ "totalVolume": 10000, "setCount": 30 },
+				{ "totalVolume": 10000, "setCount": 30 },
+				{ "totalVolume": 10000, "setCount": 30 },
+				{ "totalVolume": 10000, "setCount": 30 },
+				{ "totalVolume": 10000, "setCount": 30 },
+				{ "totalVolume": 10000, "setCount": 30 },
+				{ "totalVolume": 10000, "setCount": 30 }
+			],
+			"expected": 95
+		},
+		{
+			"id": "capped-at-100",
+			"sessions": [
+				{ "totalVolume": 20000, "setCount": 50 },
+				{ "totalVolume": 20000, "setCount": 50 },
+				{ "totalVolume": 20000, "setCount": 50 },
+				{ "totalVolume": 20000, "setCount": 50 },
+				{ "totalVolume": 20000, "setCount": 50 },
+				{ "totalVolume": 20000, "setCount": 50 },
+				{ "totalVolume": 20000, "setCount": 50 },
+				{ "totalVolume": 20000, "setCount": 50 },
+				{ "totalVolume": 20000, "setCount": 50 },
+				{ "totalVolume": 20000, "setCount": 50 },
+				{ "totalVolume": 20000, "setCount": 50 },
+				{ "totalVolume": 20000, "setCount": 50 },
+				{ "totalVolume": 20000, "setCount": 50 },
+				{ "totalVolume": 20000, "setCount": 50 }
+			],
+			"expected": 100
+		},
+		{
+			"id": "volume-without-sets",
+			"sessions": [{ "totalVolume": 1000, "setCount": 0 }],
+			"expected": 8
+		}
+	]
+}

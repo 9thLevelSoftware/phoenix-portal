@@ -12,6 +12,7 @@ import {
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import { readBoundedRequestBody, REQUEST_BODY_LIMITS } from '../_shared/requestBody.ts';
+import { calculateRTL } from '../_shared/trainingLoad.ts';
 
 /**
  * generate-insights has exactly TWO authentication modes (KD-14):
@@ -31,7 +32,8 @@ import { readBoundedRequestBody, REQUEST_BODY_LIMITS } from '../_shared/requestB
  *
  * The rule engine itself is `_shared/insightRules.ts`, shared verbatim with
  * the browser fallback (src/lib/insights.ts) so the two can never contradict
- * each other.
+ * each other. The RTL score those rules consume is `_shared/trainingLoad.ts`,
+ * the same calculator the portal Analytics page imports.
  */
 
 /** Loose client type: `ReturnType<typeof createClient>` collapses to `never`. */
@@ -51,24 +53,6 @@ const PERIOD_DAYS: Record<string, number> = {
   '1y': 365,
   'all': 3650,
 };
-
-// ── RTL calculator (duplicate of src/lib/training-load.ts) ──────────────────
-
-function calculateRTL(
-  sessions: Array<{ totalVolume: number; setCount: number }>,
-): number {
-  if (sessions.length === 0) return 0;
-
-  const totalVolume = sessions.reduce((sum, s) => sum + s.totalVolume, 0);
-  const totalSets = sessions.reduce((sum, s) => sum + s.setCount, 0);
-
-  const volumeScore = Math.min(33, (totalVolume / 20000) * 33);
-  const avgVolumePerSet = totalSets > 0 ? totalVolume / totalSets : 0;
-  const intensityScore = Math.min(33, (avgVolumePerSet / 400) * 33);
-  const frequencyScore = Math.min(34, (sessions.length / 5) * 34);
-
-  return Math.min(100, Math.round(volumeScore + intensityScore + frequencyScore));
-}
 
 // ── Dependencies ─────────────────────────────────────────────────────────────
 
