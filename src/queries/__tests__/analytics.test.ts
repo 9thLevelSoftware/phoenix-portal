@@ -751,11 +751,19 @@ describe("periodToDays", () => {
 		]);
 	});
 
+	it("maps 1w explicitly to 7 days", async () => {
+		const { periodToDays } = await import("../analytics");
+		expect(periodToDays("1w")).toBe(7);
+	});
+
 	it("keeps the chart's week-based periods", async () => {
 		const { periodToDays } = await import("../analytics");
-		expect(["1w", "4w", "12w", "52w"].map(periodToDays)).toEqual([
-			7, 28, 84, 365,
-		]);
+		expect(["4w", "12w", "52w"].map(periodToDays)).toEqual([28, 84, 365]);
+	});
+
+	it("defaults an unrecognized period to 7 days", async () => {
+		const { periodToDays } = await import("../analytics");
+		expect(periodToDays("unknown")).toBe(7);
 	});
 });
 
