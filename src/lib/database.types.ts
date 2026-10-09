@@ -1112,6 +1112,45 @@ export type Database = {
 					},
 				];
 			};
+			paddle_checkout_authorizations: {
+				Row: {
+					created_at: string;
+					customer_id: string | null;
+					environment: string;
+					expires_at: string;
+					nonce: string;
+					price_id: string;
+					state: string;
+					subscription_id: string | null;
+					transaction_id: string | null;
+					user_id: string;
+				};
+				Insert: {
+					created_at?: string;
+					customer_id?: string | null;
+					environment: string;
+					expires_at: string;
+					nonce: string;
+					price_id: string;
+					state?: string;
+					subscription_id?: string | null;
+					transaction_id?: string | null;
+					user_id: string;
+				};
+				Update: {
+					created_at?: string;
+					customer_id?: string | null;
+					environment?: string;
+					expires_at?: string;
+					nonce?: string;
+					price_id?: string;
+					state?: string;
+					subscription_id?: string | null;
+					transaction_id?: string | null;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
 			paddle_webhook_events: {
 				Row: {
 					environment: string | null;
@@ -1456,7 +1495,9 @@ export type Database = {
 					mean_force_n: number | null;
 					mean_velocity_mps: number | null;
 					peak_force_n: number | null;
+					peak_power_watts: number | null;
 					peak_velocity_mps: number | null;
+					power_method: string;
 					power_watts: number | null;
 					rep_number: number;
 					right_force_avg: number | null;
@@ -1473,7 +1514,9 @@ export type Database = {
 					mean_force_n?: number | null;
 					mean_velocity_mps?: number | null;
 					peak_force_n?: number | null;
+					peak_power_watts?: number | null;
 					peak_velocity_mps?: number | null;
+					power_method?: string;
 					power_watts?: number | null;
 					rep_number: number;
 					right_force_avg?: number | null;
@@ -1490,7 +1533,9 @@ export type Database = {
 					mean_force_n?: number | null;
 					mean_velocity_mps?: number | null;
 					peak_force_n?: number | null;
+					peak_power_watts?: number | null;
 					peak_velocity_mps?: number | null;
+					power_method?: string;
 					power_watts?: number | null;
 					rep_number?: number;
 					right_force_avg?: number | null;
@@ -3042,6 +3087,19 @@ export type Database = {
 				};
 				Returns: undefined;
 			};
+			bind_paddle_checkout: {
+				Args: {
+					p_completed_at: string;
+					p_customer_id: string;
+					p_environment: string;
+					p_nonce: string;
+					p_price_id: string;
+					p_subscription_id: string;
+					p_transaction_id: string;
+					p_user_id: string;
+				};
+				Returns: boolean;
+			};
 			check_rate_limit: {
 				Args: {
 					p_key: string;
@@ -3200,6 +3258,15 @@ export type Database = {
 					p_user_id: string;
 				};
 				Returns: Json;
+			};
+			finish_paddle_checkout: {
+				Args: {
+					p_canceled?: boolean;
+					p_nonce: string;
+					p_transaction_id: string;
+					p_user_id: string;
+				};
+				Returns: boolean;
 			};
 			get_acwr: {
 				Args: {
@@ -3591,6 +3658,10 @@ export type Database = {
 					user_id: string;
 				}[];
 			};
+			is_paddle_subscription_bound: {
+				Args: { p_subscription_id: string; p_user_id: string };
+				Returns: boolean;
+			};
 			jsonb_redact_token_keys: { Args: { data: Json }; Returns: Json };
 			kotlin_to_long_or_null: { Args: { p_value: string }; Returns: number };
 			local_profile_preference_section_canonical: {
@@ -3599,6 +3670,10 @@ export type Database = {
 					p_section: string;
 				};
 				Returns: Json;
+			};
+			mark_paddle_subscription_terminal: {
+				Args: { p_subscription_id: string; p_user_id: string };
+				Returns: boolean;
 			};
 			merge_training_cycles_from_push: {
 				Args: { p_cycles: Json; p_use_lww: boolean; p_user_id: string };
@@ -3691,6 +3766,10 @@ export type Database = {
 				Args: { p_user_id: string };
 				Returns: undefined;
 			};
+			record_paddle_checkout_transaction: {
+				Args: { p_nonce: string; p_transaction_id: string; p_user_id: string };
+				Returns: boolean;
+			};
 			refresh_community_benchmarks: { Args: never; Returns: undefined };
 			refresh_hot_scores: { Args: never; Returns: undefined };
 			refresh_leaderboard_snapshots: { Args: never; Returns: undefined };
@@ -3733,6 +3812,16 @@ export type Database = {
 					isOneToOne: true;
 					isSetofReturn: false;
 				};
+			};
+			reserve_paddle_checkout: {
+				Args: {
+					p_environment: string;
+					p_expires_at: string;
+					p_nonce: string;
+					p_price_id: string;
+					p_user_id: string;
+				};
+				Returns: Json;
 			};
 			safe_jsonb_int: {
 				Args: { p_default: number; p_key: string; p_obj: Json };

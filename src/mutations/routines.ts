@@ -319,7 +319,10 @@ export function useUpdateRoutine() {
 			toast.success("Routine updated");
 			queryClient.invalidateQueries({ queryKey: queryKeys.routines.all });
 			queryClient.invalidateQueries({
-				queryKey: queryKeys.routines.detail(variables.routineId),
+				queryKey: queryKeys.routines.detail(
+					user?.id ?? "",
+					variables.routineId,
+				),
 			});
 		},
 

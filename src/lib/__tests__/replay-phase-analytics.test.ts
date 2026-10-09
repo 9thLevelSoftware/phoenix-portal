@@ -29,7 +29,9 @@ function rep(repNumber: number): RepSummary {
 		peak_velocity_mps: 0.8,
 		mean_force_n: 100,
 		peak_force_n: 130,
-		power_watts: 80,
+		power_watts: null,
+		peak_power_watts: null,
+		power_method: "LEGACY_UNKNOWN_V0",
 		rom_mm: 100,
 		tut_ms: 1000,
 		left_force_avg: 100,
@@ -40,6 +42,21 @@ function rep(repNumber: number): RepSummary {
 }
 
 describe("buildReplayPhaseAnalytics", () => {
+	it("abstains on force-only history and does not bridge unknown motion", () => {
+		const analytics = buildReplayPhaseAnalytics({
+			telemetry: [
+				point(0, 0, 100, 0.1),
+				{ ...point(50, 0, 120, 0), position_mm: null, velocity_mps: null },
+				point(100, 100, 140, 0.5),
+			],
+			repSummaries: [rep(1)],
+			repBoundaries: [0],
+		});
+		expect(analytics.status).toBe("partial");
+		expect(analytics.partialReason).toMatch(/unknown.*force-only/i);
+		expect(analytics.segments).toEqual([]);
+	});
+
 	it("segments phases and calculates energy from summed dual-cable force", () => {
 		const analytics = buildReplayPhaseAnalytics({
 			telemetry: [
