@@ -785,6 +785,13 @@ describe("SPA -> Edge _shared import boundary", () => {
 		// here without checking the same three things.
 		"billingAction.ts",
 		"insightRules.ts",
+		// Reviewed 2026-10-09: Analytics and generate-insights share one RTL
+		// calculator through the `src/lib/training-load.ts` re-export. The
+		// formula used to be copied in both places. Checked against every
+		// predicate in the test below: no `Deno` global, no
+		// `SERVICE_ROLE|_SECRET|API_KEY|createClient`, and no relative `./`
+		// imports. Parity is pinned by `tests/fixtures/rtl-cases.json`.
+		"trainingLoad.ts",
 		"subscriptionEntitlement.ts",
 		// Reviewed 2026-09-22 for R-31 / PR 37 R-15: the single source of
 		// truth for where a user's data lives. `src/lib/export/data-export.ts`
