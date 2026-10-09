@@ -12,7 +12,9 @@ function makeRep(overrides: Partial<RepSummary> = {}): RepSummary {
 		peak_velocity_mps: 1.04, // ratio 1.3 (ideal range 1.2-1.5)
 		mean_force_n: 500,
 		peak_force_n: 600,
-		power_watts: 400,
+		power_watts: null,
+		peak_power_watts: null,
+		power_method: "LEGACY_UNKNOWN_V0",
 		rom_mm: 400, // matches default target
 		tut_ms: 3000, // within default range [2000, 5000]
 		left_force_avg: 250,

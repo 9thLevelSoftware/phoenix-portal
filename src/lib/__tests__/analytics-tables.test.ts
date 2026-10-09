@@ -62,6 +62,8 @@ const repRows: AnalyticsRepSummaryRow[] = [
 		meanForceN: 900,
 		peakForceN: 1100,
 		powerWatts: 450,
+		peakPowerWatts: 500,
+		powerMethod: "PAIRED_CABLE_WORK_V1",
 		romMm: 120,
 		tutMs: 1100,
 		asymmetryPct: 3,

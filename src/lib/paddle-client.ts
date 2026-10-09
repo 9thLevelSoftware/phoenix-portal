@@ -273,8 +273,16 @@ export async function openCheckout({
 		response: signResponse,
 	} = await supabase.functions.invoke<{
 		custom_data: PaddleCheckoutCustomData;
-	}>("paddle-checkout-custom-data", { method: "POST" });
-	if (signError || !signedPayload?.custom_data) {
+		transaction_id: string;
+	}>("paddle-checkout-custom-data", {
+		method: "POST",
+		body: { price_id: priceId },
+	});
+	if (
+		signError ||
+		!signedPayload?.custom_data ||
+		!signedPayload.transaction_id?.startsWith("txn_")
+	) {
 		// supabase-js turns any non-2xx into the generic "Edge Function
 		// returned a non-2xx status code", which would hide the 409
 		// `existing_subscription` message the server took care to write. Read
@@ -305,8 +313,7 @@ export async function openCheckout({
 	}
 
 	window.Paddle.Checkout.open({
-		items: [{ priceId, quantity: 1 }],
-		customData: signedPayload.custom_data,
+		transactionId: signedPayload.transaction_id,
 		customer: { email: userEmail },
 		settings: {
 			theme: "dark",
