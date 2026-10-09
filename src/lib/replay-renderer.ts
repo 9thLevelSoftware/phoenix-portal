@@ -193,12 +193,17 @@ export function renderVelocityBars(
 
 	// Calculate scales
 	const maxTime = Math.max(...data.map((d) => d.timestamp_ms));
-	const maxVelocity = Math.max(...data.map((d) => d.velocity_mps)) * 1.1;
+	const velocities = data.flatMap((point) =>
+		point.velocity_mps === null ? [] : [point.velocity_mps],
+	);
+	if (velocities.length === 0) return;
+	const maxVelocity = Math.max(0, ...velocities) * 1.1;
+	const minVelocity = Math.min(0, ...velocities) * 1.1;
 
-	if (maxTime === 0 || maxVelocity === 0) return;
+	if (maxTime === 0 || maxVelocity === minVelocity) return;
 
 	const xScale = plotArea.width / maxTime;
-	const yScale = plotArea.height / maxVelocity;
+	const yScale = plotArea.height / (maxVelocity - minVelocity);
 
 	// Draw rep background bands
 	drawRepBands(ctx, plotArea, repBoundaries, maxTime);
@@ -212,41 +217,47 @@ export function renderVelocityBars(
 		return;
 	}
 
-	// Build path points for continuous line (consistent with force curve style)
-	const points = visibleData.map((d) => ({
-		x: plotArea.x + d.timestamp_ms * xScale,
-		y: plotArea.y + plotArea.height - d.velocity_mps * yScale,
-	}));
-
-	// Draw lighter opacity fill under the line
 	const gradient = ctx.createLinearGradient(
-		0,
-		plotArea.y,
-		0,
-		plotArea.y + plotArea.height,
+		0, plotArea.y, 0, plotArea.y + plotArea.height,
 	);
 	gradient.addColorStop(0, "rgba(255, 107, 53, 0.2)");
 	gradient.addColorStop(1, "transparent");
+	const baseline = plotArea.y + plotArea.height + minVelocity * yScale;
 
-	ctx.beginPath();
-	ctx.moveTo(points[0].x, plotArea.y + plotArea.height);
-	points.forEach((p) => {
-		ctx.lineTo(p.x, p.y);
-	});
-	ctx.lineTo(points[points.length - 1].x, plotArea.y + plotArea.height);
-	ctx.closePath();
-	ctx.fillStyle = gradient;
-	ctx.fill();
+	for (const cable of ["A", "B"] as const) {
+		const runs: Array<Array<{ x: number; y: number }>> = [];
+		let currentRun: Array<{ x: number; y: number }> = [];
+		for (const point of visibleData) {
+			if (point.cable !== cable) continue;
+			if (point.velocity_mps === null) {
+				if (currentRun.length > 0) runs.push(currentRun);
+				currentRun = [];
+				continue;
+			}
+			currentRun.push({
+				x: plotArea.x + point.timestamp_ms * xScale,
+				y: plotArea.y + plotArea.height - (point.velocity_mps - minVelocity) * yScale,
+			});
+		}
+		if (currentRun.length > 0) runs.push(currentRun);
 
-	// Draw stroke line at 2px width
-	ctx.beginPath();
-	ctx.moveTo(points[0].x, points[0].y);
-	points.slice(1).forEach((p) => {
-		ctx.lineTo(p.x, p.y);
-	});
-	ctx.strokeStyle = EMBER_COLOR;
-	ctx.lineWidth = 2;
-	ctx.stroke();
+		for (const points of runs) {
+			ctx.beginPath();
+			ctx.moveTo(points[0].x, baseline);
+			for (const point of points) ctx.lineTo(point.x, point.y);
+			ctx.lineTo(points[points.length - 1].x, baseline);
+			ctx.closePath();
+			ctx.fillStyle = gradient;
+			ctx.fill();
+
+			ctx.beginPath();
+			ctx.moveTo(points[0].x, points[0].y);
+			for (const point of points.slice(1)) ctx.lineTo(point.x, point.y);
+			ctx.strokeStyle = EMBER_COLOR;
+			ctx.lineWidth = 2;
+			ctx.stroke();
+		}
+	}
 
 	// Draw playhead
 	drawPlayhead(ctx, plotArea, currentTimeMs, maxTime);

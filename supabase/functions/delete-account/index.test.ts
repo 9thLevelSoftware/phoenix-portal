@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { hmacSha256Hex } from "../_shared/hmac.ts";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import {
   EXPLICIT_PURGE_TARGETS,
@@ -63,6 +64,7 @@ interface FakeSubscription {
 }
 
 interface FakeState {
+  checkoutLedger?: Array<Record<string, unknown>>;
   calls: Call[];
   /** Every deletion_requests row (a deleted user's rows cascade away). */
   deletionRequests: FakeRequest[];
@@ -373,6 +375,9 @@ class FakeQuery {
   private resolveUpdate(): { data: unknown; error: unknown } {
     const error = this.state.updateErrors[this.table] ?? null;
     if (error) return { data: null, error };
+    if (this.table === "paddle_checkout_authorizations") {
+      for (const row of this.state.checkoutLedger ?? []) if (rowMatches(row, this.filters)) Object.assign(row, this.values);
+    }
     if (this.table !== "deletion_requests") return { data: this.returnRows ? [] : null, error: null };
     const isClaim = this.values.status === "executing";
     const matched = isClaim && this.state.claimRace ? [] : this.matchingRequests();
@@ -442,7 +447,7 @@ class FakeQuery {
       ? this.state.tokenListError
         ? { data: null, error: this.state.tokenListError }
         : { data: this.state.oauthTokens.map((t) => ({ provider: t.provider })), error: null }
-      : this.resolveCount();
+      : this.table === "paddle_checkout_authorizations" ? { data: this.state.checkoutLedger ?? [], error: null } : this.resolveCount();
     return Promise.resolve(result).then(resolve);
   }
 }
@@ -455,6 +460,7 @@ function fakeAdmin(state: FakeState): SupabaseClient {
           new FakeQuery(state, table, "select").select(columns, options),
         delete: () => new FakeQuery(state, table, "delete"),
         update: (values: Record<string, unknown>) => new FakeQuery(state, table, "update", values),
+        upsert: (values: Record<string, unknown>) => new FakeQuery(state, table, "update", values),
       };
     },
     rpc(name: string, args: unknown) {
@@ -555,6 +561,10 @@ function fakePaddle(options: {
   state?: FakeState;
   /** HTTP status the provider revoke endpoint answers with. */
   revokeStatus?: number;
+  siblings?: Array<Record<string, unknown>>;
+  listingStatus?: number;
+  malformedCancel?: boolean;
+  transaction?: Record<string, unknown>;
 }): {
   deps: PurgeUserDependencies;
   calls: PaddleCall[];
@@ -594,15 +604,20 @@ function fakePaddle(options: {
     });
     if (method === "GET") {
       options.onGet?.();
+      if (url.pathname.startsWith("/transactions/")) return Promise.resolve(new Response(JSON.stringify({ data: options.transaction })));
+      if (url.pathname === "/subscriptions") return Promise.resolve(new Response(JSON.stringify({
+        data: options.siblings ?? (options.getStatus === 404 ? [] : [{ id: SUBSCRIPTION_ID, customer_id: CUSTOMER_ID, status: options.status ?? "active" }]),
+        meta: { pagination: { has_more: false, next: null } },
+      }), { status: options.listingStatus ?? 200 }));
       return Promise.resolve(
         new Response(
-          JSON.stringify({ data: { id: SUBSCRIPTION_ID, status: options.status ?? "active" } }),
+          JSON.stringify({ data: { id: SUBSCRIPTION_ID, customer_id: CUSTOMER_ID, status: options.status ?? "active" } }),
           { status: options.getStatus ?? 200 },
         ),
       );
     }
     return Promise.resolve(
-      new Response(JSON.stringify({ data: { status: "canceled" } }), {
+      new Response(JSON.stringify({ data: { status: options.malformedCancel ? "active" : "canceled" } }), {
         status: options.cancelStatus ?? 200,
       }),
     );
@@ -615,6 +630,7 @@ function fakePaddle(options: {
       fetch: fetchImpl as typeof fetch,
       paddleApiKey: "test-paddle-key",
       paddleEnvironment: "sandbox",
+      paddleCustomDataSecret: "paddle-custom-test",
       providerRevoke: {
         fetch: revokeFetch as typeof fetch,
         fitbitClientId: "fitbit-client",
@@ -683,6 +699,53 @@ const isAvatarRemove = (call: Call) => call.kind === "storage.remove";
 const deletesTable = (table: string) => (call: Call) =>
   call.kind === "delete" && call.table === table;
 const isRowDelete = (call: Call) => call.kind === "delete";
+
+Deno.test("purgeUser: cancels both proven-owned siblings including paused, leaves foreign shared-customer subscription alone", async () => {
+  const state = withSubscription();
+  const sibling = { id: "sub_sibling", customer_id: CUSTOMER_ID, status: "paused", custom_data: { user_id: USER_ID, cd_sig: await hmacSha256Hex("paddle-custom-test", USER_ID) } };
+  const foreign = { id: "sub_foreign", customer_id: CUSTOMER_ID, status: "active", custom_data: { user_id: OTHER_USER_ID } };
+  const paddle = fakePaddle({ siblings: [{ id: SUBSCRIPTION_ID, customer_id: CUSTOMER_ID, status: "active" }, sibling, foreign] });
+  const result = await silenced(() => purgeUser(fakeAdmin(state), USER_ID, paddle.deps));
+  assertEquals(result.ok, true);
+  assertEquals(paddle.calls.filter((call) => call.method === "POST").map((call) => call.path), [`/subscriptions/${SUBSCRIPTION_ID}/cancel`, "/subscriptions/sub_sibling/cancel"]);
+  assertEquals(state.deletedUsers, [USER_ID]);
+});
+
+Deno.test("purgeUser: incomplete listing or ambiguous sibling preserves account and audit", async () => {
+  for (const options of [{ listingStatus: 503 }, { siblings: [{ id: "sub_ambiguous", customer_id: CUSTOMER_ID, status: "active", custom_data: { user_id: USER_ID, cd_sig: "forged" } }] }]) {
+    const state = withSubscription();
+    const paddle = fakePaddle(options);
+    const result = await silenced(() => purgeUser(fakeAdmin(state), USER_ID, paddle.deps));
+    assertEquals(result.ok, false);
+    assertEquals(state.deletedUsers, []);
+    assertEquals(state.calls.filter(isRowDelete), []);
+    assertEquals(paddle.calls.filter((call) => call.method === "POST"), []);
+  }
+});
+
+Deno.test("purgeUser: an HTTP success without confirmed terminal cancellation preserves account", async () => {
+  const state = withSubscription();
+  const result = await silenced(() => purgeUser(fakeAdmin(state), USER_ID, fakePaddle({ malformedCancel: true }).deps));
+  assertEquals(result.ok, false);
+  assertEquals(state.deletedUsers, []);
+});
+
+Deno.test("purgeUser: an abandoned pre-email checkout is canceled and deletion plus retry succeeds", async () => {
+  const state = fakeState({ checkoutLedger: [{ nonce: crypto.randomUUID(), user_id: USER_ID, transaction_id: "txn_abandoned", subscription_id: null, customer_id: null, state: "ready" }] });
+  const paddle = fakePaddle({ transaction: { id: "txn_abandoned", status: "draft", customer_id: null, subscription_id: null } });
+  assertEquals((await silenced(() => purgeUser(fakeAdmin(state), USER_ID, paddle.deps))).ok, true);
+  assertEquals(paddle.calls.map((call) => call.method), ["GET", "PATCH"]);
+  const count = paddle.calls.length;
+  assertEquals((await silenced(() => purgeUser(fakeAdmin(state), USER_ID, paddle.deps))).ok, true);
+  assertEquals(paddle.calls.length, count);
+});
+
+Deno.test("purgeUser: a definitively rejected creation does not block erasure", async () => {
+  const state = fakeState({ checkoutLedger: [{ nonce: crypto.randomUUID(), user_id: USER_ID, transaction_id: null, subscription_id: null, customer_id: null, state: "canceled" }] });
+  const paddle = fakePaddle({});
+  assertEquals((await silenced(() => purgeUser(fakeAdmin(state), USER_ID, paddle.deps))).ok, true);
+  assertEquals(paddle.calls, []);
+});
 
 function withSubscription(overrides: Partial<FakeState> = {}): FakeState {
   return fakeState({
@@ -800,7 +863,7 @@ Deno.test("delete-account: a Paddle 404 continues only when the local subscripti
     const paddle = fakePaddle({ getStatus: 404 });
     const res = await silenced(() => handlerFor(state, paddle.deps)(post()));
     assertEquals(res.status, 200, status);
-    assertEquals(paddle.calls.map((c) => c.method), ["GET"], status);
+    assertEquals(paddle.calls.map((c) => c.method), ["GET", "GET"], status);
     assertEquals(state.calls.filter(isDeleteUser).length, 1, status);
   }
 
@@ -844,9 +907,10 @@ Deno.test("delete-account: a paused subscription is cancelled immediately and mi
   assertEquals(res.status, 200);
   assertEquals(paddle.calls.map((c) => `${c.method} ${c.path}`), [
     `GET /subscriptions/${SUBSCRIPTION_ID}`,
+    `GET /subscriptions`,
     `POST /subscriptions/${SUBSCRIPTION_ID}/cancel`,
   ]);
-  assertEquals(paddle.calls[1].body, { effective_from: "immediately" });
+  assertEquals(paddle.calls[2].body, { effective_from: "immediately" });
   const mirror = state.calls.find((c) => c.kind === "update" && c.table === "subscriptions");
   assert(mirror && mirror.kind === "update");
   assertEquals(mirror.values.status, "canceled");
@@ -874,7 +938,7 @@ Deno.test("delete-account: every non-canceled live status is cancelled; canceled
   const paddle = fakePaddle({ status: "canceled" });
   const res = await silenced(() => handlerFor(state, paddle.deps)(post()));
   assertEquals(res.status, 200);
-  assertEquals(paddle.calls.map((c) => c.method), ["GET"]);
+  assertEquals(paddle.calls.map((c) => c.method), ["GET", "GET"]);
 });
 
 Deno.test("delete-account: validation failures do not consume the rate limit", async () => {
@@ -1144,7 +1208,7 @@ Deno.test("purgeUser: paddle_webhook_events is matched by user id, payload and a
     c.kind === "select" && c.table === "subscriptions" &&
     c.filters.some(([column]) => column === "user_id!=")
   );
-  assertEquals(checks.length, 2);
+  assertEquals(checks.length, 4);
   assertEquals(checks[0].kind === "select" && checks[0].filters, [
     ["paddle_subscription_id", SUBSCRIPTION_ID],
     ["user_id!=", USER_ID],
@@ -1160,18 +1224,18 @@ Deno.test("purgeUser: paddle_webhook_events is matched by user id, payload and a
 Deno.test("purgeUser: a subscription id another user's row references is never used as a match (R-21)", async () => {
   const shared = withSubscription({ otherSubscriptionRefs: { [SUBSCRIPTION_ID]: 1 } });
   const result = await silenced(() => purgeUser(fakeAdmin(shared), USER_ID, fakePaddle({ status: "canceled" }).deps));
-  assertEquals(result, { ok: true, billingCancelled: false, residualTables: [] });
+  assertEquals(result.ok, false);
   const onlyUserScoped: [string, unknown][][] = [
     [["user_id", USER_ID]],
     [["payload->data->custom_data->>user_id", USER_ID]],
   ];
-  assertEquals(webhookDeleteFilters(shared), [...onlyUserScoped, ...onlyUserScoped]);
+  assertEquals(webhookDeleteFilters(shared), []);
 
   // A failed sharing check is treated as shared (skip), not as a purge failure.
   const unknown = withSubscription({ sharedCheckError: { message: "timeout" } });
   const result2 = await silenced(() => purgeUser(fakeAdmin(unknown), USER_ID, fakePaddle({ status: "canceled" }).deps));
-  assertEquals(result2.ok, true);
-  assertEquals(webhookDeleteFilters(unknown), [...onlyUserScoped, ...onlyUserScoped]);
+  assertEquals(result2.ok, false);
+  assertEquals(webhookDeleteFilters(unknown), []);
 });
 
 Deno.test("purgeUser: a missing paddle_webhook_events.user_id column falls back to the payload match (R-13)", async () => {
@@ -1442,7 +1506,7 @@ Deno.test("process_due: a Paddle failure leaves the request pending for the next
   const paddle = fakePaddle({});
   const second = await silenced(() => handlerFor(state, paddle.deps)(cronPost()));
   assertEquals((await second.json()).purged, 1);
-  assertEquals(paddle.calls.map((c) => c.method), ["GET", "POST"]);
+  assertEquals(paddle.calls.map((c) => c.method), ["GET", "GET", "POST"]);
   assertEquals(state.deletedUsers, [USER_ID]);
 });
 
@@ -2111,7 +2175,7 @@ Deno.test({
       const result = await silenced(() => purgeUser(admin, user.id, paddle.deps));
 
       assertEquals(result, { ok: true, billingCancelled: true, residualTables: [] });
-      assertEquals(paddle.calls.map((c) => c.method), ["GET", "POST"]);
+      assertEquals(paddle.calls.map((c) => c.method), ["GET", "GET", "POST"]);
       // PR 54: the fixture's Strava token has no expiry, so it was refreshed
       // (the rotated pair persisted to the real row) and the grant revoked
       // with the refreshed access token.
@@ -2433,7 +2497,7 @@ Deno.test({
       assertEquals(report.purged, 2);
       assert(lines.includes(`[DELETION_ALERT] reclaimed_stuck_claim user=${user.id}`));
       assert(lines.includes(`[DELETION_ALERT] reclaimed_stuck_claim user=${nullClaim.id}`));
-      assertEquals(paddle.calls.map((c) => c.method), ["GET", "POST"]);
+      assertEquals(paddle.calls.map((c) => c.method), ["GET", "GET", "POST"]);
       for (const purged of [user, nullClaim]) {
         const gone = await admin.auth.admin.getUserById(purged.id);
         assert(gone.error || !gone.data.user, `auth user ${purged.id} deleted`);

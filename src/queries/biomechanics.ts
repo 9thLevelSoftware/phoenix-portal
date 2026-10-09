@@ -1,5 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
+import { authoritativeRepPower } from "@/lib/biomechanics";
 import { supabase } from "@/lib/supabase";
+import { repPowerMethodSchema } from "@/schemas/telemetry";
 import { queryKeys } from "./keys";
 
 /**
@@ -9,9 +11,9 @@ import { queryKeys } from "./keys";
  * 2. Fetch sets for those exercises
  * 3. Fetch rep summaries for those sets
  */
-export function sessionAsymmetryOptions(sessionId: string) {
+export function sessionAsymmetryOptions(userId: string, sessionId: string) {
 	return queryOptions({
-		queryKey: queryKeys.biomechanics.asymmetry(sessionId),
+		queryKey: queryKeys.biomechanics.asymmetry(userId, sessionId),
 		queryFn: async () => {
 			// Step 1: Get exercises for this session
 			const { data: exercises, error: exError } = await supabase
@@ -47,11 +49,16 @@ export function sessionAsymmetryOptions(sessionId: string) {
 				const exercise = exerciseId ? exerciseMap.get(exerciseId) : undefined;
 				return {
 					...rep,
+					power_watts: authoritativeRepPower(rep).meanWatts,
+					peak_power_watts: authoritativeRepPower(rep).peakWatts,
+					power_method: repPowerMethodSchema.parse(
+						"power_method" in rep ? rep.power_method : undefined,
+					),
 					exercise_name: exercise?.name ?? "Unknown",
 					muscle_group: exercise?.muscle_group ?? "Unknown",
 				};
 			});
 		},
-		enabled: !!sessionId,
+		enabled: !!userId && !!sessionId,
 	});
 }

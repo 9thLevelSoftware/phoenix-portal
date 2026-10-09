@@ -18,12 +18,13 @@ export const queryKeys = {
 			] as const,
 		streak: (userId: string) =>
 			[...queryKeys.workouts.all, "streak", userId] as const,
-		detail: (sessionId: string) =>
-			[...queryKeys.workouts.all, "detail", sessionId] as const,
-		comparison: (sessionAId: string, sessionBId: string) =>
+		detail: (userId: string, sessionId: string) =>
+			[...queryKeys.workouts.all, "detail", userId, sessionId] as const,
+		comparison: (userId: string, sessionAId: string, sessionBId: string) =>
 			[
 				...queryKeys.workouts.all,
 				"comparison",
+				userId,
 				sessionAId,
 				sessionBId,
 			] as const,
@@ -55,8 +56,13 @@ export const queryKeys = {
 				String(days),
 				profileId ?? "all",
 			] as const,
-		sessionSetWeights: (sessionId: string) =>
-			[...queryKeys.analytics.all, "session-set-weights", sessionId] as const,
+		sessionSetWeights: (userId: string, sessionId: string) =>
+			[
+				...queryKeys.analytics.all,
+				"session-set-weights",
+				userId,
+				sessionId,
+			] as const,
 		phaseStats: (userId: string, period: string, profileId?: string | null) =>
 			[
 				...queryKeys.analytics.all,
@@ -70,8 +76,8 @@ export const queryKeys = {
 		all: ["routines"] as const,
 		byUser: (userId: string, profileId?: string | null) =>
 			[...queryKeys.routines.all, userId, profileId ?? "all"] as const,
-		detail: (routineId: string) =>
-			[...queryKeys.routines.all, "detail", routineId] as const,
+		detail: (userId: string, routineId: string) =>
+			[...queryKeys.routines.all, "detail", userId, routineId] as const,
 	},
 	subscription: {
 		all: ["subscription"] as const,
@@ -82,22 +88,22 @@ export const queryKeys = {
 		all: ["cycles"] as const,
 		byUser: (userId: string, profileId?: string | null) =>
 			[...queryKeys.cycles.all, userId, profileId ?? "all"] as const,
-		detail: (cycleId: string) =>
-			[...queryKeys.cycles.all, "detail", cycleId] as const,
+		detail: (userId: string, cycleId: string) =>
+			[...queryKeys.cycles.all, "detail", userId, cycleId] as const,
 	},
 	telemetry: {
 		all: ["telemetry"] as const,
-		bySet: (setId: string) =>
-			[...queryKeys.telemetry.all, "set", setId] as const,
-		repSummaries: (setId: string) =>
-			[...queryKeys.telemetry.all, "rep-summaries", setId] as const,
+		bySet: (userId: string, setId: string) =>
+			[...queryKeys.telemetry.all, "set", userId, setId] as const,
+		repSummaries: (userId: string, setId: string) =>
+			[...queryKeys.telemetry.all, "rep-summaries", userId, setId] as const,
 	},
 	biomechanics: {
 		all: ["biomechanics"] as const,
-		asymmetry: (sessionId: string) =>
-			[...queryKeys.biomechanics.all, "asymmetry", sessionId] as const,
-		rom: (exerciseId: string) =>
-			[...queryKeys.biomechanics.all, "rom", exerciseId] as const,
+		asymmetry: (userId: string, sessionId: string) =>
+			[...queryKeys.biomechanics.all, "asymmetry", userId, sessionId] as const,
+		rom: (userId: string, exerciseId: string) =>
+			[...queryKeys.biomechanics.all, "rom", userId, exerciseId] as const,
 	},
 	progress: {
 		all: ["progress"] as const,
@@ -130,10 +136,10 @@ export const queryKeys = {
 	},
 	replay: {
 		all: ["replay"] as const,
-		session: (sessionId: string) =>
-			[...queryKeys.replay.all, "session", sessionId] as const,
-		telemetry: (setId: string) =>
-			[...queryKeys.replay.all, "telemetry", setId] as const,
+		session: (userId: string, sessionId: string) =>
+			[...queryKeys.replay.all, "session", userId, sessionId] as const,
+		telemetry: (userId: string, setId: string) =>
+			[...queryKeys.replay.all, "telemetry", userId, setId] as const,
 	},
 	integrations: {
 		all: ["integrations"] as const,

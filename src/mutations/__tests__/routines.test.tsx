@@ -342,7 +342,7 @@ describe("useUpdateRoutine", () => {
 			queryKey: queryKeys.routines.all,
 		});
 		expect(invalidateSpy).toHaveBeenCalledWith({
-			queryKey: queryKeys.routines.detail("routine-1"),
+			queryKey: queryKeys.routines.detail("test-user-id", "routine-1"),
 		});
 	});
 

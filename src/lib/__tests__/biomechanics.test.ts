@@ -3,7 +3,7 @@ import { estimateOneRepMaxKg } from "../../../supabase/functions/_shared/exercis
 import {
 	ASYMMETRY_THRESHOLD,
 	calculateAsymmetry,
-	calculatePower,
+	authoritativeRepPower,
 	calculateRom,
 	estimateOneRepMax,
 } from "../biomechanics";
@@ -115,24 +115,26 @@ describe("estimateOneRepMax", () => {
 	});
 });
 
-describe("calculatePower", () => {
-	it("calculates P = F * v correctly", () => {
-		// 500 * 0.8 = 400
-		expect(calculatePower(500, 0.8)).toBe(400);
+describe("authoritativeRepPower", () => {
+	it("preserves exact signed paired watts including zero", () => {
+		expect(authoritativeRepPower({
+			power_method: "PAIRED_CABLE_WORK_V1",
+			power_watts: 19.6133,
+			peak_power_watts: -2.5,
+		})).toEqual({ meanWatts: 19.6133, peakWatts: -2.5 });
+		expect(authoritativeRepPower({
+			power_method: "PAIRED_CABLE_WORK_V1", power_watts: 0,
+		})).toEqual({ meanWatts: 0, peakWatts: null });
 	});
 
-	it("returns 0 when force is 0", () => {
-		expect(calculatePower(0, 1.5)).toBe(0);
-	});
-
-	it("returns 0 when velocity is 0", () => {
-		expect(calculatePower(500, 0)).toBe(0);
-	});
-
-	it("rounds to nearest integer", () => {
-		// 333 * 0.7 = 233.1 -> 233
-		expect(calculatePower(333, 0.7)).toBe(233);
-	});
+	it.each([undefined, null, "LEGACY_UNKNOWN_V0", "UNAVAILABLE"])(
+		"never interprets historical or unavailable values as watts (%s)",
+		(power_method) => {
+			expect(authoritativeRepPower({
+				power_method, power_watts: 90000, peak_power_watts: 90000,
+			})).toEqual({ meanWatts: null, peakWatts: null });
+		},
+	);
 });
 
 describe("calculateRom", () => {

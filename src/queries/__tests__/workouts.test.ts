@@ -152,8 +152,10 @@ describe("sessionDetailOptions", () => {
 
 	it("uses the correct query key from keys.ts", async () => {
 		const { sessionDetailOptions } = await import("../workouts");
-		const opts = sessionDetailOptions("sess-1");
-		expect(opts.queryKey).toEqual(queryKeys.workouts.detail("sess-1"));
+		const opts = sessionDetailOptions("test-user-id", "sess-1");
+		expect(opts.queryKey).toEqual(
+			queryKeys.workouts.detail("test-user-id", "sess-1"),
+		);
 	});
 
 	it("loads session + exercises + sets in one embedded request", async () => {
@@ -189,7 +191,7 @@ describe("sessionDetailOptions", () => {
 		fromFn.mockImplementation(() => chain);
 
 		const { sessionDetailOptions } = await import("../workouts");
-		const opts = sessionDetailOptions(SESSION_ROW.id);
+		const opts = sessionDetailOptions("test-user-id", SESSION_ROW.id);
 		const result = await opts.queryFn!({} as never);
 
 		expect(result.name).toBe("Leg Day");
@@ -244,9 +246,8 @@ describe("sessionDetailOptions", () => {
 		fromFn.mockImplementation(() => chain);
 
 		const { sessionDetailOptions } = await import("../workouts");
-		const result = await sessionDetailOptions(SESSION_ROW.id).queryFn!(
-			{} as never,
-		);
+		const result = await sessionDetailOptions("test-user-id", SESSION_ROW.id)
+			.queryFn!({} as never);
 
 		expect(fromFn).toHaveBeenCalledTimes(1);
 		expect(result?.exercises).toEqual([]);
@@ -259,13 +260,15 @@ describe("sessionDetailOptions", () => {
 
 		const { sessionDetailOptions } = await import("../workouts");
 		await expect(
-			sessionDetailOptions(SESSION_ROW.id).queryFn!({} as never),
+			sessionDetailOptions("test-user-id", SESSION_ROW.id).queryFn!(
+				{} as never,
+			),
 		).rejects.toBe(error);
 	});
 
 	it("has enabled: false when sessionId is empty", async () => {
 		const { sessionDetailOptions } = await import("../workouts");
-		const opts = sessionDetailOptions("");
+		const opts = sessionDetailOptions("test-user-id", "");
 		expect(opts.enabled).toBe(false);
 	});
 });
@@ -330,9 +333,9 @@ describe("comparisonDetailOptions", () => {
 		fromFn.mockImplementation(() => chain);
 
 		const { comparisonDetailOptions } = await import("../workouts");
-		const opts = comparisonDetailOptions(SESSION_ROW.id);
+		const opts = comparisonDetailOptions("test-user-id", SESSION_ROW.id);
 		expect(opts.queryKey).toEqual(
-			queryKeys.workouts.comparison(SESSION_ROW.id, "detail"),
+			queryKeys.workouts.comparison("test-user-id", SESSION_ROW.id, "detail"),
 		);
 		const result = await opts.queryFn!({} as never);
 
@@ -387,7 +390,9 @@ describe("comparisonDetailOptions", () => {
 
 		const { comparisonDetailOptions } = await import("../workouts");
 		await expect(
-			comparisonDetailOptions(SESSION_ROW.id).queryFn!({} as never),
+			comparisonDetailOptions("test-user-id", SESSION_ROW.id).queryFn!(
+				{} as never,
+			),
 		).rejects.toBe(error);
 		expect(fromFn).toHaveBeenCalledTimes(1);
 	});
@@ -400,9 +405,8 @@ describe("comparisonDetailOptions", () => {
 		fromFn.mockImplementation(() => chain);
 
 		const { comparisonDetailOptions } = await import("../workouts");
-		const result = await comparisonDetailOptions(SESSION_ROW.id).queryFn!(
-			{} as never,
-		);
+		const result = await comparisonDetailOptions("test-user-id", SESSION_ROW.id)
+			.queryFn!({} as never);
 
 		expect(fromFn).toHaveBeenCalledTimes(1);
 		expect(result?.exercises).toEqual([]);

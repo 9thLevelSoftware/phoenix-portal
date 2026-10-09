@@ -236,14 +236,21 @@ describe("sync preview namespace cleanup", () => {
 		expect(
 			workflow.match(/scripts\/cleanup-sync-preview-users\.mjs/g),
 		).toHaveLength(3);
-		expect(workflow).toMatch(
-			/- name: Clean up live sync test users\s+if: \$\{\{ always\(\) && github\.event_name == 'workflow_dispatch' && github\.event\.inputs\.use_mocks == 'false' \}\}\s+run: node scripts\/cleanup-sync-preview-users\.mjs/,
+		const liveJob = workflow
+			.split("  sync-tests-live:")[1]
+			.split("  sync-tests-matrix:")[0];
+		expect(liveJob).toContain(
+			"github.event_name == 'workflow_dispatch' && inputs.use_mocks == 'false' && github.ref == 'refs/heads/main'",
 		);
-		expect(workflow.indexOf("Clean up live sync test users")).toBeGreaterThan(
-			workflow.indexOf("Run sync tests (live mode)"),
+		expect(liveJob).toContain("environment: sync-live-staging");
+		expect(liveJob).toMatch(
+			/- name: Clean up live sync test users\s+if: always\(\)\s+run: node scripts\/cleanup-sync-preview-users\.mjs/,
 		);
-		expect(workflow.indexOf("Clean up live sync test users")).toBeLessThan(
-			workflow.indexOf("Upload test results"),
+		expect(liveJob.indexOf("Clean up live sync test users")).toBeGreaterThan(
+			liveJob.indexOf("Run sync tests (live mode, dispatch-only)"),
+		);
+		expect(liveJob.indexOf("Clean up live sync test users")).toBeLessThan(
+			liveJob.indexOf("Upload test results"),
 		);
 		expect(workflow).toContain("SYNC_LIVE_DEBUG_FAILURES: 'true'");
 		expect(workflow).toContain("timeout-minutes: 20");

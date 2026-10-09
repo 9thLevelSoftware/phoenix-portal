@@ -4,7 +4,7 @@ import ParentSize from "@visx/responsive/lib/components/ParentSize";
 import { scaleBand, scaleLinear } from "@visx/scale";
 import { Bar } from "@visx/shape";
 import { useMemo } from "react";
-import { calculatePower } from "@/lib/biomechanics";
+import { authoritativeRepPower } from "@/lib/biomechanics";
 import type { RepSummary } from "@/schemas/telemetry";
 import { CHART_COLORS, CHART_MARGINS, FONT_SIZES } from "./shared/ChartTheme";
 import { ChartTooltipContent, useChartTooltip } from "./shared/ChartTooltip";
@@ -18,8 +18,6 @@ export interface PowerOutputProps {
 interface PowerRep {
 	repNumber: number;
 	watts: number;
-	force: number;
-	velocity: number;
 }
 
 function PowerOutputInner({
@@ -43,17 +41,12 @@ function PowerOutputInner({
 
 	const powerData = useMemo<PowerRep[]>(
 		() =>
-			repSummaries.map((rep, i) => {
-				const watts =
-					rep.power_watts && rep.power_watts > 0
-						? rep.power_watts
-						: calculatePower(rep.mean_force_n, rep.mean_velocity_mps);
-				return {
+			repSummaries.flatMap((rep, i) => {
+				const watts = authoritativeRepPower(rep).meanWatts;
+				return watts === null ? [] : [{
 					repNumber: rep.rep_number ?? i + 1,
 					watts,
-					force: rep.mean_force_n,
-					velocity: rep.mean_velocity_mps,
-				};
+				}];
 			}),
 		[repSummaries],
 	);
@@ -82,30 +75,28 @@ function PowerOutputInner({
 		[repLabels, innerWidth],
 	);
 
-	const maxWatts = useMemo(() => {
-		if (powerData.length === 0) return 100;
-		// Clamp to a positive minimum so zero/missing/negative power data can't
-		// produce a degenerate or inverted y-domain.
-		return Math.max(100, Math.max(...powerData.map((d) => d.watts)) * 1.2); // headroom for labels
-	}, [powerData]);
+	const powerExtent = useMemo(() => [
+		Math.min(0, ...powerData.map((d) => d.watts)) * 1.2,
+		Math.max(100, ...powerData.map((d) => d.watts)) * 1.2,
+	], [powerData]);
 
 	const yScale = useMemo(
 		() =>
 			scaleLinear<number>({
-				domain: [0, maxWatts],
+				domain: powerExtent,
 				range: [innerHeight, 0],
 				nice: true,
 			}),
-		[maxWatts, innerHeight],
+		[powerExtent, innerHeight],
 	);
 
-	if (repSummaries.length === 0) {
+	if (powerData.length === 0) {
 		return (
 			<div
 				className="flex items-center justify-center text-gray-500"
 				style={{ height }}
 			>
-				No power data available
+				Paired cable-work power unavailable
 			</div>
 		);
 	}
@@ -116,15 +107,15 @@ function PowerOutputInner({
 				width={width}
 				height={height}
 				role="img"
-				aria-label="Power output chart"
+				aria-label="Mean paired cable-work power proxy"
 			>
 				<Group left={margin.left} top={margin.top}>
 					{powerData.map((d, i) => {
 						const label = String(d.repNumber);
 						const barX = xScale(label) ?? 0;
 						const barWidth = xScale.bandwidth();
-						const barHeight = innerHeight - (yScale(d.watts) ?? 0);
-						const barY = yScale(d.watts) ?? 0;
+						const barHeight = Math.abs(yScale(0) - yScale(d.watts));
+						const barY = Math.min(yScale(0), yScale(d.watts));
 
 						const isPeak = highlightPeak && i === peakIndex;
 						const barColor = isPeak
@@ -149,8 +140,8 @@ function PowerOutputInner({
 										).getBoundingClientRect();
 										showTooltip({
 											tooltipData: {
-												label: `Rep ${d.repNumber}${isPeak ? " (Peak)" : ""}`,
-												value: `${d.watts}W | ${d.force.toFixed(0)}N x ${d.velocity.toFixed(2)}m/s`,
+												label: `Rep ${d.repNumber}${isPeak ? " (Highest mean)" : ""}`,
+												value: `${d.watts.toFixed(2)} W mean paired cable-work proxy`,
 												color: barColor,
 											},
 											tooltipLeft: event.clientX - svgRect.left,
@@ -169,7 +160,7 @@ function PowerOutputInner({
 									fontSize={10}
 									fontWeight={isPeak ? 700 : 500}
 								>
-									{d.watts}W
+									{d.watts.toFixed(1)} W
 								</text>
 							</Group>
 						);
@@ -195,7 +186,7 @@ function PowerOutputInner({
 
 					<AxisLeft
 						scale={yScale}
-						label="Power (W)"
+						label="Mean cable-work proxy (W)"
 						labelProps={{
 							fill: CHART_COLORS.axisText,
 							fontSize: FONT_SIZES.label,
@@ -226,22 +217,24 @@ function PowerOutputInner({
 
 export function PowerOutput(props: PowerOutputProps) {
 	const repCount = props.repSummaries.length;
-	const peakPower =
-		repCount > 0
-			? Math.max(
-					...props.repSummaries.map((r) =>
-						r.power_watts && r.power_watts > 0
-							? r.power_watts
-							: calculatePower(r.mean_force_n, r.mean_velocity_mps),
-					),
-				)
-			: 0;
+	const peaks = props.repSummaries.flatMap((rep) => {
+		const watts = authoritativeRepPower(rep).peakWatts;
+		return watts === null ? [] : [watts];
+	});
+	const peakPower = peaks.length > 0 ? Math.max(...peaks) : null;
+	const unknownCount = props.repSummaries.filter(
+		(rep) => authoritativeRepPower(rep).meanWatts === null,
+	).length;
 
 	return (
 		<div
 			role="img"
-			aria-label={`Power output chart showing ${repCount} rep${repCount !== 1 ? "s" : ""}. Peak power: ${peakPower} watts.`}
+			aria-label={`Paired cable-work power proxy for ${repCount} reps. Peak: ${peakPower === null ? "unavailable" : `${peakPower.toFixed(2)} watts`}. ${unknownCount} reps unavailable.`}
 		>
+			<p className="text-sm text-muted-foreground">
+				Signed cable-work proxy, not muscle or body power.
+				{unknownCount > 0 && ` ${unknownCount} reps unavailable; historical power is unverified.`}
+			</p>
 			<div aria-hidden="true">
 				<ParentSize>
 					{({ width }) =>
@@ -250,23 +243,22 @@ export function PowerOutput(props: PowerOutputProps) {
 				</ParentSize>
 			</div>
 			<table className="sr-only">
-				<caption>Power output data by rep</caption>
+				<caption>Paired cable-work power proxy by rep</caption>
 				<thead>
 					<tr>
 						<th>Rep</th>
-						<th>Power (W)</th>
+						<th>Mean proxy (W)</th>
+						<th>Peak proxy (W)</th>
 					</tr>
 				</thead>
 				<tbody>
 					{props.repSummaries.map((rep, i) => {
-						const watts =
-							rep.power_watts && rep.power_watts > 0
-								? rep.power_watts
-								: calculatePower(rep.mean_force_n, rep.mean_velocity_mps);
+						const power = authoritativeRepPower(rep);
 						return (
 							<tr key={rep.id}>
 								<td>Rep {rep.rep_number ?? i + 1}</td>
-								<td>{watts}</td>
+								<td>{power.meanWatts === null ? "Unavailable" : power.meanWatts.toFixed(2)}</td>
+								<td>{power.peakWatts === null ? "Unavailable" : power.peakWatts.toFixed(2)}</td>
 							</tr>
 						);
 					})}

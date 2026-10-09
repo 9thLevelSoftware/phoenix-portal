@@ -164,7 +164,7 @@ function nullableField<T extends z.ZodTypeAny>(item: T) {
 
 // ─── Nested DTOs ─────────────────────────────────────────────────────────
 
-const repSummarySchema = z.object({
+const repSummaryFields = z.object({
 	id: uuid,
 	setId: uuid,
 	repNumber: nonNegInt,
@@ -172,7 +172,10 @@ const repSummarySchema = z.object({
 	peakVelocityMps: nullableField(z.number()),
 	meanForceN: nullableField(z.number()),
 	peakForceN: nullableField(z.number()),
-	powerWatts: nullableField(z.number()),
+	powerWatts: nullableField(z.number().finite()),
+	peakPowerWatts: nullableField(z.number().finite()),
+	powerMethod: z.enum(["PAIRED_CABLE_WORK_V1", "UNAVAILABLE", "LEGACY_UNKNOWN_V0"])
+		.nullish().transform((method: "PAIRED_CABLE_WORK_V1" | "UNAVAILABLE" | "LEGACY_UNKNOWN_V0" | null | undefined) => method ?? "LEGACY_UNKNOWN_V0"),
 	romMm: nullableField(nonNegNumber),
 	tutMs: nullableField(nonNegNumber),
 	leftForceAvg: nullableField(z.number()),
@@ -180,6 +183,20 @@ const repSummarySchema = z.object({
 	asymmetryPct: nullableField(z.number()),
 	vbtZone: nullableField(z.string()),
 });
+const repSummarySchema = repSummaryFields.superRefine((rep: z.infer<typeof repSummaryFields>, ctx: z.RefinementCtx) => {
+	if (rep.powerMethod === "UNAVAILABLE" &&
+		(rep.powerWatts != null || rep.peakPowerWatts != null)) {
+		ctx.addIssue({
+			code: z.ZodIssueCode.custom,
+			path: ["powerWatts"],
+			message: "UNAVAILABLE requires null watt values",
+		});
+	}
+}).transform((rep: z.infer<typeof repSummaryFields>) => ({
+	...rep,
+	powerWatts: rep.powerMethod === "PAIRED_CABLE_WORK_V1" ? rep.powerWatts ?? null : null,
+	peakPowerWatts: rep.powerMethod === "PAIRED_CABLE_WORK_V1" ? rep.peakPowerWatts ?? null : null,
+}));
 
 const setSchema = z.object({
 	id: uuid,

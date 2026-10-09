@@ -5,6 +5,7 @@ import type {
 	BodyMuscleFocusModel,
 	BodyMuscleFocusRow,
 } from "@/lib/body-muscle-analytics";
+import { authoritativeRepPower } from "@/lib/biomechanics";
 import { loadBodyMuscleAnalytics } from "@/lib/body-muscle-analytics-loader";
 import { supabase } from "@/lib/supabase";
 import {
@@ -46,6 +47,8 @@ export interface AnalyticsRepSummaryRow {
 	meanForceN: number | null;
 	peakForceN: number | null;
 	powerWatts: number | null;
+	peakPowerWatts?: number | null;
+	powerMethod?: string | null;
 	romMm: number | null;
 	tutMs: number | null;
 	asymmetryPct: number | null;
@@ -85,6 +88,8 @@ interface RepSummaryRow {
 	mean_force_n: number | null;
 	peak_force_n: number | null;
 	power_watts: number | null;
+	peak_power_watts?: number | null;
+	power_method?: string | null;
 	rom_mm: number | null;
 	tut_ms: number | null;
 	asymmetry_pct: number | null;
@@ -234,7 +239,9 @@ export function generateRepSummaryCsv(rows: AnalyticsRepSummaryRow[]): string {
 		"Peak Velocity (m/s)",
 		"Mean Force (N)",
 		"Peak Force (N)",
-		"Power (W)",
+		"Mean Cable-work Proxy (W)",
+		"Peak Cable-work Proxy (W)",
+		"Power Method",
 		"ROM (mm)",
 		"TUT (ms)",
 		"Asymmetry %",
@@ -250,7 +257,9 @@ export function generateRepSummaryCsv(rows: AnalyticsRepSummaryRow[]): string {
 		"Peak Velocity (m/s)": row.peakVelocityMps ?? "",
 		"Mean Force (N)": row.meanForceN ?? "",
 		"Peak Force (N)": row.peakForceN ?? "",
-		"Power (W)": row.powerWatts ?? "",
+		"Mean Cable-work Proxy (W)": row.powerMethod === "PAIRED_CABLE_WORK_V1" ? row.powerWatts ?? "" : "",
+		"Peak Cable-work Proxy (W)": row.powerMethod === "PAIRED_CABLE_WORK_V1" ? row.peakPowerWatts ?? "" : "",
+		"Power Method": row.powerMethod ?? "LEGACY_UNKNOWN_V0",
 		"ROM (mm)": row.romMm ?? "",
 		"TUT (ms)": row.tutMs ?? "",
 		"Asymmetry %": row.asymmetryPct ?? "",
@@ -354,7 +363,9 @@ function buildRepRows(
 			peakVelocityMps: repSummary.peak_velocity_mps,
 			meanForceN: repSummary.mean_force_n,
 			peakForceN: repSummary.peak_force_n,
-			powerWatts: repSummary.power_watts,
+			powerWatts: authoritativeRepPower(repSummary).meanWatts,
+			peakPowerWatts: authoritativeRepPower(repSummary).peakWatts,
+			powerMethod: repSummary.power_method ?? "LEGACY_UNKNOWN_V0",
 			romMm: repSummary.rom_mm,
 			tutMs: repSummary.tut_ms,
 			asymmetryPct: repSummary.asymmetry_pct,
@@ -413,7 +424,7 @@ export async function fetchUserAnalyticsRows(
 		client
 			.from("rep_summaries")
 			.select(
-				"id, set_id, rep_number, mean_velocity_mps, peak_velocity_mps, mean_force_n, peak_force_n, power_watts, rom_mm, tut_ms, asymmetry_pct, vbt_zone",
+				"id, set_id, rep_number, mean_velocity_mps, peak_velocity_mps, mean_force_n, peak_force_n, power_watts, peak_power_watts, power_method, rom_mm, tut_ms, asymmetry_pct, vbt_zone",
 			)
 			.eq("user_id", userId)
 			.order("id")

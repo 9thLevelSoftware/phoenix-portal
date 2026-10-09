@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchAllKeysetPages } from "@/lib/supabasePaging";
+import { repTelemetryOptions } from "../telemetry";
 
 // --- In-memory PostgREST fake ---------------------------------------------
 // A stateful query builder over seeded tables. It applies select/eq/gte/or/
@@ -210,7 +211,7 @@ describe("repTelemetryOptions", () => {
 		expect(sorted[1999].timestamp_ms).toBe(sorted[2000].timestamp_ms);
 
 		const { repTelemetryOptions } = await import("../telemetry");
-		const result = await repTelemetryOptions(SET_ID).queryFn?.({} as never);
+		const result = await repTelemetryOptions("test-user-id", SET_ID).queryFn?.({} as never);
 
 		expect(result).toHaveLength(SAMPLES);
 		expect(result).toEqual(expectedOrder(tables.rep_telemetry));
@@ -226,7 +227,7 @@ describe("repTelemetryOptions", () => {
 
 	it("stops after one read when the set fits in a single short page", async () => {
 		const { repTelemetryOptions } = await import("../telemetry");
-		const result = await repTelemetryOptions(OTHER_SET_ID).queryFn?.(
+		const result = await repTelemetryOptions("test-user-id", OTHER_SET_ID).queryFn?.(
 			{} as never,
 		);
 
@@ -237,7 +238,7 @@ describe("repTelemetryOptions", () => {
 	it("makes one extra empty read when the set is exactly one full page", async () => {
 		tables.rep_telemetry = sortedRows(tables.rep_telemetry).slice(0, 1000);
 		const { repTelemetryOptions } = await import("../telemetry");
-		const result = await repTelemetryOptions(SET_ID).queryFn?.({} as never);
+		const result = await repTelemetryOptions("test-user-id", SET_ID).queryFn?.({} as never);
 
 		expect(result).toHaveLength(1000);
 		expect(requests.map((r) => r.returned)).toEqual([1000, 0]);
@@ -248,8 +249,27 @@ describe("repTelemetryOptions", () => {
 		const { repTelemetryOptions } = await import("../telemetry");
 
 		await expect(
-			repTelemetryOptions(SET_ID).queryFn?.({} as never),
+			repTelemetryOptions("test-user-id", SET_ID).queryFn?.({} as never),
 		).rejects.toMatchObject({ message: "boom" });
+	});
+
+	it("retains force-only historical rows without inventing cable motion", async () => {
+		const sorted = sortedRows(tables.rep_telemetry);
+		const forceOnlyId = sorted[10].id;
+		tables.rep_telemetry = tables.rep_telemetry.map((row) =>
+			row.id === forceOnlyId
+				? { ...row, velocity_mps: null, position_mm: null }
+				: row,
+		);
+		const result = await repTelemetryOptions("test-user-id", SET_ID).queryFn?.({} as never);
+		expect(result).toEqual(expectedOrder(tables.rep_telemetry));
+		expect(result?.filter((point) => point.velocity_mps === null)).toEqual([{
+			timestamp_ms: sorted[10].timestamp_ms,
+			force_n: sorted[10].force_n,
+			velocity_mps: null,
+			position_mm: null,
+			cable: sorted[10].cable,
+		}]);
 	});
 
 	it("drops invalid samples (null metrics, unknown cable) instead of failing the set", async () => {
@@ -266,7 +286,7 @@ describe("repTelemetryOptions", () => {
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
 		const { repTelemetryOptions } = await import("../telemetry");
-		const result = await repTelemetryOptions(SET_ID).queryFn?.({} as never);
+		const result = await repTelemetryOptions("test-user-id", SET_ID).queryFn?.({} as never);
 
 		const bad = new Set([nullForceId, nullCableId, oddCableId]);
 		expect(result).toHaveLength(SAMPLES - 3);
@@ -285,7 +305,7 @@ describe("replayTelemetryOptions", () => {
 			{ id: "s1", set_id: SET_ID, rep_number: 1 },
 		];
 		const { replayTelemetryOptions } = await import("../replay");
-		const result = await replayTelemetryOptions(SET_ID).queryFn?.({} as never);
+		const result = await replayTelemetryOptions("test-user-id", SET_ID).queryFn?.({} as never);
 
 		expect(result?.telemetry).toHaveLength(SAMPLES);
 		expect(result?.telemetry).toEqual(expectedOrder(tables.telemetry_points));
@@ -319,7 +339,7 @@ describe("replayTelemetryOptions", () => {
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
 		const { replayTelemetryOptions } = await import("../replay");
-		const result = await replayTelemetryOptions(SET_ID).queryFn?.({} as never);
+		const result = await replayTelemetryOptions("test-user-id", SET_ID).queryFn?.({} as never);
 
 		expect(result?.telemetry).toHaveLength(SAMPLES - 2);
 		warn.mockRestore();
@@ -330,7 +350,7 @@ describe("replayTelemetryOptions", () => {
 		const { replayTelemetryOptions } = await import("../replay");
 
 		await expect(
-			replayTelemetryOptions(SET_ID).queryFn?.({} as never),
+			replayTelemetryOptions("test-user-id", SET_ID).queryFn?.({} as never),
 		).rejects.toMatchObject({ message: "boom" });
 	});
 });

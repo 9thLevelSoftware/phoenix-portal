@@ -47,8 +47,8 @@ export function SessionDetail() {
 		error,
 		refetch,
 	} = useQuery({
-		...sessionDetailOptions(sessionId ?? ""),
-		enabled: !!sessionId,
+		...sessionDetailOptions(user?.id ?? "", sessionId ?? ""),
+		enabled: !!user && !!sessionId,
 	});
 	const { data: profile } = useQuery({
 		...profileOptions(user?.id ?? ""),

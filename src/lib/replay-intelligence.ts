@@ -1,4 +1,4 @@
-import type { RepSummary, TelemetryPointRow } from "@/schemas/telemetry";
+import { hasMeasuredKinematics, type RepSummary, type TelemetryPointRow } from "@/schemas/telemetry";
 
 export interface ReplayStickingPoint {
 	repNumber: number;
@@ -87,7 +87,7 @@ function findStickingPoint(
 
 	const velocityThreshold = rep.mean_velocity_mps * 0.45;
 	const forceThreshold = rep.peak_force_n * 0.9;
-	const candidates = points.filter(
+	const candidates = points.filter(hasMeasuredKinematics).filter(
 		(point) =>
 			point.velocity_mps <= velocityThreshold &&
 			point.force_n >= forceThreshold,
@@ -199,12 +199,15 @@ export function buildReplayIntelligence({
 		.filter((point): point is ReplayStickingPoint => point !== null);
 	const hasSummariesWithoutTelemetry =
 		repSummaries.length > 0 && telemetry.length < repSummaries.length * 2;
+	const hasUnknownMotion = telemetry.some((point) => !hasMeasuredKinematics(point));
 
 	return {
-		status: hasSummariesWithoutTelemetry ? "partial" : "ready",
-		partialReason: hasSummariesWithoutTelemetry
-			? "Using rep summaries because telemetry samples are incomplete."
-			: null,
+		status: hasSummariesWithoutTelemetry || hasUnknownMotion ? "partial" : "ready",
+		partialReason: hasUnknownMotion
+			? "Cable kinematics are unknown; only known forces and descriptive rep summaries are available."
+			: hasSummariesWithoutTelemetry
+				? "Using rep summaries because telemetry samples are incomplete."
+				: null,
 		repCount: repSummaries.length,
 		repInsights,
 		stickingPoints,

@@ -71,7 +71,7 @@ export const PADDLE_SIGNATURE_TOLERANCE_SECONDS = 300;
  * accepted when any `h1` matches; each value is compared in constant time.
  */
 export async function verifyPaddleSignature(
-  rawBody: string,
+  rawBody: string | Uint8Array,
   signatureHeader: string,
   secret: string,
   options: { now?: () => number; toleranceSeconds?: number } = {},
@@ -111,7 +111,12 @@ export async function verifyPaddleSignature(
     return false;
   }
 
-  const expectedHex = await hmacSha256Hex(secret, `${ts}:${rawBody}`);
+  const prefix = new TextEncoder().encode(`${ts}:`);
+  const bodyBytes = typeof rawBody === "string" ? new TextEncoder().encode(rawBody) : rawBody;
+  const signedBytes = new Uint8Array(prefix.length + bodyBytes.length);
+  signedBytes.set(prefix);
+  signedBytes.set(bodyBytes, prefix.length);
+  const expectedHex = await hmacSha256Hex(secret, signedBytes);
   let matched = false;
   for (const candidate of candidates) {
     // Compare every candidate; no early exit on the first match.
@@ -146,6 +151,8 @@ export function evaluatePaddleCustomDataTrust({
   eventSubscriptionId: unknown;
   existingSubscriptionId: string | null | undefined;
 }): PaddleCustomDataTrustDecision {
+  // This flag means a durable, context-bound authorization, never the old
+  // HMAC(user_id) identity proof. Legacy proof cannot authorize fresh adoption.
   if (signedCustomDataValid) {
     return { trusted: true, method: "signature" };
   }

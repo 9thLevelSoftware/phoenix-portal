@@ -98,8 +98,8 @@ export function RoutineDetail() {
 		isLoading,
 		isError,
 	} = useQuery({
-		...routineDetailOptions(routineId ?? ""),
-		enabled: !!routineId,
+		...routineDetailOptions(user?.id ?? "", routineId ?? ""),
+		enabled: !!user && !!routineId,
 	});
 	const unit: WeightUnit = profile?.weight_unit === "lbs" ? "lbs" : "kg";
 

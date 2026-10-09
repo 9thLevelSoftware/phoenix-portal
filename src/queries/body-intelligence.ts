@@ -49,9 +49,9 @@ export function bodyIntelligenceOptions(
  * Fetches per-set weight data for a specific session.
  * Used by: SRA intensity calculation.
  */
-export function sessionSetWeightsOptions(sessionId: string) {
+export function sessionSetWeightsOptions(userId: string, sessionId: string) {
 	return queryOptions({
-		queryKey: queryKeys.analytics.sessionSetWeights(sessionId),
+		queryKey: queryKeys.analytics.sessionSetWeights(userId, sessionId),
 		staleTime: 30 * 60 * 1000, // 30 minutes (session data doesn't change)
 		queryFn: async () => {
 			const { data, error } = await supabase
@@ -64,6 +64,6 @@ export function sessionSetWeightsOptions(sessionId: string) {
 			if (error) throw error;
 			return data ?? [];
 		},
-		enabled: !!sessionId,
+		enabled: !!userId && !!sessionId,
 	});
 }

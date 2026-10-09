@@ -13,7 +13,9 @@ const repSummaries: ReplayIntelligenceInput["repSummaries"] = [
 		peak_velocity_mps: 0.82,
 		mean_force_n: 840,
 		peak_force_n: 960,
-		power_watts: 410,
+		power_watts: null,
+		peak_power_watts: null,
+		power_method: "LEGACY_UNKNOWN_V0",
 		rom_mm: 420,
 		tut_ms: 1200,
 		left_force_avg: 420,
@@ -29,7 +31,9 @@ const repSummaries: ReplayIntelligenceInput["repSummaries"] = [
 		peak_velocity_mps: 0.75,
 		mean_force_n: 860,
 		peak_force_n: 980,
-		power_watts: 390,
+		power_watts: null,
+		peak_power_watts: null,
+		power_method: "LEGACY_UNKNOWN_V0",
 		rom_mm: 418,
 		tut_ms: 1250,
 		left_force_avg: 430,
@@ -45,7 +49,9 @@ const repSummaries: ReplayIntelligenceInput["repSummaries"] = [
 		peak_velocity_mps: 0.66,
 		mean_force_n: 890,
 		peak_force_n: 1030,
-		power_watts: 360,
+		power_watts: null,
+		peak_power_watts: null,
+		power_method: "LEGACY_UNKNOWN_V0",
 		rom_mm: 415,
 		tut_ms: 1300,
 		left_force_avg: 455,
@@ -61,7 +67,9 @@ const repSummaries: ReplayIntelligenceInput["repSummaries"] = [
 		peak_velocity_mps: 0.54,
 		mean_force_n: 900,
 		peak_force_n: 1010,
-		power_watts: 300,
+		power_watts: null,
+		peak_power_watts: null,
+		power_method: "LEGACY_UNKNOWN_V0",
 		rom_mm: 405,
 		tut_ms: 1500,
 		left_force_avg: 470,
@@ -191,6 +199,20 @@ describe("buildReplayIntelligence", () => {
 				}),
 			]),
 		);
+	});
+
+	it("does not treat force-only history as slow measured motion or sticking points", () => {
+		const result = buildReplayIntelligence({
+			telemetry: telemetry.map((point) => ({
+				...point, velocity_mps: null, position_mm: null,
+			})),
+			repSummaries,
+			repBoundaries: [0, 1500, 3000, 4500],
+		});
+		expect(result.status).toBe("partial");
+		expect(result.stickingPoints).toEqual([]);
+		expect(result.forcePeakN).toBe(1030);
+		expect(result.partialReason).toMatch(/kinematics.*unknown/i);
 	});
 
 	it("reports partial telemetry when summaries exist without enough samples", () => {

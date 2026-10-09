@@ -13,9 +13,10 @@
  *      terminal (`canceled`/`expired`); otherwise it aborts with
  *      `billing_not_found` for support to resolve, so a wrong key or
  *      environment can never let billing continue silently.
- *      Assumption: one Paddle subscription per user. `subscriptions` is
- *      UNIQUE(user_id) and is the only local record of Paddle ids, so the
- *      one locally known subscription is the one cancelled (review R-9).
+ *      Enumerate every customer page, prove each subscription's ownership,
+ *      and cancel owned siblings including paused subscriptions. Cancel any
+ *      outstanding server checkout too. The service-only checkout ledger
+ *      retains cancellation evidence through retries until auth deletion.
  *   1b. Providers (PR 54): for every provider with a stored token, revoke
  *      the grant at the provider (best effort) and call
  *      `disconnect_integration` (`providerRevoke.ts#revokeAndDisconnect`).
@@ -47,6 +48,8 @@
  * target it is a failure (a stale schema cache must not look like success).
  */
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2';
+import { listPaddleCustomerSubscriptions, verifyCheckoutBinding } from './paddleCheckoutBinding.ts';
+import { verifyPaddleCustomDataSignature } from './paddleWebhookSecurity.ts';
 import {
   defaultProviderRevokeDependencies,
   type ProviderRevokeDependencies,
@@ -153,6 +156,7 @@ export interface PurgeUserDependencies {
   paddleApiKey: string | undefined;
   /** `sandbox` or `production` (default). */
   paddleEnvironment: string | undefined;
+  paddleCustomDataSecret?: string;
   /** Provider grant revocation (PR 54); defaults to the real providers. */
   providerRevoke?: ProviderRevokeDependencies;
 }
@@ -162,6 +166,7 @@ export function defaultPurgeUserDependencies(): PurgeUserDependencies {
     fetch: (input, init) => fetch(input, init),
     paddleApiKey: Deno.env.get('PADDLE_API_KEY'),
     paddleEnvironment: Deno.env.get('PADDLE_ENVIRONMENT'),
+    paddleCustomDataSecret: Deno.env.get('PADDLE_CUSTOM_DATA_SECRET'),
     providerRevoke: defaultProviderRevokeDependencies(),
   };
 }
@@ -221,6 +226,7 @@ async function deleteWhere(
 /** Paddle ids known locally for the user (for the webhook-row match). */
 interface BillingIds {
   subscriptionId: string | null;
+  subscriptionIds?: string[];
 }
 
 /**
@@ -276,11 +282,10 @@ async function matchesFor(
   const matches: [string, string][] = [[target.column, userId]];
   if (target.table === 'paddle_webhook_events') {
     matches.push([PADDLE_WEBHOOK_PAYLOAD_USER, userId]);
-    if (
-      ids.subscriptionId &&
-      await subscriptionIdIsOwnedSolelyBy(admin, ids.subscriptionId, userId)
-    ) {
-      matches.push(['paddle_subscription_id', ids.subscriptionId]);
+    for (const subscriptionId of ids.subscriptionIds ?? (ids.subscriptionId ? [ids.subscriptionId] : [])) {
+      if (await subscriptionIdIsOwnedSolelyBy(admin, subscriptionId, userId)) {
+        matches.push(['paddle_subscription_id', subscriptionId]);
+      }
     }
   }
   return matches;
@@ -339,6 +344,7 @@ async function paddleRequest(
   try {
     const res = await deps.fetch(`${paddleBaseUrl(deps.paddleEnvironment)}${path}`, {
       ...init,
+      signal: AbortSignal.timeout(10_000),
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
@@ -377,59 +383,115 @@ async function cancelBilling(
 ): Promise<BillingOutcome> {
   const { data: subscription, error } = await admin
     .from('subscriptions')
-    .select('paddle_subscription_id, status')
+    .select('paddle_subscription_id, paddle_customer_id, status')
     .eq('user_id', userId)
     .maybeSingle();
   if (error) return { ok: false, stage: 'billing_lookup', detail: describe(error) };
 
   const row = subscription as {
     paddle_subscription_id?: string | null;
+    paddle_customer_id?: string | null;
     status?: string | null;
   } | null;
   const ids: BillingIds = { subscriptionId: row?.paddle_subscription_id ?? null };
   const subscriptionId = ids.subscriptionId;
-  if (!subscriptionId) return { ok: true, cancelled: false, ids };
-
+  const { data: ledgerData, error: ledgerError } = await admin.from('paddle_checkout_authorizations')
+    .select('nonce, transaction_id, subscription_id, customer_id, state').eq('user_id', userId).limit(1001);
+  if (ledgerError) return { ok: false, stage: 'billing_lookup', detail: describe(ledgerError) };
+  const ledger = (ledgerData ?? []) as { nonce: string; transaction_id: string | null; subscription_id: string | null; customer_id: string | null; state: string }[];
+  if (ledger.length >= 1000) return { ok: false, stage: 'billing_lookup', detail: 'Checkout history exceeds reconciliation limit' };
+  if (!subscriptionId && !row?.paddle_customer_id && ledger.length === 0) return { ok: true, cancelled: false, ids };
   if (!deps.paddleApiKey) {
     return { ok: false, stage: 'billing_config', detail: 'PADDLE_API_KEY is not set' };
   }
-  const encodedId = encodeURIComponent(subscriptionId);
-
-  // The local row can be stale (e.g. `paused` was never mirrored), so decide
-  // from Paddle's live status, never from `subscriptions.status`.
-  const current = await paddleRequest(deps, deps.paddleApiKey, `/subscriptions/${encodedId}`);
-  if (!current.ok) {
-    if (current.status === 404) {
-      if (TERMINAL_LOCAL_STATUSES.has(row?.status ?? '')) {
-        console.warn('[BILLING_ALERT] paddle_subscription_not_found; local row terminal, continuing', {
-          user_id: userId,
-          paddle_subscription_id: subscriptionId,
-          local_status: row?.status,
-        });
-        return { ok: true, cancelled: false, ids };
+  const customers = new Set<string>();
+  if (row?.paddle_customer_id) customers.add(row.paddle_customer_id);
+  const owned = new Map<string, string>();
+  const durableOwned = new Set(ledger.filter((entry) => entry.state !== 'canceled').map((entry) => entry.subscription_id).filter((id): id is string => !!id));
+  if (subscriptionId) {
+    if (!await subscriptionIdIsOwnedSolelyBy(admin, subscriptionId, userId)) return { ok: false, stage: 'billing_lookup', detail: 'Tracked subscription ownership is ambiguous' };
+    const current = await paddleRequest(deps, deps.paddleApiKey, `/subscriptions/${encodeURIComponent(subscriptionId)}`);
+    if (!current.ok) {
+      if (current.status !== 404 || !TERMINAL_LOCAL_STATUSES.has(row?.status ?? '')) {
+        return { ok: false, stage: current.status === 404 ? 'billing_not_found' : 'billing_lookup', detail: current.detail };
       }
-      console.error('[BILLING_ALERT] paddle_subscription_not_found; local row not terminal, aborting', {
-        user_id: userId,
-        paddle_subscription_id: subscriptionId,
-        local_status: row?.status ?? null,
-      });
-      return { ok: false, stage: 'billing_not_found', detail: current.detail };
+    } else {
+      const status = liveStatus(current.body);
+      const data = (current.body as { data?: { id?: string; customer_id?: string } })?.data;
+      if (!status || data?.id !== subscriptionId || (!data.customer_id && !row?.paddle_customer_id)) return { ok: false, stage: 'billing_lookup', detail: 'Paddle response has invalid subscription context' };
+      if (data.customer_id) customers.add(data.customer_id);
+      owned.set(subscriptionId, status);
     }
-    return { ok: false, stage: 'billing_lookup', detail: current.detail };
   }
-  const status = liveStatus(current.body);
-  if (status === null) {
-    return { ok: false, stage: 'billing_lookup', detail: 'Paddle response has no status' };
+  // Pending transactions must be terminal before erasure too: otherwise a
+  // retained overlay can create a new subscription after the account is gone.
+  for (const entry of ledger) {
+    if (entry.customer_id) customers.add(entry.customer_id);
+    if (entry.state === 'canceled' || entry.state === 'bound') continue;
+    if (!entry.transaction_id) return { ok: false, stage: 'billing_lookup', detail: 'Checkout creation needs reconciliation' };
+    const result = await paddleRequest(deps, deps.paddleApiKey, `/transactions/${encodeURIComponent(entry.transaction_id)}`);
+    if (!result.ok) return { ok: false, stage: 'billing_lookup', detail: result.detail };
+    const transaction = (result.body as { data?: { id?: string; status?: string; subscription_id?: string; customer_id?: string } })?.data;
+    if (transaction?.id !== entry.transaction_id) return { ok: false, stage: 'billing_lookup', detail: 'Invalid checkout transaction response' };
+    if (transaction.customer_id) customers.add(transaction.customer_id);
+    if (transaction.subscription_id) durableOwned.add(transaction.subscription_id);
+    if (transaction.status === 'completed' || transaction.status === 'paid') {
+      if (!transaction.subscription_id) return { ok: false, stage: 'billing_lookup', detail: 'Checkout subscription is not yet resolved' };
+      continue;
+    }
+    if (!['draft', 'ready', 'canceled'].includes(transaction.status ?? '')) return { ok: false, stage: 'billing_lookup', detail: 'Checkout status is ambiguous' };
+    if (transaction.status !== 'canceled') {
+      const cancel = await paddleRequest(deps, deps.paddleApiKey, `/transactions/${encodeURIComponent(entry.transaction_id)}`, { method: 'PATCH', body: JSON.stringify({ status: 'canceled' }) });
+      if (!cancel.ok || liveStatus(cancel.body) !== 'canceled') return { ok: false, stage: 'billing_cancel', detail: 'Checkout transaction cancellation was not confirmed' };
+    }
+    const recorded = await admin.from('paddle_checkout_authorizations').update({ state: 'canceled' }).eq('user_id', userId).eq('nonce', entry.nonce);
+    if (recorded.error) return { ok: false, stage: 'billing_lookup', detail: describe(recorded.error) };
   }
-  if (status === 'canceled') return { ok: true, cancelled: false, ids };
-
-  const cancel = await paddleRequest(
-    deps,
-    deps.paddleApiKey,
-    `/subscriptions/${encodedId}/cancel`,
-    { method: 'POST', body: JSON.stringify({ effective_from: 'immediately' }) },
-  );
-  if (!cancel.ok) return { ok: false, stage: 'billing_cancel', detail: cancel.detail };
+  if (customers.size === 0) {
+    if (!subscriptionId && durableOwned.size === 0) return { ok: true, cancelled: false, ids };
+    return { ok: false, stage: 'billing_lookup', detail: 'Billing customer is unknown' };
+  }
+  for (const customerId of customers) {
+    let candidates: Array<Record<string, unknown>>;
+    try { candidates = await listPaddleCustomerSubscriptions(deps.fetch, deps.paddleApiKey, deps.paddleEnvironment, customerId); }
+    catch (error) { return { ok: false, stage: 'billing_lookup', detail: describe(error) }; }
+    for (const candidate of candidates) {
+      const id = candidate.id as string;
+      const data = candidate.custom_data as { user_id?: unknown; cd_sig?: unknown } | null;
+      if (id === subscriptionId || durableOwned.has(id)) {
+        if (data?.user_id && data.user_id !== userId) return { ok: false, stage: 'billing_lookup', detail: 'Stored billing ownership contradicts Paddle' };
+      } else {
+        // Shared customer IDs are not ownership. Clearly foreign accounts are
+        // left alone; missing or contradictory proof blocks erasure.
+        if (typeof data?.user_id === 'string' && data.user_id !== userId) continue;
+        if (data?.user_id !== userId || !deps.paddleCustomDataSecret ||
+          !(await verifyCheckoutBinding(data, deps.paddleCustomDataSecret) || await verifyPaddleCustomDataSignature(userId, data.cd_sig, deps.paddleCustomDataSecret))) {
+          return { ok: false, stage: 'billing_lookup', detail: 'Customer subscription ownership is ambiguous' };
+        }
+      }
+      if (!await subscriptionIdIsOwnedSolelyBy(admin, id, userId)) return { ok: false, stage: 'billing_lookup', detail: 'Subscription is referenced by another account' };
+      owned.set(id, candidate.status as string);
+      // Durable cancellation evidence survives every abort until auth deletion.
+      const recorded = await admin.from('paddle_checkout_authorizations').upsert({ nonce: crypto.randomUUID(), user_id: userId,
+        price_id: 'legacy', environment: deps.paddleEnvironment === 'sandbox' ? 'sandbox' : 'production', expires_at: new Date().toISOString(),
+        subscription_id: id, customer_id: customerId, state: 'bound' }, { onConflict: 'subscription_id', ignoreDuplicates: true });
+      if (recorded.error) return { ok: false, stage: 'billing_lookup', detail: describe(recorded.error) };
+    }
+  }
+  for (const id of durableOwned) {
+    if (!owned.has(id)) return { ok: false, stage: 'billing_lookup', detail: 'Recorded subscription is absent from Paddle listing' };
+  }
+  let cancelled = false;
+  for (const [id, status] of owned) {
+    if (status !== 'canceled') {
+      const cancel = await paddleRequest(deps, deps.paddleApiKey, `/subscriptions/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: JSON.stringify({ effective_from: 'immediately' }) });
+      if (!cancel.ok || liveStatus(cancel.body) !== 'canceled') return { ok: false, stage: 'billing_cancel', detail: 'Subscription cancellation was not confirmed' };
+      cancelled = true;
+    }
+    const recorded = await admin.from('paddle_checkout_authorizations').update({ state: 'canceled' }).eq('user_id', userId).eq('subscription_id', id);
+    if (recorded.error) return { ok: false, stage: 'billing_lookup', detail: describe(recorded.error) };
+  }
+  ids.subscriptionIds = [...owned.keys()];
 
   // Mirror the cancel locally right away so tier gating is correct even if a
   // later step fails; the Paddle webhook will converge to the same state.
@@ -447,8 +509,7 @@ async function cancelBilling(
       error: describe(mirrorError),
     });
   }
-  console.log(`[PURGE] Paddle subscription cancelled for user ${userId} (was ${status})`);
-  return { ok: true, cancelled: true, ids };
+  return { ok: true, cancelled, ids };
 }
 
 function isUserNotFound(error: unknown): boolean {

@@ -3,6 +3,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Lock, MessageSquare, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
+import { ProfileAvatarImage } from "@/app/components/profile/ProfileAvatarImage";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -14,6 +15,7 @@ import {
 	AlertDialogTitle,
 	AlertDialogTrigger,
 } from "@/app/components/ui/alert-dialog";
+import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import { Button } from "@/app/components/ui/button";
 import { Textarea } from "@/app/components/ui/textarea";
 import { useBlockedUsers } from "@/hooks/useBlockedUsers";
@@ -89,17 +91,18 @@ function CommentItem({
 	return (
 		<div className="flex gap-3 py-3">
 			{/* Avatar */}
-			{avatarUrl ? (
-				<img
-					src={avatarUrl}
-					alt={authorName}
-					className="w-8 h-8 rounded-full object-cover shrink-0"
-				/>
-			) : (
-				<div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs shrink-0">
+			<Avatar className="w-8 h-8 shrink-0">
+				{comment.user_id && (
+					<ProfileAvatarImage
+						source={avatarUrl}
+						ownerId={comment.user_id}
+						alt={authorName}
+					/>
+				)}
+				<AvatarFallback className="bg-primary text-white text-xs">
 					{authorName.charAt(0).toUpperCase()}
-				</div>
-			)}
+				</AvatarFallback>
+			</Avatar>
 
 			{/* Content */}
 			<div className="flex-1 min-w-0">

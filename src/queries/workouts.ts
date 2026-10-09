@@ -226,9 +226,9 @@ function flattenSessionTree(row: unknown) {
  * Fetches the session, its exercises and their sets in one embedded select,
  * then parses each level with Zod and assembles the nested structure.
  */
-export function sessionDetailOptions(sessionId: string) {
+export function sessionDetailOptions(userId: string, sessionId: string) {
 	return queryOptions({
-		queryKey: queryKeys.workouts.detail(sessionId),
+		queryKey: queryKeys.workouts.detail(userId, sessionId),
 		queryFn: async () => {
 			const { data: session, error } = await supabase
 				.from("workout_sessions")
@@ -261,7 +261,7 @@ export function sessionDetailOptions(sessionId: string) {
 				exercises: exercisesWithSets,
 			};
 		},
-		enabled: !!sessionId,
+		enabled: !!userId && !!sessionId,
 	});
 }
 
@@ -269,9 +269,9 @@ export function sessionDetailOptions(sessionId: string) {
  * Extended session detail that also includes rep summaries for velocity data.
  * Returns a SessionSummary ready for the comparison engine.
  */
-export function comparisonDetailOptions(sessionId: string) {
+export function comparisonDetailOptions(userId: string, sessionId: string) {
 	return queryOptions({
-		queryKey: queryKeys.workouts.comparison(sessionId, "detail"),
+		queryKey: queryKeys.workouts.comparison(userId, sessionId, "detail"),
 		queryFn: async (): Promise<SessionSummary> => {
 			const { data: session, error } = await supabase
 				.from("workout_sessions")
@@ -347,6 +347,6 @@ export function comparisonDetailOptions(sessionId: string) {
 				exercises: exerciseSummaries,
 			};
 		},
-		enabled: !!sessionId,
+		enabled: !!userId && !!sessionId,
 	});
 }

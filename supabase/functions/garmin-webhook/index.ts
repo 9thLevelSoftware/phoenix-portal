@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
+import { readBoundedRequestBody, REQUEST_BODY_LIMITS } from '../_shared/requestBody.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
   buildGarminWebhookPersistRow,
@@ -169,10 +170,6 @@ async function garminWebhook(
       );
     }
 
-    // Read raw body text first so we can verify the signature over the exact bytes
-    // Garmin sends before we attempt JSON parsing.
-    const rawBody = await req.text();
-
     // Garmin signs the request body with HMAC-SHA256 using the consumer secret and
     // sends the hex digest in the x-garmin-signature header.
     const providedSignature = req.headers.get('x-garmin-signature');
@@ -183,8 +180,17 @@ async function garminWebhook(
       );
     }
 
+    const bodyRead = await readBoundedRequestBody(req, REQUEST_BODY_LIMITS.garminWebhook);
+    if (bodyRead.kind !== 'ok') {
+      return new Response(JSON.stringify({ error: bodyRead.kind === 'too_large' ? 'Request body too large' : 'Invalid request body' }), {
+        status: bodyRead.kind === 'too_large' ? 413 : 400,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+    const rawBody = new TextDecoder().decode(bodyRead.bytes);
+
     // Compute expected HMAC-SHA256 of the raw request body keyed with the consumer secret.
-    const expectedSignature = await hmacSha256Hex(WEBHOOK_SECRET, rawBody);
+    const expectedSignature = await hmacSha256Hex(WEBHOOK_SECRET, bodyRead.bytes);
 
     // Timing-safe comparison: encode both hex strings and XOR byte-by-byte so the
     // comparison time does not leak information about the correct signature.
