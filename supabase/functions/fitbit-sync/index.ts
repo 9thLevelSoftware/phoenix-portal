@@ -80,6 +80,40 @@ interface FitbitTokens {
   token_expires_at: string;
 }
 
+interface FitbitRefreshResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}
+
+/**
+ * Same fields complete-oauth requires on a Fitbit token body, minus `user_id`
+ * (a refresh does not return it). `expires_in` must be a finite number whose
+ * expiry is a real timestamp — computing that used to throw before the rotated
+ * refresh token was stored, and Fitbit refresh tokens are single-use.
+ */
+function parseFitbitRefreshResponse(value: unknown): FitbitRefreshResponse | null {
+  if (value === null || typeof value !== 'object') return null;
+  const body = value as Record<string, unknown>;
+  if (typeof body.access_token !== 'string' || body.access_token.length === 0) return null;
+  if (typeof body.refresh_token !== 'string' || body.refresh_token.length === 0) return null;
+  if (typeof body.expires_in !== 'number' || !Number.isFinite(body.expires_in)) return null;
+  const expiresAt = new Date(Date.now() + body.expires_in * 1000);
+  if (Number.isNaN(expiresAt.getTime())) return null;
+  return {
+    access_token: body.access_token,
+    refresh_token: body.refresh_token,
+    expires_in: body.expires_in,
+  };
+}
+
+/** A new refresh token worth keeping from a body we are about to reject. */
+function rotatedRefreshToken(value: unknown): string | null {
+  if (value === null || typeof value !== 'object') return null;
+  const token = (value as Record<string, unknown>).refresh_token;
+  return typeof token === 'string' && token.length > 0 ? token : null;
+}
+
 /**
  * Save in-run integration state, or a response that stops the run.
  * `null` means the save landed and the caller should continue.
@@ -144,8 +178,46 @@ async function refreshTokenIfNeeded(
     throw new Error(`Fitbit token refresh failed: ${response.status}`);
   }
 
-  const refreshed = await response.json();
-  const newTokenExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
+  const refreshed: unknown = await response.json();
+  const parsed = parseFitbitRefreshResponse(refreshed);
+  if (!parsed) {
+    // Status-only log. The body can carry the new refresh token.
+    console.error('Fitbit token refresh response missing required fields');
+    const rotated = rotatedRefreshToken(refreshed);
+    if (rotated) {
+      const { error: salvageError } = await supabase
+        .from('oauth_tokens')
+        .update({
+          refresh_token: await encryptOAuthSecret(rotated),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId)
+        .eq('provider', 'fitbit');
+      if (salvageError) {
+        console.error('Failed to persist refreshed Fitbit tokens:', salvageError);
+        const stopped = await saveState(
+          { status: 'error', error_message: 'Failed to persist refreshed tokens' },
+          'state_save_failed',
+        );
+        if (stopped) return stopped;
+        throw new Error('Failed to persist refreshed Fitbit tokens');
+      }
+    }
+
+    // A run that no longer owns its queue row must not mark the integration
+    // token_expired. The salvaged refresh token above stays a direct write.
+    const stopped = await saveState(
+      {
+        status: 'token_expired',
+        error_message: 'Token refresh response missing required fields',
+      },
+      'state_save_failed',
+    );
+    if (stopped) return stopped;
+    throw new Error('Fitbit token refresh response missing required fields');
+  }
+
+  const newTokenExpiresAt = new Date(Date.now() + parsed.expires_in * 1000).toISOString();
 
   // Update stored tokens in oauth_tokens (server-only table). Fitbit rotates the
   // refresh token on every refresh, so if this write fails the stored refresh
@@ -153,8 +225,8 @@ async function refreshTokenIfNeeded(
   const { error: tokenPersistError } = await supabase
     .from('oauth_tokens')
     .update({
-      access_token: await encryptOAuthSecret(refreshed.access_token),
-      refresh_token: await encryptOAuthSecret(refreshed.refresh_token),
+      access_token: await encryptOAuthSecret(parsed.access_token),
+      refresh_token: await encryptOAuthSecret(parsed.refresh_token),
       token_expires_at: newTokenExpiresAt,
       updated_at: new Date().toISOString(),
     })
@@ -172,8 +244,8 @@ async function refreshTokenIfNeeded(
   }
 
   return {
-    access_token: refreshed.access_token,
-    refresh_token: refreshed.refresh_token,
+    access_token: parsed.access_token,
+    refresh_token: parsed.refresh_token,
     token_expires_at: newTokenExpiresAt,
   };
 }
