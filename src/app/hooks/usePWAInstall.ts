@@ -88,7 +88,9 @@ export function usePWAInstall({
 	);
 	const [dismissed, setDismissed] = useState(readDismissedState);
 
-	// Listen for late-arriving beforeinstallprompt events
+	// Listen for late-arriving beforeinstallprompt events. The module listener
+	// can record one in the gap after the initial state read and before this
+	// subscription, so sync from the current deferred prompt on setup.
 	useEffect(() => {
 		const handler = (e: Event) => {
 			e.preventDefault();
@@ -97,6 +99,7 @@ export function usePWAInstall({
 		};
 
 		window.addEventListener("beforeinstallprompt", handler);
+		setPromptAvailable(deferredPrompt !== null);
 		return () => window.removeEventListener("beforeinstallprompt", handler);
 	}, []);
 
