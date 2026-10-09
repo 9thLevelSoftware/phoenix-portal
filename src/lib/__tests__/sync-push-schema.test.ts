@@ -44,6 +44,94 @@ describe("localProfileIdSchema", () => {
 	});
 });
 
+function payloadWithPower(rep: Record<string, unknown>) {
+	return {
+		deviceId: "paired-power-fixture",
+		sessions: [
+			{
+				id: UUID,
+				userId: UUID2,
+				startedAt: "2026-10-02T12:00:00Z",
+				exercises: [
+					{
+						id: UUID2,
+						sessionId: UUID,
+						name: "Curl",
+						sets: [
+							{
+								id: UUID,
+								exerciseId: UUID2,
+								setNumber: 1,
+								repSummaries: [
+									{ id: UUID2, setId: UUID, repNumber: 1, ...rep },
+								],
+							},
+						],
+					},
+				],
+			},
+		],
+	};
+}
+
+describe("paired power interpretation", () => {
+	it("preserves exact authoritative mean and peak watts", () => {
+		const parsed = pushPayloadSchema.parse(
+			payloadWithPower({
+				powerMethod: "PAIRED_CABLE_WORK_V1",
+				powerWatts: 19.6133,
+				peakPowerWatts: 21.2,
+			}),
+		);
+		expect(
+			parsed.sessions[0].exercises[0].sets[0].repSummaries[0],
+		).toMatchObject({
+			powerMethod: "PAIRED_CABLE_WORK_V1",
+			powerWatts: 19.6133,
+			peakPowerWatts: 21.2,
+		});
+	});
+
+	it.each([
+		undefined,
+		null,
+		"LEGACY_UNKNOWN_V0",
+	])("never promotes historical scalar units (%s)", (powerMethod) => {
+		const parsed = pushPayloadSchema.parse(
+			payloadWithPower({
+				powerMethod,
+				powerWatts: 90000,
+			}),
+		);
+		expect(
+			parsed.sessions[0].exercises[0].sets[0].repSummaries[0],
+		).toMatchObject({
+			powerMethod: "LEGACY_UNKNOWN_V0",
+			powerWatts: null,
+			peakPowerWatts: null,
+		});
+	});
+
+	it("rejects unknown methods and contradictory unavailable watts", () => {
+		expect(
+			pushPayloadSchema.safeParse(
+				payloadWithPower({
+					powerMethod: "UNAVAILABLE",
+					powerWatts: 0,
+				}),
+			).success,
+		).toBe(false);
+		expect(
+			pushPayloadSchema.safeParse(
+				payloadWithPower({
+					powerMethod: "FAKE_WATTS",
+					powerWatts: 19.6133,
+				}),
+			).success,
+		).toBe(false);
+	});
+});
+
 describe("pushPayloadSchema", () => {
 	it("fills every NOT-NULL-DEFAULT scalar with the DB default when the field is missing", () => {
 		const parsed = pushPayloadSchema.parse({

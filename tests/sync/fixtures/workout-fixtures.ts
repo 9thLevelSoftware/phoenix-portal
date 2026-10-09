@@ -211,6 +211,8 @@ export function createRepSummaryFixture(
 		mean_force_n: 450,
 		peak_force_n: 600,
 		power_watts: 350,
+		peak_power_watts: 420,
+		power_method: "PAIRED_CABLE_WORK_V1",
 		rom_mm: 800,
 		tut_ms: 2500, // Time under tension in milliseconds
 		asymmetry_pct: 1.2, // Under 2% = BALANCED
