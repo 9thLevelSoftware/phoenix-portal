@@ -342,6 +342,33 @@ Deno.test("fitbit-sync: a refresh missing expires_in keeps the rotated refresh t
   assert(!refresh.logs.includes("Invalid time"), refresh.logs);
 });
 
+Deno.test("fitbit-sync: an invalid refresh body on a cancelled row keeps the rotated refresh token but writes no integration state", async () => {
+  const state = db({ tokenExpiresAt: new Date(Date.now() + 60_000).toISOString() });
+  const before = { ...state.rows("user_integrations")[0] };
+  const api = fitbit([], {
+    tokenBody: { access_token: "access-2", refresh_token: "refresh-2" },
+  });
+  const inner = api.fetch;
+  api.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    // Disconnect cancelled the row while this run was still at Fitbit.
+    state.rows("sync_queue")[0].status = "cancelled";
+    return inner(input, init);
+  }) as typeof fetch;
+
+  const res = await silenced(() =>
+    handler(state, api)(request({ queue_id: QUEUE_ID, claim_generation: 0 }))
+  );
+
+  assertEquals(res.status, 409, await res.clone().text());
+  assertEquals((await res.json()).code, "queue_not_owned");
+  assertEquals(state.rows("user_integrations")[0], before);
+  // The single-use rotated refresh token is still kept (oauth_tokens stays a
+  // direct write); only the integration status is ownership-gated.
+  const [token] = state.rows("oauth_tokens");
+  assertEquals(await decryptOAuthSecret(token.refresh_token as string), "refresh-2");
+  assertEquals(api.calls.filter((call) => call.url.includes("/activities/")), []);
+});
+
 /** A body Fitbit might return; it must never be written to a log. */
 const PROVIDER_ERROR_BODY = "refresh_token=super-secret-fitbit-error-body";
 

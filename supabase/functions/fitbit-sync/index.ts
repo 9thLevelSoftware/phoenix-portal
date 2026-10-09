@@ -195,23 +195,25 @@ async function refreshTokenIfNeeded(
         .eq('provider', 'fitbit');
       if (salvageError) {
         console.error('Failed to persist refreshed Fitbit tokens:', salvageError);
-        await supabase
-          .from('user_integrations')
-          .update({ status: 'error', error_message: 'Failed to persist refreshed tokens' })
-          .eq('user_id', userId)
-          .eq('provider', 'fitbit');
+        const stopped = await saveState(
+          { status: 'error', error_message: 'Failed to persist refreshed tokens' },
+          'state_save_failed',
+        );
+        if (stopped) return stopped;
         throw new Error('Failed to persist refreshed Fitbit tokens');
       }
     }
 
-    await supabase
-      .from('user_integrations')
-      .update({
+    // A run that no longer owns its queue row must not mark the integration
+    // token_expired. The salvaged refresh token above stays a direct write.
+    const stopped = await saveState(
+      {
         status: 'token_expired',
         error_message: 'Token refresh response missing required fields',
-      })
-      .eq('user_id', userId)
-      .eq('provider', 'fitbit');
+      },
+      'state_save_failed',
+    );
+    if (stopped) return stopped;
     throw new Error('Fitbit token refresh response missing required fields');
   }
 
