@@ -389,6 +389,15 @@ export function SessionReplay() {
 						</div>
 					)}
 
+				{/* Session loaded, but there is nothing to replay */}
+				{sessionQuery.isSuccess && allSets.length === 0 && (
+					<div className="p-8 text-center">
+						<p className="text-muted-foreground">
+							No sets recorded for this session
+						</p>
+					</div>
+				)}
+
 				{/* Out-of-range state: sets loaded but the selected index is invalid */}
 				{!sessionQuery.isLoading &&
 					!sessionQuery.error &&
