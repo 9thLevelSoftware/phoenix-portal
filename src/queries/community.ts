@@ -212,10 +212,33 @@ export function creatorStatsOptions(userId: string) {
 				.from("creator_stats")
 				.select("*")
 				.eq("user_id", userId)
-				.single();
+				.maybeSingle();
 			if (error) throw error;
+			// The view only includes profiles with total_shares > 0, so an
+			// empty result is not a missing creator. A visible profile still
+			// renders, with zeros. Null means there is no public profile.
+			if (!data) return creatorStatsForUnsharedProfile(userId);
 			return creatorStatsSchema.parse(data);
 		},
+	});
+}
+
+async function creatorStatsForUnsharedProfile(userId: string) {
+	const { data, error } = await supabase
+		.from("public_profiles")
+		.select("id, display_name, avatar_url")
+		.eq("id", userId)
+		.maybeSingle();
+	if (error) throw error;
+	if (!data?.id) return null;
+
+	return creatorStatsSchema.parse({
+		user_id: data.id,
+		display_name: data.display_name,
+		avatar_url: data.avatar_url,
+		total_shares: 0,
+		total_upvotes: 0,
+		featured_count: 0,
 	});
 }
 

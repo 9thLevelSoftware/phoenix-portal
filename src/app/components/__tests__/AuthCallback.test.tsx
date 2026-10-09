@@ -75,17 +75,94 @@ describe("AuthCallback", () => {
 		});
 	});
 
-	it("shows a provider-specific error from the OAuth callback fragment", async () => {
+	it("maps access_denied to fixed copy and ignores the callback description", async () => {
 		renderAuthCallback(
-			"/auth/callback?provider=apple#error=access_denied&error_description=The+user+canceled+the+sign-in",
+			"/auth/callback?provider=apple#error=access_denied&error_description=The+user+canceled+the+sign-in+and+should+visit+https://evil.example",
 		);
 
 		expect(
 			await screen.findByText(/apple sign-in failed/i),
 		).toBeInTheDocument();
 		expect(
-			screen.getByText(/the user canceled the sign-in/i),
+			screen.getByText(/sign-in was cancelled or access was denied/i),
 		).toBeInTheDocument();
+		expect(screen.queryByText(/evil\.example/i)).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/the user canceled the sign-in/i),
+		).not.toBeInTheDocument();
 		expect(mockNavigate).not.toHaveBeenCalled();
+	});
+
+	it("does not render a crafted error_description from the query string", async () => {
+		const crafted =
+			"Visit https://evil.example and paste your password to finish sign-in";
+
+		renderAuthCallback(
+			`/auth/callback?error_description=${encodeURIComponent(crafted)}`,
+		);
+
+		expect(
+			await screen.findByRole("heading", { name: /sign-in failed/i }),
+		).toBeInTheDocument();
+		expect(screen.queryByText(crafted)).not.toBeInTheDocument();
+		expect(screen.queryByText(/evil\.example/i)).not.toBeInTheDocument();
+		expect(
+			screen.getByText(
+				/authentication could not be completed\. please try again\./i,
+			),
+		).toBeInTheDocument();
+	});
+
+	it("maps otp_expired to fixed invalid-link copy ahead of access_denied", async () => {
+		renderAuthCallback(
+			"/auth/callback?error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired.+Open+https://evil.example",
+		);
+
+		expect(
+			await screen.findByRole("heading", { name: /sign-in failed/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(/this sign-in link is invalid or has expired/i),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText(/cancelled or access was denied/i),
+		).not.toBeInTheDocument();
+		expect(screen.queryByText(/evil\.example/i)).not.toBeInTheDocument();
+	});
+
+	it.each([
+		"flow_state_expired",
+		"flow_state_not_found",
+		"bad_oauth_state",
+	])("maps %s to fixed invalid-link copy and ignores error_description", async (code) => {
+		renderAuthCallback(
+			`/auth/callback?error_code=${code}&error_description=${encodeURIComponent("Continue at https://evil.example")}`,
+		);
+
+		expect(
+			await screen.findByRole("heading", { name: /sign-in failed/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(/this sign-in link is invalid or has expired/i),
+		).toBeInTheDocument();
+		expect(screen.queryByText(/evil\.example/i)).not.toBeInTheDocument();
+	});
+
+	it("maps an unknown error code to the generic fallback", async () => {
+		renderAuthCallback(
+			"/auth/callback?error=server_error&error_description=Internal+details+from+the+provider",
+		);
+
+		expect(
+			await screen.findByRole("heading", { name: /sign-in failed/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				/authentication could not be completed\. please try again\./i,
+			),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText(/internal details from the provider/i),
+		).not.toBeInTheDocument();
 	});
 });

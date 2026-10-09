@@ -199,8 +199,8 @@ export const queryKeys = {
 	},
 	recovery: {
 		all: ["recovery"] as const,
-		score: (userId: string) =>
-			[...queryKeys.recovery.all, "score", userId] as const,
+		score: (userId: string, profileId?: string | null) =>
+			[...queryKeys.recovery.all, "score", userId, profileId ?? "all"] as const,
 		wearable: (userId: string) =>
 			[...queryKeys.recovery.all, "wearable", userId] as const,
 	},

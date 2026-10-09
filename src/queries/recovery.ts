@@ -11,19 +11,29 @@ import { queryKeys } from "./keys";
  * Fetch workout sessions from the last 42 days for ACWR computation.
  * Uses stored per-cable volume; ACWR only cares about relative ratios.
  */
-export function recoverySessionsOptions(userId: string) {
+export function recoverySessionsOptions(
+	userId: string,
+	profileId?: string | null,
+) {
 	return queryOptions({
-		queryKey: queryKeys.recovery.score(userId),
+		queryKey: queryKeys.recovery.score(userId, profileId),
 		queryFn: async () => {
 			const cutoff = new Date();
 			cutoff.setDate(cutoff.getDate() - 42);
 
-			const { data, error } = await supabase
+			let query = supabase
 				.from("workout_sessions")
 				.select("started_at, total_volume")
 				.eq("user_id", userId)
-				.gte("started_at", cutoff.toISOString())
-				.order("started_at", { ascending: false });
+				.gte("started_at", cutoff.toISOString());
+
+			if (profileId) {
+				query = query.eq("local_profile_id", profileId);
+			}
+
+			const { data, error } = await query.order("started_at", {
+				ascending: false,
+			});
 			if (error) throw error;
 			return recoverySessionListSchema.parse(data);
 		},

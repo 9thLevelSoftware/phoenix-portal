@@ -36,6 +36,7 @@ import { PHOENIX } from "@/lib/colors";
 import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { repSummariesOptions, repTelemetryOptions } from "@/queries/telemetry";
 import { sessionDetailOptions, workoutListOptions } from "@/queries/workouts";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 // -- Section wrapper --
 function Section({
@@ -107,6 +108,7 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 	useRerenderOnThemeChange();
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
+	const { activeProfileId } = useProfileFilterStore();
 	const unit = usePreferredWeightUnit();
 	const showBiomechanics = view === "biomechanics";
 	const showPerformance = view === "performance";
@@ -115,10 +117,22 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 	const [selectedSessionId, setSelectedSessionId] = useState<string>("");
 	const [selectedExerciseId, setSelectedExerciseId] = useState<string>("");
 	const [selectedSetId, setSelectedSetId] = useState<string>("");
+	const [selectionProfileId, setSelectionProfileId] = useState<string | null>(
+		activeProfileId,
+	);
 
 	// Force curve options
 	const [normalized, setNormalized] = useState(false);
 	const [overlayAll, setOverlayAll] = useState(true);
+
+	// Drop a session chosen under another profile before paint, so the charts
+	// follow the sidebar filter instead of keeping the previous selection.
+	if (selectionProfileId !== activeProfileId) {
+		setSelectionProfileId(activeProfileId);
+		setSelectedSessionId("");
+		setSelectedExerciseId("");
+		setSelectedSetId("");
+	}
 
 	// Fetch workout list
 	const {
@@ -126,7 +140,10 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 		isPending: workoutsLoading,
 		error: workoutsError,
 		refetch: refetchWorkouts,
-	} = useQuery({ ...workoutListOptions(userId), enabled: !!userId });
+	} = useQuery({
+		...workoutListOptions(userId, activeProfileId),
+		enabled: !!userId,
+	});
 
 	// Auto-select first session (via useEffect to avoid setState during render)
 	const effectiveSessionId = selectedSessionId || (workouts?.[0]?.id ?? "");
@@ -170,7 +187,7 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 	// ---- Telemetry queries (per selected set) ----
 	const {
 		data: telemetry,
-		isPending: telemetryLoading,
+		isLoading: telemetryLoading,
 		isError: telemetryError,
 	} = useQuery({
 		...repTelemetryOptions(userId, effectiveSetId),
@@ -179,7 +196,7 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 
 	const {
 		data: repSummaries,
-		isPending: summariesLoading,
+		isLoading: summariesLoading,
 		isError: summariesError,
 	} = useQuery({
 		...repSummariesOptions(userId, effectiveSetId),
@@ -283,7 +300,7 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 			<div className="flex flex-col sm:flex-row gap-4 flex-wrap">
 				{/* Session selector */}
 				<Select
-					value={selectedSessionId}
+					value={effectiveSessionId}
 					onValueChange={(id) => {
 						setSelectedSessionId(id);
 						setSelectedExerciseId("");
@@ -310,7 +327,7 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 				{/* Exercise selector */}
 				{exercises.length > 0 && (
 					<Select
-						value={selectedExerciseId}
+						value={effectiveExerciseId}
 						onValueChange={(id) => {
 							setSelectedExerciseId(id);
 							setSelectedSetId("");

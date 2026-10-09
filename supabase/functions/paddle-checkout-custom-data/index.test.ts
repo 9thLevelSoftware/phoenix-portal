@@ -18,6 +18,23 @@ interface SubscriptionRow {
   cancel_at_period_end: boolean;
 }
 
+interface RateLimitVerdict {
+  allowed: boolean;
+  remaining: number;
+  retry_after_seconds: number | null;
+}
+
+const ALLOWED_RATE_LIMIT: RateLimitVerdict = {
+  allowed: true,
+  remaining: 9,
+  retry_after_seconds: null,
+};
+
+interface ObservedCalls {
+  tables: string[];
+  rateLimitCalls: Record<string, unknown>[];
+}
+
 function buildHandler(
   row: SubscriptionRow | null,
   options: {
@@ -25,14 +42,21 @@ function buildHandler(
     user?: { id: string } | null;
     /** Pass `undefined` explicitly to simulate an unset secret. */
     secret?: string;
+    /** Replaces the default allow verdict from `check_rate_limit`. */
+    rateLimit?: RateLimitVerdict;
+    /** When set, `check_rate_limit` fails and the handler must fail closed. */
+    rateLimitError?: { code?: string; message: string };
+    observed?: ObservedCalls;
     reservation?: Record<string, unknown>;
     calls?: string[];
+    /** Billing RPCs; `check_rate_limit` is answered before this is consulted. */
     rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
     fetch?: typeof fetch;
   } = {},
 ) {
   const user = options.user === undefined ? { id: USER_ID } : options.user;
   const secret = "secret" in options ? options.secret : SECRET;
+  const observed = options.observed ?? { tables: [], rateLimitCalls: [] };
   return createPaddleCheckoutCustomDataHandler({
     createAuthClient: () =>
       ({
@@ -51,8 +75,25 @@ function buildHandler(
               : { data: row, error: null },
           ),
       };
-      return { from: () => query, rpc: options.rpc ?? ((name: string, args: Record<string, unknown>) => Promise.resolve({ data: name === "reserve_paddle_checkout"
-        ? options.reservation ?? { action: "create", nonce: args.p_nonce, expires_at: args.p_expires_at } : true, error: null })) } as unknown as SupabaseClient;
+      const billingRpc = options.rpc ?? ((name: string, args: Record<string, unknown>) => Promise.resolve({ data: name === "reserve_paddle_checkout"
+        ? options.reservation ?? { action: "create", nonce: args.p_nonce, expires_at: args.p_expires_at } : true, error: null }));
+      return {
+        from: (table: string) => {
+          observed.tables.push(table);
+          return query;
+        },
+        rpc: (name: string, args: Record<string, unknown>) => {
+          if (name !== "check_rate_limit") return billingRpc(name, args);
+          observed.rateLimitCalls.push(args);
+          if (options.rateLimitError) {
+            return Promise.resolve({ data: null, error: options.rateLimitError });
+          }
+          return Promise.resolve({
+            data: options.rateLimit ?? ALLOWED_RATE_LIMIT,
+            error: null,
+          });
+        },
+      } as unknown as SupabaseClient;
     },
     env: { get: (key: string) => ({ PADDLE_CUSTOM_DATA_SECRET: secret, PADDLE_API_KEY: "test", PADDLE_EMBER_PRICE_IDS: "pri_ember_monthly" } as Record<string, string | undefined>)[key] },
     now: () => NOW,
@@ -294,10 +335,59 @@ Deno.test("paddle-checkout-custom-data: a subscription lookup failure fails clos
 });
 
 Deno.test("paddle-checkout-custom-data: an unauthenticated request never reaches the database", async () => {
-  const response = await buildHandler(null, { user: null })(signRequest());
+  const observed: ObservedCalls = { tables: [], rateLimitCalls: [] };
+  const response = await buildHandler(null, { user: null, observed })(signRequest());
 
   assertEquals(response.status, 401);
   assertEquals((await response.json()).error, "Unauthorized");
+  assertEquals(observed.tables, []);
+  assertEquals(observed.rateLimitCalls, []);
+});
+
+Deno.test("paddle-checkout-custom-data: rate-limits signing at 10 requests per minute per user", async () => {
+  const observed: ObservedCalls = { tables: [], rateLimitCalls: [] };
+  const response = await buildHandler(null, { observed })(signRequest());
+
+  assertEquals(response.status, 200);
+  assertEquals(observed.rateLimitCalls, [{
+    p_key: "paddle-checkout-custom-data",
+    p_user_id: USER_ID,
+    p_max_requests: 10,
+    p_window_seconds: 60,
+  }]);
+  // The limiter runs before the subscription read and the HMAC.
+  assertEquals(observed.tables[0], "subscriptions");
+});
+
+Deno.test("paddle-checkout-custom-data: a rate-limited user gets refresh's 429 and no signature", async () => {
+  const observed: ObservedCalls = { tables: [], rateLimitCalls: [] };
+  const response = await buildHandler(null, {
+    observed,
+    rateLimit: { allowed: false, remaining: 0, retry_after_seconds: 42 },
+  })(signRequest());
+
+  assertEquals(response.status, 429);
+  assertEquals(response.headers.get("Retry-After"), "42");
+  assertEquals(response.headers.get("Content-Type"), "application/json");
+  assertEquals(await response.json(), {
+    error: "rate_limit_exceeded",
+    message: "Too many requests. Try again in 42 seconds.",
+    retryAfterSeconds: 42,
+  });
+  assertEquals(observed.tables, []);
+  assertEquals(observed.rateLimitCalls.length, 1);
+});
+
+Deno.test("paddle-checkout-custom-data: a rate-limit outage fails closed before signing", async () => {
+  const observed: ObservedCalls = { tables: [], rateLimitCalls: [] };
+  const response = await buildHandler(null, {
+    observed,
+    rateLimitError: { code: "XX000", message: "db down" },
+  })(signRequest());
+
+  assertEquals(response.status, 503);
+  assertEquals((await response.json()).error, "rate_limit_unavailable");
+  assertEquals(observed.tables, []);
 });
 
 Deno.test("paddle-checkout-custom-data: reuses one reserved transaction without another Paddle create", async () => {

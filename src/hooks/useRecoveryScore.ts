@@ -8,6 +8,7 @@ import {
 	wearableRecoveryOptions,
 } from "@/queries/recovery";
 import type { WearableRecoveryRow } from "@/schemas/recovery";
+import { useProfileFilterStore } from "@/stores/useProfileFilterStore";
 
 interface UseRecoveryScoreResult {
 	recovery: RecoveryResult | null;
@@ -26,13 +27,14 @@ interface UseRecoveryScoreResult {
 export function useRecoveryScore(): UseRecoveryScoreResult {
 	const { user } = useAuth();
 	const userId = user?.id ?? "";
+	const { activeProfileId } = useProfileFilterStore();
 
 	const {
 		data: sessions,
 		isPending: sessionsLoading,
 		isError: sessionsError,
 		error: sessionsErr,
-	} = useQuery(recoverySessionsOptions(userId));
+	} = useQuery(recoverySessionsOptions(userId, activeProfileId));
 	const {
 		data: wearable,
 		isPending: wearableLoading,
@@ -43,7 +45,7 @@ export function useRecoveryScore(): UseRecoveryScoreResult {
 		isPending: cycleLoading,
 		isError: cycleError,
 		error: cycleErr,
-	} = useQuery(activeCyclePositionOptions(userId));
+	} = useQuery(activeCyclePositionOptions(userId, activeProfileId));
 
 	const result = useMemo(() => {
 		if (!sessions) return { recovery: null, daysSinceFirstSession: 0 };

@@ -24,7 +24,49 @@ const queueRow = (id: string, syncType: string, status: string, startedAt: strin
   started_at: startedAt,
   completed_at: null,
   error_message: null,
+  retry_count: 0,
 });
+
+/**
+ * save_sync_state_if_queue_owned (20260924150000): write the listed state
+ * keys only while the queue row is still this run's processing claim.
+ * A null queue id always saves.
+ */
+function installQueueOwnedStateSave(db: FakeDb): void {
+  if (db.rpcHandlers.save_sync_state_if_queue_owned) return;
+  const stateKeys = [
+    "status",
+    "error_message",
+    "last_sync_at",
+    "backfill_before",
+    "backfill_after",
+    "backfill_started_at",
+  ] as const;
+  db.rpcHandlers.save_sync_state_if_queue_owned = (args: Row) => {
+    if (args.p_queue_id != null) {
+      const owned = db.rows("sync_queue").some((row) =>
+        row.id === args.p_queue_id &&
+        row.user_id === args.p_user_id &&
+        row.provider === args.p_provider &&
+        row.status === "processing" &&
+        (args.p_attempt == null || Number(row.retry_count ?? 0) === args.p_attempt)
+      );
+      if (!owned) return { data: false, error: null };
+    }
+    const patch = args.p_state;
+    if (!patch || typeof patch !== "object") {
+      return { data: null, error: { message: "state object required" } };
+    }
+    const state = patch as Row;
+    for (const row of db.rows("user_integrations")) {
+      if (row.user_id !== args.p_user_id || row.provider !== args.p_provider) continue;
+      for (const key of stateKeys) {
+        if (Object.hasOwn(state, key)) row[key] = state[key];
+      }
+    }
+    return { data: true, error: null };
+  };
+}
 
 /**
  * A database with migration 20260920005200's `sync_queue_one_active` in force,
@@ -74,7 +116,13 @@ function fakeHevy(count: number) {
   };
 }
 
-function harness(db: FakeDb, workoutCount: number, jwtUserId: string | null = null) {
+function harness(
+  db: FakeDb,
+  workoutCount: number,
+  jwtUserId: string | null = null,
+  fetchImpl?: typeof fetch,
+) {
+  installQueueOwnedStateSave(db);
   const now = () => new Date(NOW);
   const handler = createHevySyncHandler({
     env: (key) =>
@@ -87,7 +135,7 @@ function harness(db: FakeDb, workoutCount: number, jwtUserId: string | null = nu
     // clock, so window arithmetic is deterministic.
     // deno-lint-ignore no-explicit-any
     createClient: () => fakeClient(db, jwtUserId, now) as any,
-    fetch: fakeHevy(workoutCount) as typeof fetch,
+    fetch: (fetchImpl ?? fakeHevy(workoutCount)) as typeof fetch,
     now,
   });
   return (body: Record<string, unknown>) =>
@@ -120,6 +168,10 @@ Deno.test("hevy-sync: completing the dispatched task leaves the user's second pe
   assertEquals(second.status, "pending");
   assertEquals(second.completed_at, null);
   assertEquals(db.rows("external_activities").length, 3);
+  const save = db.rpcCalls.find((call) => call.name === "save_sync_state_if_queue_owned");
+  assertEquals(save?.args.p_queue_id, QUEUE_ID);
+  assertEquals(save?.args.p_attempt, 0);
+  assertEquals(save?.args.p_provider, "hevy");
 });
 
 Deno.test("hevy-sync: the queue lease is renewed while a backfill runs", async () => {
@@ -260,10 +312,78 @@ Deno.test("hevy-sync: a failed browser run hands its own row back", async () => 
 Deno.test("hevy-sync: a run that names another user's queue row completes nothing", async () => {
   const foreign = { ...queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT), user_id: "someone-else" };
   const db = new FakeDb(tables([foreign]));
+  const before = { ...db.rows("user_integrations")[0] };
   const res = await harness(db, 1)({ sync_type: "initial", queue_id: QUEUE_ID });
-  assertEquals(res.status, 200);
+  assertEquals(res.status, 409, await res.clone().text());
+  assertEquals((await res.json()).code, "queue_not_owned");
+  assertEquals(db.rows("user_integrations")[0], before);
   assertEquals(db.rows("sync_queue")[0].status, "processing");
   assertEquals(db.rows("sync_queue")[0].started_at, CLAIMED_AT);
+  assertEquals(db.rows("sync_queue")[0].completed_at, null);
+});
+
+Deno.test("hevy-sync: a run that no longer owns its queue row writes no integration state and stops", async () => {
+  const db = new FakeDb(tables([
+    { ...queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT), retry_count: 1 },
+  ]));
+  const before = { ...db.rows("user_integrations")[0] };
+
+  const res = await harness(db, 3)({
+    sync_type: "initial",
+    queue_id: QUEUE_ID,
+    claim_generation: 0,
+  });
+
+  assertEquals(res.status, 409, await res.clone().text());
+  assertEquals(await res.json(), {
+    error: "Sync queue entry is no longer this run's",
+    code: "queue_not_owned",
+  });
+  assertEquals(db.rows("user_integrations")[0], before);
+  const [row] = db.rows("sync_queue");
+  assertEquals(row.status, "processing");
+  assertEquals(row.retry_count, 1);
+  assertEquals(row.completed_at, null);
+  const saves = db.rpcCalls.filter((call) => call.name === "save_sync_state_if_queue_owned");
+  assertEquals(saves.length, 1);
+  assertEquals(saves[0].args.p_queue_id, QUEUE_ID);
+  assertEquals(saves[0].args.p_attempt, 0);
+  assertEquals(saves[0].args.p_user_id, USER_ID);
+});
+
+Deno.test("hevy-sync: a cancelled queue row is not marked error after a provider auth failure", async () => {
+  const db = new FakeDb(tables([queueRow(QUEUE_ID, "initial", "processing", CLAIMED_AT)]));
+  const before = { ...db.rows("user_integrations")[0] };
+  const res = await harness(db, 1, null, () => {
+    // Disconnect cancelled the row while this run was still at Hevy.
+    db.rows("sync_queue")[0].status = "cancelled";
+    return Promise.resolve(new Response("nope", { status: 403 }));
+  })({
+    sync_type: "initial",
+    queue_id: QUEUE_ID,
+    claim_generation: 0,
+  });
+
+  assertEquals(res.status, 409, await res.clone().text());
+  assertEquals((await res.json()).code, "queue_not_owned");
+  assertEquals(db.rows("user_integrations")[0], before);
+  assertEquals(db.rows("sync_queue")[0].status, "cancelled");
+  assertEquals(db.rows("sync_queue")[0].completed_at, null);
+});
+
+Deno.test("hevy-sync: a dispatch with no queue row still writes integration state", async () => {
+  const db = new FakeDb(tables([]));
+  const res = await harness(db, 1)({ sync_type: "initial" });
+  assertEquals(res.status, 200, await res.clone().text());
+
+  const integration = db.rows("user_integrations")[0];
+  assertEquals(integration.status, "connected");
+  assertEquals(integration.last_sync_at, new Date(NOW).toISOString());
+  assertEquals(integration.error_message, null);
+  const save = db.rpcCalls.find((call) => call.name === "save_sync_state_if_queue_owned");
+  assertEquals(save?.args.p_queue_id, null);
+  assertEquals(save?.args.p_attempt, null);
+  assertEquals(db.rows("sync_queue"), []);
 });
 
 Deno.test("hevy-sync: a browser sync is capped at 3 per 15 minutes", async () => {

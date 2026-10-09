@@ -289,6 +289,118 @@ describe("blockedUsersOptions", () => {
 	});
 });
 
+describe("creatorStatsOptions", () => {
+	const userId = "22222222-2222-4222-8222-222222222222";
+	const statsRow = {
+		user_id: userId,
+		display_name: "Coach Phoenix",
+		avatar_url: "https://example.com/avatar.png",
+		total_shares: 4,
+		total_upvotes: 12,
+		featured_count: 1,
+	};
+
+	function rowChain(result: { data: unknown; error: unknown }) {
+		const self: Record<string, ReturnType<typeof vi.fn>> = {};
+		for (const method of ["select", "eq"]) {
+			self[method] = vi.fn(() => self);
+		}
+		self.maybeSingle = vi.fn(() => Promise.resolve(result));
+		return self;
+	}
+
+	it("parses a stats row and coerces a null display_name to an empty string", async () => {
+		const chain = rowChain({
+			data: { ...statsRow, display_name: null },
+			error: null,
+		});
+		from.mockImplementation((table: string) => {
+			expect(table).toBe("creator_stats");
+			return chain;
+		});
+
+		const { creatorStatsOptions } = await import("../community");
+		const result = await creatorStatsOptions(userId).queryFn?.({} as never);
+
+		expect(chain.maybeSingle).toHaveBeenCalledOnce();
+		expect(chain.eq).toHaveBeenCalledWith("user_id", userId);
+		expect(result).toMatchObject({
+			user_id: userId,
+			display_name: "",
+			avatar_url: statsRow.avatar_url,
+			total_shares: 4,
+			total_upvotes: 12,
+			featured_count: 1,
+		});
+	});
+
+	it("returns zero stats for a visible profile the view omits", async () => {
+		const statsChain = rowChain({ data: null, error: null });
+		const profileChain = rowChain({
+			data: {
+				id: userId,
+				display_name: null,
+				avatar_url: null,
+			},
+			error: null,
+		});
+		from.mockImplementation((table: string) => {
+			if (table === "creator_stats") return statsChain;
+			if (table === "public_profiles") return profileChain;
+			throw new Error(`unexpected table ${table}`);
+		});
+
+		const { creatorStatsOptions } = await import("../community");
+		const result = await creatorStatsOptions(userId).queryFn?.({} as never);
+
+		expect(statsChain.maybeSingle).toHaveBeenCalledOnce();
+		expect(profileChain.eq).toHaveBeenCalledWith("id", userId);
+		expect(result).toEqual({
+			user_id: userId,
+			display_name: "",
+			avatar_url: null,
+			total_shares: 0,
+			total_upvotes: 0,
+			featured_count: 0,
+		});
+	});
+
+	it("returns null when the view and public profiles have no row", async () => {
+		const statsChain = rowChain({ data: null, error: null });
+		const profileChain = rowChain({ data: null, error: null });
+		from.mockImplementation((table: string) => {
+			if (table === "creator_stats") return statsChain;
+			if (table === "public_profiles") return profileChain;
+			throw new Error(`unexpected table ${table}`);
+		});
+
+		const { creatorStatsOptions } = await import("../community");
+		const result = await creatorStatsOptions(userId).queryFn?.({} as never);
+
+		expect(result).toBeNull();
+		expect(profileChain.maybeSingle).toHaveBeenCalledOnce();
+	});
+
+	it("throws a creator_stats error instead of treating it as no row", async () => {
+		const statsChain = rowChain({
+			data: null,
+			error: { message: "stats unavailable" },
+		});
+		from.mockImplementation((table: string) => {
+			expect(table).toBe("creator_stats");
+			return statsChain;
+		});
+
+		const { creatorStatsOptions } = await import("../community");
+		await expect(
+			creatorStatsOptions(userId).queryFn?.({} as never),
+		).rejects.toEqual(
+			expect.objectContaining({ message: "stats unavailable" }),
+		);
+		expect(from).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe("savedItemsOptions", () => {
 	it("pages a user's saves past the row cap in saved_at order", async () => {
 		const first = Array.from({ length: SUPABASE_PAGE_SIZE }, (_, i) => save(i));

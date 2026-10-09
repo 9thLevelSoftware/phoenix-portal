@@ -46,6 +46,11 @@ import { isServiceRoleBearer } from "../_shared/timingSafe.ts";
  *
  * When dispatched by process-sync-queue the body also carries `queue_id`: the
  * run completes that row only, and renews its lease (heartbeat) while it runs.
+ * The body may also carry `claim_generation` (`sync_queue.retry_count` of the
+ * claim this dispatch holds). Failure-path `user_integrations` status writes
+ * go through `save_sync_state_if_queue_owned` and must still match it, the
+ * same as the success-path cursor and watermark saves. `oauth_tokens` writes,
+ * the key-replacement cursor reset, and the connect upsert stay direct.
  * process-sync-queue reclaims a liftosaur task after HEARTBEAT_LEASE_MS
  * (5 minutes) without a heartbeat. The longest silent window here is one
  * request (capped by PROVIDER_REQUEST_TIMEOUT_MS) or 100 record upserts.
@@ -309,6 +314,45 @@ async function runLiftosaurSync(
 			ownedAttempt = 0;
 		}
 
+		const notOwned = () =>
+			new Response(
+				JSON.stringify({ error: "Sync queue entry is no longer this run's", code: "queue_not_owned" }),
+				{ status: 409, headers: { ...cors, "Content-Type": "application/json" } },
+			);
+
+		// Sync state is saved only while this run still owns its queue row,
+		// atomically under the row lock (20260924150000). A disconnect or a
+		// lease reclaim between a check and the write can no longer be undone.
+		// A run with no queue row (p_queue_id null) always saves — that is the
+		// RPC's contract, so a dispatch that never had a row still records state.
+		const saveStateIfOwned = async (values: Record<string, unknown>) => {
+			const { data, error } = await supabase.rpc("save_sync_state_if_queue_owned", {
+				p_user_id: userId,
+				p_provider: "liftosaur",
+				p_queue_id: ownedQueueId ?? null,
+				p_attempt: ownedAttempt,
+				p_state: values,
+			});
+			return { owned: data !== false, error };
+		};
+
+		const stopUnlessStateSaved = async (
+			values: Record<string, unknown>,
+			failureCode: string,
+		): Promise<Response | null> => {
+			const save = await saveStateIfOwned(values);
+			if (save.error) {
+				// No plain follow-up write: that is the window this RPC exists to close.
+				console.error("Liftosaur sync state save failed:", save.error);
+				return new Response(
+					JSON.stringify({ error: "Liftosaur sync failed; will retry", code: failureCode }),
+					{ status: 502, headers: { ...cors, "Content-Type": "application/json" } },
+				);
+			}
+			if (!save.owned) return notOwned();
+			return null;
+		};
+
 		// If api_key provided, store it in oauth_tokens (server-only table)
 		if (api_key) {
 			// A new key may be another account: drop the previous key's backfill
@@ -438,15 +482,16 @@ async function runLiftosaurSync(
 			);
 		} catch (fetchError) {
 			if (fetchError instanceof LiftosaurAuthError) {
-				await supabase
-					.from("user_integrations")
-					.update({
+				// A run that no longer owns its queue row must not mark the
+				// integration errored.
+				const stopped = await stopUnlessStateSaved(
+					{
 						status: "error",
-						error_message:
-							"API key invalid or Liftosaur Premium required",
-					})
-					.eq("user_id", userId)
-					.eq("provider", "liftosaur");
+						error_message: "API key invalid or Liftosaur Premium required",
+					},
+					"state_save_failed",
+				);
+				if (stopped) return stopped;
 
 				return new Response(
 					JSON.stringify({
@@ -472,14 +517,14 @@ async function runLiftosaurSync(
 			// processor, so both get fixed text.
 			console.error("Liftosaur API fetch error:", fetchError);
 
-			await supabase
-				.from("user_integrations")
-				.update({
+			const stopped = await stopUnlessStateSaved(
+				{
 					status: "error",
 					error_message: "Liftosaur sync failed; will retry",
-				})
-				.eq("user_id", userId)
-				.eq("provider", "liftosaur");
+				},
+				"state_save_failed",
+			);
+			if (stopped) return stopped;
 
 			return new Response(
 				JSON.stringify({
@@ -519,42 +564,17 @@ async function runLiftosaurSync(
 		// lets the queue processor retry; the writes are idempotent.
 		if (failedCount > 0) {
 			const failMessage = `Failed to persist ${failedCount} of ${allRecords.length} records`;
-			await supabase
-				.from("user_integrations")
-				.update({ status: "error", error_message: failMessage })
-				.eq("user_id", userId)
-				.eq("provider", "liftosaur");
+			const stopped = await stopUnlessStateSaved(
+				{ status: "error", error_message: failMessage },
+				"state_save_failed",
+			);
+			if (stopped) return stopped;
 
 			return new Response(
 				JSON.stringify({ error: failMessage, imported: importedCount, failed: failedCount }),
 				{ status: 502, headers: { ...cors, "Content-Type": "application/json" } }
 			);
 		}
-
-		const updateIntegration = (values: Record<string, unknown>) =>
-			supabase
-				.from("user_integrations")
-				.update(values)
-				.eq("user_id", userId)
-				.eq("provider", "liftosaur");
-		// Sync state is saved only while this run still owns its queue row,
-		// atomically under the row lock (20260924150000): a disconnect or a
-		// lease reclaim between a check and the write can no longer be undone.
-		const saveStateIfOwned = async (values: Record<string, unknown>) => {
-			const { data, error } = await supabase.rpc("save_sync_state_if_queue_owned", {
-				p_user_id: userId,
-				p_provider: "liftosaur",
-				p_queue_id: ownedQueueId ?? null,
-				p_attempt: ownedAttempt,
-				p_state: values,
-			});
-			return { owned: data !== false, error };
-		};
-		const notOwned = () =>
-			new Response(
-				JSON.stringify({ error: "Sync queue entry is no longer this run's", code: "queue_not_owned" }),
-				{ status: 409, headers: { ...cors, "Content-Type": "application/json" } },
-			);
 
 		// supabase-js resolves a failed write as `{ error }`; it does not throw.
 		// A lost cursor or watermark must not be reported as progress: leave this
