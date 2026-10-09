@@ -329,6 +329,29 @@ describe("topExercisesOptions", () => {
 		expect(result).toEqual([]);
 	});
 
+	it("labels a null or blank exercise name as Unknown without merging rows", async () => {
+		// GROUP BY name keeps NULL, "" and whitespace as separate aggregates.
+		// The label is the only thing that changes; counts stay per row.
+		mockRpc({
+			data: [
+				{ exercise_name: null, muscle_group: null, sessions: 4 },
+				{ exercise_name: "", muscle_group: "General", sessions: 3 },
+				{ exercise_name: "   ", muscle_group: null, sessions: 2 },
+				{ exercise_name: "Bench Press", muscle_group: "Chest", sessions: 1 },
+			],
+			error: null,
+		});
+
+		const result = await readTopExercises("user-1");
+
+		expect(result).toEqual([
+			{ name: "Unknown", count: 4 },
+			{ name: "Unknown", count: 3 },
+			{ name: "Unknown", count: 2 },
+			{ name: "Bench Press", count: 1 },
+		]);
+	});
+
 	it("throws on RPC error", async () => {
 		mockRpc({ data: null, error: { message: "frequency failed" } });
 		const { topExercisesOptions } = await import("../profile");
