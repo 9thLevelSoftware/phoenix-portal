@@ -69,7 +69,7 @@ export function AppLayout() {
 
 						<ErrorBoundary
 							FallbackComponent={PageErrorFallback}
-							resetKeys={[location.pathname]}
+							resetKeys={[location.pathname, location.search]}
 						>
 							<Suspense fallback={<PageLoading />}>
 								<AnimatePresence mode="wait">

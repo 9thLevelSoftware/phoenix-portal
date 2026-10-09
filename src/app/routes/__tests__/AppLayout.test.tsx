@@ -8,7 +8,7 @@ import {
 	useLocation,
 	useNavigate,
 } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppLayout } from "../AppLayout";
 
 type MotionMainProps = ComponentProps<"main"> & {
@@ -129,6 +129,32 @@ function NavigationHarness() {
 	);
 }
 
+function AnalyticsTabPage() {
+	const location = useLocation();
+	if (new URLSearchParams(location.search).get("tab") === "body") {
+		throw new Error("body tab crashed");
+	}
+	return <div>Analytics ready</div>;
+}
+
+function AnalyticsTabControls() {
+	const navigate = useNavigate();
+
+	return (
+		<div>
+			<button type="button" onClick={() => navigate("/analytics?tab=records")}>
+				Open records tab
+			</button>
+			<button type="button" onClick={() => navigate("/analytics?tab=body")}>
+				Open body tab
+			</button>
+			<button type="button" onClick={() => navigate(-1)}>
+				Go back
+			</button>
+		</div>
+	);
+}
+
 function renderLayout() {
 	return render(
 		<MemoryRouter initialEntries={["/dashboard/overview"]}>
@@ -181,5 +207,50 @@ describe("AppLayout route transitions", () => {
 			),
 		);
 		expect(container.querySelector("main#main-content")).not.toBe(mainBefore);
+	});
+});
+
+describe("AppLayout page error boundary", () => {
+	const originalConsoleError = console.error;
+
+	beforeEach(() => {
+		console.error = vi.fn();
+	});
+
+	afterEach(() => {
+		console.error = originalConsoleError;
+	});
+
+	it("resets when the query string changes, including Back", async () => {
+		const user = userEvent.setup();
+		render(
+			<MemoryRouter initialEntries={["/analytics?tab=body"]}>
+				<AnalyticsTabControls />
+				<Routes>
+					<Route element={<AppLayout />}>
+						<Route path="/analytics" element={<AnalyticsTabPage />} />
+					</Route>
+				</Routes>
+			</MemoryRouter>,
+		);
+
+		expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Open records tab" }));
+		await waitFor(() => {
+			expect(screen.getByText("Analytics ready")).toBeInTheDocument();
+		});
+		expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Open body tab" }));
+		await waitFor(() => {
+			expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+		});
+
+		await user.click(screen.getByRole("button", { name: "Go back" }));
+		await waitFor(() => {
+			expect(screen.getByText("Analytics ready")).toBeInTheDocument();
+		});
+		expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
 	});
 });
