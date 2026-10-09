@@ -101,9 +101,12 @@ export function buildExerciseProgressRows(
 			if (measuredSets.length === 0) continue;
 
 			// pushPayloadSchema enforces non-negative weights/reps at ingress, but
-			// clamp defensively here too so a direct (non-HTTP) caller cannot write
-			// negative progress snapshots that then propagate back to mobile on
-			// pull (Finding F334).
+			// clamp defensively here too so a direct (non-HTTP) caller cannot
+			// write negative progress snapshots. Those rows are read by the
+			// portal progress queries (src/queries/progress.ts), by
+			// generate-insights for plateau detection, and by the GDPR export.
+			// mobile-sync-pull never selects exercise_progress, so they are not
+			// pulled to devices (Finding F334).
 			const maxWeight = Math.max(
 				0,
 				...measuredSets.map((s) => Math.max(0, s.weightKg)),
