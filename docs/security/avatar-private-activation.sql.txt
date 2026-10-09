@@ -1,0 +1,13 @@
+-- PHASE 3 TEMPLATE ONLY. Do not include in the initial DB migration PR.
+-- After phase-1 migrations are applied and the Blob-download SPA is deployed,
+-- use `npm run supabase -- migration new activate_private_avatar_delivery`.
+-- Paste this body into that CLI-generated migration, verify/rehearse it, then
+-- the human migration owner applies it with `supabase db push`.
+-- Already-delivered public images/caches cannot be recalled. Purge the old
+-- public avatar CDN URLs as part of activation and verify cache misses deny.
+-- Verify get_authenticated succeeds for owner/visible-profile viewers while
+-- get_public, signing as another viewer, and post-opt-out downloads fail.
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+UPDATE storage.buckets SET public = false WHERE id = 'avatars';
+COMMIT;

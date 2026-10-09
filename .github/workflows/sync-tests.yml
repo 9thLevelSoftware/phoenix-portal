@@ -48,6 +48,7 @@ on:
 jobs:
   sync-tests:
     name: Sync Validation Tests (${{ github.event_name == 'workflow_dispatch' && github.event.inputs.use_mocks == 'false' && 'live dispatch-only' || 'mock' }})
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.use_mocks != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -72,21 +73,56 @@ jobs:
         env:
           MOCK_EDGE_FUNCTIONS: 'true'
 
+      - name: Upload test results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: sync-test-results
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  sync-tests-live:
+    name: Sync Validation Tests (live staging)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.use_mocks == 'false' && github.ref == 'refs/heads/main' }}
+    environment: sync-live-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Assert trusted live ref before checkout
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" || "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
+            echo "::error::Live sync requires a manual dispatch from main."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Resolve Supabase preview credentials for live mode
-        if: ${{ github.event.inputs.use_mocks == 'false' }}
         run: node scripts/resolve-sync-preview.mjs
         env:
+          SYNC_DIRECT_CREDENTIALS_ONLY: 'true'
           SYNC_STAGING_SUPABASE_URL: ${{ secrets.SYNC_STAGING_SUPABASE_URL }}
           SYNC_STAGING_SUPABASE_ANON_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_ANON_KEY }}
           SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SYNC_STAGING_SUPABASE_SERVICE_ROLE_KEY }}
           SYNC_STAGING_PROJECT_REF: ${{ secrets.SYNC_STAGING_PROJECT_REF }}
           STAGING_PROJECT_REF_INPUT: ${{ inputs.staging_project_ref }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROD_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+          SUPABASE_PROD_PROJECT_REF: ${{ vars.SUPABASE_PROD_PROJECT_REF }}
 
       # Live Edge is dispatch-only (`use_mocks=false`). Push/PR never take this path.
       - name: Run sync tests (live mode, dispatch-only)
-        if: ${{ github.event.inputs.use_mocks == 'false' }}
         run: npm run test:sync:live
         env:
           MOCK_EDGE_FUNCTIONS: 'false'
@@ -94,10 +130,19 @@ jobs:
           SYNC_LIVE_DEBUG_FAILURES: 'true'
 
       - name: Clean up live sync test users
-        if: ${{ always() && github.event_name == 'workflow_dispatch' && github.event.inputs.use_mocks == 'false' }}
+        if: always()
         run: node scripts/cleanup-sync-preview-users.mjs
         env:
-          SUPABASE_PROD_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+          SUPABASE_PROD_PROJECT_REF: ${{ vars.SUPABASE_PROD_PROJECT_REF }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: sync-live-test-results
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 7
 
   sync-tests-matrix:
     name: Sync Tests mock (Node ${{ matrix.node-version }})

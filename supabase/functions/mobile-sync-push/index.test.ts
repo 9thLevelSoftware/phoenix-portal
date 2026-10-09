@@ -3322,7 +3322,11 @@ Deno.test("unexpected privileged failure returns generic 500 and logs only a saf
   const response = await harness.handler(requestFromBody(validPushBody()));
   assertEquals(response.status, 500);
   assertEquals(await json(response), { error: "Internal server error" });
-  assertEquals(harness.loggerCalls, [[{ name: "NetworkError" }]]);
+  assertEquals(harness.loggerCalls, [[{
+    name: "NetworkError",
+    stage: "handler",
+    operation: "unclassified",
+  }]]);
 });
 
 Deno.test("RPC parser accepts exactly the next revision with semantically equal reordered payload", () => {
@@ -3518,12 +3522,27 @@ const INJECTED_DB_ERROR = { message: "injected database failure", code: "XX000" 
 async function assertPartialWriteRetry(
   harness: PushHarness,
   response: Response,
+  operation?: string,
 ): Promise<void> {
   assertEquals(response.status, 503);
   assertEquals(await json(response), PARTIAL_WRITE_BODY);
   assertEquals(harness.channelCalls, []);
   assertEquals(harness.broadcastPayloads, []);
-  assertEquals(harness.loggerCalls, [[{ name: "PartialWriteRetry" }]]);
+  if (operation) {
+    assertEquals(harness.loggerCalls, [[{
+      name: "PartialWriteRetry",
+      stage: "database",
+      operation,
+      errorCode: "XX000",
+    }]]);
+  } else {
+    assertEquals(harness.loggerCalls.length, 1);
+    assertEquals(harness.loggerCalls[0]?.length, 1);
+    assertEquals(
+      (harness.loggerCalls[0]?.[0] as { name?: unknown }).name,
+      "PartialWriteRetry",
+    );
+  }
 }
 
 Deno.test("routine delete failure returns retryable 503 and no sync_complete", async () => {
@@ -3534,7 +3553,7 @@ Deno.test("routine delete failure returns retryable 503 and no sync_complete", a
     ...validPushBody(),
     deletedRoutineIds: [ROUTINE_ID],
   }));
-  await assertPartialWriteRetry(harness, response);
+  await assertPartialWriteRetry(harness, response, "routines.delete");
 });
 
 Deno.test("cycle delete failure returns retryable 503 and no sync_complete", async () => {
@@ -3588,7 +3607,7 @@ Deno.test("routine exercise orphan cleanup failure returns retryable 503", async
   const response = await harness.handler(
     requestFromBody(validNestedRelationshipBody()),
   );
-  await assertPartialWriteRetry(harness, response);
+  await assertPartialWriteRetry(harness, response, "routine_exercises.orphan_cleanup");
 });
 
 Deno.test("allProfiles upsert failure returns 503 before any session write", async () => {
@@ -3939,7 +3958,7 @@ Deno.test("a failed tombstone delete chunk stops at that chunk with a retryable 
     ...validPushBody(),
     deletedRoutineIds: manyIds("8a00", 250),
   }));
-  await assertPartialWriteRetry(harness, response);
+  await assertPartialWriteRetry(harness, response, "routines.delete");
   assertEquals(writeQueries(harness, "routines", "delete").length, 1);
 });
 
@@ -3954,7 +3973,7 @@ Deno.test("orphan cleanup failure for a routine with no exercises returns retrya
     writeErrors: { "routine_exercises:delete": INJECTED_DB_ERROR },
   });
   const response = await harness.handler(requestFromBody(body));
-  await assertPartialWriteRetry(harness, response);
+  await assertPartialWriteRetry(harness, response, "routine_exercises.orphan_cleanup");
   const deletes = writeQueries(harness, "routine_exercises", "delete");
   assertEquals(deletes.length, 1);
   // The delete-all branch: no `not in` filter.
@@ -3996,7 +4015,54 @@ Deno.test("routine_exercises upsert failure returns the same retryable 503", asy
   const response = await harness.handler(
     requestFromBody(validNestedRelationshipBody()),
   );
+  await assertPartialWriteRetry(harness, response, "routine_exercises.upsert");
+});
+
+Deno.test("routine_exercises database failure logs a safe actionable diagnostic", async () => {
+  const secret = "Bearer secret-token routine name: private routine";
+  const harness = makeHarness(undefined, {
+    writeErrors: {
+      "routine_exercises:upsert": { code: "23503", message: secret },
+    },
+  });
+  const response = await harness.handler(
+    requestFromBody(validNestedRelationshipBody()),
+  );
+
   await assertPartialWriteRetry(harness, response);
+  assertEquals(harness.loggerCalls, [[{
+    name: "PartialWriteRetry",
+    stage: "database",
+    operation: "routine_exercises.upsert",
+    errorCode: "23503",
+  }]]);
+  assert(!JSON.stringify(harness.loggerCalls).includes(secret));
+});
+
+Deno.test("routine parent database failure returns an opaque 500 and safe diagnostic", async () => {
+  const secret = "Bearer secret-token routine name: private routine";
+  await withEnvironment("production", async () => {
+    const harness = makeHarness(undefined, {
+      syncLwwEnabled: true,
+      rpcBehavior: async (name) =>
+        name === "upsert_routine_lww"
+          ? { data: null, error: { code: "23505", message: secret } }
+          : undefined,
+    });
+    const response = await harness.handler(
+      requestFromBody(validNestedRelationshipBody()),
+    );
+
+    assertEquals(response.status, 500);
+    assertEquals(await json(response), { error: "Internal server error" });
+    assertEquals(harness.loggerCalls, [[{
+      name: "DatabaseOperationFailure",
+      stage: "database",
+      operation: "routines.lww_upsert",
+      errorCode: "23505",
+    }]]);
+    assert(!JSON.stringify(harness.loggerCalls).includes(secret));
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -4709,11 +4775,7 @@ Deno.test("PR 57: a non-numeric set-derived RPC result fails the push loudly", a
   });
 });
 
-Deno.test("PR 57: an FK violation from the set-derived RPC surfaces (no silent retry drops it)", async () => {
-  // Set-derived rows only reference the handler-sanitized profile (upserted
-  // or cleared earlier in the push) and payload sessions, so the FK-retry
-  // partitions find nothing to null out. A 23503 from the RPC must therefore
-  // keep its code through the RPC wrapper and fail the push, not vanish.
+Deno.test("PR 57: an FK failure rejects the push without acknowledging committed rows", async () => {
   await withEnvironment("development", async () => {
     const harness = makeHarness(undefined, {
       rpcBehavior: async (name) =>
@@ -4734,16 +4796,8 @@ Deno.test("PR 57: an FK violation from the set-derived RPC surfaces (no silent r
     const responseBody = await json(response);
 
     assertEquals(response.status, 500);
-    assert(
-      String(responseBody.error).startsWith("personal_records insert failed:"),
-      String(responseBody.error),
-    );
-    assertEquals(
-      harness.adminRpcCalls.filter((call) =>
-        call.name === "upsert_set_derived_personal_records"
-      ).length,
-      1,
-    );
+    assertEquals(responseBody.acknowledgedWorkoutSessionIds, undefined);
+    assertEquals(responseBody.personalRecordsInserted, undefined);
   });
 });
 
