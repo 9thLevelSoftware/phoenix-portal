@@ -32,9 +32,9 @@ export function routineListOptions(userId: string, profileId?: string | null) {
 	});
 }
 
-export function routineDetailOptions(routineId: string) {
+export function routineDetailOptions(userId: string, routineId: string) {
 	return queryOptions({
-		queryKey: queryKeys.routines.detail(routineId),
+		queryKey: queryKeys.routines.detail(userId, routineId),
 		queryFn: async () => {
 			const { data, error } = await supabase
 				.from("routines")
@@ -48,6 +48,6 @@ export function routineDetailOptions(routineId: string) {
 			if (error) throw error;
 			return routineDetailSchema.parse(data);
 		},
-		enabled: !!routineId,
+		enabled: !!userId && !!routineId,
 	});
 }

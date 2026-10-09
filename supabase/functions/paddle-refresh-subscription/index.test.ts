@@ -1,6 +1,7 @@
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@1";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { hmacSha256Hex } from "../_shared/hmac.ts";
+import { type CheckoutBinding, signCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
 import { createPaddleRefreshSubscriptionHandler } from "./index.ts";
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
@@ -35,6 +36,11 @@ interface FakeDb {
   clock: string | null;
   rpcCalls: Record<string, unknown>[];
   rpcError?: { code?: string; message: string } | null;
+  boundSubscriptions?: string[];
+  issued?: CheckoutBinding & { state: string; created_at: string };
+  bindingCalls?: Record<string, unknown>[];
+  bindingError?: { code: string; message: string };
+  ledgerExpiresAt?: string;
 }
 
 /**
@@ -90,13 +96,40 @@ function fakeAdminClient(db: FakeDb) {
     insert: rejectDirectWrite,
   };
   return {
-    from: () => subscriptions,
+    from: (table: string) => {
+      if (table !== "paddle_checkout_authorizations") return subscriptions;
+      const filters: Record<string, unknown> = {};
+      const ledger = {
+        select: () => ledger,
+        eq: (key: string, value: unknown) => { filters[key] = value; return ledger; },
+        maybeSingle: () => Promise.resolve({ data: db.issued && filters.user_id === USER_ID &&
+          filters.nonce === db.issued.cd_nonce && filters.transaction_id === db.issued.cd_transaction_id
+          ? { state: db.issued.state, price_id: db.issued.cd_price_id, environment: db.issued.cd_environment, expires_at: db.ledgerExpiresAt ?? db.issued.cd_expires_at } : null,
+          error: null }),
+      };
+      return ledger;
+    },
     rpc: (name: string, args: Record<string, unknown>) => {
       if (name === "check_rate_limit") {
         return Promise.resolve({
           data: { allowed: true, remaining: 9, retry_after_seconds: null },
           error: null,
         });
+      }
+      if (name === "is_paddle_subscription_bound") {
+        return Promise.resolve({ data: db.boundSubscriptions?.includes(args.p_subscription_id as string) ?? false, error: null });
+      }
+      if (name === "bind_paddle_checkout") {
+        (db.bindingCalls ??= []).push(args);
+        if (db.bindingError) return Promise.resolve({ data: null, error: db.bindingError });
+        const issued = db.issued;
+        const valid = !!issued && ["ready", "closing"].includes(issued.state) && args.p_user_id === USER_ID &&
+          args.p_nonce === issued.cd_nonce && args.p_transaction_id === issued.cd_transaction_id &&
+          args.p_price_id === issued.cd_price_id && args.p_environment === issued.cd_environment &&
+          Date.parse(args.p_completed_at as string) >= Date.parse(issued.created_at) &&
+          Date.parse(args.p_completed_at as string) <= Date.parse(issued.cd_expires_at);
+        if (valid) (db.boundSubscriptions ??= []).push(args.p_subscription_id as string);
+        return Promise.resolve({ data: valid, error: null });
       }
       if (name === "apply_subscription_event") {
         db.rpcCalls.push(args);
@@ -323,6 +356,7 @@ Deno.test("paddle-refresh-subscription: the guard's refusal is reported, not pas
     row: storedRow(),
     clock: "2026-05-01T00:00:00Z",
     rpcCalls: [],
+    boundSubscriptions: ["sub_2"],
   };
   const calls: PaddleCall[] = [];
   const cdSig = await hmacSha256Hex(CUSTOM_DATA_SECRET, USER_ID);
@@ -336,6 +370,8 @@ Deno.test("paddle-refresh-subscription: the guard's refusal is reported, not pas
             data: {
               id: transactionId,
               subscription_id: "sub_2",
+              customer_id: "ctm_1",
+              status: "completed",
               custom_data: { user_id: USER_ID, cd_sig: cdSig },
             },
           }),
@@ -399,5 +435,162 @@ Deno.test("paddle-refresh-subscription: no stored subscription is reported, not 
   assertEquals(response.status, 200);
   assertEquals(await response.json(), { status: "no_subscription" });
   assertEquals(calls.length, 0);
+  assertEquals(db.rpcCalls.length, 0);
+});
+
+const TRANSACTION_ID = "txn_abcdefghijklmnopqrstuvwxyz";
+
+async function checkoutProof(overrides: Partial<Omit<CheckoutBinding, "cd_sig">> = {}) {
+  return await signCheckoutBinding({ user_id: USER_ID, cd_version: 2, cd_nonce: crypto.randomUUID(),
+    cd_transaction_id: TRANSACTION_ID, cd_price_id: "pri_flame_monthly", cd_environment: "sandbox",
+    cd_expires_at: "2026-05-17T12:30:00Z", ...overrides }, CUSTOM_DATA_SECRET);
+}
+
+function checkoutResponder(customData: Record<string, unknown>, overrides: Record<string, unknown> = {}) {
+  return (url: string) => url.includes("/transactions/") ? new Response(JSON.stringify({ data: {
+    id: TRANSACTION_ID, subscription_id: "sub_1", customer_id: "ctm_1", status: "completed",
+    billed_at: "2026-05-17T11:59:00Z", custom_data: customData,
+    items: [{ price: { id: "pri_flame_monthly" }, quantity: 1 }], ...overrides,
+  } })) : new Response(JSON.stringify(paddleSubscriptionBody()));
+}
+
+Deno.test("paddle-refresh-subscription: fresh issued v2 checkout binds before the ordered refresh", async () => {
+  const proof = await checkoutProof();
+  const db: FakeDb = { row: null, clock: null, rpcCalls: [],
+    issued: { ...proof, state: "ready", created_at: "2026-05-17T11:00:00Z" } };
+  const response = await buildHandler(db, { calls: [], respond: checkoutResponder({ ...proof }) })(
+    refreshRequest({ transaction_id: TRANSACTION_ID }),
+  );
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).subscription.tier, "FLAME");
+  assertEquals(db.bindingCalls?.length, 1);
+  assertEquals(db.bindingCalls?.[0].p_transaction_id, TRANSACTION_ID);
+  assertEquals(db.boundSubscriptions, ["sub_1"]);
+  assertEquals(db.rpcCalls.length, 1);
+  assertEquals(db.rpcCalls[0].p_last_event_occurred_at, "2026-05-17T11:59:00Z");
+});
+
+Deno.test("paddle-refresh-subscription: an established v2 checkout remains refreshable after expiry", async () => {
+  const proof = await checkoutProof({ cd_expires_at: "2026-05-01T12:30:00Z" });
+  const db: FakeDb = { row: storedRow(), clock: null, rpcCalls: [], boundSubscriptions: ["sub_1"] };
+  const response = await buildHandler(db, { calls: [], respond: checkoutResponder({ ...proof }) })(
+    refreshRequest({ transaction_id: TRANSACTION_ID }),
+  );
+  assertEquals(response.status, 200);
+  assertEquals(db.bindingCalls, undefined);
+  assertEquals(db.rpcCalls.length, 1);
+});
+
+Deno.test("paddle-refresh-subscription: expired replay, unissued checkout and wrong v2 context cannot adopt", async () => {
+  for (const scenario of ["expired", "unissued", "price", "environment", "transaction", "customer", "subscription"]) {
+    const proof = await checkoutProof({
+      ...(scenario === "expired" ? { cd_expires_at: "2026-05-17T11:50:00Z" } : {}),
+      ...(scenario === "price" ? { cd_price_id: "pri_ember_monthly" } : {}),
+      ...(scenario === "environment" ? { cd_environment: "production" } : {}),
+      ...(scenario === "transaction" ? { cd_transaction_id: "txn_zyxwvutsrqponmlkjihgfedcba" } : {}),
+    });
+    const db: FakeDb = { row: null, clock: null, rpcCalls: [],
+      ...(scenario === "unissued" ? {} : { issued: { ...proof, state: "ready", created_at: "2026-05-17T11:00:00Z" } }) };
+    const respond = checkoutResponder({ ...proof }, scenario === "customer" ? { customer_id: "ctm_foreign" } : {});
+    const response = await buildHandler(db, { calls: [], respond: (url) => scenario === "subscription" && !url.includes("/transactions/")
+      ? new Response(JSON.stringify(paddleSubscriptionBody({ id: "sub_foreign" }))) : respond(url) })(
+      refreshRequest({ transaction_id: TRANSACTION_ID }),
+    );
+    assertEquals(response.status, scenario === "subscription" ? 502 : 403, scenario);
+    assertEquals(db.row, null, scenario);
+    assertEquals(db.rpcCalls.length, 0, scenario);
+  }
+});
+
+Deno.test("paddle-refresh-subscription: legacy signature refreshes only tracked or established subscriptions", async () => {
+  const proof = { user_id: USER_ID, cd_sig: await hmacSha256Hex(CUSTOM_DATA_SECRET, USER_ID) };
+  for (const scenario of ["tracked", "established", "untrusted"]) {
+    const db: FakeDb = { row: scenario === "tracked" ? storedRow() : null, clock: null, rpcCalls: [],
+      ...(scenario === "established" ? { boundSubscriptions: ["sub_1"] } : {}) };
+    const response = await buildHandler(db, { calls: [], respond: checkoutResponder(proof) })(
+      refreshRequest({ transaction_id: TRANSACTION_ID }),
+    );
+    assertEquals(response.status, scenario === "untrusted" ? 403 : 200, scenario);
+    assertEquals(db.rpcCalls.length, scenario === "untrusted" ? 0 : 1, scenario);
+    assertEquals(db.bindingCalls, undefined, scenario);
+  }
+});
+
+Deno.test("paddle-refresh-subscription: issued v2 transaction stays pending without adopting incomplete provider state", async () => {
+  const proof = await checkoutProof();
+  for (const subscriptionId of [null, "sub_1"]) {
+    const db: FakeDb = { row: null, clock: null, rpcCalls: [],
+      issued: { ...proof, state: "ready", created_at: "2026-05-17T11:00:00Z" } };
+    const calls: PaddleCall[] = [];
+    const response = await buildHandler(db, { calls, respond: checkoutResponder({ ...proof }, { status: "ready", subscription_id: subscriptionId }) })(
+      refreshRequest({ transaction_id: TRANSACTION_ID }),
+    );
+    assertEquals(response.status, 200);
+    assertEquals(await response.json(), { status: "no_subscription", reason: "transaction_pending" });
+    assertEquals(calls.length, 1);
+    assertEquals(db.rpcCalls.length, 0);
+    assertEquals(db.bindingCalls, undefined);
+  }
+});
+
+Deno.test("paddle-refresh-subscription: original transaction after a legitimate plan change refreshes only an established subscription", async () => {
+  const proof = await checkoutProof();
+  const transaction = checkoutResponder({ ...proof });
+  for (const established of [true, false]) {
+    const db: FakeDb = { row: established ? storedRow({ price_id: "pri_ember_monthly", tier: "EMBER" }) : null,
+      clock: null, rpcCalls: [], issued: { ...proof, state: "ready", created_at: "2026-05-17T11:00:00Z" },
+      ...(established ? { boundSubscriptions: ["sub_1"] } : {}) };
+    const response = await buildHandler(db, { calls: [], respond: (url) => url.includes("/transactions/") ? transaction(url)
+      : new Response(JSON.stringify(paddleSubscriptionBody({ priceId: "pri_ember_monthly" }))) })(
+      refreshRequest({ transaction_id: TRANSACTION_ID }),
+    );
+    assertEquals(response.status, established ? 200 : 403);
+    assertEquals(db.rpcCalls.length, established ? 1 : 0);
+    if (established) assertEquals((await response.json()).subscription.tier, "EMBER");
+  }
+});
+
+Deno.test("paddle-refresh-subscription: pending uses normalized finite expiry instants", async () => {
+  const proof = await checkoutProof();
+  for (const expiry of ["2026-05-17T12:30:00+00:00", "not-a-timestamp", "2026-05-17T12:31:00Z"]) {
+    const db: FakeDb = { row: null, clock: null, rpcCalls: [], ledgerExpiresAt: expiry,
+      issued: { ...proof, state: "ready", created_at: "2026-05-17T11:00:00Z" } };
+    const response = await buildHandler(db, { calls: [], respond: checkoutResponder({ ...proof }, { status: "ready", subscription_id: null }) })(
+      refreshRequest({ transaction_id: TRANSACTION_ID }),
+    );
+    assertEquals(response.status, expiry.endsWith("+00:00") ? 200 : 403, expiry);
+    assertEquals(db.rpcCalls.length, 0);
+  }
+});
+
+Deno.test("paddle-refresh-subscription: a v2 signature alone cannot report an unissued pending transaction", async () => {
+  const proof = await checkoutProof();
+  const db: FakeDb = { row: null, clock: null, rpcCalls: [] };
+  const response = await buildHandler(db, { calls: [], respond: checkoutResponder({ ...proof }, { subscription_id: null, status: "ready" }) })(
+    refreshRequest({ transaction_id: TRANSACTION_ID }),
+  );
+  assertEquals(response.status, 403);
+  assertEquals(db.rpcCalls.length, 0);
+});
+
+Deno.test("paddle-refresh-subscription: checkout binding uniqueness conflict keeps its actionable 409", async () => {
+  const proof = await checkoutProof();
+  const db: FakeDb = { row: null, clock: null, rpcCalls: [], bindingError: { code: "23505", message: "subscription already bound" } };
+  const response = await buildHandler(db, { calls: [], respond: checkoutResponder({ ...proof }) })(
+    refreshRequest({ transaction_id: TRANSACTION_ID }),
+  );
+  assertEquals(response.status, 409);
+  assertEquals((await response.json()).code, "subscription_already_bound");
+  assertEquals(db.rpcCalls.length, 0);
+});
+
+Deno.test("paddle-refresh-subscription: missing requested sibling cannot clear a tracked subscription", async () => {
+  const proof = await checkoutProof();
+  const db: FakeDb = { row: storedRow({ paddle_subscription_id: "sub_existing" }), clock: null, rpcCalls: [] };
+  const transaction = checkoutResponder({ ...proof });
+  const response = await buildHandler(db, { calls: [], respond: (url) => url.includes("/transactions/")
+    ? transaction(url) : new Response("not found", { status: 404 }) })(refreshRequest({ transaction_id: TRANSACTION_ID }));
+  assertEquals(response.status, 502);
+  assertEquals(db.row?.paddle_subscription_id, "sub_existing");
   assertEquals(db.rpcCalls.length, 0);
 });

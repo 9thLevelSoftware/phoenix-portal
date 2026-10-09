@@ -175,8 +175,10 @@ describe("routineDetailOptions", () => {
 
 	it("uses routines.detail query key", async () => {
 		const { routineDetailOptions } = await import("../routines");
-		const opts = routineDetailOptions("routine-1");
-		expect(opts.queryKey).toEqual(queryKeys.routines.detail("routine-1"));
+		const opts = routineDetailOptions("test-user-id", "routine-1");
+		expect(opts.queryKey).toEqual(
+			queryKeys.routines.detail("test-user-id", "routine-1"),
+		);
 	});
 
 	it("returns routine with nested exercises", async () => {
@@ -186,7 +188,10 @@ describe("routineDetailOptions", () => {
 		};
 		chain = buildChain({ data: detailRow, error: null });
 		const { routineDetailOptions } = await import("../routines");
-		const opts = routineDetailOptions("11111111-1111-4111-8111-111111111111");
+		const opts = routineDetailOptions(
+			"test-user-id",
+			"11111111-1111-4111-8111-111111111111",
+		);
 		const result = await opts.queryFn?.({} as never);
 
 		expect(result.name).toBe("Push Day");
@@ -201,7 +206,7 @@ describe("routineDetailOptions", () => {
 			error: { message: "not found" },
 		});
 		const { routineDetailOptions } = await import("../routines");
-		const opts = routineDetailOptions("missing");
+		const opts = routineDetailOptions("test-user-id", "missing");
 		await expect(opts.queryFn?.({} as never)).rejects.toEqual(
 			expect.objectContaining({ message: "not found" }),
 		);

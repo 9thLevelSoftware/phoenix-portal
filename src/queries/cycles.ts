@@ -38,9 +38,9 @@ export function cycleListOptions(userId: string, profileId?: string | null) {
 	});
 }
 
-export function cycleDetailOptions(cycleId: string) {
+export function cycleDetailOptions(userId: string, cycleId: string) {
 	return queryOptions({
-		queryKey: queryKeys.cycles.detail(cycleId),
+		queryKey: queryKeys.cycles.detail(userId, cycleId),
 		queryFn: async () => {
 			const { data, error } = await supabase
 				.from("training_cycles")
@@ -54,6 +54,6 @@ export function cycleDetailOptions(cycleId: string) {
 			if (error) throw error;
 			return cycleDetailSchema.parse(data);
 		},
-		enabled: !!cycleId,
+		enabled: !!userId && !!cycleId,
 	});
 }
