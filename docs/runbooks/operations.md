@@ -67,20 +67,26 @@ curl -X POST "https://api.paddle.com/notifications/{notification_id}/replay" \
   -H "Authorization: Bearer ${PADDLE_API_KEY}"
 ```
 
-**If idempotency blocks the replay** (handler returns 200 with `duplicate: true` but state is still wrong):
+**If the handler returns 200 with `duplicate: true` and state is still wrong:**
 
-```sql
--- Clear BOTH idempotency markers to allow reprocessing
-UPDATE subscriptions
-SET last_event_id = NULL,
-    last_event_occurred_at = NULL
-WHERE user_id = '<uuid>';
-```
+A skipped duplicate is correct. Do not `NULL` `last_event_id` or
+`last_event_occurred_at` to force the replay. Clearing
+`last_event_occurred_at` lets an older payload overwrite the current tier,
+status, and period and moves the ordering clock backwards.
 
-Clearing `last_event_id` alone is not enough: `apply_subscription_event` also
-refuses any event whose `occurred_at` is not strictly newer than the stored
-`last_event_occurred_at`, so the replay would be accepted with a 200 and write
-nothing. Clear both, then retry the notification.
+Call `paddle-refresh-subscription` for the user first. It re-reads the
+subscription from Paddle's API and writes the current state through the same
+ordering guard.
+
+Only if refresh cannot reach the subscription (for example Paddle answers
+404), replay the missing notifications in chronological order, oldest first,
+after confirming in the Paddle dashboard that each is newer than the stored
+`last_event_occurred_at`. Never reset the ordering clock to make an
+out-of-order event apply.
+
+Full rules are in **Section 5: Emergency Webhook Replay** ("Important notes
+on replay") of
+[billing-incident-response.md](billing-incident-response.md).
 
 ### Financial reconciliation
 
