@@ -13,9 +13,10 @@
  *   2. Every NOT-NULL-DEFAULT scalar on the DB side has its default
  *      declared once — the scatter of `?? 0` / `?? 'General'` in row
  *      builders was the root cause of the pr_count null-constraint bug.
- *   3. Malformed fields return a precise 400 with a field path
- *      (`issues[].path`), instead of the handler exploding deep in a
- *      row-builder flatMap and returning a cryptic 500.
+ *   3. Malformed fields fail this schema before a row-builder flatMap
+ *      can throw a cryptic 500. `mobile-sync-push` answers that failure
+ *      with a generic 400 `{ error: 'Invalid sync request' }`. Zod
+ *      `issues[].path` is discarded: it is not returned and not logged.
  *   4. The TypeScript type of PushPayload is derived from the schema, so
  *      it cannot drift.
  *
