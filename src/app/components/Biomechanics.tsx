@@ -159,8 +159,8 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 		isPending: sessionLoading,
 		error: sessionError,
 	} = useQuery({
-		...sessionDetailOptions(effectiveSessionId),
-		enabled: !!effectiveSessionId,
+		...sessionDetailOptions(userId, effectiveSessionId),
+		enabled: !!userId && !!effectiveSessionId,
 	});
 
 	// Auto-select first exercise (via useEffect to avoid setState during render)
@@ -190,8 +190,8 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 		isPending: telemetryLoading,
 		isError: telemetryError,
 	} = useQuery({
-		...repTelemetryOptions(effectiveSetId),
-		enabled: !!effectiveSetId,
+		...repTelemetryOptions(userId, effectiveSetId),
+		enabled: !!userId && !!effectiveSetId,
 	});
 
 	const {
@@ -199,8 +199,8 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 		isPending: summariesLoading,
 		isError: summariesError,
 	} = useQuery({
-		...repSummariesOptions(effectiveSetId),
-		enabled: !!effectiveSetId,
+		...repSummariesOptions(userId, effectiveSetId),
+		enabled: !!userId && !!effectiveSetId,
 	});
 
 	// ---- Derived data ----
@@ -482,7 +482,7 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 									)}
 								</Section>
 
-								<Section title="Power Output" icon={Gauge}>
+								<Section title="Paired Cable-work Power Proxy" icon={Gauge}>
 									{summariesLoading ? (
 										<Skeleton className="h-[250px] w-full" />
 									) : (

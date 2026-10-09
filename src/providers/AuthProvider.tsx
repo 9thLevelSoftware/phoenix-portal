@@ -5,6 +5,7 @@ import {
 	type ReactNode,
 	useContext,
 	useEffect,
+	useRef,
 	useState,
 } from "react";
 import { supabase } from "@/lib/supabase";
@@ -24,6 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	const [user, setUser] = useState<User | null>(null);
 	const [session, setSession] = useState<Session | null>(null);
 	const [loading, setLoading] = useState(true);
+	const appliedUserId = useRef<string | null | undefined>(undefined);
 
 	useEffect(() => {
 		let isActive = true;
@@ -37,8 +39,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				return;
 			}
 
-			setSession(nextSession);
 			const nextUser = nextSession?.user ?? null;
+			const nextUserId = nextUser?.id ?? null;
+			if (appliedUserId.current !== nextUserId) {
+				// Cancellation and removal happen before exposing a new principal.
+				// This also discards a cache retained across provider remounts.
+				void queryClient.cancelQueries();
+				queryClient.clear();
+				appliedUserId.current = nextUserId;
+			}
+			setSession(nextSession);
 			setUser(nextUser);
 			// Bind the persisted profile filter to the current user. If it was
 			// rehydrated for a different user (sign-out then a new sign-in in the
@@ -67,11 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		// Listen for auth state changes
 		const {
 			data: { subscription },
-		} = supabase.auth.onAuthStateChange((event, newSession) => {
+		} = supabase.auth.onAuthStateChange((_event, newSession) => {
 			authEventReceived = true;
-			if (event === "SIGNED_OUT") {
-				queryClient.clear();
-			}
 			applySession(newSession);
 		});
 

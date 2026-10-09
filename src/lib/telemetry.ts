@@ -3,8 +3,8 @@ import { createLTTB } from "downsample";
 export interface TelemetryPoint {
 	timestamp_ms: number;
 	force_n: number;
-	velocity_mps: number;
-	position_mm: number;
+	velocity_mps: number | null;
+	position_mm: number | null;
 	/**
 	 * Canonical cable identifier from BLE (A = left actuator, B = right).
 	 * Mobile is authoritative for BLE-captured data per monorepo CLAUDE.md.
@@ -42,8 +42,16 @@ export function downsampleTelemetry(
 	}
 	if (raw.length <= targetPoints) return raw;
 
-	const downsample = metric === "force" ? forceLTTB : velocityLTTB;
-	return downsample(raw, Math.floor(targetPoints)) as TelemetryPoint[];
+	if (metric === "force") {
+		return forceLTTB(raw, Math.floor(targetPoints)) as TelemetryPoint[];
+	}
+	// Missing kinematics delimit unknown intervals; LTTB must not bridge them.
+	if (raw.some((point) => point.velocity_mps === null)) return raw;
+	const measured = raw.filter(
+		(point): point is TelemetryPoint & { velocity_mps: number } =>
+			point.velocity_mps !== null,
+	);
+	return velocityLTTB(measured, Math.floor(targetPoints)) as TelemetryPoint[];
 }
 
 /**
