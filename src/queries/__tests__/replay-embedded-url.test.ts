@@ -34,7 +34,9 @@ describe("replay session embed request URL", () => {
 
 	it("replaySessionOptions orders exercises by order_index and sets by set_number", async () => {
 		const { replaySessionOptions } = await import("../replay");
-		await replaySessionOptions(SESSION_ID).queryFn?.({} as never);
+		await replaySessionOptions("test-user-id", SESSION_ID).queryFn?.(
+			{} as never,
+		);
 
 		expect(requests).toHaveLength(1);
 		const [url] = requests;

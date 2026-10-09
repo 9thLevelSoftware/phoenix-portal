@@ -301,6 +301,8 @@ describe("Workout Round-Trip Tests", () => {
 					meanForceN: 500,
 					peakForceN: 650,
 					powerWatts: 425,
+					powerMethod: "PAIRED_CABLE_WORK_V1",
+					peakPowerWatts: 450,
 					romMm: 820,
 					tutMs: 2200,
 					leftForceAvg: 248,
@@ -317,6 +319,8 @@ describe("Workout Round-Trip Tests", () => {
 					meanForceN: 510,
 					peakForceN: 660,
 					powerWatts: 398,
+					powerMethod: "PAIRED_CABLE_WORK_V1",
+					peakPowerWatts: 420,
 					romMm: 815,
 					tutMs: 2400,
 					leftForceAvg: 255,
@@ -360,6 +364,8 @@ describe("Workout Round-Trip Tests", () => {
 			expect(rep1!.peakVelocityMps).toBe(1.1);
 			expect(rep1!.meanForceN).toBe(500);
 			expect(rep1!.powerWatts).toBe(425);
+			expect(rep1!.peakPowerWatts).toBe(450);
+			expect(rep1!.powerMethod).toBe("PAIRED_CABLE_WORK_V1");
 			expect(rep1!.romMm).toBe(820);
 			expect(rep1!.tutMs).toBe(2200);
 			expect(rep1!.asymmetryPct).toBe(1.6);
@@ -389,6 +395,7 @@ describe("Workout Round-Trip Tests", () => {
 							meanForceN: 450,
 							peakForceN: 580,
 							powerWatts: 340,
+							powerMethod: "PAIRED_CABLE_WORK_V1",
 							romMm: 800,
 							tutMs: 2500,
 							leftForceAvg: 225,

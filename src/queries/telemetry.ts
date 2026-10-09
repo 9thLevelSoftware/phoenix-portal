@@ -93,18 +93,18 @@ function parseTelemetryRows(
 }
 
 /** Per-set raw telemetry points for force/velocity curve rendering */
-export function repTelemetryOptions(setId: string) {
+export function repTelemetryOptions(userId: string, setId: string) {
 	return queryOptions({
-		queryKey: queryKeys.telemetry.bySet(setId),
+		queryKey: queryKeys.telemetry.bySet(userId, setId),
 		queryFn: () => fetchSetTelemetry("rep_telemetry", setId),
-		enabled: !!setId,
+		enabled: !!userId && !!setId,
 	});
 }
 
 /** Per-set rep summaries with VBT zones and biomechanics metrics */
-export function repSummariesOptions(setId: string) {
+export function repSummariesOptions(userId: string, setId: string) {
 	return queryOptions({
-		queryKey: queryKeys.telemetry.repSummaries(setId),
+		queryKey: queryKeys.telemetry.repSummaries(userId, setId),
 		queryFn: async () => {
 			const { data, error } = await supabase
 				.from("rep_summaries")
@@ -114,6 +114,6 @@ export function repSummariesOptions(setId: string) {
 			if (error) throw error;
 			return z.array(repSummarySchema).parse(data);
 		},
-		enabled: !!setId,
+		enabled: !!userId && !!setId,
 	});
 }
