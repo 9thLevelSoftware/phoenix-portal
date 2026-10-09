@@ -109,7 +109,7 @@ describe("workoutListOptions", () => {
 		chain = buildChain({ data: null, error: null });
 		const { workoutListOptions } = await import("../workouts");
 		const opts = workoutListOptions("user-abc");
-		const result = await opts.queryFn!({} as never);
+		const result = await opts.queryFn?.({} as never);
 		expect(result).toEqual([]);
 	});
 

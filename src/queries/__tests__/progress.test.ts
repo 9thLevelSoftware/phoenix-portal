@@ -359,7 +359,7 @@ describe("weeklySummaryOptions", () => {
 	it("returns an empty list when Supabase returns null data and no error", async () => {
 		chain = buildChain({ data: null, error: null });
 		const { weeklySummaryOptions } = await import("../progress");
-		const rows = await weeklySummaryOptions("user-1", "week").queryFn!(
+		const rows = await weeklySummaryOptions("user-1", "week").queryFn?.(
 			{} as never,
 		);
 		expect(rows).toEqual([]);
