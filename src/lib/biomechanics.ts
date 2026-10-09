@@ -32,13 +32,24 @@ export function estimateOneRepMax(weight: number, reps: number): number {
 	return weight * (1 + reps / 30);
 }
 
-/**
- * Calculate power output in watts from force and velocity.
- * P = F * v
- */
-export function calculatePower(
-	forceNewtons: number,
-	velocityMps: number,
-): number {
-	return Math.round(forceNewtons * velocityMps);
+export function authoritativeRepPower(rep: {
+	power_method?: string | null;
+	power_watts?: number | null;
+	peak_power_watts?: number | null;
+}): { meanWatts: number | null; peakWatts: number | null } {
+	const validated = rep.power_method === "PAIRED_CABLE_WORK_V1";
+	return {
+		meanWatts:
+			validated &&
+			typeof rep.power_watts === "number" &&
+			Number.isFinite(rep.power_watts)
+				? rep.power_watts
+				: null,
+		peakWatts:
+			validated &&
+			typeof rep.peak_power_watts === "number" &&
+			Number.isFinite(rep.peak_power_watts)
+				? rep.peak_power_watts
+				: null,
+	};
 }

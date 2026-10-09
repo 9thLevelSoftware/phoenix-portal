@@ -1,7 +1,7 @@
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@1";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { billingAction } from "../_shared/billingAction.ts";
-import { hmacSha256Hex } from "../_shared/hmac.ts";
+import { verifyCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
 import { captureLogs } from "../_shared/testLogCapture.ts";
 import { createPaddleUpdateSubscriptionHandler } from "../paddle-update-subscription/index.ts";
 import { createPaddleCheckoutCustomDataHandler } from "./index.ts";
@@ -47,6 +47,11 @@ function buildHandler(
     /** When set, `check_rate_limit` fails and the handler must fail closed. */
     rateLimitError?: { code?: string; message: string };
     observed?: ObservedCalls;
+    reservation?: Record<string, unknown>;
+    calls?: string[];
+    /** Billing RPCs; `check_rate_limit` is answered before this is consulted. */
+    rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+    fetch?: typeof fetch;
   } = {},
 ) {
   const user = options.user === undefined ? { id: USER_ID } : options.user;
@@ -70,18 +75,15 @@ function buildHandler(
               : { data: row, error: null },
           ),
       };
+      const billingRpc = options.rpc ?? ((name: string, args: Record<string, unknown>) => Promise.resolve({ data: name === "reserve_paddle_checkout"
+        ? options.reservation ?? { action: "create", nonce: args.p_nonce, expires_at: args.p_expires_at } : true, error: null }));
       return {
         from: (table: string) => {
           observed.tables.push(table);
           return query;
         },
         rpc: (name: string, args: Record<string, unknown>) => {
-          if (name !== "check_rate_limit") {
-            return Promise.resolve({
-              data: null,
-              error: { message: `unexpected rpc ${name}` },
-            });
-          }
+          if (name !== "check_rate_limit") return billingRpc(name, args);
           observed.rateLimitCalls.push(args);
           if (options.rateLimitError) {
             return Promise.resolve({ data: null, error: options.rateLimitError });
@@ -93,8 +95,10 @@ function buildHandler(
         },
       } as unknown as SupabaseClient;
     },
-    env: { get: (key: string) => (key === "PADDLE_CUSTOM_DATA_SECRET" ? secret : undefined) },
+    env: { get: (key: string) => ({ PADDLE_CUSTOM_DATA_SECRET: secret, PADDLE_API_KEY: "test", PADDLE_EMBER_PRICE_IDS: "pri_ember_monthly" } as Record<string, string | undefined>)[key] },
     now: () => NOW,
+    fetch: options.fetch ?? ((input, init) => { options.calls?.push(`${init?.method} ${String(input)}`); return Promise.resolve(new Response(JSON.stringify({ data: String(input).includes("/subscriptions/")
+      ? { id: row?.paddle_subscription_id, status: "canceled" } : { id: "txn_checkout" } }))); }),
   });
 }
 
@@ -102,6 +106,7 @@ function signRequest() {
   return new Request("https://edge.test/paddle-checkout-custom-data", {
     method: "POST",
     headers: { Authorization: "Bearer jwt" },
+    body: JSON.stringify({ price_id: "pri_ember_monthly" }),
   });
 }
 
@@ -182,7 +187,9 @@ Deno.test("paddle-checkout-custom-data: signs for a user with no subscription", 
   assertEquals(response.status, 200);
   const body = await response.json();
   assertEquals(body.custom_data.user_id, USER_ID);
-  assertEquals(body.custom_data.cd_sig, await hmacSha256Hex(SECRET, USER_ID));
+  assertEquals(await verifyCheckoutBinding(body.custom_data, SECRET), true);
+  assertEquals(body.custom_data.cd_transaction_id, "txn_checkout");
+  assertEquals(body.transaction_id, "txn_checkout");
 });
 
 Deno.test("paddle-checkout-custom-data: signs with the trimmed custom_data secret", async () => {
@@ -192,8 +199,8 @@ Deno.test("paddle-checkout-custom-data: signs with the trimmed custom_data secre
   assertEquals(response.status, 200);
   const body = await response.json();
   assertEquals(body.custom_data.user_id, USER_ID);
-  assertEquals(body.custom_data.cd_sig, await hmacSha256Hex(SECRET, USER_ID));
-  assertNotEquals(body.custom_data.cd_sig, await hmacSha256Hex(padded, USER_ID));
+  assertEquals(await verifyCheckoutBinding(body.custom_data, SECRET), true);
+  assertEquals(await verifyCheckoutBinding(body.custom_data, padded), false);
 });
 
 Deno.test("paddle-checkout-custom-data: a missing custom_data secret matches the billing fatal", async () => {
@@ -381,4 +388,116 @@ Deno.test("paddle-checkout-custom-data: a rate-limit outage fails closed before 
   assertEquals(response.status, 503);
   assertEquals((await response.json()).error, "rate_limit_unavailable");
   assertEquals(observed.tables, []);
+});
+
+Deno.test("paddle-checkout-custom-data: reuses one reserved transaction without another Paddle create", async () => {
+  const calls: string[] = [];
+  const response = await buildHandler(null, { calls, reservation: { action: "reuse", nonce: crypto.randomUUID(), transaction_id: "txn_existing", expires_at: new Date(NOW.getTime() + 60000).toISOString() } })(signRequest());
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).transaction_id, "txn_existing");
+  assertEquals(calls, []);
+});
+
+Deno.test("paddle-checkout-custom-data: pending creation or deletion reservation cannot create a second transaction", async () => {
+  for (const action of ["busy", "blocked"]) {
+    const calls: string[] = [];
+    const response = await buildHandler(null, { calls, reservation: { action } })(signRequest());
+    assertEquals(response.status, 409);
+    assertEquals(calls, []);
+  }
+});
+
+Deno.test("paddle-checkout-custom-data: old client cannot obtain a timeless fallback", async () => {
+  const calls: string[] = [];
+  const response = await buildHandler(null, { calls })(new Request("https://edge.test", { method: "POST", headers: { Authorization: "Bearer jwt" } }));
+  assertEquals(response.status, 400);
+  assertEquals(calls, []);
+});
+
+Deno.test("paddle-checkout-custom-data: configuration failure retries the recorded transaction without creating again", async () => {
+  let state = "create";
+  let nonce: unknown;
+  let creates = 0;
+  let patches = 0;
+  const handler = buildHandler(null, {
+    rpc: (name, args) => {
+      if (name === "reserve_paddle_checkout") {
+        nonce ??= args.p_nonce;
+        return Promise.resolve({ data: { action: state, nonce, price_id: "pri_ember_monthly", environment: "production", expires_at: new Date(NOW.getTime() + 60000).toISOString(), transaction_id: state === "configure" ? "txn_once" : null }, error: null });
+      }
+      if (name === "record_paddle_checkout_transaction") state = "configure";
+      return Promise.resolve({ data: true, error: null });
+    },
+    fetch: (_input, init) => {
+      if (init?.method === "POST") { creates++; return Promise.resolve(new Response(JSON.stringify({ data: { id: "txn_once" } }))); }
+      patches++;
+      if (patches === 1) return Promise.reject(new Error("temporary Paddle outage"));
+      return Promise.resolve(new Response(JSON.stringify({ data: { id: "txn_once" } })));
+    },
+  });
+  const original = console.error; console.error = () => {};
+  try {
+    assertEquals((await handler(signRequest())).status, 500);
+    assertEquals((await handler(signRequest())).status, 200);
+    assertEquals(creates, 1);
+  } finally { console.error = original; }
+});
+
+Deno.test("paddle-checkout-custom-data: paid closing transaction is restored without cancellation", async () => {
+  const calls: string[] = [];
+  const rpcCalls: string[] = [];
+  const handler = buildHandler(null, {
+    rpc: (name) => { rpcCalls.push(name); return Promise.resolve({ data: name === "reserve_paddle_checkout" ? { action: "close", nonce: crypto.randomUUID(), transaction_id: "txn_paid" } : true, error: null }); },
+    fetch: (_input, init) => { calls.push(init?.method ?? "GET"); return Promise.resolve(new Response(JSON.stringify({ data: { id: "txn_paid", status: "completed" } }))); },
+  });
+  assertEquals((await handler(signRequest())).status, 409);
+  assertEquals(calls, ["GET"]);
+  assertEquals(rpcCalls, ["reserve_paddle_checkout", "finish_paddle_checkout"]);
+});
+
+Deno.test("paddle-checkout-custom-data: definitive POST rejection releases creation for a healthy retry", async () => {
+  let attempts = 0;
+  let released = false;
+  const handler = buildHandler(null, {
+    rpc: (name, args) => {
+      if (name === "reserve_paddle_checkout") return Promise.resolve({ data: { action: "create", nonce: args.p_nonce, expires_at: args.p_expires_at }, error: null });
+      if (name === "finish_paddle_checkout" && args.p_canceled) {
+        assertEquals(args.p_transaction_id, null); released = true;
+      }
+      return Promise.resolve({ data: true, error: null });
+    },
+    fetch: (_input, init) => {
+      if (init?.method === "POST" && attempts++ === 0) return Promise.resolve(new Response("{}", { status: 400 }));
+      return Promise.resolve(new Response(JSON.stringify({ data: { id: "txn_retried" } })));
+    },
+  });
+  const original = console.error; console.error = () => {};
+  try {
+    assertEquals((await handler(signRequest())).status, 500);
+    assertEquals(released, true);
+    assertEquals((await handler(signRequest())).status, 200);
+  } finally { console.error = original; }
+});
+
+Deno.test("paddle-checkout-custom-data: a locally canceled but live paused contract refuses checkout before reservation", async () => {
+  let reservations = 0;
+  const methods: string[] = [];
+  const handler = buildHandler({ ...liveRow, status: "canceled" }, {
+    rpc: () => { reservations++; return Promise.resolve({ data: true, error: null }); },
+    fetch: (_input, init) => { methods.push(init?.method ?? "GET"); return Promise.resolve(new Response(JSON.stringify({ data: { id: "sub_1", status: "paused" } }))); },
+  });
+  const response = await handler(signRequest());
+  assertEquals(response.status, 409);
+  const body = await response.json();
+  assertEquals(body.code, "existing_subscription");
+  assertEquals(body.action, "manage");
+  assertEquals(reservations, 0);
+  assertEquals(methods, ["GET"]);
+});
+
+Deno.test("paddle-checkout-custom-data: a confirmed canceled prior contract permits a new transaction", async () => {
+  const calls: string[] = [];
+  const response = await buildHandler({ ...liveRow, status: "canceled" }, { calls })(signRequest());
+  assertEquals(response.status, 200);
+  assertEquals(calls.map((call) => call.split(" ")[0]), ["GET", "POST", "PATCH"]);
 });
