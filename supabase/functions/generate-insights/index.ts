@@ -226,8 +226,9 @@ async function buildInsightsForUser(
       r.workout_phase,
     ),
     recordType: r.record_type as string | null,
-    // PR values are stored per-cable (raw DB values); the display layer
-    // applies the 2x cable multiplier. Do NOT multiply here (M-22).
+    // KD-8: stored loads are per cable and are never doubled. Pass the raw
+    // value through; insightRules labels a weight PR per cable and shows
+    // no total.
     value: r.value as number,
     previousValue:
       r.previous_value !== null && r.previous_value !== undefined
