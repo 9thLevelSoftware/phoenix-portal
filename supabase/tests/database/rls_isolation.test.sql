@@ -619,6 +619,8 @@ INSERT INTO rls_inferno_gated VALUES
 --   community_comments, community_votes   community feed (authenticated read)
 --   shared_routines, shared_cycles        published templates (authenticated read)
 --   creator_stats, public_profiles        public aggregate / directory views
+--   paddle_checkout_authorizations        service-only; its client-role grants
+--                                         are verified in paddle_checkout_binding.test.sql
 CREATE TEMP TABLE rls_exempt (table_name text PRIMARY KEY) ON COMMIT DROP;
 INSERT INTO rls_exempt VALUES
     ('community_comments'),
@@ -626,7 +628,8 @@ INSERT INTO rls_exempt VALUES
     ('shared_routines'),
     ('shared_cycles'),
     ('creator_stats'),
-    ('public_profiles');
+    ('public_profiles'),
+    ('paddle_checkout_authorizations');
 
 -- Relations owned through a parent instead of a user_id column.
 CREATE TEMP TABLE rls_owner_chain (table_name text PRIMARY KEY) ON COMMIT DROP;

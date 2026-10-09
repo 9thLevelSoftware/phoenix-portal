@@ -487,11 +487,141 @@ function deduplicateByKey<T>(rows: T[], keyFn: (row: T) => string): T[] {
  * next sync re-sends the same batch (F-024).
  */
 class PartialWriteRetryError extends Error {
-  constructor(step: string, cause: { message?: string } | null) {
-    // The DB message goes to the function log only, never to the response.
-    super(`${step} failed: ${cause?.message ?? 'unknown error'}`);
+  readonly operation: string;
+  readonly databaseError: unknown;
+
+  constructor(step: string, cause: unknown) {
+    // Preserve the cause only long enough to extract a safe error code for logs.
+    super(`${step} failed`);
     this.name = 'PartialWriteRetry';
+    this.operation = step;
+    this.databaseError = cause;
   }
+}
+
+/** A required database operation that keeps the established opaque 500 path. */
+class DatabaseOperationError extends Error {
+  readonly operation: string;
+  readonly databaseError: unknown;
+
+  constructor(operation: string, databaseError: unknown) {
+    super(`${operation} failed`);
+    this.name = 'DatabaseOperationFailure';
+    this.operation = operation;
+    this.databaseError = databaseError;
+  }
+}
+
+/**
+ * The push handler logs these fixed labels, never a database-provided table,
+ * routine name, query, or message. Supabase automatically attaches the
+ * invocation request_id to the enclosing log event.
+ */
+const DATABASE_OPERATION_LABELS: Readonly<Record<string, string>> = {
+  'ownership probe:workout_sessions': 'workout_sessions.ownership_probe',
+  'ownership probe:exercises': 'exercises.ownership_probe',
+  'ownership probe:sets': 'sets.ownership_probe',
+  'ownership probe:rep_summaries': 'rep_summaries.ownership_probe',
+  'ownership probe:rep_telemetry': 'rep_telemetry.ownership_probe',
+  'ownership probe:routines': 'routines.ownership_probe',
+  'ownership probe:training_cycles': 'training_cycles.ownership_probe',
+  'ownership probe:personal_records': 'personal_records.ownership_probe',
+  'rep_telemetry ownership probe': 'rep_telemetry.ownership_probe',
+  'child ownership probe:routine_exercises': 'routine_exercises.ownership_probe',
+  'parent ownership probe:routines': 'routines.parent_ownership_probe',
+  'parent reference probe:sets': 'sets.parent_reference_probe',
+  'parent reference probe:workout_sessions': 'workout_sessions.parent_reference_probe',
+  'parent reference probe:training_cycles': 'training_cycles.parent_reference_probe',
+  'parent reference probe:routines': 'routines.parent_reference_probe',
+  'profile probe:workout_sessions': 'workout_sessions.profile_probe',
+  'profile probe:routines': 'routines.profile_probe',
+  'profile probe:training_cycles': 'training_cycles.profile_probe',
+  'tombstone race check': 'sync_tombstones.race_probe',
+  'race check:routines': 'routines.race_probe',
+  'race check:training_cycles': 'training_cycles.race_probe',
+  'tombstone race clear': 'sync_tombstones.race_clear',
+  'race re-delete:routines': 'routines.race_redelete',
+  'race re-delete:training_cycles': 'training_cycles.race_redelete',
+  'exercise_catalog lookup': 'exercise_catalog.lookup',
+  'custom exercise ownership lookup': 'exercise_catalog.ownership_probe',
+  'custom exercise upsert': 'exercise_catalog.upsert',
+  'profile ownership transfer': 'local_profiles.ownership_transfer',
+  'workout deletion': 'workout_sessions.delete',
+  'workout tombstone lookup': 'workout_deletions.tombstone_lookup',
+  'workout component tombstone lookup': 'workout_deletions.component_lookup',
+  'sync tombstone gate': 'sync_tombstones.gate',
+  'workout_sessions LWW RPC': 'workout_sessions.lww_upsert',
+  'workout_sessions upsert': 'workout_sessions.upsert',
+  'personal_records catalog lookup': 'personal_records.catalog_lookup',
+  'personal_records lookup': 'personal_records.lookup',
+  'personal_records upsert': 'personal_records.upsert',
+  'personal_records insert': 'personal_records.insert',
+  'personal_records retry': 'personal_records.retry',
+  'rpg_attributes LWW RPC': 'rpg_attributes.lww_upsert',
+  'earned_badges upsert': 'earned_badges.upsert',
+  'gamification_stats LWW RPC': 'gamification_stats.lww_upsert',
+  'local_profiles upsert': 'local_profiles.upsert',
+  'workout_sessions profile guard': 'workout_sessions.profile_guard',
+  'session children replace': 'workout_session_children.replace',
+  'routines profile guard': 'routines.profile_guard',
+  'routines LWW RPC': 'routines.lww_upsert',
+  'routines upsert': 'routines.upsert',
+  'routine_exercises drop-set probe': 'routine_exercises.drop_set_probe',
+  'routine_exercises upsert': 'routine_exercises.upsert',
+  'routine_exercises orphan cleanup': 'routine_exercises.orphan_cleanup',
+  'routine delete': 'routines.delete',
+  'cycle delete': 'training_cycles.delete',
+  'cycle delete probe': 'training_cycles.delete_probe',
+  'training_cycles merge RPC': 'training_cycles.merge',
+  'push transaction commit': 'push_transaction.commit',
+  'push transaction aborted': 'push_transaction.aborted',
+};
+
+/** PostgreSQL SQLSTATEs and PostgREST codes contain no user-supplied text. */
+function safeDatabaseErrorCode(error: unknown): string | undefined {
+  try {
+    if (typeof error !== 'object' || error === null || !('code' in error)) {
+      return undefined;
+    }
+    const code = (error as { code?: unknown }).code;
+    if (typeof code !== 'string') return undefined;
+    return /^[0-9A-Z]{5}$/.test(code) || /^PGRST\d{3}$/.test(code)
+      ? code
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+interface OperationalFailureDiagnostic {
+  name: string;
+  stage?: 'database' | 'handler';
+  operation?: string;
+  errorCode?: string;
+}
+
+function partialWriteFailureDiagnostic(
+  error: PartialWriteRetryError,
+): OperationalFailureDiagnostic {
+  const errorCode = safeDatabaseErrorCode(error.databaseError);
+  return {
+    name: error.name,
+    stage: 'database',
+    operation: DATABASE_OPERATION_LABELS[error.operation] ?? 'database.write',
+    ...(errorCode === undefined ? {} : { errorCode }),
+  };
+}
+
+function databaseOperationFailureDiagnostic(
+  error: DatabaseOperationError,
+): OperationalFailureDiagnostic {
+  const errorCode = safeDatabaseErrorCode(error.databaseError);
+  return {
+    name: error.name,
+    stage: 'database',
+    operation: DATABASE_OPERATION_LABELS[error.operation] ?? 'database.read_write',
+    ...(errorCode === undefined ? {} : { errorCode }),
+  };
 }
 
 /**
@@ -596,7 +726,7 @@ async function assertRowsOwnedByUser(
         // Fail closed — if the ownership probe itself errors (e.g. missing
         // column), we must not proceed with an upsert that could overwrite a
         // victim row. Surface as 500 so the caller retries / we notice.
-        throw new Error(`Ownership check on ${table} failed: ${error.message}`);
+        throw new DatabaseOperationError(`ownership probe:${table}`, error);
       }
       if (rows && rows.length > 0) {
         return new Response(
@@ -644,7 +774,7 @@ async function assertTelemetryIdsOwnedByUser(
       for (const { error } of [perSet, legacy]) {
         if (error) {
           // Fail closed, exactly like assertRowsOwnedByUser.
-          throw new Error(`Ownership check on rep_telemetry failed: ${error.message}`);
+          throw new DatabaseOperationError('rep_telemetry ownership probe', error);
         }
       }
       if ((perSet.data?.length ?? 0) > 0 || (legacy.data?.length ?? 0) > 0) {
@@ -690,7 +820,7 @@ async function assertParentRowsExistAndOwnedByUser(
         .select('id, user_id')
         .in('id', chunk);
       if (error) {
-        throw new Error(`Parent reference check on ${table} failed: ${error.message}`);
+        throw new DatabaseOperationError(`parent reference probe:${table}`, error);
       }
       return rows ?? [];
     },
@@ -786,7 +916,7 @@ async function assertChildChunkOwnedViaParent(
       .in('id', chunk)
       .returns<Record<string, unknown>[]>();
     if (childErr) {
-      throw new Error(`Ownership check on ${childTable} failed: ${childErr.message}`);
+      throw new DatabaseOperationError(`child ownership probe:${childTable}`, childErr);
     }
     if (!childRows || childRows.length === 0) return null;
     const parentIds = [
@@ -803,7 +933,7 @@ async function assertChildChunkOwnedViaParent(
       .in('id', parentIds)
       .neq('user_id', userId);
     if (parentErr) {
-      throw new Error(`Ownership check on ${parentTable} failed: ${parentErr.message}`);
+      throw new DatabaseOperationError(`parent ownership probe:${parentTable}`, parentErr);
     }
     if (foreignParents && foreignParents.length > 0) {
       return new Response(
@@ -1082,6 +1212,8 @@ interface RepSummaryDto {
   meanForceN: number | null;
   peakForceN: number | null;
   powerWatts: number | null;
+  peakPowerWatts: number | null;
+  powerMethod: "PAIRED_CABLE_WORK_V1" | "UNAVAILABLE" | "LEGACY_UNKNOWN_V0";
   romMm: number | null;
   tutMs: number | null;
   leftForceAvg: number | null;
@@ -1281,7 +1413,7 @@ export interface MobileSyncAuthClient {
 export interface MobileSyncPushHandlerDependencies {
   createAuthClient(authorization: string): MobileSyncAuthClient;
   createAdminClient(): SupabaseClient;
-  logOperationalFailure(value: { name: string }): void;
+  logOperationalFailure(value: OperationalFailureDiagnostic): void;
   now(): number;
   /**
    * Test seam for the LWW gate. Omitted in production, where the
@@ -1326,7 +1458,7 @@ function defaultMobileSyncPushDependencies(): MobileSyncPushHandlerDependencies 
         { auth: { persistSession: false, autoRefreshToken: false } },
       );
     },
-    logOperationalFailure(value: { name: string }) {
+    logOperationalFailure(value: OperationalFailureDiagnostic) {
       console.error(value);
     },
     now() {
@@ -1427,7 +1559,7 @@ async function fetchCatalogLookupPages(
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await fetchPage(from, from + pageSize - 1);
     if (error) {
-      throw new Error(`exercise_catalog lookup failed: ${error.message}`);
+      throw new DatabaseOperationError('exercise_catalog lookup', error);
     }
     const batch = catalogLookupFromUnknown(data);
     rows.push(...batch);
@@ -1863,7 +1995,7 @@ async function mobileSyncPushHandler(
         .in('id', catalogIds);
 
       if (existingCatalogError) {
-        throw new Error(`custom exercise catalog ownership lookup failed: ${existingCatalogError.message}`);
+        throw new DatabaseOperationError('custom exercise ownership lookup', existingCatalogError);
       }
 
       const conflictingCatalogRow = (existingCatalogRows ?? []).find(
@@ -1881,7 +2013,7 @@ async function mobileSyncPushHandler(
         .upsert(catalogRows, { onConflict: 'id' });
 
       if (catalogError) {
-        throw new Error(`custom exercise catalog upsert failed: ${catalogError.message}`);
+        throw new DatabaseOperationError('custom exercise upsert', catalogError);
       }
     }
 
@@ -2145,7 +2277,7 @@ async function mobileSyncPushHandler(
         p_user_id: userId,
         p_transfers: payload.ownershipTransfers,
       });
-      if (error) throw new Error(`profile ownership transfer failed: ${error.message}`);
+      if (error) throw new DatabaseOperationError('profile ownership transfer', error);
       acknowledgedOwnershipTransferIds = ((data ?? []) as Array<{ mutation_id?: unknown }>)
         .map((row) => row.mutation_id)
         .filter((id): id is string => typeof id === 'string');
@@ -2161,7 +2293,7 @@ async function mobileSyncPushHandler(
         p_request_profile_id: requestProfileId,
         p_deletions: payload.workoutDeletions,
       });
-      if (error) throw new Error(`workout deletion failed: ${error.message}`);
+      if (error) throw new DatabaseOperationError('workout deletion', error);
       acknowledgedWorkoutDeletionIds = ((data ?? []) as Array<{ mutation_id?: unknown }>)
         .map((row) => row.mutation_id)
         .filter((id): id is string => typeof id === 'string');
@@ -2217,7 +2349,7 @@ async function mobileSyncPushHandler(
           portalSessionId: portalSessionIdOf(session),
         })),
       });
-      if (error) throw new Error(`workout tombstone lookup failed: ${error.message}`);
+      if (error) throw new DatabaseOperationError('workout tombstone lookup', error);
       blockedWorkoutSessionIds = new UuidSet(
         ((data ?? []) as Array<{ session_id?: unknown }>)
           .map((row) => row.session_id)
@@ -2236,7 +2368,7 @@ async function mobileSyncPushHandler(
           { p_user_id: userId, p_components: components },
         );
         if (componentError) {
-          throw new Error(`workout component tombstone lookup failed: ${componentError.message}`);
+          throw new DatabaseOperationError('workout component tombstone lookup', componentError);
         }
         blockedWorkoutComponentIds = new UuidSet(
           ((componentData ?? []) as Array<{ component_id?: unknown }>)
@@ -2526,7 +2658,7 @@ async function mobileSyncPushHandler(
           .eq('entity', entity)
           .gte('deleted_at', tombstoneRaceSince)
           .in('entity_id', chunk);
-        if (error) throw new Error(`sync tombstone race check failed: ${error.message}`);
+        if (error) throw new DatabaseOperationError('tombstone race check', error);
         for (const row of (data ?? []) as Array<{
           entity_id?: unknown;
           client_deleted_at?: unknown;
@@ -2555,7 +2687,7 @@ async function mobileSyncPushHandler(
           .select('id')
           .eq('user_id', userId)
           .in('id', [...survived.keys()]);
-        if (presentErr) throw new Error(`${table} race check failed: ${presentErr.message}`);
+        if (presentErr) throw new DatabaseOperationError(`race check:${table}`, presentErr);
         const stillThere = new UuidSet(
           ((present ?? []) as Array<{ id?: unknown }>)
             .map((row) => row.id)
@@ -2576,7 +2708,7 @@ async function mobileSyncPushHandler(
             .eq('entity', entity)
             .eq('entity_id', id)
             .eq('deleted_at', deletedAt);
-          if (clearErr) throw new Error(`sync tombstone race clear failed: ${clearErr.message}`);
+          if (clearErr) throw new DatabaseOperationError('tombstone race clear', clearErr);
         }
       }
       if (raced.size === 0) return gone;
@@ -2598,7 +2730,7 @@ async function mobileSyncPushHandler(
           .eq('id', id)
           .eq('client_updated_at', key)
           .select('id');
-        if (delErr) throw new Error(`${table} race re-delete failed: ${delErr.message}`);
+        if (delErr) throw new DatabaseOperationError(`race re-delete:${table}`, delErr);
         if (Array.isArray(deleted) && deleted.length > 0) racedIds.push(id);
       }
       if (racedIds.length > gone.length) {
@@ -2629,7 +2761,7 @@ async function mobileSyncPushHandler(
           .select('id, local_profile_id, client_updated_at')
           .in('id', chunk)
           .eq('user_id', userId);
-        if (error) throw new Error(`${table} profile probe failed: ${error.message}`);
+        if (error) throw new DatabaseOperationError(`profile probe:${table}`, error);
         for (const row of (data ?? []) as Array<{
           id: string;
           local_profile_id?: string | null;
@@ -2702,7 +2834,7 @@ async function mobileSyncPushHandler(
           ],
         },
       );
-      if (tombstoneErr) throw new Error(`sync tombstone gate failed: ${tombstoneErr.message}`);
+      if (tombstoneErr) throw new DatabaseOperationError('sync tombstone gate', tombstoneErr);
       const tombstonedRoutineIds = new UuidSet();
       const tombstonedCycleIds = new UuidSet();
       let supersededTombstones = 0;
@@ -2809,7 +2941,7 @@ async function mobileSyncPushHandler(
         if (lwwErr) {
           if (isOwnerRefusal(lwwErr)) throw new OwnerRefusalError('workout_sessions');
           if (isProfileTransferRace(lwwErr)) throw new PartialWriteRetryError('workout_sessions profile guard', lwwErr);
-          throw new Error(`workout_sessions LWW RPC failed: ${lwwErr.message}`);
+          throw new DatabaseOperationError('workout_sessions LWW RPC', lwwErr);
         }
         acceptedSessionIds = new UuidSet();
         for (const r of (lwwData ?? []) as LwwUpsertRow[]) {
@@ -2828,7 +2960,7 @@ async function mobileSyncPushHandler(
         if (sessErr) {
           if (isOwnerRefusal(sessErr)) throw new OwnerRefusalError('workout_sessions');
           if (isProfileTransferRace(sessErr)) throw new PartialWriteRetryError('workout_sessions profile guard', sessErr);
-          throw new Error(`workout_sessions upsert failed: ${sessErr.message}`);
+          throw new DatabaseOperationError('workout_sessions upsert', sessErr);
         }
         sessionsInserted = sessionRows.length;
         // Flag-off has no LWW gate, so every row that reached this upsert is
@@ -2941,6 +3073,8 @@ async function mobileSyncPushHandler(
                 mean_force_n: r.meanForceN,
                 peak_force_n: r.peakForceN,
                 power_watts: r.powerWatts,
+                peak_power_watts: r.peakPowerWatts,
+                power_method: r.powerMethod,
                 rom_mm: r.romMm,
                 tut_ms: r.tutMs,
                 left_force_avg: r.leftForceAvg,
@@ -3136,7 +3270,7 @@ async function mobileSyncPushHandler(
             .select('id, user_id, name, display_name')
             .in('id', chunk);
           if (catalogLookupErr) {
-            throw new Error(`personal_records exercise catalog lookup failed: ${catalogLookupErr.message}`);
+            throw new DatabaseOperationError('personal_records catalog lookup', catalogLookupErr);
           }
           for (const row of catalogRows ?? []) {
             const id = (row as { id?: unknown }).id;
@@ -3210,7 +3344,7 @@ async function mobileSyncPushHandler(
           },
         );
         if (existingPrErr) {
-          throw new Error(`personal_records lookup failed: ${existingPrErr.message}`);
+          throw new DatabaseOperationError('personal_records lookup', existingPrErr);
         }
         const rows = (page ?? []) as PersonalRecordIdentityCandidate[];
         existingPrs.push(...rows);
@@ -3345,7 +3479,10 @@ async function mobileSyncPushHandler(
             profilePartition.invalidProfileRows.length === 0 &&
             sessionPartition.invalidSessionRows.length === 0
           ) {
-            throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
+            throw new DatabaseOperationError(
+              dedicatedPrsPresent ? 'personal_records upsert' : 'personal_records insert',
+              prErr,
+            );
           }
 
           if (profilePartition.invalidProfileRows.length > 0) {
@@ -3378,13 +3515,16 @@ async function mobileSyncPushHandler(
           const { data: retryData, error: retryErr } = await writePersonalRecords(
             sessionPartition.rowsWithInvalidSessionsNulled,
           );
-          if (retryErr) throw new Error(`personal_records retry after FK fix failed: ${retryErr.message}`);
+          if (retryErr) throw new DatabaseOperationError('personal_records retry', retryErr);
           personalRecordsInserted = countWritten(
             retryData,
             sessionPartition.rowsWithInvalidSessionsNulled.length,
           );
         } else if (prErr) {
-          throw new Error(`personal_records ${dedicatedPrsPresent ? 'upsert' : 'insert'} failed: ${prErr.message}`);
+          throw new DatabaseOperationError(
+            dedicatedPrsPresent ? 'personal_records upsert' : 'personal_records insert',
+            prErr,
+          );
         } else {
           personalRecordsInserted = countWritten(prData, prRowsToWrite.length);
         }
@@ -3424,7 +3564,7 @@ async function mobileSyncPushHandler(
         if (lwwErr) {
           if (isOwnerRefusal(lwwErr)) throw new OwnerRefusalError('routines');
           if (isProfileTransferRace(lwwErr)) throw new PartialWriteRetryError('routines profile guard', lwwErr);
-          throw new Error(`routines LWW RPC failed: ${lwwErr.message}`);
+          throw new DatabaseOperationError('routines LWW RPC', lwwErr);
         }
         acceptedRoutineIds = new UuidSet();
         for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
@@ -3439,7 +3579,7 @@ async function mobileSyncPushHandler(
         if (routErr) {
           if (isOwnerRefusal(routErr)) throw new OwnerRefusalError('routines');
           if (isProfileTransferRace(routErr)) throw new PartialWriteRetryError('routines profile guard', routErr);
-          throw new Error(`routines upsert failed: ${routErr.message}`);
+          throw new DatabaseOperationError('routines upsert', routErr);
         }
         routinesUpserted = routineRows.length;
       }
@@ -3484,8 +3624,9 @@ async function mobileSyncPushHandler(
             .select('id, drop_set_enabled, drop_set_min_weight_kg, duration_seconds')
             .in('id', chunk);
           if (existingDropSetErr) {
-            throw new Error(
-              `routine_exercises drop-set probe failed: ${existingDropSetErr.message}`,
+            throw new DatabaseOperationError(
+              'routine_exercises drop-set probe',
+              existingDropSetErr,
             );
           }
           for (const row of existingExercises ?? []) {
@@ -3973,7 +4114,7 @@ async function mobileSyncPushHandler(
         'upsert_rpg_attributes_lww',
         { p_rows: [rpgRow] },
       );
-      if (lwwErr) throw new Error(`rpg_attributes LWW RPC failed: ${lwwErr.message}`);
+      if (lwwErr) throw new DatabaseOperationError('rpg_attributes LWW RPC', lwwErr);
       for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
         if (rr.accepted) {
           rpgAttributesAccepted += 1;
@@ -4003,7 +4144,7 @@ async function mobileSyncPushHandler(
       const { error: badgeErr } = await db
         .from('earned_badges')
         .upsert(badgeRows, { onConflict: 'user_id,badge_id' });
-      if (badgeErr) throw new Error(`earned_badges upsert failed: ${badgeErr.message}`);
+      if (badgeErr) throw new DatabaseOperationError('earned_badges upsert', badgeErr);
       badgesUpserted = badgeRows.length;
     }
 
@@ -4041,7 +4182,7 @@ async function mobileSyncPushHandler(
         'upsert_gamification_stats_lww',
         { p_rows: [gsRow] },
       );
-      if (lwwErr) throw new Error(`gamification_stats LWW RPC failed: ${lwwErr.message}`);
+      if (lwwErr) throw new DatabaseOperationError('gamification_stats LWW RPC', lwwErr);
       for (const rr of (lwwData ?? []) as LwwUpsertRow[]) {
         if (rr.accepted) {
           gamificationStatsAccepted += 1;
@@ -4469,8 +4610,7 @@ async function mobileSyncPushHandler(
       );
     }
     if (err instanceof PartialWriteRetryError) {
-      console.warn('mobile-sync-push partial write, answering 503:', err.message);
-      dependencies.logOperationalFailure({ name: err.name });
+      dependencies.logOperationalFailure(partialWriteFailureDiagnostic(err));
       return new Response(
         JSON.stringify({
           error: 'Sync temporarily unavailable',
@@ -4479,8 +4619,23 @@ async function mobileSyncPushHandler(
         { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
     }
+    if (err instanceof DatabaseOperationError) {
+      dependencies.logOperationalFailure(databaseOperationFailureDiagnostic(err));
+      const VERBOSE_ENVIRONMENTS = ['development', 'staging', 'preview', 'local'];
+      const isVerbose = VERBOSE_ENVIRONMENTS.includes(Deno.env.get('ENVIRONMENT') ?? '');
+      return new Response(
+        JSON.stringify({
+          error: isVerbose ? err.message : 'Internal server error',
+        }),
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+    const errorCode = safeDatabaseErrorCode(err);
     dependencies.logOperationalFailure({
       name: safeErrorName(err, 'MobileSyncPushFailure'),
+      stage: 'handler',
+      operation: 'unclassified',
+      ...(errorCode === undefined ? {} : { errorCode }),
     });
     // Surface the underlying error only in known non-production environments
     // so future occurrences of this class are actionable (Issue #99 RCA layer 1).
