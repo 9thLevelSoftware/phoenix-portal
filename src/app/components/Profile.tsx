@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { PageShell } from "@/app/components/PageShell";
 import { DangerZone } from "@/app/components/profile/DangerZone";
 import { ExportSection } from "@/app/components/profile/ExportSection";
+import { ProfileAvatarImage } from "@/app/components/profile/ProfileAvatarImage";
 import { TierBadge } from "@/app/components/TierBadge";
 import {
 	AlertDialog,
@@ -32,11 +33,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/app/components/ui/alert-dialog";
-import {
-	Avatar,
-	AvatarFallback,
-	AvatarImage,
-} from "@/app/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
@@ -52,6 +49,7 @@ import {
 } from "@/app/components/ui/tabs";
 import { useAuth } from "@/app/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
+import { AVATAR_FILE_EXTENSIONS, avatarSource } from "@/lib/avatar";
 import { PHOENIX } from "@/lib/colors";
 import { cancelSuccessMessage } from "@/lib/paddle";
 import { supabase } from "@/lib/supabase";
@@ -256,7 +254,7 @@ export function Profile() {
 			if (!file || !userId) return;
 
 			// Validate file type and size (max 2 MB)
-			if (!file.type.startsWith("image/")) {
+			if (!AVATAR_FILE_EXTENSIONS[file.type]) {
 				toast.error("Please select an image file.");
 				return;
 			}
@@ -267,20 +265,14 @@ export function Profile() {
 
 			setAvatarUploading(true);
 			try {
-				const ext = file.name.split(".").pop() ?? "jpg";
+				const ext = AVATAR_FILE_EXTENSIONS[file.type];
 				const path = `${userId}/avatar.${ext}`;
 
 				const { error: uploadError } = await supabase.storage
 					.from("avatars")
-					.upload(path, file, { upsert: true });
+					.upload(path, file, { upsert: true, cacheControl: "0" });
 				if (uploadError) throw uploadError;
-
-				const {
-					data: { publicUrl },
-				} = supabase.storage.from("avatars").getPublicUrl(path);
-
-				// Append cache-buster so the browser picks up the new image
-				const avatarUrl = `${publicUrl}?t=${Date.now()}`;
+				const avatarUrl = avatarSource(userId, ext);
 				updateProfile.mutate({ avatar_url: avatarUrl });
 			} catch (err) {
 				toast.error(
@@ -374,7 +366,11 @@ export function Profile() {
 							<div className="relative group">
 								<Avatar className="w-24 h-24 ring-4 ring-primary ring-offset-4 ring-offset-background">
 									{profile?.avatar_url ? (
-										<AvatarImage src={profile.avatar_url} alt={displayName} />
+										<ProfileAvatarImage
+											source={profile.avatar_url}
+											ownerId={userId}
+											alt={displayName}
+										/>
 									) : null}
 									<AvatarFallback className="bg-primary text-primary-foreground text-3xl">
 										{profileLoading ? "..." : initials}

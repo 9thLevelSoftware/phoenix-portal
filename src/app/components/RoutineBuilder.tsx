@@ -238,8 +238,8 @@ export function RoutineBuilder() {
 
 	// Fetch existing routine for editing
 	const { data: existingRoutine, isLoading: isLoadingRoutine } = useQuery({
-		...routineDetailOptions(routineId ?? ""),
-		enabled: !!routineId,
+		...routineDetailOptions(user?.id ?? "", routineId ?? ""),
+		enabled: !!user && !!routineId,
 	});
 
 	const [routineName, setRoutineName] = useState("Untitled Routine");
