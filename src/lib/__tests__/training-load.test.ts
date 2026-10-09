@@ -1,11 +1,38 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { calculateRTL as sharedCalculateRTL } from "../../../supabase/functions/_shared/trainingLoad.ts";
 import {
 	calculateRTL,
 	classifyTrainingLoad,
 	type WorkoutLoadInput,
 } from "../training-load";
 
+interface FixtureCase {
+	id: string;
+	sessions: WorkoutLoadInput[];
+	expected: number;
+}
+
+// Same file the Deno suite reads (vitest runs from the repo root).
+const fixture: { cases: FixtureCase[] } = JSON.parse(
+	readFileSync(resolve(process.cwd(), "tests/fixtures/rtl-cases.json"), "utf8"),
+);
+
 describe("calculateRTL", () => {
+	it("is the shared edge implementation", () => {
+		expect(calculateRTL).toBe(sharedCalculateRTL);
+	});
+
+	it("matches the golden parity fixture", () => {
+		expect(fixture.cases.length).toBeGreaterThan(0);
+		for (const testCase of fixture.cases) {
+			expect(calculateRTL(testCase.sessions), testCase.id).toBe(
+				testCase.expected,
+			);
+		}
+	});
+
 	it("returns 0 for empty input", () => {
 		expect(calculateRTL([])).toBe(0);
 	});

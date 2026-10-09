@@ -1,39 +1,15 @@
-export interface WorkoutLoadInput {
-	totalVolume: number;
-	setCount: number;
-}
-
 /**
- * Calculate Resistance Training Load (RTL) score 0-100.
+ * Resistance Training Load for the browser.
  *
- * Composite of:
- * - Volume component: total volume normalized against a reference (20,000 kg/week)
- * - Intensity component: volume per set (proxy for avg weight × reps), reference 400 kg/set
- * - Frequency component: number of sessions normalized against reference (5/week)
- *
- * Each component is 0-33, summed and capped at 100.
+ * There is exactly ONE calculator: `supabase/functions/_shared/trainingLoad.ts`,
+ * shared with `generate-insights` so the scheduled insights and the Analytics
+ * RTL cannot drift. This module re-exports it and adds only the portal zone
+ * classifier. Do not reimplement `calculateRTL` here.
  */
-export function calculateRTL(sessions: WorkoutLoadInput[]): number {
-	if (sessions.length === 0) return 0;
-
-	const totalVolume = sessions.reduce((sum, s) => sum + s.totalVolume, 0);
-	const totalSets = sessions.reduce((sum, s) => sum + s.setCount, 0);
-
-	// Volume component (0-33): normalized against 20,000 kg/week reference
-	const volumeScore = Math.min(33, (totalVolume / 20000) * 33);
-
-	// Intensity component (0-33): volume per set, reference ~400 kg/set
-	const avgVolumePerSet = totalSets > 0 ? totalVolume / totalSets : 0;
-	const intensityScore = Math.min(33, (avgVolumePerSet / 400) * 33);
-
-	// Frequency component (0-34): sessions normalized against 5/week
-	const frequencyScore = Math.min(34, (sessions.length / 5) * 34);
-
-	return Math.min(
-		100,
-		Math.round(volumeScore + intensityScore + frequencyScore),
-	);
-}
+export {
+	calculateRTL,
+	type WorkoutLoadInput,
+} from "../../supabase/functions/_shared/trainingLoad.ts";
 
 export type TrainingLoadZone = "low" | "optimal" | "high";
 
