@@ -6,15 +6,17 @@ import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { computeNextWorkout } from "@/lib/computeNextWorkout";
+import { useAuth } from "@/providers/AuthProvider";
 import { cycleDetailOptions } from "@/queries/cycles";
 import { routineDetailOptions } from "@/queries/routines";
 
 function RoutineName({ routineId }: { routineId: string }) {
+	const { user } = useAuth();
 	const {
 		data: routine,
 		isPending,
 		isError,
-	} = useQuery(routineDetailOptions(routineId));
+	} = useQuery(routineDetailOptions(user?.id ?? "", routineId));
 
 	if (isPending) return <Skeleton className="h-6 w-40" />;
 	// A failed/unauthorized routine fetch is not the same as a custom (no-routine)
@@ -25,11 +27,12 @@ function RoutineName({ routineId }: { routineId: string }) {
 }
 
 export function NextWorkoutWidget({ cycleId }: { cycleId: string }) {
+	const { user } = useAuth();
 	const {
 		data: cycleDetail,
 		isPending,
 		isError,
-	} = useQuery(cycleDetailOptions(cycleId));
+	} = useQuery(cycleDetailOptions(user?.id ?? "", cycleId));
 
 	if (isPending) {
 		return (

@@ -1,4 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { bindCheckoutSubscription, paddleApiBase, verifyCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
+import { readBoundedRequestBody, REQUEST_BODY_LIMITS } from '../_shared/requestBody.ts';
 import {
   findCrossTierDuplicatePriceIds,
   getAllAllowedPriceIds,
@@ -61,7 +63,7 @@ export interface PaddleWebhooksDbClient {
   from(table: "subscriptions"): SubscriptionsTableQuery;
   from(table: "subscription_events"): SubscriptionEventsTableQuery;
   rpc(
-    fn: "apply_subscription_event",
+    fn: "apply_subscription_event" | "bind_paddle_checkout" | "is_paddle_subscription_bound" | "mark_paddle_subscription_terminal",
     args: Record<string, unknown>,
   ): PromiseLike<{ data: unknown; error: unknown }>;
 }
@@ -243,9 +245,6 @@ async function paddleWebhooksHandler(
       );
     }
 
-    // Read raw body BEFORE parsing — needed for signature verification
-    const rawBody = await req.text();
-
     // Verify Paddle-Signature header
     const webhookSecret = env.get("PADDLE_WEBHOOK_SECRET")?.trim();
     const signatureHeader = req.headers.get("Paddle-Signature");
@@ -257,7 +256,16 @@ async function paddleWebhooksHandler(
       );
     }
 
-    const isValid = await verifyPaddleSignature(rawBody, signatureHeader, webhookSecret, {
+    const bodyRead = await readBoundedRequestBody(req, REQUEST_BODY_LIMITS.paddleWebhook);
+    if (bodyRead.kind !== 'ok') {
+      return new Response(JSON.stringify({ error: bodyRead.kind === 'too_large' ? 'Request body too large' : 'Invalid request body' }), {
+        status: bodyRead.kind === 'too_large' ? 413 : 400,
+        headers: responseHeaders,
+      });
+    }
+    const rawBody = new TextDecoder().decode(bodyRead.bytes);
+
+    const isValid = await verifyPaddleSignature(bodyRead.bytes, signatureHeader, webhookSecret, {
       now,
     });
     if (!isValid) {
@@ -371,18 +379,34 @@ async function paddleWebhooksHandler(
 
     // Verify the signed user_id handed out by paddle-checkout-custom-data so
     // a client can't forge another user's user_id in custom_data (P1-10).
-    const providedSig = event.data.custom_data?.cd_sig;
-    const signedCustomDataValid = await verifyPaddleCustomDataSignature(
-      userId,
-      providedSig,
-      customDataSecret,
-    );
+    const customData = event.data.custom_data;
+    const signedCustomDataValid = existingSubscription?.paddle_subscription_id === event.data.id
+      ? false // Established subscriptions keep recurring/legacy compatibility.
+      : await bindCheckoutSubscription({ data: customData, userId, subscriptionId: event.data.id,
+        customerId: event.data.customer_id, priceId: resolveBasePlanPriceId(event.data, getAllAllowedPriceIds(env)),
+        environment: env.get("PADDLE_ENVIRONMENT") === "sandbox" ? "sandbox" : "production",
+        secret: customDataSecret, apiKey: env.get("PADDLE_API_KEY"), fetchImpl, db: supabase });
     const trustDecision = evaluatePaddleCustomDataTrust({
       signedCustomDataValid,
       eventSubscriptionId: event.data.id,
       existingSubscriptionId: existingSubscription?.paddle_subscription_id,
     });
     if (!trustDecision.trusted) {
+      // A genuine retained identity proof may have created a sibling through
+      // an old client. It cannot grant access; stop its future billing before
+      // acknowledging. Never cancel on customer ID or an unsigned user ID.
+      const owned = await verifyCheckoutBinding(customData, customDataSecret) ||
+        await verifyPaddleCustomDataSignature(userId, customData?.cd_sig, customDataSecret);
+      if (owned && event.data.status !== "canceled") {
+        const apiKey = env.get("PADDLE_API_KEY");
+        if (!apiKey) throw new Error("Paddle API required to cancel rejected checkout");
+        const canceled = await fetchImpl(`${paddleApiBase(env.get("PADDLE_ENVIRONMENT"))}/subscriptions/${encodeURIComponent(event.data.id)}/cancel`, {
+          method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ effective_from: "immediately" }), signal: AbortSignal.timeout(10_000),
+        });
+        if (!canceled.ok || (await canceled.json())?.data?.status !== "canceled") throw new Error("Rejected checkout cancellation failed");
+        return new Response(JSON.stringify({ received: true, ignored: "unauthorized_checkout", billingCanceled: true }), { headers: responseHeaders });
+      }
       console.error(
         "[BILLING_ALERT] Missing or invalid cd_sig in custom_data (user_id spoofing attempt?):",
         event.event_id,
@@ -440,6 +464,10 @@ async function paddleWebhooksHandler(
     const incomingStatus = mapPaddleStatusToSubscriptionStatus(
       String(event.data.status ?? ""),
     );
+    if (event.data.status === "canceled") {
+      const terminal = await supabase.rpc("mark_paddle_subscription_terminal", { p_user_id: userId, p_subscription_id: event.data.id });
+      if (terminal.error) throw new Error("Subscription terminal state could not be recorded");
+    }
     const eventTarget = classifySubscriptionEventTarget({
       incomingSubscriptionId: event.data.id,
       incomingStatus,
@@ -595,11 +623,11 @@ async function paddleWebhooksHandler(
         // depth.
         const candidateCustomData = candidate.custom_data ?? null;
         const candidateUserId = candidateCustomData?.user_id;
-        const candidateSigValid = await verifyPaddleCustomDataSignature(
-          userId,
-          candidateCustomData?.cd_sig,
-          customDataSecret,
-        );
+        const candidateSigValid = candidateUserId === userId && await bindCheckoutSubscription({ data: candidateCustomData,
+          userId, subscriptionId: candidate.id, customerId: candidate.customer_id,
+          priceId: resolveBasePlanPriceId(candidate, getAllAllowedPriceIds(env)),
+          environment: env.get("PADDLE_ENVIRONMENT") === "sandbox" ? "sandbox" : "production", secret: customDataSecret,
+          apiKey: env.get("PADDLE_API_KEY"), fetchImpl, db: supabase });
         if (candidateUserId !== userId || !candidateSigValid) {
           console.error(
             "[BILLING_ALERT] untracked_subscription_not_adopted:",
