@@ -564,6 +564,9 @@ function fakePaddle(options: {
   revokeStatus?: number;
   siblings?: Array<Record<string, unknown>>;
   listingStatus?: number;
+  /** Id and customer the tracked subscription GET answers with (default the fixture ids). */
+  subscriptionId?: string;
+  customerId?: string;
   malformedCancel?: boolean;
   transaction?: Record<string, unknown>;
 }): {
@@ -575,6 +578,8 @@ function fakePaddle(options: {
   const calls: PaddleCall[] = [];
   const revokeCalls: { url: string; body: string }[] = [];
   const refreshCalls: { body: string }[] = [];
+  const subscriptionId = options.subscriptionId ?? SUBSCRIPTION_ID;
+  const customerId = options.customerId ?? CUSTOMER_ID;
   // Never reach a real provider, in unit or integration tests.
   const revokeFetch = (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -607,12 +612,12 @@ function fakePaddle(options: {
       options.onGet?.();
       if (url.pathname.startsWith("/transactions/")) return Promise.resolve(new Response(JSON.stringify({ data: options.transaction })));
       if (url.pathname === "/subscriptions") return Promise.resolve(new Response(JSON.stringify({
-        data: options.siblings ?? (options.getStatus === 404 ? [] : [{ id: SUBSCRIPTION_ID, customer_id: CUSTOMER_ID, status: options.status ?? "active" }]),
+        data: options.siblings ?? (options.getStatus === 404 ? [] : [{ id: subscriptionId, customer_id: customerId, status: options.status ?? "active" }]),
         meta: { pagination: { has_more: false, next: null } },
       }), { status: options.listingStatus ?? 200 }));
       return Promise.resolve(
         new Response(
-          JSON.stringify({ data: { id: SUBSCRIPTION_ID, customer_id: CUSTOMER_ID, status: options.status ?? "active" } }),
+          JSON.stringify({ data: { id: subscriptionId, customer_id: customerId, status: options.status ?? "active" } }),
           { status: options.getStatus ?? 200 },
         ),
       );
@@ -2432,7 +2437,19 @@ Deno.test({
       };
 
       // Case 1: shared customer id, distinct subscription ids.
-      const first = await silenced(() => purgeUser(admin, a.id, fakePaddle({ status: "canceled" }).deps));
+      // Paddle lists every subscription on the shared customer; B's carries
+      // B's own custom_data, so A's purge must leave it (and its rows) alone.
+      const sharedListing = (own: string) => [
+        { id: own, customer_id: sharedCustomer, status: "canceled" },
+        { id: subB, customer_id: sharedCustomer, status: "canceled", custom_data: { user_id: b.id } },
+      ];
+      const first = await silenced(() =>
+        purgeUser(
+          admin,
+          a.id,
+          fakePaddle({ status: "canceled", subscriptionId: subA, customerId: sharedCustomer, siblings: sharedListing(subA) }).deps,
+        )
+      );
       assertEquals(first.ok, true);
       assertEquals(await eventTypes(), ["b-customer", "b-sub", "b-user"]);
 
@@ -2450,7 +2467,18 @@ Deno.test({
         );
         webhookIds.push((cWebhook.data as { id: string }).id);
 
-        const second = await silenced(() => purgeUser(admin, c.id, fakePaddle({ status: "canceled" }).deps));
+        const second = await silenced(() =>
+          purgeUser(
+            admin,
+            c.id,
+            fakePaddle({
+              status: "canceled",
+              subscriptionId: subShared,
+              customerId: sharedCustomer,
+              siblings: sharedListing(subShared),
+            }).deps,
+          )
+        );
         assertEquals(second.ok, true);
         assertEquals(await eventTypes(), ["b-customer", "b-sub", "b-user"]);
       } finally {
