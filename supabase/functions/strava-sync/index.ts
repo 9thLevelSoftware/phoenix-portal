@@ -62,6 +62,9 @@ const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
  *     run (user JWT) instead creates its own row, directly in `processing`,
  *     and owns it the same way; a concurrent duplicate loses the
  *     `sync_queue_one_active` race and gets 409 `sync_already_queued`.
+ *   - claim_generation?: number (`sync_queue.retry_count` of the claim this
+ *     dispatch holds). In-run `user_integrations` state writes go through
+ *     `save_sync_state_if_queue_owned` and must still match it.
  *
  * Environment variables:
  *   - STRAVA_CLIENT_ID
@@ -541,6 +544,77 @@ async function runStravaSync(
       owned.userId = userId;
     }
 
+    // The claim generation of this run's row. process-sync-queue's stale-
+    // lease reclaim increments retry_count before another worker takes the
+    // same id, so a state save that also matches retry_count cannot be made
+    // by a worker whose lease was reclaimed. process-sync-queue passes the
+    // generation it claimed; a row this run created itself starts at 0. Only
+    // a dispatcher that predates claim_generation makes the run read it (and
+    // fail retryably if it cannot).
+    let ownedAttempt: number | null = null;
+    if (dispatchedQueueId && Number.isInteger(body.claim_generation)) {
+      ownedAttempt = body.claim_generation as number;
+    } else if (dispatchedQueueId) {
+      const { data: claimRow, error: claimError } = await supabase
+        .from('sync_queue')
+        .select('retry_count')
+        .eq('id', dispatchedQueueId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (claimError) {
+        console.error('Failed to read the sync queue claim:', claimError);
+        return new Response(
+          JSON.stringify({ error: 'Sync temporarily unavailable', code: 'queue_claim_unreadable' }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      ownedAttempt = Number((claimRow as { retry_count?: number } | null)?.retry_count ?? 0);
+    } else if (ownedQueueId) {
+      ownedAttempt = 0;
+    }
+
+    const notOwned = () =>
+      new Response(
+        JSON.stringify({
+          error: "Sync queue entry is no longer this run's",
+          code: 'queue_not_owned',
+        }),
+        { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+
+    // Sync state is saved only while this run still owns its queue row,
+    // atomically under the row lock (20260924150000). A disconnect or a
+    // lease reclaim between a check and the write can no longer be undone.
+    // A run with no queue row (p_queue_id null) always saves — that is the
+    // RPC's contract, so a dispatch that never had a row still records state.
+    const saveStateIfOwned = async (values: Record<string, unknown>) => {
+      const { data, error } = await supabase.rpc('save_sync_state_if_queue_owned', {
+        p_user_id: userId,
+        p_provider: 'strava',
+        p_queue_id: ownedQueueId ?? null,
+        p_attempt: ownedAttempt,
+        p_state: values,
+      });
+      return { owned: data !== false, error };
+    };
+
+    const stopUnlessStateSaved = async (
+      values: Record<string, unknown>,
+      failureCode: string,
+    ): Promise<Response | null> => {
+      const save = await saveStateIfOwned(values);
+      if (save.error) {
+        // No plain follow-up write: that is the window this RPC exists to close.
+        console.error('Strava sync state save failed:', save.error);
+        return new Response(
+          JSON.stringify({ error: 'Strava sync failed; will retry', code: failureCode }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
+      if (!save.owned) return notOwned();
+      return null;
+    };
+
     // ---------------------------------------------------------------
     // Fetch user's Strava tokens from oauth_tokens (server-only table)
     // ---------------------------------------------------------------
@@ -603,15 +677,16 @@ async function runStravaSync(
         if (revoked) {
           // The grant is gone: surface it so the card asks the user to
           // reconnect, and fail the queue task terminally (401 is not in
-          // process-sync-queue's retryable set).
-          await supabase
-            .from('user_integrations')
-            .update({
+          // process-sync-queue's retryable set). A run that no longer owns
+          // its queue row must not mark the integration token_expired.
+          const stopped = await stopUnlessStateSaved(
+            {
               status: 'token_expired',
               error_message: 'Strava authorization expired or was revoked. Reconnect Strava to resume syncing.',
-            })
-            .eq('user_id', userId)
-            .eq('provider', 'strava');
+            },
+            'state_save_failed',
+          );
+          if (stopped) return stopped;
 
           return new Response(
             JSON.stringify({ error: 'Strava authorization expired or was revoked', code: 'token_expired' }),
@@ -624,11 +699,11 @@ async function runStravaSync(
         // lost rotation race — keeps the integration connected and returns 502
         // so the queue retries. A misconfigured app must never disconnect
         // users: correcting the secret then fixes everyone at once.
-        await supabase
-          .from('user_integrations')
-          .update({ error_message: 'Strava token refresh failed; will retry' })
-          .eq('user_id', userId)
-          .eq('provider', 'strava');
+        const stopped = await stopUnlessStateSaved(
+          { error_message: 'Strava token refresh failed; will retry' },
+          'state_save_failed',
+        );
+        if (stopped) return stopped;
 
         return new Response(
           JSON.stringify({ error: 'Strava token refresh failed', code: 'refresh_failed' }),
@@ -662,11 +737,11 @@ async function runStravaSync(
         // Keep status 'connected' (do NOT downgrade): this handler refuses to
         // sync unless status === 'connected', and the 500 below is requeued for
         // retry. Downgrading would make the retry return a non-retryable 404.
-        await supabase
-          .from('user_integrations')
-          .update({ error_message: 'Failed to persist refreshed tokens' })
-          .eq('user_id', userId)
-          .eq('provider', 'strava');
+        const stopped = await stopUnlessStateSaved(
+          { error_message: 'Failed to persist refreshed tokens' },
+          'state_save_failed',
+        );
+        if (stopped) return stopped;
 
         return new Response(
           JSON.stringify({ error: 'Failed to persist refreshed Strava tokens' }),
@@ -840,11 +915,11 @@ async function runStravaSync(
           console.error('Strava activities fetch failed:', activitiesResponse.status);
 
           if (activitiesResponse.status === 401) {
-            await supabase
-              .from('user_integrations')
-              .update({ status: 'token_expired', error_message: 'Access token revoked or invalid' })
-              .eq('user_id', userId)
-              .eq('provider', 'strava');
+            const stopped = await stopUnlessStateSaved(
+              { status: 'token_expired', error_message: 'Access token revoked or invalid' },
+              'state_save_failed',
+            );
+            if (stopped) return stopped;
           }
 
           return new Response(
@@ -946,11 +1021,11 @@ async function runStravaSync(
       // Keep status 'connected' so the queued 502 retry can re-enter this
       // handler (it rejects any non-connected integration with a 404). We only
       // record the error and withhold the last_sync_at advance.
-      await supabase
-        .from('user_integrations')
-        .update({ error_message: failMessage })
-        .eq('user_id', userId)
-        .eq('provider', 'strava');
+      const stopped = await stopUnlessStateSaved(
+        { error_message: failMessage },
+        'state_save_failed',
+      );
+      if (stopped) return stopped;
 
       return new Response(
         JSON.stringify({
@@ -1024,15 +1099,13 @@ async function runStravaSync(
           'retrying would repeat the same request. Sync stopped.';
 
       console.warn(partialMessage);
-      await supabase
-        .from('user_integrations')
-        .update(
-          forwardResumeAt
-            ? { last_sync_at: forwardResumeAt, error_message: partialMessage }
-            : { error_message: partialMessage },
-        )
-        .eq('user_id', userId)
-        .eq('provider', 'strava');
+      const stopped = await stopUnlessStateSaved(
+        forwardResumeAt
+          ? { last_sync_at: forwardResumeAt, error_message: partialMessage }
+          : { error_message: partialMessage },
+        'state_save_failed',
+      );
+      if (stopped) return stopped;
 
       return new Response(
         JSON.stringify({
@@ -1096,23 +1169,34 @@ async function runStravaSync(
         contiguousUpTo,
       });
     }
-    await supabase
-      .from('user_integrations')
-      .update({
+    const stopped = await stopUnlessStateSaved(
+      {
         ...(watermark ? { last_sync_at: watermark } : {}),
         status: 'connected',
         error_message: null,
-      })
-      .eq('user_id', userId)
-      .eq('provider', 'strava');
+      },
+      'watermark_save_failed',
+    );
+    if (stopped) return stopped;
 
-    // Complete only the row this run owns. Never sweep every pending row:
-    // a second queued task (a kept `initial`) must still run.
-    await completeSyncQueueEntry(supabase, {
+    // Complete only the row this run owns, and only in the claim generation
+    // the state save just matched. Never sweep every pending row: a second
+    // queued task (a kept `initial`) must still run.
+    const completed = await completeSyncQueueEntry(supabase, {
       userId,
       provider: 'strava',
       queueId: ownedQueueId,
+      claimGeneration: ownedAttempt,
     });
+    if (!completed) {
+      return new Response(
+        JSON.stringify({
+          error: 'Failed to complete the sync queue entry',
+          code: 'queue_complete_failed',
+        }),
+        { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
 
     return new Response(
       JSON.stringify({ synced_count: syncedCount, errors }),
