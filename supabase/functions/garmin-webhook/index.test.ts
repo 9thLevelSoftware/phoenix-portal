@@ -124,6 +124,28 @@ Deno.test("garmin-webhook: an unentitled user's activity is not stored", async (
   assertEquals(state.rows("external_activities"), []);
 });
 
+Deno.test("garmin-webhook: an unavailable subscription lookup or corrupt tier asks Garmin to retry", async () => {
+  for (const state of [db(), db("UNKNOWN")]) {
+    if (state.rows("subscriptions")[0].tier === "FLAME") {
+      // Simulate PostgREST's duplicate-row lookup error; FakeDb's maybeSingle
+      // otherwise returns the first row rather than enforcing at-most-one.
+      state.rows("subscriptions").push({ ...state.rows("subscriptions")[0] });
+      const from = state.from.bind(state);
+      state.from = (table) => {
+        const query = from(table);
+        if (table === "subscriptions") query.maybeSingle = query.single.bind(query);
+        return query;
+      };
+    }
+    const res = await silenced(async () => handler(state)(await signed(JSON.stringify({ activities: [activity()] }))));
+    assertEquals(res.status, 503);
+    const body = await res.json();
+    assertEquals(body.processed, 0);
+    assertEquals(body.errors, 1);
+    assertEquals(state.rows("external_activities"), []);
+  }
+});
+
 Deno.test("garmin-webhook: an unparseable signed body is a 500 with a stable code, not the parser's message", async () => {
   const res = await silenced(async () => handler(db())(await signed("{not json")));
   assertEquals(res.status, 500);
