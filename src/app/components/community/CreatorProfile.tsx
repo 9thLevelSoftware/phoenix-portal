@@ -70,9 +70,11 @@ export function CreatorProfile({
 	onVote,
 }: CreatorProfileProps) {
 	const { user } = useAuth();
-	const { data: stats, isLoading: statsLoading } = useQuery(
-		creatorStatsOptions(userId),
-	);
+	const {
+		data: stats,
+		isLoading: statsLoading,
+		isError: statsError,
+	} = useQuery(creatorStatsOptions(userId));
 
 	const {
 		data: feedData,
@@ -266,7 +268,11 @@ export function CreatorProfile({
 				</Card>
 			) : (
 				<Card className="p-6 bg-surface-2 border-secondary mb-6">
-					<p className="text-muted-foreground">Creator not found</p>
+					<p className="text-muted-foreground">
+						{statsError
+							? "Couldn't load this creator. Please try again."
+							: "Creator not found"}
+					</p>
 				</Card>
 			)}
 
