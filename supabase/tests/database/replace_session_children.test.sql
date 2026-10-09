@@ -762,5 +762,33 @@ SELECT pg_temp.push_p(117, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb);
 SELECT is(pg_temp.prog_of(117), ARRAY[]::text[],
     'p_progress = [] clears the session''s progress');
 
+SELECT public.replace_session_children(
+    pg_temp.uid(), ARRAY[pg_temp.u(117)],
+    jsonb_build_array(pg_temp.ex(241, 117, NULL, 'Cable Row A', 0)),
+    jsonb_build_array(pg_temp.st(24106, 241, 1)),
+    jsonb_build_array(
+        jsonb_build_object('id', pg_temp.u(24107), 'set_id', pg_temp.u(24106),
+            'user_id', pg_temp.uid(), 'rep_number', 1,
+            'power_method', 'PAIRED_CABLE_WORK_V1',
+            'power_watts', 19.6133, 'peak_power_watts', 21.2),
+        jsonb_build_object('id', pg_temp.u(24108), 'set_id', pg_temp.u(24106),
+            'user_id', pg_temp.uid(), 'rep_number', 2, 'power_watts', 90000),
+        jsonb_build_object('id', pg_temp.u(24109), 'set_id', pg_temp.u(24106),
+            'user_id', pg_temp.uid(), 'rep_number', 3, 'power_method', 'UNAVAILABLE')
+    ), '[]'::jsonb);
+SELECT is((SELECT power_watts FROM public.rep_summaries WHERE id = pg_temp.u(24107)),
+    19.6133::numeric, 'paired mean watts retain exact units');
+SELECT is((SELECT peak_power_watts FROM public.rep_summaries WHERE id = pg_temp.u(24107)),
+    21.2::numeric, 'paired peak is distinct from mean');
+SELECT is((SELECT power_method FROM public.rep_summaries WHERE id = pg_temp.u(24108)),
+    'LEGACY_UNKNOWN_V0', 'missing interpretation remains legacy');
+SELECT is((SELECT power_watts FROM public.rep_summaries WHERE id = pg_temp.u(24108)),
+    NULL::numeric, 'old units never enter new stored watt summaries');
+SELECT is((SELECT power_watts FROM public.rep_summaries WHERE id = pg_temp.u(24109)),
+    NULL::numeric, 'unavailable is null, not zero');
+SELECT throws_ok(
+    format('UPDATE public.rep_summaries SET power_watts=0 WHERE id=%L::uuid', pg_temp.u(24109)),
+    '23514', NULL, 'unavailable cannot acquire a zero-watt placeholder');
+
 SELECT * FROM finish();
 ROLLBACK;
