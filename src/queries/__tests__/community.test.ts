@@ -394,7 +394,9 @@ describe("creatorStatsOptions", () => {
 		const { creatorStatsOptions } = await import("../community");
 		await expect(
 			creatorStatsOptions(userId).queryFn?.({} as never),
-		).rejects.toEqual(expect.objectContaining({ message: "stats unavailable" }));
+		).rejects.toEqual(
+			expect.objectContaining({ message: "stats unavailable" }),
+		);
 		expect(from).toHaveBeenCalledTimes(1);
 	});
 });
