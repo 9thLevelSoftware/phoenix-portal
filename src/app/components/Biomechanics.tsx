@@ -187,7 +187,7 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 	// ---- Telemetry queries (per selected set) ----
 	const {
 		data: telemetry,
-		isPending: telemetryLoading,
+		isLoading: telemetryLoading,
 		isError: telemetryError,
 	} = useQuery({
 		...repTelemetryOptions(userId, effectiveSetId),
@@ -196,7 +196,7 @@ export function BiomechanicsContent({ view }: BiomechanicsContentProps) {
 
 	const {
 		data: repSummaries,
-		isPending: summariesLoading,
+		isLoading: summariesLoading,
 		isError: summariesError,
 	} = useQuery({
 		...repSummariesOptions(userId, effectiveSetId),
