@@ -6,9 +6,23 @@ import { Card } from "@/app/components/ui/card";
 import { type SocialAuthProvider, supabase } from "@/lib/supabase";
 import { PhoenixLogo } from "./PhoenixLogo";
 
+const INVALID_LINK_MESSAGE =
+	"This sign-in link is invalid or has expired. Request a new one and try again.";
+const ACCESS_DENIED_MESSAGE = "Sign-in was cancelled or access was denied.";
+const GENERIC_AUTH_FAILURE_MESSAGE =
+	"Authentication could not be completed. Please try again.";
+
+const INVALID_LINK_CODES = new Set([
+	"otp_expired",
+	"flow_state_expired",
+	"flow_state_not_found",
+	"bad_oauth_state",
+]);
+
 type CallbackParams = {
 	error: string | null;
-	errorDescription: string | null;
+	errorCode: string | null;
+	hasErrorSignal: boolean;
 	provider: SocialAuthProvider | null;
 };
 
@@ -24,20 +38,49 @@ function getProviderLabel(provider: SocialAuthProvider | null): string {
 	return "Social";
 }
 
+function readParam(
+	hashParams: URLSearchParams,
+	searchParams: URLSearchParams,
+	key: string,
+): string | null {
+	const value = (hashParams.get(key) ?? searchParams.get(key))?.trim();
+	return value ? value : null;
+}
+
+function messageForAuthError(
+	error: string | null,
+	errorCode: string | null,
+): string {
+	const codes = [errorCode, error]
+		.map((value) => value?.trim().toLowerCase() ?? "")
+		.filter((value) => value.length > 0);
+
+	if (codes.some((code) => INVALID_LINK_CODES.has(code))) {
+		return INVALID_LINK_MESSAGE;
+	}
+
+	if (codes.includes("access_denied")) {
+		return ACCESS_DENIED_MESSAGE;
+	}
+
+	return GENERIC_AUTH_FAILURE_MESSAGE;
+}
+
 function parseCallbackParams(search: string, hash: string): CallbackParams {
 	const searchParams = new URLSearchParams(search);
 	const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
 	const provider = searchParams.get("provider");
+	const error = readParam(hashParams, searchParams, "error");
+	const errorCode = readParam(hashParams, searchParams, "error_code");
+	// Presence only — never keep or render error_description.
+	const hasErrorDescription = Boolean(
+		readParam(hashParams, searchParams, "error_description"),
+	);
 
 	return {
-		error:
-			hashParams.get("error") ??
-			searchParams.get("error") ??
-			hashParams.get("error_code") ??
-			searchParams.get("error_code"),
-		errorDescription:
-			hashParams.get("error_description") ??
-			searchParams.get("error_description"),
+		error,
+		errorCode,
+		hasErrorSignal: Boolean(error || errorCode || hasErrorDescription),
 		provider: provider === "apple" || provider === "google" ? provider : null,
 	};
 }
@@ -52,10 +95,9 @@ export function AuthCallback() {
 	);
 
 	useEffect(() => {
-		if (callbackParams.error || callbackParams.errorDescription) {
+		if (callbackParams.hasErrorSignal) {
 			setErrorMessage(
-				callbackParams.errorDescription ??
-					"Authentication could not be completed. Please try again.",
+				messageForAuthError(callbackParams.error, callbackParams.errorCode),
 			);
 			return;
 		}
@@ -107,9 +149,7 @@ export function AuthCallback() {
 				}
 			} catch (_err) {
 				if (isActive) {
-					setErrorMessage(
-						"Authentication could not be completed. Please try again.",
-					);
+					setErrorMessage(GENERIC_AUTH_FAILURE_MESSAGE);
 				}
 			}
 		};
@@ -120,7 +160,12 @@ export function AuthCallback() {
 			isActive = false;
 			authListener.subscription.unsubscribe();
 		};
-	}, [callbackParams.error, callbackParams.errorDescription, navigate]);
+	}, [
+		callbackParams.error,
+		callbackParams.errorCode,
+		callbackParams.hasErrorSignal,
+		navigate,
+	]);
 
 	const providerLabel = getProviderLabel(callbackParams.provider);
 
