@@ -11,6 +11,7 @@ import {
 } from '../_shared/insightRules.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
+import { readBoundedRequestBody, REQUEST_BODY_LIMITS } from '../_shared/requestBody.ts';
 import { calculateRTL } from '../_shared/trainingLoad.ts';
 
 /**
@@ -421,9 +422,18 @@ async function handle(
   }
 
   try {
+    if (!hasValidCronSecret(req, deps.env) && !req.headers.get('Authorization')) {
+      return json(cors, 401, { error: 'Unauthorized' });
+    }
     // An empty body is allowed (defaults apply); malformed JSON is rejected
     // with a 400 instead of being silently replaced with {}. (F309)
-    const rawBody = await req.text();
+    const bodyRead = await readBoundedRequestBody(req, REQUEST_BODY_LIMITS.generateInsights);
+    if (bodyRead.kind !== 'ok') {
+      return json(cors, bodyRead.kind === 'too_large' ? 413 : 400, {
+        error: bodyRead.kind === 'too_large' ? 'Request body too large' : 'Invalid request body',
+      });
+    }
+    const rawBody = new TextDecoder().decode(bodyRead.bytes);
     let body: { period?: string; mode?: string; cursor?: string | null };
     if (rawBody.trim().length === 0) {
       body = {};

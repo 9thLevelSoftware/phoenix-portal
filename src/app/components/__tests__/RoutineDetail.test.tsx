@@ -6,7 +6,18 @@ import { renderWithProviders } from "@/test/test-utils";
 import { RoutineDetail } from "../RoutineDetail";
 
 vi.mock("@/app/hooks/useAuth", () => ({
-	useAuth: () => ({ user: null, session: null, loading: false }),
+	useAuth: () => ({
+		user: { id: "test-user-id" },
+		session: null,
+		loading: false,
+	}),
+}));
+vi.mock("@/queries/profile", () => ({
+	profileOptions: (userId: string) =>
+		queryOptions({
+			queryKey: ["profile", userId],
+			queryFn: async () => ({ weight_unit: "kg" }),
+		}),
 }));
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
 vi.mock("react-router", async () => {
@@ -56,7 +67,7 @@ const ROUTINE_ROW = vi.hoisted(() => ({
 }));
 
 vi.mock("@/queries/routines", () => ({
-	routineDetailOptions: (routineId: string) =>
+	routineDetailOptions: (_userId: string, routineId: string) =>
 		queryOptions({
 			queryKey: ["routines", "detail", routineId],
 			queryFn: async () => routineDetailSchema.parse(ROUTINE_ROW),

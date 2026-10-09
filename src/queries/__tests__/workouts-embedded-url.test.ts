@@ -47,7 +47,9 @@ describe("embedded session select request URL", () => {
 
 	it("sessionDetailOptions sends one request ordering exercises and nested sets", async () => {
 		const { sessionDetailOptions } = await import("../workouts");
-		await sessionDetailOptions(SESSION_ID).queryFn?.({} as never);
+		await sessionDetailOptions("test-user-id", SESSION_ID).queryFn?.(
+			{} as never,
+		);
 
 		expect(requests).toHaveLength(1);
 		const [url] = requests;
@@ -62,7 +64,9 @@ describe("embedded session select request URL", () => {
 
 	it("comparisonDetailOptions sends one request with rep summaries and nested ordering", async () => {
 		const { comparisonDetailOptions } = await import("../workouts");
-		await comparisonDetailOptions(SESSION_ID).queryFn?.({} as never);
+		await comparisonDetailOptions("test-user-id", SESSION_ID).queryFn?.(
+			{} as never,
+		);
 
 		expect(requests).toHaveLength(1);
 		const [url] = requests;
