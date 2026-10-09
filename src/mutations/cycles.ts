@@ -195,7 +195,7 @@ export function useUpdateCycle() {
 			toast.success("Training cycle updated");
 			queryClient.invalidateQueries({ queryKey: queryKeys.cycles.all });
 			queryClient.invalidateQueries({
-				queryKey: queryKeys.cycles.detail(variables.cycleId),
+				queryKey: queryKeys.cycles.detail(user?.id ?? "", variables.cycleId),
 			});
 		},
 
