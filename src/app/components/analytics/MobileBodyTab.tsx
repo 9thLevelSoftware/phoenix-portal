@@ -72,7 +72,7 @@ export default function MobileBodyTab({
 		return (
 			<div className="text-center py-12 text-muted-foreground">
 				<Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
-				<p className="font-medium mb-1">Body analysis coming soon</p>
+				<p className="font-medium mb-1">No muscle data yet</p>
 				<p className="text-xs mb-4">
 					Complete some workouts to see your muscle balance and body part
 					analysis
