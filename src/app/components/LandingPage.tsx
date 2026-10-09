@@ -220,9 +220,12 @@ export function LandingPage() {
 		setAuthLoading(true);
 		setAuthAlertMessage(null);
 		try {
+			// index.html sends no Referer, so name the confirmation-link target
+			// explicitly; without it GoTrue falls back to the Site URL.
 			const { error } = await supabase.auth.signUp({
 				email: data.email,
 				password: data.password,
+				options: { emailRedirectTo: `${window.location.origin}/` },
 			});
 			if (error) {
 				setAuthAlertMessage(error.message);
