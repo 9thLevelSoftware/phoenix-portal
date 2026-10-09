@@ -446,7 +446,8 @@ Six workflows in `.github/workflows/`. Read the file rather than a step's
   twice: `SYNC_LWW_ENABLED=false` and `SYNC_LWW_ENABLED=true`. Both must pass.
   The push handler has a separate write path for each flag value and the
   production value is unknown (NF-50). Each run covers **every** Edge handler
-  suite, not just mobile-sync), `unit-test` (`npm test`), `e2e`
+  suite, not just mobile-sync. Then `npm run test:edge:mutation-bar`, the
+  Liftosaur resumable-backfill mutation bar), `unit-test` (`npm test`), `e2e`
   (`npm run test:e2e`, Playwright against mocked REST, plus
   `npm run test:e2e:pwa`), and `build` (production build plus
   `assert:no-sourcemaps`, `assert:bundle-budget`, and
