@@ -630,7 +630,8 @@ async function mobileSyncPullHandler(
             'core_revision,core_updated_at,equipment_rack,rack_revision,rack_updated_at,' +
             'workout_preferences,workout_revision,workout_updated_at,' +
             'led_color_scheme_id,led_preferences,led_revision,led_updated_at,' +
-            'vbt_enabled,vbt_preferences,vbt_revision,vbt_updated_at',
+            'vbt_enabled,vbt_preferences,vbt_revision,vbt_updated_at,' +
+            'custom_equipment,custom_equipment_revision,custom_equipment_updated_at',
           )
           .eq('user_id', verifiedUserId)
           .eq('local_profile_id', profileId)

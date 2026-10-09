@@ -160,19 +160,20 @@ SELECT results_eq(
         WHERE attribute.attrelid = 'public.local_profile_preferences'::regclass
           AND attribute.attname IN (
               'core_revision', 'rack_revision', 'workout_revision',
-              'led_revision', 'vbt_revision'
+              'led_revision', 'vbt_revision', 'custom_equipment_revision'
           )
         ORDER BY attribute.attname
     $sql$,
     $values$
         VALUES
             ('core_revision'::text COLLATE "C", 'bigint'::text COLLATE "C", true, '0'::text COLLATE "C"),
+            ('custom_equipment_revision'::text COLLATE "C", 'bigint'::text COLLATE "C", true, '0'::text COLLATE "C"),
             ('led_revision'::text COLLATE "C", 'bigint'::text COLLATE "C", true, '0'::text COLLATE "C"),
             ('rack_revision'::text COLLATE "C", 'bigint'::text COLLATE "C", true, '0'::text COLLATE "C"),
             ('vbt_revision'::text COLLATE "C", 'bigint'::text COLLATE "C", true, '0'::text COLLATE "C"),
             ('workout_revision'::text COLLATE "C", 'bigint'::text COLLATE "C", true, '0'::text COLLATE "C")
     $values$,
-    'the five section revisions are independent non-null bigint counters defaulting to zero'
+    'the six section revisions are independent non-null bigint counters defaulting to zero'
 );
 
 SELECT is(
@@ -207,12 +208,13 @@ SELECT is(
             GROUP BY constraint_row.oid
             HAVING bool_or(attribute.attname = ANY (ARRAY[
                 'core_revision', 'rack_revision', 'workout_revision',
-                'led_revision', 'vbt_revision'
+                'led_revision', 'vbt_revision', 'custom_equipment_revision'
             ]::name[]))
         ) AS check_row
     ),
     '[
         {"name":"local_profile_preferences_core_revision_check","columns":["core_revision"],"expression":"core_revision >= 0"},
+        {"name":"local_profile_preferences_custom_equipment_revision_check","columns":["custom_equipment_revision"],"expression":"custom_equipment_revision >= 0"},
         {"name":"local_profile_preferences_led_revision_check","columns":["led_revision"],"expression":"led_revision >= 0"},
         {"name":"local_profile_preferences_rack_revision_check","columns":["rack_revision"],"expression":"rack_revision >= 0"},
         {"name":"local_profile_preferences_vbt_revision_check","columns":["vbt_revision"],"expression":"vbt_revision >= 0"},
@@ -235,19 +237,20 @@ SELECT results_eq(
         WHERE attribute.attrelid = 'public.local_profile_preferences'::regclass
           AND attribute.attname IN (
               'core_updated_at', 'rack_updated_at', 'workout_updated_at',
-              'led_updated_at', 'vbt_updated_at'
+              'led_updated_at', 'vbt_updated_at', 'custom_equipment_updated_at'
           )
         ORDER BY attribute.attname
     $sql$,
     $values$
         VALUES
             ('core_updated_at'::text COLLATE "C", 'timestamp with time zone'::text COLLATE "C", true, true),
+            ('custom_equipment_updated_at'::text COLLATE "C", 'timestamp with time zone'::text COLLATE "C", true, true),
             ('led_updated_at'::text COLLATE "C", 'timestamp with time zone'::text COLLATE "C", true, true),
             ('rack_updated_at'::text COLLATE "C", 'timestamp with time zone'::text COLLATE "C", true, true),
             ('vbt_updated_at'::text COLLATE "C", 'timestamp with time zone'::text COLLATE "C", true, true),
             ('workout_updated_at'::text COLLATE "C", 'timestamp with time zone'::text COLLATE "C", true, true)
     $values$,
-    'all five sections have independent non-null timestamps with defaults'
+    'all six sections have independent non-null timestamps with defaults'
 );
 
 SELECT is(
@@ -692,6 +695,17 @@ FROM public.mutate_local_profile_preference_section(
     '{"vbtEnabled":false,"preferences":{"version":1,"velocityLossThresholdPercent":25,"autoEndOnVelocityLoss":true,"defaultScalingBasis":"MAX_WEIGHT_PR","verbalEncouragementEnabled":true,"vulgarModeEnabled":false,"vulgarTier":"STRONG","dominatrixModeUnlocked":false,"dominatrixModeActive":false}}'::jsonb
 ) AS result;
 
+INSERT INTO preference_mutation_results
+SELECT 'CUSTOM_EQUIPMENT', result.*
+FROM public.mutate_local_profile_preference_section(
+    '11111111-1111-4111-8111-111111111111'::uuid,
+    'all-sections',
+    'CUSTOM_EQUIPMENT',
+    1,
+    0,
+    '{"version":1,"items":[{"token":"U_EZ_BAR","label":"EZ Bar","createdAt":1791500000000}]}'::jsonb
+) AS result;
+
 SELECT results_eq(
     $sql$
         SELECT
@@ -708,12 +722,13 @@ SELECT results_eq(
     $values$
         VALUES
             ('CORE'::text COLLATE "C", true, NULL::text COLLATE "C", 1::bigint, 'CORE'::text COLLATE "C", 1, 1::bigint),
+            ('CUSTOM_EQUIPMENT'::text COLLATE "C", true, NULL::text COLLATE "C", 1::bigint, 'CUSTOM_EQUIPMENT'::text COLLATE "C", 1, 1::bigint),
             ('LED'::text COLLATE "C", true, NULL::text COLLATE "C", 1::bigint, 'LED'::text COLLATE "C", 1, 1::bigint),
             ('RACK'::text COLLATE "C", true, NULL::text COLLATE "C", 1::bigint, 'RACK'::text COLLATE "C", 1, 1::bigint),
             ('VBT'::text COLLATE "C", true, NULL::text COLLATE "C", 1::bigint, 'VBT'::text COLLATE "C", 1, 1::bigint),
             ('WORKOUT'::text COLLATE "C", true, NULL::text COLLATE "C", 1::bigint, 'WORKOUT'::text COLLATE "C", 1, 1::bigint)
     $values$,
-    'all five sections accept base revision zero as server revision one'
+    'all six sections accept base revision zero as server revision one'
 );
 
 SELECT results_eq(
@@ -729,6 +744,10 @@ SELECT results_eq(
             (
                 'CORE'::text COLLATE "C",
                 '{"bodyWeightKg":82.5,"weightUnit":"KG","weightIncrement":2.5}'::jsonb
+            ),
+            (
+                'CUSTOM_EQUIPMENT'::text COLLATE "C",
+                '{"version":1,"items":[{"token":"U_EZ_BAR","label":"EZ Bar","createdAt":1791500000000}]}'::jsonb
             ),
             (
                 'LED'::text COLLATE "C",
@@ -757,13 +776,14 @@ SELECT is(
             rack_revision,
             workout_revision,
             led_revision,
-            vbt_revision
+            vbt_revision,
+            custom_equipment_revision
         ]
         FROM public.local_profile_preferences
         WHERE user_id = '11111111-1111-4111-8111-111111111111'::uuid
           AND local_profile_id = 'all-sections'
     ),
-    ARRAY[1, 1, 1, 1, 1]::bigint[],
+    ARRAY[1, 1, 1, 1, 1, 1]::bigint[],
     'accepting every base-zero section increments each independent revision once'
 );
 
@@ -799,13 +819,14 @@ SELECT is(
             rack_revision,
             workout_revision,
             led_revision,
-            vbt_revision
+            vbt_revision,
+            custom_equipment_revision
         ]
         FROM public.local_profile_preferences
         WHERE user_id = '11111111-1111-4111-8111-111111111111'::uuid
           AND local_profile_id = 'all-sections'
     ),
-    ARRAY[1, 1, 2, 1, 1]::bigint[],
+    ARRAY[1, 1, 2, 1, 1, 1]::bigint[],
     'a matching base increments only the targeted section revision'
 );
 
@@ -845,7 +866,8 @@ SELECT is(
             'VBT', jsonb_build_object(
                 'vbtEnabled', vbt_enabled,
                 'preferences', vbt_preferences
-            )
+            ),
+            'CUSTOM_EQUIPMENT', custom_equipment
         )
         FROM public.local_profile_preferences
         WHERE user_id = '11111111-1111-4111-8111-111111111111'::uuid
@@ -855,9 +877,10 @@ SELECT is(
         "CORE":{"bodyWeightKg":82.5,"weightUnit":"KG","weightIncrement":2.5},
         "RACK":{"version":1,"items":[{"id":"rack-1","weightKg":20}]},
         "LED":{"ledColorSchemeId":3,"preferences":{"version":1,"discoModeUnlocked":true}},
-        "VBT":{"vbtEnabled":false,"preferences":{"version":1,"velocityLossThresholdPercent":25,"autoEndOnVelocityLoss":true,"defaultScalingBasis":"MAX_WEIGHT_PR","verbalEncouragementEnabled":true,"vulgarModeEnabled":false,"vulgarTier":"STRONG","dominatrixModeUnlocked":false,"dominatrixModeActive":false}}
+        "VBT":{"vbtEnabled":false,"preferences":{"version":1,"velocityLossThresholdPercent":25,"autoEndOnVelocityLoss":true,"defaultScalingBasis":"MAX_WEIGHT_PR","verbalEncouragementEnabled":true,"vulgarModeEnabled":false,"vulgarTier":"STRONG","dominatrixModeUnlocked":false,"dominatrixModeActive":false}},
+        "CUSTOM_EQUIPMENT":{"version":1,"items":[{"token":"U_EZ_BAR","label":"EZ Bar","createdAt":1791500000000}]}
     }'::jsonb,
-    'matching WORKOUT mutation preserves exact CORE, RACK, LED, and VBT siblings'
+    'matching WORKOUT mutation preserves exact CORE, RACK, LED, VBT, and CUSTOM_EQUIPMENT siblings'
 );
 
 TRUNCATE preference_mutation_results;
@@ -987,6 +1010,7 @@ SELECT lives_ok(
                 ('empty-workout', 'WORKOUT', 2::bigint, '{}'::jsonb),
                 ('empty-led', 'LED', 1::bigint, '{}'::jsonb),
                 ('empty-vbt', 'VBT', 1::bigint, '{}'::jsonb),
+                ('empty-custom-equipment', 'CUSTOM_EQUIPMENT', 1::bigint, '{}'::jsonb),
                 (
                     'invalid-core-number',
                     'CORE',
@@ -1044,6 +1068,7 @@ SELECT results_eq(
     $values$
         VALUES
             ('empty-core'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('empty-custom-equipment'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('empty-led'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('empty-rack'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('empty-vbt'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
@@ -1055,6 +1080,185 @@ SELECT results_eq(
             ('overflow-workout-countdown'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb)
     $values$,
     'malformed section objects return the exact validation rejection contract'
+);
+
+SELECT diag('database:custom-equipment-payload-validation');
+
+SELECT results_eq(
+    $sql$
+        SELECT
+            accepted,
+            rejection_reason COLLATE "C",
+            server_revision,
+            (canonical_section ->> 'section') COLLATE "C",
+            (canonical_section ->> 'documentVersion')::integer,
+            (canonical_section ->> 'serverRevision')::bigint,
+            canonical_section -> 'payload'
+        FROM public.mutate_local_profile_preference_section(
+            '11111111-1111-4111-8111-111111111111'::uuid,
+            'shared',
+            'CUSTOM_EQUIPMENT',
+            1,
+            0,
+            '{"version":1,"items":[{"token":"U_EZ_BAR","label":"EZ Bar","createdAt":1791500000000}]}'::jsonb
+        )
+    $sql$,
+    $values$
+        VALUES (
+            true,
+            NULL::text COLLATE "C",
+            1::bigint,
+            'CUSTOM_EQUIPMENT'::text COLLATE "C",
+            1,
+            1::bigint,
+            '{"version":1,"items":[{"token":"U_EZ_BAR","label":"EZ Bar","createdAt":1791500000000}]}'::jsonb
+        )
+    $values$,
+    'a valid CUSTOM_EQUIPMENT payload at base revision zero is accepted as server revision one'
+);
+
+SELECT is(
+    (
+        SELECT custom_equipment_revision
+        FROM public.local_profile_preferences
+        WHERE user_id = '11111111-1111-4111-8111-111111111111'::uuid
+          AND local_profile_id = 'shared'
+    ),
+    1::bigint,
+    'the accepted CUSTOM_EQUIPMENT payload bumps custom_equipment_revision to one'
+);
+
+CREATE TEMP TABLE custom_equipment_rejection_results (
+    case_name text NOT NULL,
+    accepted boolean,
+    rejection_reason text,
+    server_revision bigint,
+    canonical_section jsonb
+) ON COMMIT DROP;
+
+SELECT lives_ok(
+    $sql$
+        INSERT INTO custom_equipment_rejection_results
+        SELECT custom_case.case_name, result.*
+        FROM (
+            VALUES
+                (
+                    'invalid-token-prefix',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":1,"items":[{"token":"EZ_BAR","label":"EZ Bar","createdAt":1791500000000}]}'::jsonb
+                ),
+                (
+                    'twenty-five-items',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":1,"items":[{"token":"U_ITEM_01","label":"Item 01","createdAt":1791500000000},{"token":"U_ITEM_02","label":"Item 02","createdAt":1791500000000},{"token":"U_ITEM_03","label":"Item 03","createdAt":1791500000000},{"token":"U_ITEM_04","label":"Item 04","createdAt":1791500000000},{"token":"U_ITEM_05","label":"Item 05","createdAt":1791500000000},{"token":"U_ITEM_06","label":"Item 06","createdAt":1791500000000},{"token":"U_ITEM_07","label":"Item 07","createdAt":1791500000000},{"token":"U_ITEM_08","label":"Item 08","createdAt":1791500000000},{"token":"U_ITEM_09","label":"Item 09","createdAt":1791500000000},{"token":"U_ITEM_10","label":"Item 10","createdAt":1791500000000},{"token":"U_ITEM_11","label":"Item 11","createdAt":1791500000000},{"token":"U_ITEM_12","label":"Item 12","createdAt":1791500000000},{"token":"U_ITEM_13","label":"Item 13","createdAt":1791500000000},{"token":"U_ITEM_14","label":"Item 14","createdAt":1791500000000},{"token":"U_ITEM_15","label":"Item 15","createdAt":1791500000000},{"token":"U_ITEM_16","label":"Item 16","createdAt":1791500000000},{"token":"U_ITEM_17","label":"Item 17","createdAt":1791500000000},{"token":"U_ITEM_18","label":"Item 18","createdAt":1791500000000},{"token":"U_ITEM_19","label":"Item 19","createdAt":1791500000000},{"token":"U_ITEM_20","label":"Item 20","createdAt":1791500000000},{"token":"U_ITEM_21","label":"Item 21","createdAt":1791500000000},{"token":"U_ITEM_22","label":"Item 22","createdAt":1791500000000},{"token":"U_ITEM_23","label":"Item 23","createdAt":1791500000000},{"token":"U_ITEM_24","label":"Item 24","createdAt":1791500000000},{"token":"U_ITEM_25","label":"Item 25","createdAt":1791500000000}]}'::jsonb
+                ),
+                (
+                    'duplicate-label',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":1,"items":[{"token":"U_EZ_BAR","label":"EZ Bar","createdAt":1791500000000},{"token":"U_EZ_BAR_2","label":"EZ Bar","createdAt":1791500000001}]}'::jsonb
+                ),
+                (
+                    'duplicate-label-case-equivalent',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":1,"items":[{"token":"U_EZ_BAR","label":"EZ Bar","createdAt":1791500000000},{"token":"U_EZ_BAR_2","label":"ez-bar","createdAt":1791500000001}]}'::jsonb
+                ),
+                (
+                    'label-with-comma',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":1,"items":[{"token":"U_EZ_BAR","label":"EZ, Bar","createdAt":1791500000000}]}'::jsonb
+                ),
+                (
+                    'label-with-control-character',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":1,"items":[{"token":"U_EZ_BAR","label":"EZ\u0001Bar","createdAt":1791500000000}]}'::jsonb
+                ),
+                (
+                    'label-too-long',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":1,"items":[{"token":"U_EZ_BAR","label":"A Really Long Custom Equipment Label","createdAt":1791500000000}]}'::jsonb
+                ),
+                (
+                    'oversized-document',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    (
+                        '{"version":1,"items":[{"token":"U_EZ_BAR","label":"EZ Bar","createdAt":'
+                        || repeat('9', 9000)
+                        || '}]}'
+                    )::jsonb
+                ),
+                (
+                    'unknown-section-name',
+                    'EQUIPMENT',
+                    0::bigint,
+                    '{}'::jsonb
+                )
+        ) AS custom_case(case_name, section_name, base_revision, payload)
+        CROSS JOIN LATERAL public.mutate_local_profile_preference_section(
+            '11111111-1111-4111-8111-111111111111'::uuid,
+            'all-sections',
+            custom_case.section_name,
+            1,
+            custom_case.base_revision,
+            custom_case.payload
+        ) AS result
+    $sql$,
+    'custom equipment contract violations return rejection rows without raising database exceptions'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT
+            case_name COLLATE "C",
+            accepted,
+            rejection_reason COLLATE "C",
+            server_revision,
+            canonical_section
+        FROM custom_equipment_rejection_results
+        ORDER BY case_name
+    $sql$,
+    $values$
+        VALUES
+            ('duplicate-label'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('duplicate-label-case-equivalent'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('invalid-token-prefix'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('label-too-long'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('label-with-comma'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('label-with-control-character'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('oversized-document'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('twenty-five-items'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('unknown-section-name'::text COLLATE "C", false, 'UNSUPPORTED_SECTION'::text COLLATE "C", 0::bigint, NULL::jsonb)
+    $values$,
+    'custom equipment contract violations return the exact validation rejection contract and unknown sections stay unsupported'
+);
+
+SELECT is(
+    (
+        SELECT custom_equipment_revision
+        FROM public.local_profile_preferences
+        WHERE user_id = '11111111-1111-4111-8111-111111111111'::uuid
+          AND local_profile_id = 'all-sections'
+    ),
+    1::bigint,
+    'custom equipment rejections leave custom_equipment_revision unchanged'
+);
+
+SELECT is(
+    (
+        SELECT custom_equipment
+        FROM public.local_profile_preferences
+        WHERE user_id = '11111111-1111-4111-8111-111111111111'::uuid
+          AND local_profile_id = 'all-sections'
+    ),
+    '{"version":1,"items":[{"token":"U_EZ_BAR","label":"EZ Bar","createdAt":1791500000000}]}'::jsonb,
+    'custom equipment rejections leave the stored document unchanged'
 );
 
 CREATE TEMP TABLE required_nested_key_state_before ON COMMIT DROP AS

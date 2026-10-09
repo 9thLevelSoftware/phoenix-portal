@@ -5,7 +5,8 @@ export type ProfilePreferenceSection =
   | "RACK"
   | "WORKOUT"
   | "LED"
-  | "VBT";
+  | "VBT"
+  | "CUSTOM_EQUIPMENT";
 
 export interface PortalProfilePreferenceSectionMutation {
   localProfileId: string;
@@ -590,6 +591,85 @@ export function validateRackPayload(value: unknown): JsonRecord {
   return payload;
 }
 
+// CUSTOM_EQUIPMENT (issue #1227). One normalization/validation rule set shared with
+// the mobile Kotlin validator and the SQL CHECK constraint; do not fork it.
+const CUSTOM_EQUIPMENT_ITEM_KEYS = ["token", "label", "createdAt"] as const;
+const CUSTOM_EQUIPMENT_TOKEN = /^U_[A-Z0-9_]{1,40}$/;
+const CUSTOM_EQUIPMENT_MAX_ITEMS = 24;
+const CUSTOM_EQUIPMENT_MAX_LABEL_CHARS = 32;
+const CUSTOM_EQUIPMENT_MAX_BYTES = 8192;
+const CUSTOM_EQUIPMENT_RESERVED_SLUGS = new Set([
+  "LONG_BAR",
+  "BENCH",
+  "HANDLES",
+  "SHORT_BAR",
+  "ANKLE_STRAP",
+  "BELT",
+  "ROPE",
+  "BODYWEIGHT",
+  "CABLE",
+  "BAR",
+  "BARBELL",
+  "SINGLE_HANDLE",
+  "BOTH_HANDLES",
+  "STRAPS",
+  "BLACK_CABLES",
+  "RED_CABLES",
+  "GREY_CABLES",
+  "CABLES",
+  "PUMP_HANDLES",
+  "DUMBBELLS",
+]);
+
+/** Shared slug rule: trim, uppercase, runs of non-alphanumerics -> one "_", strip "_". */
+export const customEquipmentSlug = (label: string): string =>
+  label.trim().toUpperCase().replace(/[^A-Za-z0-9]+/g, "_").replace(
+    /^_+|_+$/g,
+    "",
+  );
+
+export const customEquipmentTokenFor = (label: string): string | null => {
+  const slug = customEquipmentSlug(label);
+  return slug.length === 0 ? null : "U_" + slug;
+};
+
+export function validateCustomEquipmentPayload(value: unknown): JsonRecord {
+  const payload = requireExactRecord(value, ["version", "items"], "payload");
+  requireVersionOne(payload.version, "payload.version");
+  const items = requireArray(payload.items, "payload.items");
+  if (items.length > CUSTOM_EQUIPMENT_MAX_ITEMS) fail("payload.items");
+  const tokens = new Set<string>();
+  const labelSlugs = new Set<string>();
+  items.forEach((rawItem, index) => {
+    const field = "payload.items[" + index + "]";
+    const item = requireExactRecord(rawItem, CUSTOM_EQUIPMENT_ITEM_KEYS, field);
+    const token = requirePostgresString(item.token, field + ".token");
+    if (!CUSTOM_EQUIPMENT_TOKEN.test(token)) fail(field + ".token");
+    const label = requirePostgresString(item.label, field + ".label");
+    const trimmed = label.trim();
+    if (trimmed.length === 0) fail(field + ".label");
+    if (trimmed.length > CUSTOM_EQUIPMENT_MAX_LABEL_CHARS) {
+      fail(field + ".label");
+    }
+    if (label.includes(",")) fail(field + ".label");
+    for (let index = 0; index < label.length; index += 1) {
+      const codeUnit = label.charCodeAt(index);
+      if (codeUnit <= 0x1f || codeUnit === 0x7f) fail(field + ".label");
+    }
+    const slug = customEquipmentSlug(label);
+    if (slug.length === 0) fail(field + ".label");
+    if (CUSTOM_EQUIPMENT_RESERVED_SLUGS.has(slug)) fail(field + ".label");
+    if (tokens.has(token)) fail(field + ".token");
+    if (labelSlugs.has(slug)) fail(field + ".label");
+    tokens.add(token);
+    labelSlugs.add(slug);
+    requireSafeJsonLong(item.createdAt, field + ".createdAt");
+  });
+  const documentBytes = utf8Bytes(JSON.stringify(payload));
+  if (documentBytes > CUSTOM_EQUIPMENT_MAX_BYTES) fail("payload");
+  return payload;
+}
+
 const JUST_LIFT_KEYS = [
   "workoutModeId",
   "weightPerCableKg",
@@ -917,7 +997,14 @@ export function parsePreferenceMutation(
     fail("mutation.section", "UNSUPPORTED_SECTION");
   }
   if (
-    !(["CORE", "RACK", "WORKOUT", "LED", "VBT"] as string[]).includes(
+    !([
+      "CORE",
+      "RACK",
+      "WORKOUT",
+      "LED",
+      "VBT",
+      "CUSTOM_EQUIPMENT",
+    ] as string[]).includes(
       rawSection,
     )
   ) {
@@ -943,6 +1030,7 @@ export function parsePreferenceMutation(
     WORKOUT: validateWorkoutPayload,
     LED: validateLedPayload,
     VBT: validateVbtPayload,
+    CUSTOM_EQUIPMENT: validateCustomEquipmentPayload,
   } as const)[section](mutation.payload);
   return {
     localProfileId,
@@ -1154,6 +1242,7 @@ export function parseInfrastructureCanonical(
       WORKOUT: validateWorkoutPayload,
       LED: validateLedPayload,
       VBT: validateVbtPayload,
+      CUSTOM_EQUIPMENT: validateCustomEquipmentPayload,
     } as const)[mutation.section](canonical.payload);
     return {
       localProfileId: mutation.localProfileId,
@@ -1250,6 +1339,9 @@ const PULL_PREFERENCE_ROW_KEYS = [
   "vbt_preferences",
   "vbt_revision",
   "vbt_updated_at",
+  "custom_equipment",
+  "custom_equipment_revision",
+  "custom_equipment_updated_at",
 ] as const;
 
 const pullCanonical = (
@@ -1344,6 +1436,16 @@ export function parsePullPreferenceRow(
           vbtEnabled: row.vbt_enabled,
           preferences: row.vbt_preferences,
         }),
+      ),
+      pullCanonical(
+        localProfileId,
+        "CUSTOM_EQUIPMENT",
+        infrastructureRevision(row.custom_equipment_revision),
+        requireRfc3339Instant(
+          row.custom_equipment_updated_at,
+          "pull.preferenceRow.custom_equipment_updated_at",
+        ),
+        validateCustomEquipmentPayload(row.custom_equipment),
       ),
     ];
   } catch (error) {

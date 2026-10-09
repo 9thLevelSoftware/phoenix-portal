@@ -888,6 +888,9 @@ export type Database = {
 					body_weight_kg: number;
 					core_revision: number;
 					core_updated_at: string;
+					custom_equipment: Json;
+					custom_equipment_revision: number;
+					custom_equipment_updated_at: string;
 					equipment_rack: Json;
 					led_color_scheme_id: number;
 					led_preferences: Json;
@@ -913,6 +916,9 @@ export type Database = {
 					body_weight_kg?: number;
 					core_revision?: number;
 					core_updated_at?: string;
+					custom_equipment?: Json;
+					custom_equipment_revision?: number;
+					custom_equipment_updated_at?: string;
 					equipment_rack?: Json;
 					led_color_scheme_id?: number;
 					led_preferences?: Json;
@@ -938,6 +944,9 @@ export type Database = {
 					body_weight_kg?: number;
 					core_revision?: number;
 					core_updated_at?: string;
+					custom_equipment?: Json;
+					custom_equipment_revision?: number;
+					custom_equipment_updated_at?: string;
 					equipment_rack?: Json;
 					led_color_scheme_id?: number;
 					led_preferences?: Json;
