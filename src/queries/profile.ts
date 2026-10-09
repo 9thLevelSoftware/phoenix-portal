@@ -87,7 +87,8 @@ export function topExercisesOptions(userId: string, profileId?: string | null) {
 		...exerciseFrequencyOptions(userId, profileId),
 		select: (rows) =>
 			rows.slice(0, 5).map((row) => ({
-				name: row.exercise_name,
+				// NULL and blank names stay separate aggregates; only the label is filled in.
+				name: row.exercise_name?.trim() || "Unknown",
 				count: row.sessions,
 			})),
 	});

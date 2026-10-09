@@ -591,7 +591,8 @@ export function Profile() {
 									<div className="space-y-4">
 										{topExercises.map((exercise, index) => (
 											<div
-												key={exercise.name}
+												// biome-ignore lint/suspicious/noArrayIndexKey: rank keeps rows that share the Unknown label unique
+												key={`${index}-${exercise.name}`}
 												className="flex items-center justify-between p-3 bg-background rounded-lg border border-secondary"
 											>
 												<div className="flex items-center gap-3">
