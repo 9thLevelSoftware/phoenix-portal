@@ -212,8 +212,50 @@ function baseTables(lastSyncAt: string | null, stored: StravaActivity[]): Record
   };
 }
 
+/**
+ * save_sync_state_if_queue_owned (20260924150000): write the listed state
+ * keys only while the queue row is still this run's processing claim.
+ * A null queue id always saves.
+ */
+function installQueueOwnedStateSave(db: FakeDb): void {
+  if (db.rpcHandlers.save_sync_state_if_queue_owned) return;
+  const stateKeys = [
+    "status",
+    "error_message",
+    "last_sync_at",
+    "backfill_before",
+    "backfill_after",
+    "backfill_started_at",
+  ] as const;
+  db.rpcHandlers.save_sync_state_if_queue_owned = (args: Row) => {
+    if (args.p_queue_id != null) {
+      const owned = db.rows("sync_queue").some((row) =>
+        row.id === args.p_queue_id &&
+        row.user_id === args.p_user_id &&
+        row.provider === args.p_provider &&
+        row.status === "processing" &&
+        (args.p_attempt == null || Number(row.retry_count ?? 0) === args.p_attempt)
+      );
+      if (!owned) return { data: false, error: null };
+    }
+    const patch = args.p_state;
+    if (!patch || typeof patch !== "object") {
+      return { data: null, error: { message: "state object required" } };
+    }
+    const state = patch as Row;
+    for (const row of db.rows("user_integrations")) {
+      if (row.user_id !== args.p_user_id || row.provider !== args.p_provider) continue;
+      for (const key of stateKeys) {
+        if (Object.hasOwn(state, key)) row[key] = state[key];
+      }
+    }
+    return { data: true, error: null };
+  };
+}
+
 function harness(tables: Record<string, Row[]>, activities: StravaActivity[]) {
   const db = new FakeDb(tables);
+  installQueueOwnedStateSave(db);
   const stravaCalls: URLSearchParams[] = [];
   let clock = NOW;
   const handler = createStravaSyncHandler({
@@ -421,7 +463,23 @@ function createDbDouble(state: DbState) {
     ) => Promise.resolve(resolve()).then(onFulfilled, onRejected);
     return builder;
   };
-  return { from, rpc: () => Promise.resolve({ data: null, error: null }) };
+  return {
+    from,
+    rpc: (name: string, args: Record<string, unknown> = {}) => {
+      if (name !== "save_sync_state_if_queue_owned") {
+        return Promise.resolve({
+          data: null,
+          error: { message: `no rpc stub registered for ${name}` },
+        });
+      }
+      // Suite C dispatches with no queue row, so the RPC always saves.
+      const patch = args.p_state;
+      if (patch && typeof patch === "object" && "last_sync_at" in patch) {
+        state.lastSyncAt = (patch as { last_sync_at: string | null }).last_sync_at;
+      }
+      return Promise.resolve({ data: true, error: null });
+    },
+  };
 }
 
 interface UpstreamActivity {
@@ -923,6 +981,7 @@ const queueRow = (id: string, syncType: string, status: string, startedAt: strin
   started_at: startedAt,
   completed_at: null,
   error_message: null,
+  retry_count: 0,
 });
 
 const json = (body: unknown, status = 200) =>
@@ -974,6 +1033,7 @@ function queueHarness(
     tables,
     [syncQueueOneActiveIndex, syncQueueOneProcessingIndex],
   );
+  installQueueOwnedStateSave(db);
   const upserts: Array<{ table: string; rows: number }> = [];
   const heartbeats: string[] = [];
   const fetchUrls: string[] = [];
@@ -1093,6 +1153,67 @@ Deno.test("strava-sync: completing a queued task leaves the user's second pendin
   assertEquals(second.status, "pending");
   assertEquals(second.completed_at, null);
   assertEquals(second.started_at, null);
+  const save = h.db.rpcCalls.find((call) => call.name === "save_sync_state_if_queue_owned");
+  assertEquals(save?.args.p_queue_id, QUEUE_ID);
+  assertEquals(save?.args.p_attempt, 0);
+  assertEquals(save?.args.p_provider, "strava");
+});
+
+Deno.test("strava-sync: a run that no longer owns its queue row writes no integration state and stops", async () => {
+  const tables = baseTables(T0, HISTORY);
+  // A replacement already holds this id as generation 1. This dispatch was
+  // claimed at generation 0 and must not take over.
+  tables.sync_queue = [
+    { ...queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT), retry_count: 1 },
+  ];
+  const h = queueHarness(tables, (url) => stravaActivitiesResponse(SINCE_T0, url));
+  const before = { ...integrationOf(h) };
+
+  const res = await h.call({
+    sync_type: "incremental",
+    queue_id: QUEUE_ID,
+    claim_generation: 0,
+  });
+
+  assertEquals(res.status, 409, await res.clone().text());
+  assertEquals(await res.json(), {
+    error: "Sync queue entry is no longer this run's",
+    code: "queue_not_owned",
+  });
+  assertEquals(integrationOf(h), before);
+  const [row] = h.db.rows("sync_queue");
+  assertEquals(row.status, "processing");
+  assertEquals(row.retry_count, 1);
+  assertEquals(row.completed_at, null);
+  const saves = h.db.rpcCalls.filter((call) => call.name === "save_sync_state_if_queue_owned");
+  assertEquals(saves.length, 1);
+  assertEquals(saves[0].args.p_queue_id, QUEUE_ID);
+  assertEquals(saves[0].args.p_attempt, 0);
+  assertEquals(saves[0].args.p_user_id, USER_ID);
+});
+
+Deno.test("strava-sync: a cancelled queue row is not marked token_expired", async () => {
+  const tables = expiredTokenTables();
+  tables.sync_queue = [queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT)];
+  const h = queueHarness(tables, (url) => {
+    if (url.pathname !== "/oauth/token") return json([]);
+    // Disconnect cancelled the row while this run was still at Strava.
+    h.db.rows("sync_queue")[0].status = "cancelled";
+    return json(REVOKED_GRANT_BODY, 400);
+  });
+  const before = { ...integrationOf(h) };
+
+  const res = await h.call({
+    sync_type: "incremental",
+    queue_id: QUEUE_ID,
+    claim_generation: 0,
+  });
+
+  assertEquals(res.status, 409, await res.clone().text());
+  assertEquals((await res.json()).code, "queue_not_owned");
+  assertEquals(integrationOf(h), before);
+  assertEquals(h.db.rows("sync_queue")[0].status, "cancelled");
+  assertEquals(h.fetchUrls.filter((u) => u.includes("/athlete/activities")), []);
 });
 
 Deno.test("strava-sync: a refresh that names the refresh token marks the integration token_expired", async () => {
