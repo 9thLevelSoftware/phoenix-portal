@@ -238,6 +238,10 @@ Deno.test("liftosaur-sync: completing the dispatched task leaves the user's seco
   assertEquals(second.status, "pending");
   assertEquals(second.completed_at, null);
   assertEquals(db.rows("external_activities").length, 3);
+  const save = db.rpcCalls.find((call) => call.name === "save_sync_state_if_queue_owned");
+  assertEquals(save?.args.p_queue_id, QUEUE_ID);
+  assertEquals(save?.args.p_attempt, 0);
+  assertEquals(save?.args.p_provider, "liftosaur");
 });
 
 Deno.test("liftosaur-sync: the queue lease is renewed on entry, per page and per 100 records", async () => {
@@ -381,6 +385,100 @@ Deno.test("liftosaur-sync: completion requires the claim generation", async () =
   const lost = await handler({ sync_type: "manual", queue_id: QUEUE_ID, claim_generation: 0 });
   assertEquals(lost.status, 502, await lost.clone().text());
   assertEquals(again.rows("sync_queue")[0].status, "processing", "the replacement's row is not completed");
+});
+
+/** Make every external_activities upsert fail, so the persist-failure path runs. */
+function failActivityUpserts(db: FakeDb): void {
+  const from = db.from.bind(db);
+  db.from = (table: string) => {
+    const query = from(table);
+    if (table !== "external_activities") return query;
+    const failed = {
+      then: (resolve: (value: unknown) => unknown) =>
+        Promise.resolve({ data: null, error: { message: "upsert failed" } }).then(resolve),
+    };
+    // deno-lint-ignore no-explicit-any
+    query.upsert = (() => failed) as any;
+    return query;
+  };
+}
+
+Deno.test("liftosaur-sync: a persist failure writes integration state only while the run owns the row", async () => {
+  const db = new FakeDb(tables([queueRow(QUEUE_ID, "manual", "processing", CLAIMED_AT)]));
+  failActivityUpserts(db);
+  const res = await harness(db, 1)({
+    sync_type: "manual",
+    queue_id: QUEUE_ID,
+    claim_generation: 0,
+  });
+  assertEquals(res.status, 502, await res.clone().text());
+  assertEquals(await res.json(), {
+    error: "Failed to persist 1 of 1 records",
+    imported: 0,
+    failed: 1,
+  });
+  const integration = db.rows("user_integrations")[0];
+  assertEquals(integration.status, "error");
+  assertEquals(integration.error_message, "Failed to persist 1 of 1 records");
+  assertEquals(integration.last_sync_at, null);
+  assertEquals(db.rows("sync_queue")[0].status, "processing");
+  assertEquals(db.rows("sync_queue")[0].completed_at, null);
+  const saves = db.rpcCalls.filter((call) => call.name === "save_sync_state_if_queue_owned");
+  assertEquals(saves.length, 1);
+  assertEquals(saves[0].args.p_queue_id, QUEUE_ID);
+  assertEquals(saves[0].args.p_attempt, 0);
+  assertEquals(saves[0].args.p_provider, "liftosaur");
+  assertEquals(saves[0].args.p_user_id, USER_ID);
+});
+
+Deno.test("liftosaur-sync: a persist failure that no longer owns its queue row writes nothing and stops", async () => {
+  const db = new FakeDb(tables([
+    { ...queueRow(QUEUE_ID, "manual", "processing", CLAIMED_AT), retry_count: 1 },
+  ]));
+  failActivityUpserts(db);
+  const before = { ...db.rows("user_integrations")[0] };
+  const res = await harness(db, 1)({
+    sync_type: "manual",
+    queue_id: QUEUE_ID,
+    claim_generation: 0,
+  });
+  assertEquals(res.status, 409, await res.clone().text());
+  assertEquals(await res.json(), {
+    error: "Sync queue entry is no longer this run's",
+    code: "queue_not_owned",
+  });
+  assertEquals(db.rows("user_integrations")[0], before);
+  const [row] = db.rows("sync_queue");
+  assertEquals(row.status, "processing");
+  assertEquals(row.retry_count, 1);
+  assertEquals(row.completed_at, null);
+  const saves = db.rpcCalls.filter((call) => call.name === "save_sync_state_if_queue_owned");
+  assertEquals(saves.length, 1);
+  assertEquals(saves[0].args.p_queue_id, QUEUE_ID);
+  assertEquals(saves[0].args.p_attempt, 0);
+});
+
+Deno.test("liftosaur-sync: a persist-failure state save that errors is a retryable 502 and writes nothing", async () => {
+  const db = new FakeDb(tables([queueRow(QUEUE_ID, "manual", "processing", CLAIMED_AT)]));
+  db.rpcHandlers.save_sync_state_if_queue_owned = () => ({
+    data: null,
+    error: { message: "rpc failed" },
+  });
+  failActivityUpserts(db);
+  const before = { ...db.rows("user_integrations")[0] };
+  const res = await harness(db, 1)({
+    sync_type: "manual",
+    queue_id: QUEUE_ID,
+    claim_generation: 0,
+  });
+  assertEquals(res.status, 502, await res.clone().text());
+  assertEquals(await res.json(), {
+    error: "Liftosaur sync failed; will retry",
+    code: "state_save_failed",
+  });
+  assertEquals(db.rows("user_integrations")[0], before);
+  assertEquals(db.rows("sync_queue")[0].status, "processing");
+  assertEquals(db.rows("sync_queue")[0].completed_at, null);
 });
 
 Deno.test("liftosaur-sync: an initial run with a pending incremental row lets that row continue the chain", async () => {
