@@ -1,5 +1,12 @@
 # End-to-End Operational Readiness Review Plan
 
+> **HISTORICAL — superseded.** This plan is a one-time end-to-end
+> operational readiness review. It is not the operating contract.
+> Day-to-day operations are `docs/runbooks/operations.md`. Readiness is
+> re-derived from `docs/axioms.md` and CI (`.github/workflows/ci.yml`).
+> The March 2026 sign-off is `docs/review/go-no-go-checklist.md`, itself a
+> dated snapshot. The steps below are kept as a record; do not follow them.
+
 ## Objective
 Perform a comprehensive, feature-focused, end-to-end operational readiness review of the app to ensure:
 - No stubs, placeholders, mock-only paths, or unfinished logic remain in production-facing flows.
