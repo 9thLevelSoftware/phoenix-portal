@@ -48,6 +48,7 @@ Add, for the work it touches:
 ```bash
 npm run test:sync   # sync, DTO or schema-transform work
 npm run test:edge   # ANY change under supabase/functions/ (Deno handler tests)
+npm run test:edge:mutation-bar   # Liftosaur resumable-backfill mutation bar (#204)
 npm run test:db     # migrations or pgTAP (needs a local Supabase stack)
 ```
 

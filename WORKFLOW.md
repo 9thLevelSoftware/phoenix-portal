@@ -83,6 +83,7 @@ Important commands:
 - Sync tests: `npm run test:sync`
 - Edge Function type-check and handler tests: `npm run check:edge-functions`,
   `npm run test:edge`
+- Liftosaur resumable-backfill mutation bar: `npm run test:edge:mutation-bar`
 - pgTAP against a local stack: `npm run test:db`
 - E2E tests: `npm run test:e2e`
 - Production build: `npm run build`
