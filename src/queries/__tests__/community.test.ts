@@ -136,6 +136,20 @@ describe("communityFeedOptions", () => {
 		});
 	});
 
+	it("escapes LIKE wildcards in the community name search", async () => {
+		const { communityFeedOptions } = await import("../community");
+		await communityFeedOptions({
+			tab: "routines",
+			sort: "new",
+			search: "100%_push\\day",
+		}).queryFn?.({ pageParam: 0 } as never);
+
+		expect(feedQuery.ilike).toHaveBeenCalledWith(
+			"name",
+			"%100\\%\\_push\\\\day%",
+		);
+	});
+
 	it("breaks equal timestamps with id after the existing sort keys", async () => {
 		const { communityFeedOptions } = await import("../community");
 

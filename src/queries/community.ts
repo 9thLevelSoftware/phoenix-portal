@@ -1,5 +1,6 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { z } from "zod";
+import { escapeLikeWildcards } from "@/lib/likePattern";
 import { supabase } from "@/lib/supabase";
 import {
 	fetchAllSupabasePages,
@@ -148,9 +149,10 @@ export function communityFeedOptions(params: FeedParams) {
 				query = query.eq("difficulty", params.filters.difficulty);
 			}
 
-			// Search
+			// Search. `%`, `_`, and `\` are LIKE wildcards; escape them so a
+			// name containing those characters matches literally.
 			if (params.search) {
-				query = query.ilike("name", `%${params.search}%`);
+				query = query.ilike("name", `%${escapeLikeWildcards(params.search)}%`);
 			}
 
 			// Pagination
