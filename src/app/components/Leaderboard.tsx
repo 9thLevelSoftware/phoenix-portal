@@ -66,13 +66,6 @@ function formatValue(value: number, metric: string, unit: WeightUnit): string {
 	if (metric.toLowerCase().includes("volume")) {
 		return formatLeaderboardValue(value, metric, unit);
 	}
-	if (
-		metric.toLowerCase().includes("streak") ||
-		metric.toLowerCase().includes("count") ||
-		metric.toLowerCase().includes("mastery")
-	) {
-		return String(value);
-	}
 	return String(value);
 }
 
