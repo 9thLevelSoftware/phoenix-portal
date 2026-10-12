@@ -15,7 +15,7 @@ import { Button } from "@/app/components/ui/button";
 import { PHOENIX } from "@/lib/colors";
 import type { ProgressionWorkbenchModel } from "@/lib/progression-workbench";
 import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
-import type { WeightUnit } from "@/lib/units";
+import { formatVolumeAxisTick, type WeightUnit } from "@/lib/units";
 import { perCableUnitLabel } from "@/lib/units/loadDisplay";
 import {
 	WORKOUT_PHASE_FILTERS,
@@ -213,9 +213,7 @@ export default function MobileProgressTab({
 							/>
 							<YAxis
 								stroke={PHOENIX().ashGray}
-								tickFormatter={(value) =>
-									value >= 1000 ? `${value / 1000}k` : `${value}`
-								}
+								tickFormatter={(value) => formatVolumeAxisTick(Number(value))}
 								tickLine={false}
 								axisLine={false}
 								tick={{

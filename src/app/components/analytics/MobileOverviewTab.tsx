@@ -13,6 +13,7 @@ import { TrainingLoadGauge } from "@/app/components/charts/TrainingLoadGauge";
 import { type InsightItem, InsightsFeed } from "@/app/components/InsightsFeed";
 import { PHOENIX } from "@/lib/colors";
 import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
+import { formatVolumeAxisTick } from "@/lib/units";
 
 interface ConsistencyData {
 	weeklyData: {
@@ -86,7 +87,7 @@ export default function MobileOverviewTab({
 							/>
 							<YAxis
 								stroke={PHOENIX().ashGray}
-								tickFormatter={(value) => `${value / 1000}k`}
+								tickFormatter={(value) => formatVolumeAxisTick(Number(value))}
 								tickLine={false}
 								axisLine={false}
 								tick={{
