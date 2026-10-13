@@ -74,6 +74,15 @@ const MAX_TASKS_PER_PROVIDER = 5;
 
 const RETRYABLE_STATUSES = [429, 502, 503, 504];
 
+/**
+ * A 5xx from requireSubscription is a lookup outage (it reports tier FREE),
+ * not a billing decision. Provider 500 stays terminal; only the gate's own
+ * outage code is retried outside RETRYABLE_STATUSES.
+ */
+function isSubscriptionGateOutage(status: number): boolean {
+  return status >= 500 && status < 600;
+}
+
 const RATE_LIMITS: Record<string, { requests: number; windowMs: number }> = {
   strava: { requests: 80, windowMs: 15 * 60 * 1000 },
   fitbit: { requests: 120, windowMs: 60 * 60 * 1000 },
@@ -418,22 +427,6 @@ async function processSyncQueue(
 
       claimedThisProvider++;
 
-      // Check subscription before calling sync function
-      const gate = await requireSubscription(supabase, task.user_id, 'FLAME', cors);
-      if (!gate.allowed) {
-        await supabase
-          .from('sync_queue')
-          .update({
-            status: 'failed',
-            error_message: `Subscription required: ${gate.tier} does not meet FLAME minimum`,
-            completed_at: new Date().toISOString(),
-          })
-          .eq('id', task.id)
-          .eq('status', 'processing');
-        results.failed++;
-        continue;
-      }
-
       // retry_count is the claim generation (nullable in the schema; a NULL
       // is normalised to 0 once, so every later check can compare exactly).
       const claimedRetry = (claimed as { retry_count?: number | null }).retry_count;
@@ -447,7 +440,39 @@ async function processSyncQueue(
       }
       const claimGeneration = Number(claimedRetry ?? 0);
 
+      // Check subscription before calling sync function. requireSubscription
+      // answers a lookup failure (or an unknown tier/status) with 503 and
+      // reports the tier as FREE. That is an outage, not a billing denial, so
+      // it takes the same requeue path as a retryable provider status. A real
+      // 402 stays a terminal denial.
+      const gate = await requireSubscription(supabase, task.user_id, 'FLAME', cors);
+      if (!gate.allowed && !isSubscriptionGateOutage(gate.response.status)) {
+        await supabase
+          .from('sync_queue')
+          .update({
+            status: 'failed',
+            error_message: `Subscription required: ${gate.tier} does not meet FLAME minimum`,
+            completed_at: new Date().toISOString(),
+          })
+          .eq('id', task.id)
+          // Same generation fence as the success and catch paths: a lease
+          // reclaim bumps retry_count before another pass re-claims this id.
+          .eq('status', 'processing')
+          .eq('retry_count', claimGeneration);
+        results.failed++;
+        continue;
+      }
+
       try {
+        if (!gate.allowed) {
+          // 5xx (today, the gate's 503). Throw into the catch below so the
+          // requeue, retry cap, and retry_count fence stay one path.
+          const error = new Error('subscription_unavailable') as SyncFunctionError;
+          error.status = gate.response.status;
+          error.failureCode = 'subscription_unavailable';
+          throw error;
+        }
+
         // Call provider-specific sync function with exponential backoff on transient errors
         const outcome = await backOff(
           () => callSyncFunction(
@@ -519,7 +544,12 @@ async function processSyncQueue(
             : `provider_sync_http_${err.status}`);
         let errorMessage = failureCode;
 
-        if (err.status !== undefined && RETRYABLE_STATUSES.includes(err.status)) {
+        const retryable = err.status !== undefined && (
+          RETRYABLE_STATUSES.includes(err.status) ||
+          (err.failureCode === 'subscription_unavailable' &&
+            isSubscriptionGateOutage(err.status))
+        );
+        if (retryable) {
           if (nextRetryCount >= MAX_RETRIES) {
             nextStatus = 'permanently_failed';
             errorMessage = `max_retries_exceeded: ${failureCode}`;

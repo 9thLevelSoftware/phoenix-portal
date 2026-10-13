@@ -31,6 +31,7 @@ function harness(
   env: Record<string, string>,
   tables: Record<string, Row[]> = {},
   respond: ProviderResponder = ok200,
+  adminClient?: (db: FakeDb) => unknown,
 ): Harness {
   const db = new FakeDb(tables);
   const fetchCalls: Harness["fetchCalls"] = [];
@@ -40,7 +41,7 @@ function harness(
     createAdminClient: () => {
       clientsCreated.value++;
       // deno-lint-ignore no-explicit-any
-      return db as any;
+      return (adminClient ? adminClient(db) : db) as any;
     },
     fetch: (input, init) => {
       fetchCalls.push({ url: String(input), init });
@@ -528,6 +529,178 @@ Deno.test("process-sync-queue: garmin's local refusal is not reported as a provi
   // No provider was called, so `provider_sync_http_400` would be a lie.
   assertEquals(task.error_message, "garmin_not_queueable");
   assertEquals(h.fetchCalls.length, 0);
+});
+
+/**
+ * requireSubscription reads `subscriptions` with select/eq/maybeSingle. Swap
+ * that lookup's result; every other table still uses the in-memory db.
+ */
+function subscriptionLookup(
+  db: FakeDb,
+  lookup: () => Promise<{ data: unknown; error: { message: string } | null }>,
+) {
+  return {
+    from(table: string) {
+      if (table !== "subscriptions") return db.from(table);
+      const chain = {
+        select() {
+          return chain;
+        },
+        eq() {
+          return chain;
+        },
+        maybeSingle() {
+          return lookup();
+        },
+      };
+      return chain;
+    },
+  };
+}
+
+const SUBSCRIPTION_LOOKUP_FAILED = {
+  data: null,
+  error: { message: "subscription lookup timeout", code: "57014" },
+};
+
+Deno.test("process-sync-queue: a subscription lookup 503 requeues instead of denying", async () => {
+  const NEWER_ID = "00000000-0000-4000-8000-0000000000bb";
+  const h = harness(
+    BASE_ENV,
+    {
+      sync_queue: [
+        pendingRow(TASK_ID, "incremental", "2026-09-14T00:00:00.000Z"),
+        pendingRow(NEWER_ID, "incremental", "2026-09-19T00:00:00.000Z"),
+      ],
+      subscriptions: [],
+      rate_limit_tracking: [],
+    },
+    ok200,
+    (db) =>
+      subscriptionLookup(db, () => Promise.resolve(SUBSCRIPTION_LOOKUP_FAILED)),
+  );
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(await res.json(), { processed: 0, failed: 1, skipped: 1 });
+  assertEquals(h.fetchCalls.length, 0, "the provider sync is not called");
+
+  const [task, newer] = h.db.tables.sync_queue;
+  assertEquals(task.status, "pending");
+  assertEquals(task.retry_count, 1);
+  assertEquals(task.error_message, "subscription_unavailable");
+  assertEquals(task.completed_at, null);
+  assert(
+    !String(task.error_message).includes("Subscription required"),
+    `denial text stored for an outage: ${task.error_message}`,
+  );
+  // The same user's newer row waits, as it does for a retryable provider status.
+  assertEquals(newer.status, "pending");
+  assertEquals(newer.started_at, null);
+  assertEquals(newer.retry_count, 0);
+});
+
+Deno.test("process-sync-queue: a subscription lookup 503 at the retry cap is permanently_failed", async () => {
+  const h = harness(
+    BASE_ENV,
+    {
+      sync_queue: [
+        pendingRow(TASK_ID, "incremental", "2026-09-14T00:00:00.000Z", {
+          retry_count: 9, // MAX_RETRIES - 1: this pass exhausts them.
+        }),
+      ],
+      rate_limit_tracking: [],
+    },
+    ok200,
+    (db) =>
+      subscriptionLookup(db, () => Promise.resolve(SUBSCRIPTION_LOOKUP_FAILED)),
+  );
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(await res.json(), { processed: 0, failed: 1, skipped: 0 });
+
+  const task = h.db.tables.sync_queue[0];
+  assertEquals(task.status, "permanently_failed");
+  assertEquals(task.retry_count, 10);
+  assertEquals(
+    task.error_message,
+    "max_retries_exceeded: subscription_unavailable",
+  );
+  assert(typeof task.completed_at === "string");
+  assertEquals(h.fetchCalls.length, 0);
+});
+
+Deno.test("process-sync-queue: a real 402 subscription denial stays terminal", async () => {
+  const h = harness(BASE_ENV, {
+    sync_queue: [
+      pendingRow(TASK_ID, "incremental", "2026-09-14T00:00:00.000Z"),
+    ],
+    subscriptions: [
+      {
+        user_id: USER_ID,
+        tier: "EMBER",
+        status: "active",
+        current_period_end: "2099-01-01T00:00:00.000Z",
+      },
+    ],
+    rate_limit_tracking: [],
+  });
+
+  const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+  assertEquals(await res.json(), { processed: 0, failed: 1, skipped: 0 });
+
+  const task = h.db.tables.sync_queue[0];
+  assertEquals(task.status, "failed");
+  assertEquals(
+    task.error_message,
+    "Subscription required: EMBER does not meet FLAME minimum",
+  );
+  assertEquals(task.retry_count, 0);
+  assert(typeof task.completed_at === "string");
+  assertEquals(h.fetchCalls.length, 0);
+});
+
+Deno.test("process-sync-queue: a subscription gate write is fenced on the claimed retry_count", async () => {
+  for (const outcome of ["outage", "denial"] as const) {
+    const h = harness(
+      BASE_ENV,
+      {
+        sync_queue: [
+          pendingRow(TASK_ID, "incremental", "2026-09-14T00:00:00.000Z"),
+        ],
+        subscriptions: [
+          {
+            user_id: USER_ID,
+            tier: "EMBER",
+            status: "active",
+            current_period_end: "2099-01-01T00:00:00.000Z",
+          },
+        ],
+        rate_limit_tracking: [],
+      },
+      ok200,
+      (db) =>
+        subscriptionLookup(db, async () => {
+          // A lease reclaim bumped the generation while this lookup ran.
+          db.tables.sync_queue[0].retry_count = 7;
+          if (outcome === "outage") return SUBSCRIPTION_LOOKUP_FAILED;
+          return await db
+            .from("subscriptions")
+            .select("*")
+            .eq("user_id", USER_ID)
+            .maybeSingle();
+        }),
+    );
+
+    const res = await h.handler(cronRequest({ "x-cron-secret": CRON_SECRET }));
+    await res.body?.cancel();
+
+    const task = h.db.tables.sync_queue[0];
+    assertEquals(task.status, "processing", outcome);
+    assertEquals(task.retry_count, 7, outcome);
+    assertEquals(task.error_message, null, outcome);
+    assertEquals(task.completed_at, null, outcome);
+    assertEquals(h.fetchCalls.length, 0, outcome);
+  }
 });
 
 Deno.test("process-sync-queue: the pre-claim retry cap uses the same terminal spelling", async () => {
