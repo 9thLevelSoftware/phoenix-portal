@@ -8,6 +8,9 @@ on:
     branches: [main]
     paths:
       - 'supabase/functions/mobile-sync-*/**'
+      - 'supabase/functions/_shared/pagedByParent.ts'
+      - 'supabase/functions/_shared/pushPayloadSchema.ts'
+      - 'supabase/functions/_shared/syncBroadcast.ts'
       - 'tests/sync/**'
       - 'src/schemas/**'
       - 'src/lib/database.types.ts'
@@ -22,6 +25,9 @@ on:
     branches: [main]
     paths:
       - 'supabase/functions/mobile-sync-*/**'
+      - 'supabase/functions/_shared/pagedByParent.ts'
+      - 'supabase/functions/_shared/pushPayloadSchema.ts'
+      - 'supabase/functions/_shared/syncBroadcast.ts'
       - 'tests/sync/**'
       - 'src/schemas/**'
       - 'src/lib/database.types.ts'
