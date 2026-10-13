@@ -1343,7 +1343,7 @@ differs from the captured values, the migration calls
 | `refresh-community-benchmarks`   | `0 */6 * * *` (every 6 h, on the hour) | SQL: `SELECT public.refresh_community_benchmarks()`                                                    | `20260920000200_capture_dashboard_functions_and_cron.sql` (captured from prod) | --          | As already scheduled in prod           |
 Routine and training-cycle tombstones are durable deletion evidence so an
 offline device cannot recreate deleted data when it eventually reconnects.
-`20260920003100` removes the legacy `sync-tombstones-retention` job if it
+`20260922120000` removes the legacy `sync-tombstones-retention` job if it
 exists. Tombstones are deleted with their account through the
 `sync_tombstones.user_id` cascade.
 Cadences are pg_cron expressions, evaluated in the **database** timezone.
