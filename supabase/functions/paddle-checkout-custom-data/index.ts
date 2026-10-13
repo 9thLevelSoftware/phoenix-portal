@@ -6,7 +6,12 @@ import {
   mayOpenNewCheckout,
 } from "../_shared/billingAction.ts";
 import { getCorsHeaders } from "../_shared/cors.ts";
-import { getAllAllowedPriceIds } from "../_shared/paddlePriceIds.ts";
+import {
+  findCrossTierDuplicatePriceIds,
+  getAllAllowedPriceIds,
+  PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL,
+  paddlePriceIdsConfigured,
+} from "../_shared/paddlePriceIds.ts";
 import { CHECKOUT_LIFETIME_MS, paddleApiBase, signCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
 import { readBoundedRequestBody } from "../_shared/requestBody.ts";
@@ -64,6 +69,11 @@ function defaultPaddleCheckoutCustomDataDependencies(): PaddleCheckoutCustomData
  * Checkout is a server-created transaction, serialized per user. A retained
  * transaction ID collects that purchase rather than creating another one.
  * Old clients without a requested price fail closed during the rollout.
+ *
+ * The price map is pre-flighted the same way as paddle-webhooks, before any
+ * Paddle call: no paid price id is 500 `Billing configuration incomplete`,
+ * and a price id configured under two tiers is 500 `Billing configuration
+ * invalid`.
  */
 async function paddleCheckoutCustomDataHandler(
   req: Request,
@@ -81,6 +91,31 @@ async function paddleCheckoutCustomDataHandler(
   }
 
   try {
+    if (!paddlePriceIdsConfigured(deps.env)) {
+      console.error(PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL);
+      return new Response(
+        JSON.stringify({ error: "Billing configuration incomplete" }),
+        {
+          status: 500,
+          headers: { ...cors, "Content-Type": "application/json" },
+        },
+      );
+    }
+    const duplicatePriceIds = findCrossTierDuplicatePriceIds(deps.env);
+    if (duplicatePriceIds.length > 0) {
+      console.error(
+        "[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence):",
+        duplicatePriceIds,
+      );
+      return new Response(
+        JSON.stringify({ error: "Billing configuration invalid" }),
+        {
+          status: 500,
+          headers: { ...cors, "Content-Type": "application/json" },
+        },
+      );
+    }
+
     const secret = deps.env.get("PADDLE_CUSTOM_DATA_SECRET")?.trim();
     if (!secret) {
       console.error("[FATAL] PADDLE_CUSTOM_DATA_SECRET must be set");

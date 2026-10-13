@@ -2,6 +2,7 @@ import { assertEquals, assertNotEquals } from "jsr:@std/assert@1";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { billingAction } from "../_shared/billingAction.ts";
 import { verifyCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
+import { PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL } from "../_shared/paddlePriceIds.ts";
 import { captureLogs } from "../_shared/testLogCapture.ts";
 import { createPaddleUpdateSubscriptionHandler } from "../paddle-update-subscription/index.ts";
 import { createPaddleCheckoutCustomDataHandler } from "./index.ts";
@@ -49,6 +50,8 @@ function buildHandler(
     observed?: ObservedCalls;
     reservation?: Record<string, unknown>;
     calls?: string[];
+    /** Overlay on the default billing env. `""` clears a price-id list. */
+    env?: Record<string, string | undefined>;
     /** Billing RPCs; `check_rate_limit` is answered before this is consulted. */
     rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
     fetch?: typeof fetch;
@@ -57,6 +60,12 @@ function buildHandler(
   const user = options.user === undefined ? { id: USER_ID } : options.user;
   const secret = "secret" in options ? options.secret : SECRET;
   const observed = options.observed ?? { tables: [], rateLimitCalls: [] };
+  const billingEnv: Record<string, string | undefined> = {
+    PADDLE_API_KEY: "test",
+    PADDLE_EMBER_PRICE_IDS: "pri_ember_monthly",
+    ...options.env,
+    PADDLE_CUSTOM_DATA_SECRET: secret,
+  };
   return createPaddleCheckoutCustomDataHandler({
     createAuthClient: () =>
       ({
@@ -95,7 +104,7 @@ function buildHandler(
         },
       } as unknown as SupabaseClient;
     },
-    env: { get: (key: string) => ({ PADDLE_CUSTOM_DATA_SECRET: secret, PADDLE_API_KEY: "test", PADDLE_EMBER_PRICE_IDS: "pri_ember_monthly" } as Record<string, string | undefined>)[key] },
+    env: { get: (key: string) => billingEnv[key] },
     now: () => NOW,
     fetch: options.fetch ?? ((input, init) => { options.calls?.push(`${init?.method} ${String(input)}`); return Promise.resolve(new Response(JSON.stringify({ data: String(input).includes("/subscriptions/")
       ? { id: row?.paddle_subscription_id, status: "canceled" } : { id: "txn_checkout" } }))); }),
@@ -500,4 +509,63 @@ Deno.test("paddle-checkout-custom-data: a confirmed canceled prior contract perm
   const response = await buildHandler({ ...liveRow, status: "canceled" }, { calls })(signRequest());
   assertEquals(response.status, 200);
   assertEquals(calls.map((call) => call.split(" ")[0]), ["GET", "POST", "PATCH"]);
+});
+
+Deno.test("paddle-checkout-custom-data: no configured price ids is 500 before any Paddle call", async () => {
+  const calls: string[] = [];
+  const observed: ObservedCalls = { tables: [], rateLimitCalls: [] };
+  const { result: response, logs } = await captureLogs(() =>
+    buildHandler(null, {
+      calls,
+      observed,
+      env: { PADDLE_EMBER_PRICE_IDS: "" },
+    })(signRequest()),
+  );
+
+  assertEquals(response.status, 500);
+  assertEquals(await response.json(), { error: "Billing configuration incomplete" });
+  assertEquals(calls, []);
+  assertEquals(observed.tables, []);
+  assertEquals(observed.rateLimitCalls, []);
+  assertEquals(logs.includes(PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL), true);
+});
+
+Deno.test("paddle-checkout-custom-data: a price id configured under two tiers is 500 before any Paddle call", async () => {
+  const calls: string[] = [];
+  const observed: ObservedCalls = { tables: [], rateLimitCalls: [] };
+  const { result: response, logs } = await captureLogs(() =>
+    buildHandler(null, {
+      calls,
+      observed,
+      env: { PADDLE_FLAME_PRICE_IDS: "pri_ember_monthly" },
+    })(signRequest()),
+  );
+
+  assertEquals(response.status, 500);
+  assertEquals(await response.json(), { error: "Billing configuration invalid" });
+  assertEquals(calls, []);
+  assertEquals(observed.tables, []);
+  assertEquals(observed.rateLimitCalls, []);
+  assertEquals(
+    logs.includes(
+      "[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence):",
+    ),
+    true,
+  );
+  assertEquals(logs.includes("pri_ember_monthly"), true);
+});
+
+Deno.test("paddle-checkout-custom-data: an unknown price stays 400 when the price map is complete", async () => {
+  const calls: string[] = [];
+  const response = await buildHandler(null, { calls })(
+    new Request("https://edge.test/paddle-checkout-custom-data", {
+      method: "POST",
+      headers: { Authorization: "Bearer jwt" },
+      body: JSON.stringify({ price_id: "pri_unknown" }),
+    }),
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals(await response.json(), { error: "Invalid checkout price" });
+  assertEquals(calls, []);
 });
