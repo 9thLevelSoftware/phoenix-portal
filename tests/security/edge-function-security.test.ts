@@ -343,13 +343,11 @@ describe("Paddle webhook security helpers", () => {
 		expect(resolvePaddleCancelRequest("past_due")).toEqual({
 			allowed: true,
 			effectiveFrom: "immediately",
-			localPatch: { status: "canceled", cancel_at_period_end: false },
 		});
 		for (const status of ["active", "trialing"]) {
 			expect(resolvePaddleCancelRequest(status)).toEqual({
 				allowed: true,
 				effectiveFrom: "next_billing_period",
-				localPatch: { cancel_at_period_end: true },
 			});
 		}
 		for (const status of ["canceled", "incomplete", "none", null]) {
