@@ -3,6 +3,7 @@ import { getCorsHeaders } from '../_shared/cors.ts';
 import { errorMessage } from '../_shared/errorMessage.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { checkManualSyncRateLimit } from '../_shared/manualSyncRateLimit.ts';
+import { topOfCurrentHour } from '../_shared/providerRateLimit.ts';
 import { requireSubscription } from '../_shared/requireSubscription.ts';
 import {
   completeSyncQueueEntry,
@@ -59,20 +60,6 @@ function resolveDeps(d: FitbitSyncHandlerDependencies): FitbitSyncDependencies {
  * https://dev.fitbit.com/build/reference/web-api/troubleshooting-guide/rate-limits/
  */
 const FITBIT_HOURLY_LIMIT = 150;
-
-/**
- * Start of the current clock hour, in UTC.
- *
- * Fitbit's quota resets on the hour, so a 429 should mark the window as having
- * begun at the last hour boundary. Stamping `now` instead would hold the user
- * out for a full hour from the moment they were throttled — up to 59 minutes
- * longer than Fitbit actually requires.
- */
-function topOfCurrentHour(): string {
-  const now = new Date();
-  now.setUTCMinutes(0, 0, 0);
-  return now.toISOString();
-}
 
 interface FitbitTokens {
   access_token: string;
