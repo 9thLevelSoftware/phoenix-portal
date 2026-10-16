@@ -547,7 +547,6 @@ async function paddleWebhooksHandler(
       }
     }
 
-    // Build upsert payload (uses legacy Stripe column names)
     const upsertData = buildSubscriptionUpsertFromPaddleState({
       userId,
       subscription: event.data as PaddleSubscriptionState,
