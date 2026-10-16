@@ -54,7 +54,7 @@ export function ResetPassword() {
 				<div className="flex items-center justify-center gap-2 mb-8">
 					<PhoenixLogo />
 					<span className="text-xl text-primary font-semibold">
-						Project Phoenix
+						Phoenix Portal
 					</span>
 				</div>
 
