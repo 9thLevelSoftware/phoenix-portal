@@ -11,6 +11,17 @@ Deno.test("checkout binding authenticates nonce, transaction, price, environment
   }
 });
 
+Deno.test("checkout binding HMAC accepts an exact signature and rejects a mismatch or a different length", async () => {
+  const binding = await signCheckoutBinding({ user_id: "owner", cd_version: 2, cd_nonce: "nonce-1", cd_transaction_id: "txn_owned", cd_price_id: "pri_allowed", cd_environment: "sandbox", cd_expires_at: "2026-10-09T12:30:00Z" }, "test-secret");
+  assertEquals(await verifyCheckoutBinding(binding, "test-secret"), true);
+  const flipped = binding.cd_sig.slice(0, -1) + (binding.cd_sig.endsWith("0") ? "1" : "0");
+  assertEquals(flipped.length, binding.cd_sig.length);
+  assertEquals(flipped === binding.cd_sig, false);
+  assertEquals(await verifyCheckoutBinding({ ...binding, cd_sig: flipped }, "test-secret"), false);
+  assertEquals(await verifyCheckoutBinding({ ...binding, cd_sig: binding.cd_sig.slice(0, -1) }, "test-secret"), false);
+  assertEquals(await verifyCheckoutBinding({ ...binding, cd_sig: binding.cd_sig + binding.cd_sig }, "test-secret"), false);
+});
+
 Deno.test("Paddle signature authenticates exact bytes including BOM and invalid UTF8", async () => {
   const bytes = new Uint8Array([0xef, 0xbb, 0xbf, 0xff, 0x7b, 0x7d]);
   const prefix = new TextEncoder().encode("1000:");
