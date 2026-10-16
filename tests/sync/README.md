@@ -182,7 +182,8 @@ export SYNC_LIVE_TESTS=true
 npm run test:sync:live
 ```
 
-Live sync tests intentionally refuse the known production Supabase/API hosts.
+Live sync tests intentionally refuse the known production Supabase/API hosts
+in `scripts/known-production-hosts.mjs`.
 Use local Supabase or an isolated staging/preview project. The GitHub Actions
 workflow supports two fail-closed credential paths:
 

@@ -1151,10 +1151,12 @@ npm run assert:supabase-config
 ```
 
 `ilzlswmatadlnsuxatcv` is the live production project. Preview and cleanup
-tools refuse to target it: `scripts/resolve-sync-preview.mjs` and
-`scripts/cleanup-sync-preview-users.mjs` reject the hosts
-`ilzlswmatadlnsuxatcv.supabase.co`, `ilzlswmatadlnsuxatcv.supabase.in`, and
-`api.phoenix-portal.com`. Leave that ref off `DEFAULT_STALE_REFS` and off
+tools and the live sync test setup refuse to target it through the shared
+list in `scripts/known-production-hosts.mjs` (imported by
+`scripts/resolve-sync-preview.mjs`, `scripts/cleanup-sync-preview-users.mjs`,
+and `tests/sync/setup.ts`): `ilzlswmatadlnsuxatcv.supabase.co`,
+`ilzlswmatadlnsuxatcv.supabase.in`, and `api.phoenix-portal.com`. Leave that
+ref off `DEFAULT_STALE_REFS` and off
 `STALE_SUPABASE_REFS` for any build that ships the portal. The production
 bundle contains `VITE_SUPABASE_URL` for that host, and listing the ref
 would fail the guard.

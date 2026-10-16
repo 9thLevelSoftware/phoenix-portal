@@ -21,6 +21,7 @@
 			"scripts/**/*.ts",
 			"scripts/resolve-sync-preview.mjs",
 			"scripts/cleanup-sync-preview-users.mjs",
+			"scripts/known-production-hosts.mjs",
 			"scripts/migration-list-applied.mjs"
 		]
 	},
