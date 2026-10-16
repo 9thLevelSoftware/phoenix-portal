@@ -39,7 +39,7 @@ Use design tokens from `src/styles/theme.css` only. Never inline hex colors, raw
 
 ## Motion
 
-- Reduced motion is respected by `MotionConfig reducedMotion="user"` in `App.tsx` (all routes) and `AppLayout`.
+- Reduced motion is respected by `MotionConfig reducedMotion="user"` in `App.tsx`, which covers every route. `CookieConsentBanner` keeps its own because `src/main.tsx` renders it outside `App`.
 - Use centralized recipes from `src/lib/animations.ts`: `fadeUp`, `fadeUpVariants`, `staggerContainer`, `hover`, and `tap`. `fadeUp` is spread into props (`{...fadeUp}`); inside a `staggerContainer` use `variants={fadeUpVariants}`, because `fadeUp` has no `hidden`/`visible` keys.
 - Avoid inline `transition={{ duration: N }}`. First check whether a centralized recipe covers the interaction.
 - Keep transitions purposeful: communicate hierarchy, state change, or continuity; never add motion decoratively.
