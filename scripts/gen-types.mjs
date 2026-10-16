@@ -20,7 +20,8 @@
  *    `SUPABASE_PROJECT_REF` (loaded from `.env` / `.env.local`, or exported
  *    by the operator). `ilzlswmatadlnsuxatcv` is the live production
  *    project. Preview and cleanup tools (`scripts/resolve-sync-preview.mjs`,
- *    `scripts/cleanup-sync-preview-users.mjs`) refuse to target that host.
+ *    `scripts/cleanup-sync-preview-users.mjs`) and live sync test setup
+ *    refuse to target that host via `scripts/known-production-hosts.mjs`.
  *    The build denylist (`DEFAULT_STALE_REFS` in
  *    `scripts/assert-live-supabase-config.mjs`) is empty unless
  *    `STALE_SUPABASE_REFS` is set; CI does not set it. Leave the production

@@ -1,14 +1,10 @@
 import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
+import { KNOWN_PRODUCTION_HOSTS } from "./known-production-hosts.mjs";
 
 const PROJECT_REF_PATTERN = /^[a-z]{20}$/;
 const DISPOSABLE_EMAIL_PATTERN = /^sync-test-[a-z0-9-]+@test\.local$/;
 const USERS_PER_PAGE = 1000;
-const KNOWN_PRODUCTION_HOSTS = new Set([
-	"ilzlswmatadlnsuxatcv.supabase.co",
-	"ilzlswmatadlnsuxatcv.supabase.in",
-	"api.phoenix-portal.com",
-]);
 
 class SafeCleanupError extends Error {}
 

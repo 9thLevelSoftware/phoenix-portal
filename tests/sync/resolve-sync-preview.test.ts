@@ -311,6 +311,8 @@ describe("sync preview credential resolver", () => {
 		],
 		[`https://${previewRef}.supabase.co/path`, "does not exactly match"],
 		["https://api.phoenix-portal.com", "known production host"],
+		[`https://${productionRef}.supabase.co`, "known production host"],
+		[`https://${productionRef}.supabase.in`, "known production host"],
 	])("rejects direct URL %s", async (url, message) => {
 		await expect(
 			resolveSyncPreviewCredentials(
@@ -589,6 +591,10 @@ describe("sync preview credential resolver", () => {
 	it("wires live workflow credentials through the resolver and GITHUB_ENV", async () => {
 		const workflow = await readFile(workflowPath, "utf8");
 		const resolver = await readFile(resolverPath, "utf8");
+		const hosts = await readFile(
+			path.resolve("scripts/known-production-hosts.mjs"),
+			"utf8",
+		);
 
 		expect(workflow).toContain("staging_project_ref:");
 		expect(workflow).toMatch(/staging_project_ref:[\s\S]*?type: string/);
@@ -612,7 +618,10 @@ describe("sync preview credential resolver", () => {
 		expect(workflow).not.toMatch(
 			/- name: Run sync tests \(live mode, dispatch-only\)[\s\S]*?SUPABASE_(?:URL|ANON_KEY|SERVICE_ROLE_KEY):/,
 		);
-		expect(resolver).toContain("api.phoenix-portal.com");
+		expect(resolver).toContain('from "./known-production-hosts.mjs"');
+		expect(hosts).toContain("api.phoenix-portal.com");
+		expect(hosts).toContain(`${productionRef}.supabase.co`);
+		expect(hosts).toContain(`${productionRef}.supabase.in`);
 		expect(resolver).toContain(".supabase.co");
 		expect(resolver).toContain(".supabase.in");
 	});

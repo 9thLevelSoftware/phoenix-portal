@@ -1,16 +1,12 @@
 import { appendFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import { KNOWN_PRODUCTION_HOSTS } from "./known-production-hosts.mjs";
 
 const MANAGEMENT_API_BASE = "https://api.supabase.com";
 const PROJECT_REF_PATTERN = /^[a-z]{20}$/;
 const READY_BRANCH_STATUSES = new Set([
 	"MIGRATIONS_PASSED",
 	"FUNCTIONS_DEPLOYED",
-]);
-const KNOWN_PRODUCTION_HOSTS = new Set([
-	"ilzlswmatadlnsuxatcv.supabase.co",
-	"ilzlswmatadlnsuxatcv.supabase.in",
-	"api.phoenix-portal.com",
 ]);
 
 class SafeResolverError extends Error {}

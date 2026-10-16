@@ -112,6 +112,10 @@ describe("sync preview namespace cleanup", () => {
 			{ SUPABASE_URL: `https://${productionRef}.supabase.co` },
 		],
 		[
+			"the known production regional host",
+			{ SUPABASE_URL: `https://${productionRef}.supabase.in` },
+		],
+		[
 			"the configured production ref",
 			{
 				SYNC_STAGING_PROJECT_REF: productionRef,
