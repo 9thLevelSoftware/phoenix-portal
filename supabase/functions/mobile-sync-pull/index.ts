@@ -171,14 +171,6 @@ function childRowsOrFailure(
   return readFailure(result.entity, result.error, cors);
 }
 
-/**
- * Determines if the request uses parity-based sync (new) or timestamp-based (legacy).
- * Parity mode is used when knownEntityIds is provided.
- */
-function isParityMode(body: PullRequest): boolean {
-  return !!body.knownEntityIds;
-}
-
 // ─── Pagination Configuration ───────────────────────────────────────
 
 const DEFAULT_PAGE_SIZE = 75;
@@ -658,10 +650,13 @@ async function mobileSyncPullHandler(
 
     const syncTime = dependencies.now();
 
-    // DIAGNOSTIC: Log incoming request parameters
+    // DIAGNOSTIC: Log incoming request parameters.
+    // Sessions, routines, cycles, badges and personal records always use the
+    // excluding-ids RPCs, including when knownEntityIds is absent. parityMode
+    // reports that path.
     console.log('[PULL] Request:', {
       userId,
-      parityMode: isParityMode(body),
+      parityMode: true,
       knownSessions: body.knownEntityIds?.sessionIds?.length ?? 0,
       knownRoutines: body.knownEntityIds?.routineIds?.length ?? 0,
       knownCycles: body.knownEntityIds?.cycleIds?.length ?? 0,
