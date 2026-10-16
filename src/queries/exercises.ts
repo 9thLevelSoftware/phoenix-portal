@@ -1,3 +1,4 @@
+import { escapeLikeWildcards } from "@/lib/likePattern";
 import { supabase } from "@/lib/supabase";
 import { fetchAllSupabasePages } from "@/lib/supabasePaging";
 import {
@@ -65,12 +66,9 @@ function applyCatalogFilters<
 
 	if (filters?.search) {
 		// Search across name and display_name.
-		// Escape LIKE wildcards/backslash, then strip PostgREST `.or()` delimiters
-		// (comma and parentheses) which would otherwise produce malformed filters
-		// or unintended OR conditions.
-		const escaped = filters.search
-			.replace(/[%_\\]/g, "\\$&")
-			.replace(/[(),]/g, " ");
+		// Strip PostgREST `.or()` delimiters (comma and parentheses) which
+		// would otherwise produce malformed filters or unintended OR conditions.
+		const escaped = escapeLikeWildcards(filters.search).replace(/[(),]/g, " ");
 		const term = `%${escaped}%`;
 		query = query.or(`name.ilike.${term},display_name.ilike.${term}`);
 	}
