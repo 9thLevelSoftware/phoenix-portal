@@ -173,18 +173,18 @@ jobs:
 
       # Test-count floor (PR 25 review R-21). `supabase test db` only checks
       # the exit code. The suite is every *.test.sql under
-      # supabase/tests/database/ (41 files). Nine declare SELECT plan(N) and
-      # fail when their own count changes; the other 32 still use no_plan(),
-      # so deleting an assertion, or a no_plan() file dropping out of the
-      # run, leaves CI green with a smaller suite. PGTAP_TEST_FLOOR is the
-      # minimum aggregate pg_prove Tests= count across that full run.
+      # supabase/tests/database/. Files that declare SELECT plan(N) fail when
+      # their own count changes; files that still use no_plan() do not, so
+      # deleting an assertion, or a no_plan() file dropping out of the run,
+      # leaves CI green with a smaller suite. PGTAP_TEST_FLOOR is the minimum
+      # aggregate pg_prove Tests= count across that full run.
       #
       # Raise PGTAP_TEST_FLOOR whenever the suite grows. It is a floor, not
       # an equality check, so adding tests never fails the gate.
       - name: pgTAP test-count floor
         env:
-          # Minimum Tests= across the current 41-file suite. Raise this
-          # when assertions are added.
+          # Minimum aggregate Tests= for the suite. Raise this when
+          # assertions are added.
           PGTAP_TEST_FLOOR: "2058"
         run: |
           set -euo pipefail
