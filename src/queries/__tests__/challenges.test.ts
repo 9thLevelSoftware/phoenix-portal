@@ -236,6 +236,38 @@ describe("challengeProgressOptions paging", () => {
 		expect(chain.limit).toHaveBeenCalledTimes(1);
 	});
 
+	it("counts a streak across the DST fall-back on consecutive local days", async () => {
+		// 2026-11-01 is the New York fall-back. Local midnights of Nov 1 and
+		// Nov 2 are 25 hours apart, so an elapsed-time check of ≤24 h breaks a
+		// real two-day streak.
+		const previousTz = process.env.TZ;
+		process.env.TZ = "America/New_York";
+		try {
+			const chain = keysetChain([
+				[
+					session(1, "2026-11-01T17:00:00.000Z"),
+					session(2, "2026-11-02T17:00:00.000Z"),
+				],
+			]);
+			fromFn.mockImplementation(() => chain as never);
+
+			const { challengeProgressOptions } = await import("../challenges");
+			const result = await challengeProgressOptions(
+				"user-1",
+				"challenge-streak",
+				"streak",
+				2,
+				"2026-11-01T00:00:00Z",
+				"2026-11-30T23:59:59Z",
+			).queryFn?.({} as never);
+
+			expect(result).toEqual({ current: 2, target: 2, percentage: 100 });
+		} finally {
+			if (previousTz === undefined) delete process.env.TZ;
+			else process.env.TZ = previousTz;
+		}
+	});
+
 	it("pages volume sessions past the row cap", async () => {
 		const day = "2026-05-01T12:00:00.000Z";
 		const first = Array.from({ length: SUPABASE_PAGE_SIZE }, (_, i) =>

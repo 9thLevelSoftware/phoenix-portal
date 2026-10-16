@@ -193,20 +193,24 @@ function fetchSessionsInWindow<Columns extends SessionWindowColumns>(
 	return fetchAllKeysetPages(fetchPage, sessionCursorOf);
 }
 
+const MS_PER_DAY = 86_400_000;
+
+/** UTC instant of a local calendar day, so a DST shift cannot stretch the day. */
+function localCalendarDay(instant: Date): number {
+	return Date.UTC(instant.getFullYear(), instant.getMonth(), instant.getDate());
+}
+
+/** Trailing run of consecutive local calendar days, ending on the newest day. */
 function computeStreak(sessions: Array<{ started_at: string }>): number {
 	if (sessions.length === 0) return 0;
 
-	const dates = [
-		...new Set(sessions.map((s) => new Date(s.started_at).toDateString())),
-	].sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+	const days = [
+		...new Set(sessions.map((s) => localCalendarDay(new Date(s.started_at)))),
+	].sort((a, b) => b - a);
 
 	let streak = 1;
-	for (let i = 0; i < dates.length - 1; i++) {
-		const current = new Date(dates[i]);
-		const previous = new Date(dates[i + 1]);
-		const diffDays =
-			(current.getTime() - previous.getTime()) / (1000 * 60 * 60 * 24);
-		if (diffDays <= 1) {
+	for (let i = 0; i < days.length - 1; i++) {
+		if (days[i] - days[i + 1] === MS_PER_DAY) {
 			streak++;
 		} else {
 			break;
