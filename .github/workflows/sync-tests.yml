@@ -8,6 +8,12 @@ on:
     branches: [main]
     paths:
       - 'supabase/functions/mobile-sync-*/**'
+      - 'supabase/functions/_shared/pagedByParent.ts'
+      - 'supabase/functions/_shared/personalRecordRow.ts'
+      - 'supabase/functions/_shared/pushPayloadSchema.ts'
+      - 'supabase/functions/_shared/syncBroadcast.ts'
+      - 'supabase/functions/_shared/syncPlatform.ts'
+      - 'supabase/functions/_shared/workoutModes.ts'
       - 'tests/sync/**'
       - 'src/schemas/**'
       - 'src/lib/database.types.ts'
@@ -22,6 +28,12 @@ on:
     branches: [main]
     paths:
       - 'supabase/functions/mobile-sync-*/**'
+      - 'supabase/functions/_shared/pagedByParent.ts'
+      - 'supabase/functions/_shared/personalRecordRow.ts'
+      - 'supabase/functions/_shared/pushPayloadSchema.ts'
+      - 'supabase/functions/_shared/syncBroadcast.ts'
+      - 'supabase/functions/_shared/syncPlatform.ts'
+      - 'supabase/functions/_shared/workoutModes.ts'
       - 'tests/sync/**'
       - 'src/schemas/**'
       - 'src/lib/database.types.ts'
