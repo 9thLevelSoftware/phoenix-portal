@@ -15,8 +15,8 @@ const nullablePerCableWeight = z
 // --- Telemetry Point ---
 
 // Cable canonical wire format: "A" | "B" (BLE convention, mobile authoritative).
-// Cable A = left actuator, Cable B = right actuator. Use cableDisplayName()
-// from src/lib/telemetry-display.ts for UI presentation.
+// Cable A = left actuator, Cable B = right actuator. Keep the canonical
+// value; do not translate it at this boundary.
 // Resolves audit item #4 (2026-04-19).
 export const telemetryPointSchema = z.object({
 	timestamp_ms: z.number().finite().nonnegative(),

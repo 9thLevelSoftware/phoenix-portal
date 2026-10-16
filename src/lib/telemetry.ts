@@ -8,7 +8,7 @@ export interface TelemetryPoint {
 	/**
 	 * Canonical cable identifier from BLE (A = left actuator, B = right).
 	 * Mobile is authoritative for BLE-captured data per monorepo CLAUDE.md.
-	 * For UI display use `cableDisplayName()` from `src/lib/telemetry-display.ts`.
+	 * Keep the canonical "A" | "B" value; do not translate it here.
 	 * Resolves audit item #4 (2026-04-19).
 	 */
 	cable: "A" | "B";
