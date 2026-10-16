@@ -16,7 +16,7 @@ export interface ExerciseCatalogFilters {
 const EXERCISE_MEDIA_MARKER = "/storage/v1/object/public/exercise-media/";
 
 /** Rewrite stored object keys or stale-project URLs onto the active Supabase host. */
-export function resolveExerciseMediaUrl(
+function resolveExerciseMediaUrl(
 	value: string | null | undefined,
 ): string | null {
 	if (!value) return null;

@@ -20,7 +20,7 @@ import {
  * day/week so they keep the local-calendar semantics the charts used to get
  * from `new Date(...).getDay()`.
  */
-export function browserTimeZone(): string {
+function browserTimeZone(): string {
 	try {
 		return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 	} catch {
@@ -34,7 +34,7 @@ export function browserTimeZone(): string {
  * older or unusual browser can report a zone the server does not know (NF-20).
  * "unknown period" also raises 22023, so match the zone message too.
  */
-export function isUnknownTimeZoneError(error: unknown): boolean {
+function isUnknownTimeZoneError(error: unknown): boolean {
 	if (!error || typeof error !== "object") return false;
 	const { code, message } = error as { code?: unknown; message?: unknown };
 	return (
@@ -174,7 +174,7 @@ const DAY_MS = 86_400_000;
  * timestamp, matching generate-insights, and is what the local insight
  * fallback uses: the two differ by an hour across a DST change.
  */
-export type ComparisonBoundaries = "calendar" | "fixed";
+type ComparisonBoundaries = "calendar" | "fixed";
 
 export function volumeComparisonOptions(
 	userId: string,
