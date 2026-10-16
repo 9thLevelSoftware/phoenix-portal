@@ -41,7 +41,12 @@ import { fadeUpVariants, hover, staggerContainer } from "@/lib/animations";
 import { formatChallengeValue } from "@/lib/challenges";
 import { PHOENIX } from "@/lib/colors";
 import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
-import { convertWeight, formatVolume, type WeightUnit } from "@/lib/units";
+import {
+	convertWeight,
+	formatVolume,
+	formatVolumeAxisTick,
+	type WeightUnit,
+} from "@/lib/units";
 import { formatLoad } from "@/lib/units/loadDisplay";
 import {
 	formatWorkoutPhase,
@@ -1337,14 +1342,9 @@ export function Dashboard() {
 														fontSize: 11,
 														fontFamily: "Inter, sans-serif",
 													}}
-													tickFormatter={(v) => {
-														const c = convertWeight(v, unit);
-														if (Math.abs(c) >= 1_000_000)
-															return `${(c / 1_000_000).toFixed(1)}M`;
-														if (Math.abs(c) >= 1_000)
-															return `${(c / 1_000).toFixed(0)}K`;
-														return String(Math.round(c));
-													}}
+													tickFormatter={(v) =>
+														formatVolumeAxisTick(convertWeight(v, unit))
+													}
 												/>
 												<Tooltip
 													content={
