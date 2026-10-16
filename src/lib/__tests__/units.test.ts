@@ -4,6 +4,7 @@ import {
 	convertWeightFromUnit,
 	formatLeaderboardValue,
 	formatVolume,
+	formatVolumeAxisTick,
 	formatWeight,
 	getUnitLabel,
 	isWeightUnit,
@@ -76,6 +77,33 @@ describe("units", () => {
 
 		it("uses absolute magnitude when abbreviating negative volume deltas", () => {
 			expect(formatVolume(-2300, "kg")).toBe("-2.3K kg");
+		});
+	});
+
+	describe("formatVolumeAxisTick", () => {
+		it("leaves values under 1,000 as rounded integers", () => {
+			expect(formatVolumeAxisTick(400)).toBe("400");
+			expect(formatVolumeAxisTick(400.4)).toBe("400");
+			expect(formatVolumeAxisTick(0)).toBe("0");
+			expect(formatVolumeAxisTick(999)).toBe("999");
+		});
+
+		it("abbreviates thousands to one decimal", () => {
+			expect(formatVolumeAxisTick(1000)).toBe("1.0K");
+			expect(formatVolumeAxisTick(1234)).toBe("1.2K");
+			expect(formatVolumeAxisTick(1500)).toBe("1.5K");
+			expect(formatVolumeAxisTick(-2300)).toBe("-2.3K");
+		});
+
+		it("uses one decimal from one million", () => {
+			expect(formatVolumeAxisTick(1_000_000)).toBe("1.0M");
+			expect(formatVolumeAxisTick(1_200_000)).toBe("1.2M");
+			expect(formatVolumeAxisTick(-2_500_000)).toBe("-2.5M");
+		});
+
+		it("does not abbreviate a non-finite tick", () => {
+			expect(formatVolumeAxisTick(Number.NaN)).toBe("0");
+			expect(formatVolumeAxisTick(Number.POSITIVE_INFINITY)).toBe("0");
 		});
 	});
 

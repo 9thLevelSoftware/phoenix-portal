@@ -82,6 +82,24 @@ export function formatVolume(
 	return `${Math.round(converted)} kg`;
 }
 
+/**
+ * Y-axis tick for a volume already in the display unit.
+ *
+ * Same cutoffs as the dashboard volume chart, with the one-decimal
+ * abbreviation `formatVolume` uses there: `400` → `400`, `1234` → `1.2K`,
+ * `1_200_000` → `1.2M`. Does not convert between kg and lbs.
+ */
+export function formatVolumeAxisTick(value: number): string {
+	if (!Number.isFinite(value)) return "0";
+	if (Math.abs(value) >= 1_000_000) {
+		return `${(value / 1_000_000).toFixed(1)}M`;
+	}
+	if (Math.abs(value) >= 1_000) {
+		return `${(value / 1_000).toFixed(1)}K`;
+	}
+	return String(Math.round(value));
+}
+
 export function getUnitLabel(unit: WeightUnit): WeightUnit {
 	return unit;
 }
