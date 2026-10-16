@@ -68,7 +68,7 @@ export function TrainingLoadGauge({ score, zone }: TrainingLoadGaugeProps) {
 					detail: {
 						valueAnimation: true,
 						formatter: "{value}",
-						color: themeTokens.primaryForeground,
+						color: themeTokens.foreground,
 						fontSize: 28,
 						fontWeight: 700,
 						offsetCenter: [0, "-10%"],
