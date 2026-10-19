@@ -12,7 +12,7 @@
  * phase enum coverage as a priority gap (#4).
  *
  * Contract:
- *   - mobile-sync-push/index.ts SetDto.prPhase (line 1069):
+ *   - push set field `prPhase` (supabase/functions/_shared/pushPayloadSchema.ts):
  *     "COMBINED" | "CONCENTRIC" | "ECCENTRIC"
  *   - PersonalRecordDto.workoutPhase (edge-function-harness.ts line 458)
  *   - workout_phase defaults to COMBINED in
