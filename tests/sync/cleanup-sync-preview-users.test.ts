@@ -253,9 +253,7 @@ describe("sync preview namespace cleanup", () => {
 		expect(liveJob.indexOf("Clean up live sync test users")).toBeGreaterThan(
 			liveJob.indexOf("Run sync tests (live mode, dispatch-only)"),
 		);
-		expect(liveJob.indexOf("Clean up live sync test users")).toBeLessThan(
-			liveJob.indexOf("Upload test results"),
-		);
+		expect(workflow).not.toContain("path: coverage/");
 		expect(workflow).toContain("SYNC_LIVE_DEBUG_FAILURES: 'true'");
 		expect(workflow).toContain("timeout-minutes: 20");
 		expect(workflow).not.toContain("max-parallel: 1");
