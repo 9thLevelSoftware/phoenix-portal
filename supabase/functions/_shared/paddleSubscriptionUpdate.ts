@@ -113,9 +113,6 @@ export type PaddleCancelRequest =
   | {
     allowed: true;
     effectiveFrom: 'next_billing_period' | 'immediately';
-    localPatch:
-      | { cancel_at_period_end: true }
-      | { status: 'canceled'; cancel_at_period_end: false };
   };
 
 /**
@@ -135,14 +132,12 @@ export function resolvePaddleCancelRequest(
     return {
       allowed: true,
       effectiveFrom: 'next_billing_period',
-      localPatch: { cancel_at_period_end: true },
     };
   }
   if (status === 'past_due') {
     return {
       allowed: true,
       effectiveFrom: 'immediately',
-      localPatch: { status: 'canceled', cancel_at_period_end: false },
     };
   }
   return { allowed: false };
