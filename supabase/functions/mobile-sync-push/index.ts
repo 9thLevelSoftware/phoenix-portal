@@ -3119,8 +3119,7 @@ async function mobileSyncPushHandler(
           velocity_mps: t.velocityMps,
           position_mm: t.positionMm,
           // cable stored canonically as "A" | "B" from BLE. Do not translate
-          // here; UI uses `cableDisplayName()` from src/lib/telemetry-display.ts
-          // when a human-readable label is needed. Audit item #4 (2026-04-19).
+          // here. Audit item #4 (2026-04-19).
           cable: t.cable,
         }));
       const dedupedTelemetryRows = deduplicateByKey(telemetryRows, (r) => r.id);

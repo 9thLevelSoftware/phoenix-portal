@@ -159,12 +159,12 @@ authoritative for BLE-captured data per monorepo CLAUDE.md). Changes:
 
 - Portal Zod (`src/schemas/telemetry.ts:16`) now accepts `z.enum(["A","B"])`.
 - Portal TS interface (`src/lib/telemetry.ts:8`) now types `cable: "A" | "B"`.
-- New `src/lib/telemetry-display.ts` centralizes UI conversion via
-  `cableDisplayName()` at the presentation boundary only.
+- Cable identifiers stay the canonical `"A"|"B"` values through storage and
+  the wire. Do not translate them at either boundary.
 - Mobile `PortalRepTelemetryDto.cable` doc comment updated to describe the
   canonical format.
 - Mobile-sync-push rep_telemetry upsert comments clarify that raw values
-  are stored unchanged; translation belongs at the UI boundary.
+  are stored unchanged.
 
 **Impact:** Unified DB + analytics representation. No migration needed.
 
