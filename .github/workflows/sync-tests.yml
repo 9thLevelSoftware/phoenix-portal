@@ -89,15 +89,6 @@ jobs:
         env:
           MOCK_EDGE_FUNCTIONS: 'true'
 
-      - name: Upload test results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: sync-test-results
-          path: coverage/
-          if-no-files-found: ignore
-          retention-days: 7
-
   sync-tests-live:
     name: Sync Validation Tests (live staging)
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.use_mocks == 'false' && github.ref == 'refs/heads/main' }}
@@ -150,15 +141,6 @@ jobs:
         run: node scripts/cleanup-sync-preview-users.mjs
         env:
           SUPABASE_PROD_PROJECT_REF: ${{ vars.SUPABASE_PROD_PROJECT_REF }}
-
-      - name: Upload test results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: sync-live-test-results
-          path: coverage/
-          if-no-files-found: ignore
-          retention-days: 7
 
   sync-tests-matrix:
     name: Sync Tests mock (Node ${{ matrix.node-version }})
