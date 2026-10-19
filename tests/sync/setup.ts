@@ -6,6 +6,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, it } from "vitest";
+import { KNOWN_PRODUCTION_HOSTS } from "../../scripts/known-production-hosts.mjs";
 import type {
 	CreateTestUserOptions,
 	TestUser,
@@ -21,10 +22,6 @@ import {
 
 // Track test users for cleanup
 const createdTestUsers: TestUser[] = [];
-const PRODUCTION_SYNC_TEST_HOSTS = new Set([
-	"ilzlswmatadlnsuxatcv.supabase.co",
-	"api.phoenix-portal.com",
-]);
 
 export function liveSyncTestsEnabled(): boolean {
 	return (
@@ -37,7 +34,7 @@ export const liveIt = liveSyncTestsEnabled() ? it : it.skip;
 
 function isProductionSyncTarget(url: string): boolean {
 	try {
-		return PRODUCTION_SYNC_TEST_HOSTS.has(new URL(url).hostname);
+		return KNOWN_PRODUCTION_HOSTS.has(new URL(url).hostname);
 	} catch {
 		return false;
 	}
