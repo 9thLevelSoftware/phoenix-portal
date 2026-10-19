@@ -111,9 +111,10 @@ export function communityFeedOptions(params: FeedParams) {
 		// Votes have no realtime channel; refresh stale counts on tab focus.
 		refetchOnWindowFocus: true,
 		queryFn: async ({ pageParam = 0 }) => {
-			// shared_routines/shared_cycles.user_id -> auth.users(id), not profiles(id)
-			// PostgREST cannot resolve the profiles join directly, so we do a
-			// two-step fetch: get feed rows first, then batch-fetch profiles.
+			// shared_routines/shared_cycles.user_id has FKs to both profiles(id)
+			// and auth.users(id).
+			// Creator fields come from a public_profiles batch fetch
+			// (hydrateProfiles), not an embedded profiles join.
 			let query = supabase.from(table).select(select);
 
 			// Sort. `id` is the unique tiebreak after the timestamp so equal
