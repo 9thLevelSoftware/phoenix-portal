@@ -793,6 +793,41 @@ const RPC_BACKED_TABLES = [
   "personal_records",
 ];
 
+Deno.test("request log reports parity mode for the excluding-ids path, including when knownEntityIds is absent", async () => {
+  const bodies: Record<string, unknown>[] = [
+    {
+      deviceId: "test-device",
+      lastSync: Date.parse("2026-07-01T00:00:00.000Z"),
+      profileId: VALID_PROFILE_ID,
+    },
+    validPullBody(),
+  ];
+  for (const body of bodies) {
+    const harness = makeHarness();
+    const logged: unknown[][] = [];
+    const originalConsoleLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logged.push(args);
+    };
+    let response: Response;
+    try {
+      response = await harness.handler(requestFromBody(body));
+    } finally {
+      console.log = originalConsoleLog;
+    }
+    assertEquals(response.status, 200);
+    const requestLog = logged.find((args) => args[0] === "[PULL] Request:");
+    assert(requestLog, "expected the pull request diagnostic");
+    const fields = requestLog[1] as { parityMode?: boolean };
+    assertEquals(fields.parityMode, true);
+    assert(
+      harness.adminCalls.some((call) =>
+        call.kind === "rpc" && call.name === "get_sessions_excluding_ids"
+      ),
+    );
+  }
+});
+
 Deno.test("real lastSync with empty known ids uses every id RPC and no timestamp-only table read", async () => {
   const harness = makeHarness();
   const response = await harness.handler(requestFromBody({
