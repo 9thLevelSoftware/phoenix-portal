@@ -25,6 +25,7 @@ import {
   verifyPaddleSignature,
 } from "../_shared/paddleWebhookSecurity.ts";
 import { paddleBaseUrl } from "../_shared/accountPurge.ts";
+import { fetchPaddle } from "../_shared/paddleFetch.ts";
 
 const responseHeaders = {
   "Content-Type": "application/json",
@@ -94,9 +95,6 @@ function defaultPaddleWebhooksDependencies(): PaddleWebhooksDependencies {
 }
 
 
-/** Cap on the webhook's one outbound Paddle call. */
-const PADDLE_LISTING_TIMEOUT_MS = 10_000;
-
 /**
  * The customer's other live Paddle subscriptions, newest first.
  *
@@ -137,16 +135,15 @@ async function listLiveCustomerSubscriptions(
 
   let response: Response;
   try {
-    response = await fetchImpl(url, {
+    // A hung Paddle call must not hold the webhook open until the platform
+    // kills it; a timeout falls through to the previous behaviour (apply
+    // the cancellation) rather than blocking the delivery.
+    response = await fetchPaddle(fetchImpl, url, {
       method: "GET",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      // A hung Paddle call must not hold the webhook open until the platform
-      // kills it; a timeout falls through to the previous behaviour (apply
-      // the cancellation) rather than blocking the delivery.
-      signal: AbortSignal.timeout(PADDLE_LISTING_TIMEOUT_MS),
     });
   } catch (err) {
     console.error("[Paddle] Customer subscription listing failed:", err);
@@ -382,9 +379,9 @@ async function paddleWebhooksHandler(
       if (owned && event.data.status !== "canceled") {
         const apiKey = env.get("PADDLE_API_KEY");
         if (!apiKey) throw new Error("Paddle API required to cancel rejected checkout");
-        const canceled = await fetchImpl(`${paddleApiBase(env.get("PADDLE_ENVIRONMENT"))}/subscriptions/${encodeURIComponent(event.data.id)}/cancel`, {
+        const canceled = await fetchPaddle(fetchImpl, `${paddleApiBase(env.get("PADDLE_ENVIRONMENT"))}/subscriptions/${encodeURIComponent(event.data.id)}/cancel`, {
           method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ effective_from: "immediately" }), signal: AbortSignal.timeout(10_000),
+          body: JSON.stringify({ effective_from: "immediately" }),
         });
         if (!canceled.ok || (await canceled.json())?.data?.status !== "canceled") throw new Error("Rejected checkout cancellation failed");
         return new Response(JSON.stringify({ received: true, ignored: "unauthorized_checkout", billingCanceled: true }), { headers: responseHeaders });

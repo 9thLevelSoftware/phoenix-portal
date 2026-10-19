@@ -49,6 +49,7 @@
  */
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { listPaddleCustomerSubscriptions, verifyCheckoutBinding } from './paddleCheckoutBinding.ts';
+import { fetchPaddle } from './paddleFetch.ts';
 import { verifyPaddleCustomDataSignature } from './paddleWebhookSecurity.ts';
 import {
   defaultProviderRevokeDependencies,
@@ -343,9 +344,8 @@ async function paddleRequest(
   init: RequestInit = {},
 ): Promise<PaddleResponse> {
   try {
-    const res = await deps.fetch(`${paddleBaseUrl(deps.paddleEnvironment)}${path}`, {
+    const res = await fetchPaddle(deps.fetch, `${paddleBaseUrl(deps.paddleEnvironment)}${path}`, {
       ...init,
-      signal: AbortSignal.timeout(10_000),
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',

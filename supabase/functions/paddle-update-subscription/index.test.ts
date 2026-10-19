@@ -28,6 +28,7 @@ interface PaddleCall {
   url: string;
   method: string;
   body: Record<string, unknown> | null;
+  timed: boolean;
 }
 
 /**
@@ -127,6 +128,7 @@ function buildHandler(
         url,
         method,
         body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
+        timed: init?.signal instanceof AbortSignal,
       });
       if (method === "GET") {
         return Promise.resolve(
@@ -201,6 +203,7 @@ Deno.test("paddle-update-subscription: the update-payment path writes no subscri
   assertEquals(upserts.length, 0);
   assertEquals(calls.length, 1);
   assertEquals(calls[0]?.method, "GET");
+  assertEquals(calls.every((call) => call.timed), true);
 });
 
 Deno.test("paddle-update-subscription: past_due gets an update-payment transaction, not a checkout", async () => {
@@ -238,6 +241,7 @@ Deno.test("paddle-update-subscription: past_due gets an update-payment transacti
     "https://sandbox-api.paddle.com/subscriptions/sub_1/update-payment-method-transaction",
   );
   assertEquals(calls[0]?.method, "GET");
+  assertEquals(calls.every((call) => call.timed), true);
   assertEquals(upserts.length, 0);
 });
 
@@ -308,6 +312,7 @@ Deno.test("paddle-update-subscription: active plan switch PATCHes with on_paymen
   assertEquals(patch?.body?.on_payment_failure, "prevent_change");
   assertEquals(patch?.body?.proration_billing_mode, "prorated_immediately");
   assertEquals(patch?.body?.items, [{ price_id: "pri_ember_monthly", quantity: 1 }]);
+  assertEquals(calls.every((call) => call.timed), true);
   // The write goes through the ordered writer, clocked by Paddle's own
   // `updated_at` on the mutation response.
   assertEquals(upserts.length, 1);
@@ -409,6 +414,7 @@ Deno.test("paddle-update-subscription: a duplicate binding is a 409, not an opaq
         url: typeof input === "string" ? input : input.toString(),
         method,
         body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
+        timed: init?.signal instanceof AbortSignal,
       });
       return Promise.resolve(
         new Response(

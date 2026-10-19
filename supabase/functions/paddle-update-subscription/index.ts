@@ -23,6 +23,7 @@ import {
 } from "../_shared/paddleSubscriptionUpdate.ts";
 import { billingAction } from "../_shared/billingAction.ts";
 import { paddleBaseUrl } from "../_shared/accountPurge.ts";
+import { fetchPaddle } from "../_shared/paddleFetch.ts";
 
 /** Anything with `get(key)`, e.g. `Deno.env`. */
 export interface EnvReader {
@@ -181,7 +182,8 @@ async function paddleUpdateSubscriptionHandler(
       // past_due keeps full access (user decision, R-33). Paddle refuses item
       // changes while a subscription is past due, so hand the client the
       // transaction that updates the card instead.
-      const transactionResponse = await deps.fetch(
+      const transactionResponse = await fetchPaddle(
+        deps.fetch,
         `${baseUrl}/subscriptions/${currentPaddleSubscriptionId}/update-payment-method-transaction`,
         {
           method: "GET",
@@ -283,7 +285,8 @@ async function paddleUpdateSubscriptionHandler(
     // Fetch the authoritative current subscription so we can (a) carry forward
     // add-ons/metered items on a plan switch and (b) reconcile against Paddle's
     // current item state rather than a possibly-stale local price_id.
-    const currentSubResponse = await deps.fetch(
+    const currentSubResponse = await fetchPaddle(
+      deps.fetch,
       `${baseUrl}/subscriptions/${currentPaddleSubscriptionId}`,
       {
         method: "GET",
@@ -338,7 +341,8 @@ async function paddleUpdateSubscriptionHandler(
       );
     }
 
-    const paddleResponse = await deps.fetch(
+    const paddleResponse = await fetchPaddle(
+      deps.fetch,
       `${baseUrl}/subscriptions/${currentPaddleSubscriptionId}`,
       {
         method: "PATCH",
