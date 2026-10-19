@@ -462,20 +462,26 @@ describe("Paddle webhook security helpers", () => {
 		expect(findCrossTierDuplicatePriceIds(env)).toEqual(["pri_shared"]);
 	});
 
-	it("locks webhook and refresh to reject duplicate price IDs before apply", () => {
+	it("locks billing handlers to reject duplicate price IDs before apply", () => {
+		const gate = readFileSync(
+			join(
+				process.cwd(),
+				"supabase/functions/_shared/paddlePriceConfigGate.ts",
+			),
+			"utf8",
+		);
+		const gateDup = gate.indexOf("findCrossTierDuplicatePriceIds(");
+		const gateInvalid = gate.indexOf("Billing configuration invalid");
+		expect(gateDup).toBeGreaterThan(-1);
+		expect(gateInvalid).toBeGreaterThan(gateDup);
+
 		const webhook = readFileSync(
 			join(process.cwd(), "supabase/functions/paddle-webhooks/index.ts"),
 			"utf8",
 		);
-		const refresh = readFileSync(
-			join(
-				process.cwd(),
-				"supabase/functions/paddle-refresh-subscription/index.ts",
-			),
-			"utf8",
+		const webhookGate = webhook.indexOf(
+			"if (priceConfigResponse) return priceConfigResponse",
 		);
-
-		const webhookDup = webhook.indexOf("findCrossTierDuplicatePriceIds(");
 		// Was `indexOf("apply_subscription_event")` — that hits the
 		// PaddleWebhooksDbClient type annotation near the top of the file, so
 		// it asserted the interface is declared before the guard rather than
@@ -483,21 +489,9 @@ describe("Paddle webhook security helpers", () => {
 		const webhookApply = webhook.search(
 			/supabase\.rpc\(\s*"apply_subscription_event"/,
 		);
-		expect(webhookDup).toBeGreaterThan(-1);
-		expect(webhookApply).toBeGreaterThan(webhookDup);
-		expect(webhook).toMatch(/Billing configuration invalid/);
+		expect(webhookGate).toBeGreaterThan(-1);
+		expect(webhookApply).toBeGreaterThan(webhookGate);
 
-		const refreshDup = refresh.indexOf("findCrossTierDuplicatePriceIds(");
-		const refreshMap = refresh.indexOf("mapPriceIdToTier(");
-		expect(refreshDup).toBeGreaterThan(-1);
-		expect(refreshMap).toBeGreaterThan(refreshDup);
-		expect(refresh).toMatch(/Billing configuration invalid/);
-	});
-
-	// paddle-webhooks is covered behaviourally by
-	// supabase/functions/paddle-webhooks/index.test.ts; refresh keeps this
-	// source tripwire until it has a handler test.
-	it("locks refresh to reject duplicate price IDs before mapping", () => {
 		const refresh = readFileSync(
 			join(
 				process.cwd(),
@@ -505,12 +499,55 @@ describe("Paddle webhook security helpers", () => {
 			),
 			"utf8",
 		);
-
-		const refreshDup = refresh.indexOf("findCrossTierDuplicatePriceIds(");
+		const refreshGate = refresh.indexOf(
+			"if (priceConfigResponse) return priceConfigResponse",
+		);
 		const refreshMap = refresh.indexOf("mapPriceIdToTier(");
-		expect(refreshDup).toBeGreaterThan(-1);
-		expect(refreshMap).toBeGreaterThan(refreshDup);
-		expect(refresh).toMatch(/Billing configuration invalid/);
+		expect(refreshGate).toBeGreaterThan(-1);
+		expect(refreshMap).toBeGreaterThan(refreshGate);
+
+		for (const relativePath of [
+			"supabase/functions/paddle-checkout-custom-data/index.ts",
+			"supabase/functions/paddle-update-subscription/index.ts",
+		]) {
+			const source = readFileSync(join(process.cwd(), relativePath), "utf8");
+			const gateReturn = source.indexOf(
+				"if (priceConfigResponse) return priceConfigResponse",
+			);
+			const laterUse = source.indexOf("getAllAllowedPriceIds(");
+			expect(gateReturn, relativePath).toBeGreaterThan(-1);
+			expect(laterUse, relativePath).toBeGreaterThan(gateReturn);
+		}
+	});
+
+	// paddle-webhooks is covered behaviourally by
+	// supabase/functions/paddle-webhooks/index.test.ts; refresh keeps this
+	// source tripwire until it has a handler test. The duplicate check itself
+	// lives in paddlePriceConfigGateResponse.
+	it("locks refresh to reject duplicate price IDs before mapping", () => {
+		const gate = readFileSync(
+			join(
+				process.cwd(),
+				"supabase/functions/_shared/paddlePriceConfigGate.ts",
+			),
+			"utf8",
+		);
+		expect(gate.indexOf("findCrossTierDuplicatePriceIds(")).toBeGreaterThan(-1);
+		expect(gate).toMatch(/Billing configuration invalid/);
+
+		const refresh = readFileSync(
+			join(
+				process.cwd(),
+				"supabase/functions/paddle-refresh-subscription/index.ts",
+			),
+			"utf8",
+		);
+		const refreshGate = refresh.indexOf(
+			"if (priceConfigResponse) return priceConfigResponse",
+		);
+		const refreshMap = refresh.indexOf("mapPriceIdToTier(");
+		expect(refreshGate).toBeGreaterThan(-1);
+		expect(refreshMap).toBeGreaterThan(refreshGate);
 	});
 
 	it("maps fully canceled Paddle subscriptions to closed local state", () => {
