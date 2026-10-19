@@ -1,5 +1,6 @@
 import { hmacSha256Hex } from "./hmac.ts";
 import { verifyPaddleCustomDataSignature } from "./paddleWebhookSecurity.ts";
+import { timingSafeEqualString } from "./timingSafe.ts";
 
 export const CHECKOUT_LIFETIME_MS = 30 * 60 * 1000;
 export interface CheckoutBinding {
@@ -34,9 +35,9 @@ export async function verifyCheckoutBinding(data: unknown, secret: string): Prom
     .every((field) => typeof field === "string" && field.length > 0)) return false;
   if (!Number.isFinite(Date.parse(value.cd_expires_at))) return false;
   const expected = await hmacSha256Hex(secret, signingPayload(value));
-  let mismatch = expected.length ^ value.cd_sig.length;
-  for (let i = 0; i < expected.length; i++) mismatch |= expected.charCodeAt(i) ^ (value.cd_sig.charCodeAt(i) || 0);
-  return mismatch === 0;
+  // `expected` is the server HMAC; `provided` is the caller signature. The
+  // helper iterates `provided`, so the trip count never reveals the HMAC length.
+  return timingSafeEqualString({ expected, provided: value.cd_sig });
 }
 
 export function paddleApiBase(environment: string | undefined): string {
