@@ -44,9 +44,11 @@ function asPrimitiveArray(value: unknown): Array<string | number | boolean> {
 		: [];
 }
 
-function formatStoredDurationMinutes(duration: number | null | undefined) {
-	if (!duration) return "0 min";
-	return `${Math.round(duration / 60)} min`;
+function formatStoredDurationSecondsAsMinutes(
+	durationSeconds: number | null | undefined,
+) {
+	if (!durationSeconds) return "0 min";
+	return `${Math.round(durationSeconds / 60)} min`;
 }
 
 function formatLoad(exercise: RoutineExerciseSnapshot, unit: WeightUnit) {
@@ -435,7 +437,9 @@ export function CycleSnapshotPreview({
 									{isWorkout && routine && (
 										<p className="text-xs text-muted-foreground">
 											{routine.exercise_count} exercises /{" "}
-											{formatStoredDurationMinutes(routine.estimated_duration)}
+											{formatStoredDurationSecondsAsMinutes(
+												routine.estimated_duration,
+											)}
 										</p>
 									)}
 									{!isWorkout && (
