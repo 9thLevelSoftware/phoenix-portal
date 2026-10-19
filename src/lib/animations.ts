@@ -47,10 +47,7 @@ export const pageTransition = {
 	},
 } as const;
 
-// --- Hover & tap recipes ---
+// --- Hover recipes ---
 
 /** Subtle scale lift for interactive cards and panels. */
 export const hover = { scale: 1.02 } as const;
-
-/** Small press feedback for buttons and touch targets. */
-export const tap = { scale: 0.97 } as const;
