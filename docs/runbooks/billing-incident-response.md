@@ -1,6 +1,6 @@
 # Billing Incident Response Runbook
 
-> Last updated: 2026-10-08
+> Last updated: 2026-10-16
 > Webhook handler: `supabase/functions/paddle-webhooks/index.ts`
 
 ## 1. Identifying Affected Users
@@ -95,10 +95,13 @@ both. Consequences to keep in mind:
   UNIQUE index over non-null ids, so a second user cannot hold the same id —
   the statement fails with `23505`. That is the index doing its job; see §10.
 - **Clearing `paddle_subscription_id` is not a harmless reset.** It is how
-  `paddle-refresh-subscription` records a subscription Paddle answers 404 for,
-  and it is the only local link to the Paddle subscription: once it is NULL,
-  nothing can cancel or refresh that subscription and the user may keep being
-  billed. Confirm the subscription is really gone in Paddle first.
+  `paddle-refresh-subscription` records a subscription Paddle answers 404 for.
+  That write sets `status` to `canceled`, nulls the subscription id,
+  `price_id`, and both period columns, and keeps the stored tier and
+  `paddle_customer_id`. With the subscription id NULL, a later refresh or
+  cancel has no id to send to Paddle; the customer id is what §10 still lists
+  by. Confirm the subscription is really gone in Paddle first. A 404 that
+  loses the ordering race leaves the id in place — see §7, "404 responses".
 
 ### Force a user to a specific tier and status
 
@@ -383,9 +386,50 @@ is documented in the handler, not a defect introduced by the rescue.
 | `[BILLING_ALERT] Failed to record untracked_subscription note:` | The event was correctly ignored, but the `subscription_events` audit row could not be written.                                        | The ignore still happened; you have lost the §10 evidence for that one event. Work from Paddle's subscription list instead.  |
 | `[BILLING_ALERT] Checkout signing subscription lookup failed:`  | `paddle-checkout-custom-data` could not read the user's subscription row while signing a checkout.                                    | Transient; the user can retry. Persistent means a DB problem.                                                                |
 | `[BILLING_ALERT] Paddle transaction custom_data.user_id mismatch:` / `Invalid cd_sig on Paddle transaction:` | Someone tried to refresh against a transaction that does not prove it belongs to them.                       | Security signal, refused. No data action.                                                                                    |
-| `[BILLING_ALERT] Paddle subscription not found (404), clearing provider identifiers:` | `paddle-refresh-subscription` asked Paddle for the stored subscription and got a 404, so it wrote a canceled/FREE row and cleared the ids. | Expected after a subscription is fully removed in Paddle. If the user says they are still paying, they have a *different* subscription — §10. |
-| `[BILLING_ALERT] paddle_subscription_not_found; local row terminal, continuing` | Account deletion: Paddle 404s the stored id but the local row is already `canceled`/`expired`. The purge continues. | Nothing.                                                                                                                     |
-| `[BILLING_ALERT] paddle_subscription_not_found; local row not terminal, aborting` | Account deletion: Paddle 404s a subscription the portal still considers live, so the purge **aborts** and the deletion request is parked `needs_support_reason = 'billing_subscription_not_found'`. | Reconcile the subscription with Paddle, then clear the reason — see operations.md §5, "Deletion alerts and the needs-support path". |
+| `[BILLING_ALERT] Paddle subscription not found (404), clearing provider identifiers:` | `paddle-refresh-subscription` got HTTP 404 from `GET /subscriptions/{id}`, and the id it looked up is the stored `paddle_subscription_id`. The id is the next argument. Logged before the write. | The write keeps the stored tier and `paddle_customer_id`, nulls `paddle_subscription_id`, `price_id`, and both period columns, and sets `status` to `canceled`. `canceled` is not an entitled status, so access ends while `tier` in SQL still shows the old plan. A refused write leaves the row unchanged. Branches, including the account-purge 404 logs, are in "404 responses" below. |
+
+### 404 responses
+
+`paddle-webhooks` does not answer 404, and it does not log a subscription-not-found line. Two other paths do see a Paddle 404: `paddle-refresh-subscription`, and the billing step of an account purge.
+
+#### `paddle-refresh-subscription`
+
+The alert above is `console.error` in `supabase/functions/paddle-refresh-subscription/index.ts`. It runs only when `GET /subscriptions/{id}` returns 404 **and** the id is the row's stored `paddle_subscription_id`. A body field `transaction_id` whose Paddle subscription id differs from that stored id skips the alert and the write and returns 502 `{ "error": "Checkout subscription is not yet available" }`.
+
+When the alert fires, the handler writes through `apply_subscription_event` with the function clock (`last_event_occurred_at` = `now()`, `last_event_id` = `refresh:<id>:<iso>` — a synthetic id, not a Paddle `evt_…`):
+
+| Column | Written value |
+| --- | --- |
+| `status` | `canceled` |
+| `tier` | the stored tier |
+| `paddle_subscription_id` | `NULL` |
+| `paddle_customer_id` | the stored customer id, unchanged |
+| `price_id`, `current_period_start`, `current_period_end` | `NULL` |
+| `cancel_at_period_end` | `false` |
+
+Outcomes after that alert:
+
+| What you see | What it means |
+| --- | --- |
+| 200 `{ "status": "refreshed" }` and the subscription id is NULL | The clear landed. The customer id is still on the row, so §10 can list that customer's other subscriptions. A user who is still being charged has a different subscription. |
+| Warn `[Paddle] Missing-subscription cleanup not stored: a newer event already wrote the row`, then 200 `{ "status": "refreshed", "applied": false, "reason": "stale" }` | The stored `last_event_occurred_at` is at or after this clear's time. The row, including `paddle_subscription_id`, is unchanged. The response `subscription` object is that stored row. |
+| `Error marking missing Paddle subscription canceled:` and 500 `{ "error": "Database update failed" }` | The ordered write errored. The row is unchanged. |
+
+#### Account purge (`delete-account`)
+
+Search **Edge Functions > delete-account > Logs/Invocations** for `[PURGE] billing step failed` and `[DELETION_ALERT] needs_support billing_subscription_not_found`. Those lines come from `purgeUser` in `supabase/functions/_shared/accountPurge.ts` and from `supabase/functions/delete-account/index.ts`. The prefixes are `[PURGE]`, `[DELETION_ALERT]`, `[DELETE_ACCOUNT]`, and `[DELETE_DUE]`. The billing step does not log `[BILLING_ALERT] paddle_subscription_not_found; local row terminal, continuing` or `[BILLING_ALERT] paddle_subscription_not_found; local row not terminal, aborting`.
+
+A 404 parks the deletion only for `GET /subscriptions/{paddle_subscription_id}` on the id stored for that user. Local statuses `canceled` and `expired` are terminal. Every other status, including null, `none`, `active`, `trialing`, `past_due`, and `incomplete`, is non-terminal.
+
+| Log (first argument) | What happened | What the operator does |
+| --- | --- | --- |
+| `[PURGE] billing step failed; nothing deleted` with `stage` `billing_not_found` | That GET returned 404 and the local status is non-terminal. No row was deleted. `detail` is `HTTP 404:` plus the Paddle body, truncated to 500 characters. | The claim is released to `pending` with `needs_support_reason = 'billing_subscription_not_found'`. `process_due` skips the row until that reason is cleared. |
+| `[DELETION_ALERT] needs_support billing_subscription_not_found user=<uuid>` | Logged with `{ request_id, detail }` whenever the purge fails at the stage above, after the claim release is attempted. If that release fails, `[DELETION_ALERT] claim_revert_failed` is logged too and `needs_support_reason` may not be set. "Delete now" then logs `[DELETE_ACCOUNT] purge failed:` (`stage` `billing_not_found`, `billing_cancelled` false) and answers 502 `{ "code": "billing_subscription_not_found" }`. The hourly pass logs `[DELETE_DUE] purge failed user=<uuid>` with the same stage and counts the request in both `needs_support` and `failed`, with `failed_by_stage.billing_not_found`. | Reconcile the subscription in Paddle, then clear the reason — [operations.md](operations.md) §5, "Deletion alerts and the needs-support path". Clearing the reason re-arms the purge. |
+| No 404 line | The same GET returned 404, the local status is `canceled` or `expired`, and the billing step has a customer id (on the row, on a checkout-ledger entry, or on a transaction payload). There is no log for that 404. The step lists each of those customers and cancels every owned subscription whose live status is something other than `canceled`. The local mirror is then set to `status = 'canceled'` and `cancel_at_period_end = false`. The subscription id stays until the auth user is deleted. | Nothing for this 404. Success is `Account deleted successfully for user <uuid>` ("Delete now") or `[DELETE_DUE] purged user=<uuid>` (hourly). A mirror-update error logs `[PURGE] Paddle cancelled but local subscription mirror failed:` and the purge still continues; that line is the mirror failure, including when this run cancelled nothing because the subscription was already gone. |
+
+Every other billing-step failure is retryable, with `needs_support_reason` left null. The same `[PURGE] billing step failed; nothing deleted` line carries `stage` `billing_lookup` (or `billing_cancel` when a cancel call was not confirmed). "Delete now" answers 502 `{ "code": "billing_cancel_failed" }` and `Retry-After: 3600`. The hourly pass retries it. That covers any other Paddle 404, a non-OK `GET /transactions/{id}`, a customer listing error whose `detail` is `Paddle listing failed: HTTP <status>`, and any non-404 error on the subscription GET, including when the local row is already terminal.
+
+A terminal 404 with no customer id collected also stops the purge, and its stage is `billing_lookup`: the stored subscription id 404s, the local status is `canceled` or `expired`, and after the checkout-ledger walk the customer set is still empty. `detail` is `Billing customer is unknown`. The account stays, and the request stays retryable.
 
 ---
 
@@ -473,7 +517,7 @@ Two checks refuse the request before the body is read:
 | Live        | 60          | 3 days     | 20 attempts in first hour, 47 in first day, 60 total |
 
 - Paddle marks a notification delivered only when the endpoint returns HTTP **200** within **5 seconds**.
-- Every other status is retried on the schedule above. **4xx responses retry**, including **400**, **401**, and **404**.
+- Every other status is retried on the schedule above, so a **4xx** is retried the same way as a **5xx**. `paddle-webhooks` itself answers **400**, **401**, **405**, **413**, and **500**. A **404** in the logs is a Paddle API response inside `paddle-refresh-subscription` or the account purge (§7, "404 responses"), not a status this webhook returned.
 - A response that takes longer than **5 seconds** is retried on that same schedule.
 - After all retry attempts are exhausted, the notification status is set to **failed**.
 - Failed notifications can be manually replayed via the Paddle API or dashboard.
