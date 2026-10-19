@@ -1,6 +1,6 @@
 # Paddle Simulation Testing Guide
 
-> Last updated: 2026-10-06
+> Last updated: 2026-10-16
 > Webhook handler: `supabase/functions/paddle-webhooks/index.ts`
 > Gateway: `[functions.paddle-webhooks]` in `supabase/config.toml` has `verify_jwt = false`. The handler authenticates the raw body with the `Paddle-Signature` header.
 
@@ -80,6 +80,8 @@ Trust rules, after the user id has been accepted as a UUID:
 
 The first simulation for a user with no row, and any simulation whose `data.id` is not the stored subscription id, needs a valid `cd_sig`.
 
+The first row is `bindCheckoutSubscription` returning true. A legacy HMAC of the user id, or a v2 binding whose transaction check fails, follows [Rejected checkout](#rejected-checkout).
+
 ### Edge Function secrets
 
 The handler reads these at request time. Set them on the `paddle-webhooks` function.
@@ -94,7 +96,7 @@ The handler reads these at request time. Set them on the `paddle-webhooks` funct
 | `PADDLE_EMBER_MONTHLY_PRICE_ID`, `PADDLE_EMBER_ANNUAL_PRICE_ID` | Single Ember ids, unioned into the Ember set. |
 | `PADDLE_FLAME_MONTHLY_PRICE_ID`, `PADDLE_FLAME_ANNUAL_PRICE_ID` | Single Flame ids, unioned into the Flame set. |
 | `PADDLE_INFERNO_MONTHLY_PRICE_ID`, `PADDLE_INFERNO_ANNUAL_PRICE_ID` | Single Inferno ids, unioned into the Inferno set. |
-| `PADDLE_API_KEY` | Bearer token for the live-subscription listing. Used only when a write's mapped status is `canceled`. |
+| `PADDLE_API_KEY` | Bearer token for this handler's Paddle API calls. The live-subscription listing runs when a write's mapped status is `canceled`. `bindCheckoutSubscription` uses the key for `GET /transactions/{id}` when a v2 checkout binding still has to be verified: once for an event whose subscription id is not the stored id, and again for each sibling candidate on that listing. When trust fails but custom data still proves this user and `data.status` is not `canceled`, the handler cancels that subscription immediately. See [Rejected checkout](#rejected-checkout). |
 | `PADDLE_ENVIRONMENT` | The exact value `sandbox` selects `https://sandbox-api.paddle.com`. Any other value, including unset, selects `https://api.paddle.com`. |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Service-role client that calls `apply_subscription_event`. |
 
@@ -120,7 +122,7 @@ Every check below is implemented in `paddleWebhooksHandler`. Status codes are th
 6. **Event type.** See the table below.
 7. **User id** (subscription events only). `paddleWebhookResponseForCustomUserId`.
 8. **Load `subscriptions` for that user.** A read error is HTTP 500 `{ "error": "Failed to load subscription state" }`. The handler does not treat a failed read as "no row".
-9. **`cd_sig` trust.** See the table in Prerequisites.
+9. **`cd_sig` trust.** See the table in Prerequisites. An untrusted event that still proves this user, and whose `data.status` is not `canceled`, is canceled at Paddle before any 401. See [Rejected checkout](#rejected-checkout).
 10. **Ordering.** `classifyPaddleEventOrder`, against `last_event_id` and `last_event_occurred_at`.
 11. **Which subscription may write the row.** `classifySubscriptionEventTarget`.
 12. **Price and tier**, then **`apply_subscription_event`**. A mapped status of `canceled` may list other live subscriptions first.
@@ -151,6 +153,25 @@ Transaction and unhandled branches still require a signature-valid envelope (`ev
 | --- | --- | --- |
 | Absent, not a string, or `""` | HTTP 200 `{ "ignored": true }` | No read and no write. Warn: `[Paddle] Ignoring event with missing custom_data.user_id:` plus `event_id` and `event_type`. Paddle will not retry a 200. |
 | Non-empty and not a UUID | HTTP 400 `{ "error": "Invalid user_id in custom_data" }` | No read and no write. `[BILLING_ALERT] Malformed custom_data.user_id in Paddle event:` |
+
+### Rejected checkout
+
+`evaluatePaddleCustomDataTrust` can reject an event whose custom data still proves this user. `verifyCheckoutBinding` or `verifyPaddleCustomDataSignature` is that proof. It is not enough to grant access. A legacy HMAC of the user id, or a v2 checkout binding whose transaction check fails, leaves `signedCustomDataValid` false. When `data.status` is not `canceled`, the handler stops future billing before it acknowledges. The cancel requires that proof.
+
+It `POST`s:
+
+```text
+{base}/subscriptions/{data.id}/cancel
+```
+
+`{base}` is `https://sandbox-api.paddle.com` when `PADDLE_ENVIRONMENT` is exactly `sandbox`, and `https://api.paddle.com` otherwise. The body is `{ "effective_from": "immediately" }`. The call uses `Authorization: Bearer <PADDLE_API_KEY>` and aborts after 10 seconds.
+
+| Cancel result | Handler result |
+| --- | --- |
+| HTTP OK and `data.status` is `canceled` | HTTP 200 `{ "received": true, "ignored": "unauthorized_checkout", "billingCanceled": true }`. The subscription row is not written. |
+| `PADDLE_API_KEY` unset, non-OK HTTP, timeout, a body that is not JSON, or a body whose `data.status` is not `canceled` | The handler throws. HTTP 500 `{ "error": "Internal server error" }`. Log: `Paddle webhook handler error:`. |
+
+When that identity proof is absent, or `data.status` is already `canceled`, the handler does not call cancel. It returns HTTP 401 `{ "error": "Invalid cd_sig" }`, as in the trust table.
 
 ### Ordering
 
@@ -513,6 +534,7 @@ The HMAC does not match, and `data.id` is not the stored `paddle_subscription_id
 | `{ "received": true, "duplicate": true }` | `event_id` is already `last_event_id`. `updated_at` is unchanged. |
 | `{ "received": true, "stale": true }` | `occurred_at` is earlier than or equal to `last_event_occurred_at`, or a newer write won at the RPC. The row is unchanged. |
 | `{ "received": true, "ignored": "untracked_subscription" }` | `data.id` is not the tracked subscription, and this event was not allowed to replace it. `subscriptions` is unchanged. |
+| `{ "received": true, "ignored": "unauthorized_checkout", "billingCanceled": true }` | Trust failed, custom data still proved this user, and Paddle confirmed an immediate cancel. The row was not written. |
 | `{ "received": true }` on `transaction.completed`, `transaction.payment_failed`, or an unhandled type | Acknowledged. The subscription path never ran. |
 | `{ "received": true }` and `updated_at` moved | The write ran. Compare `price_id`, `occurred_at`, and `data.status` with section 3. A payload that repeats the current tier and status still bumps `updated_at` and the event clocks. |
 
@@ -572,6 +594,7 @@ An id present in two tier sets never reaches this mapping. The request fails ear
 | 200 | `{ "received": true, "duplicate": true }` | `event_id` matches `last_event_id` |
 | 200 | `{ "received": true, "stale": true }` | `occurred_at` is not strictly newer, including a lost race at write time |
 | 200 | `{ "received": true, "ignored": "untracked_subscription" }` | This subscription id must not replace the tracked row |
+| 200 | `{ "received": true, "ignored": "unauthorized_checkout", "billingCanceled": true }` | Trust failed, custom data still proved this user, `data.status` was not `canceled`, and Paddle confirmed an immediate cancel |
 | 200 | `{ "received": true, "switchedToUntrackedSubscription": true }` | A canceled/paused event adopted another live subscription that proved this user |
 | 200 | `{ "ignored": true }` | No `custom_data.user_id` |
 | 400 | `{ "error": "Invalid event payload" }` | Missing `event_id`, `event_type`, or `data` |
@@ -589,7 +612,7 @@ An id present in two tier sets never reaches this mapping. The request fails ear
 | 500 | `{ "error": "Could not check for a live subscription" }` | Canceled/paused listing failed |
 | 500 | `{ "error": "Failed to adopt live subscription" }` | Sibling adoption write failed |
 | 500 | `{ "error": "Database upsert failed" }` | `apply_subscription_event` returned an error |
-| 500 | `{ "error": "Internal server error" }` | Unexpected throw, including a signed body that is not JSON |
+| 500 | `{ "error": "Internal server error" }` | Unexpected throw, including a signed body that is not JSON, or a rejected-checkout cancel that Paddle did not confirm |
 
 ---
 
