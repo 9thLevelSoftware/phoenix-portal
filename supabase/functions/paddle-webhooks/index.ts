@@ -1,12 +1,10 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { bindCheckoutSubscription, paddleApiBase, verifyCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
 import { readBoundedRequestBody, REQUEST_BODY_LIMITS } from '../_shared/requestBody.ts';
+import { paddlePriceConfigGateResponse } from "../_shared/paddlePriceConfigGate.ts";
 import {
-  findCrossTierDuplicatePriceIds,
   getAllAllowedPriceIds,
   mapPriceIdToTier,
-  PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL,
-  paddlePriceIdsConfigured,
 } from "../_shared/paddlePriceIds.ts";
 import { paddleWebhookResponseForCustomUserId } from "../_shared/paddleWebhookUserId.ts";
 import {
@@ -218,24 +216,8 @@ async function paddleWebhooksHandler(
   }
 
   try {
-    if (!paddlePriceIdsConfigured(env)) {
-      console.error(PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL);
-      return new Response(
-        JSON.stringify({ error: "Billing configuration incomplete" }),
-        { status: 500, headers: responseHeaders },
-      );
-    }
-    const duplicatePriceIds = findCrossTierDuplicatePriceIds(env);
-    if (duplicatePriceIds.length > 0) {
-      console.error(
-        "[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence):",
-        duplicatePriceIds,
-      );
-      return new Response(
-        JSON.stringify({ error: "Billing configuration invalid" }),
-        { status: 500, headers: responseHeaders },
-      );
-    }
+    const priceConfigResponse = paddlePriceConfigGateResponse(env, responseHeaders);
+    if (priceConfigResponse) return priceConfigResponse;
     const customDataSecret = env.get("PADDLE_CUSTOM_DATA_SECRET")?.trim();
     if (!customDataSecret) {
       console.error("[FATAL] PADDLE_CUSTOM_DATA_SECRET must be set");

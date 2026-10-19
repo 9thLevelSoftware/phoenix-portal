@@ -1,12 +1,10 @@
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
+import { paddlePriceConfigGateResponse } from "../_shared/paddlePriceConfigGate.ts";
 import {
-  findCrossTierDuplicatePriceIds,
   getAllAllowedPriceIds,
   mapPriceIdToTier,
-  PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL,
-  paddlePriceIdsConfigured,
 } from "../_shared/paddlePriceIds.ts";
 import {
   applySubscriptionEvent,
@@ -198,25 +196,11 @@ async function paddleRefreshSubscriptionHandler(
       );
     }
 
-    if (!paddlePriceIdsConfigured(deps.env)) {
-      console.error(PADDLE_PRICE_IDS_NOT_CONFIGURED_FATAL);
-      return new Response(
-        JSON.stringify({ error: "Billing configuration incomplete" }),
-        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
-      );
-    }
-
-    const duplicatePriceIds = findCrossTierDuplicatePriceIds(deps.env);
-    if (duplicatePriceIds.length > 0) {
-      console.error(
-        "[FATAL] Paddle price ID configured under multiple tiers (would map to wrong tier by precedence):",
-        duplicatePriceIds,
-      );
-      return new Response(
-        JSON.stringify({ error: "Billing configuration invalid" }),
-        { status: 500, headers: { ...cors, "Content-Type": "application/json" } },
-      );
-    }
+    const priceConfigResponse = paddlePriceConfigGateResponse(deps.env, {
+      ...cors,
+      "Content-Type": "application/json",
+    });
+    if (priceConfigResponse) return priceConfigResponse;
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
