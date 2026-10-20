@@ -1,21 +1,14 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-	DAILY_RATE_LIMITS,
-	RATE_LIMIT_SCOPES,
-	RATE_LIMITS,
-} from "@/lib/integrations/rate-limits";
 
 /**
- * The sync queue processor runs under Deno and calls `Deno.serve` at module
- * scope, so it cannot be imported here. Its rate-limit configuration is instead
- * parsed out of the source, the same way rate-limit-schema.test.ts reads the
- * migration SQL.
- *
- * These two config blocks are duplicated by necessity (browser bundle vs Deno
- * runtime). Silent drift between them is the failure this test exists to catch:
- * the client would render a sync button the server then refuses, or vice versa.
+ * Provider quotas live only in the sync queue processor. The old client copy
+ * (`src/lib/integrations/rate-limits.ts`) was not imported by app code, so it
+ * is gone. The processor runs under Deno and does not export these tables, so
+ * this test reads them out of the source and pins the per-provider contract:
+ * request ceilings (including the ~20% safety margin), quota scope, and
+ * Strava's second daily window.
  */
 const queueProcessorSource = readFileSync(
 	join(
@@ -27,6 +20,38 @@ const queueProcessorSource = readFileSync(
 	),
 	"utf8",
 );
+
+/** Short-window ceilings the processor must keep. */
+const EXPECTED_RATE_LIMITS: Record<
+	string,
+	{ requests: number; windowMs: number }
+> = {
+	strava: { requests: 80, windowMs: 15 * 60 * 1000 },
+	fitbit: { requests: 120, windowMs: 60 * 60 * 1000 },
+	garmin: { requests: 40, windowMs: 60 * 60 * 1000 },
+	hevy: { requests: 40, windowMs: 60 * 60 * 1000 },
+	liftosaur: { requests: 40, windowMs: 60 * 60 * 1000 },
+};
+
+/**
+ * App-wide vs per-user quota scope. A shared bucket for a per-user quota
+ * starves later users; a per-user bucket for an app quota overruns it.
+ */
+const EXPECTED_SCOPES: Record<string, "app" | "user"> = {
+	strava: "app",
+	garmin: "app",
+	fitbit: "user",
+	hevy: "user",
+	liftosaur: "user",
+};
+
+/** Longer windows published in addition to the short one. */
+const EXPECTED_DAILY_RATE_LIMITS: Record<
+	string,
+	{ requests: number; windowMs: number }
+> = {
+	strava: { requests: 800, windowMs: 24 * 60 * 60 * 1000 },
+};
 
 function extractObjectLiteral(source: string, declaration: string): string {
 	const start = source.indexOf(declaration);
@@ -84,60 +109,62 @@ function parseEdgeScopes(): Record<string, string> {
 	return entries;
 }
 
-describe("rate limit config parity (client vs sync queue processor)", () => {
+describe("process-sync-queue rate limit contract", () => {
 	it("parses a non-empty config out of the queue processor", () => {
 		// Guards the parser itself — a silently-empty parse would make every
 		// comparison below vacuously pass.
 		expect(Object.keys(parseEdgeRateLimits()).length).toBeGreaterThan(0);
 		expect(Object.keys(parseEdgeScopes()).length).toBeGreaterThan(0);
+		expect(
+			Object.keys(parseEdgeRateLimits("const DAILY_RATE_LIMITS")).length,
+		).toBeGreaterThan(0);
 	});
 
-	it("declares the same providers on both sides", () => {
-		expect(Object.keys(parseEdgeRateLimits()).sort()).toEqual(
-			Object.keys(RATE_LIMITS).sort(),
-		);
+	it("keeps the short-window ceiling for every provider", () => {
+		expect(parseEdgeRateLimits()).toEqual(EXPECTED_RATE_LIMITS);
 	});
 
-	it("agrees on requests and window for every provider", () => {
-		expect(parseEdgeRateLimits()).toEqual(RATE_LIMITS);
-	});
-
-	it("agrees on the quota scope for every provider", () => {
-		expect(parseEdgeScopes()).toEqual(RATE_LIMIT_SCOPES);
+	it("keeps the quota scope for every provider", () => {
+		expect(parseEdgeScopes()).toEqual(EXPECTED_SCOPES);
 	});
 
 	it("assigns a scope to every rate-limited provider", () => {
-		for (const provider of Object.keys(RATE_LIMITS)) {
+		const scopes = parseEdgeScopes();
+		for (const provider of Object.keys(parseEdgeRateLimits())) {
 			expect(
-				RATE_LIMIT_SCOPES[provider],
+				scopes[provider],
 				`${provider} has a rate limit but no declared scope`,
 			).toMatch(/^(app|user)$/);
 		}
 	});
 
 	it("keeps Fitbit user-scoped (regression: a shared bucket capped all users at one allowance)", () => {
-		expect(RATE_LIMIT_SCOPES.fitbit).toBe("user");
+		expect(parseEdgeScopes().fitbit).toBe("user");
 	});
 
 	it("keeps Strava app-scoped (its published quota is per application)", () => {
-		expect(RATE_LIMIT_SCOPES.strava).toBe("app");
+		expect(parseEdgeScopes().strava).toBe("app");
 	});
 
-	it("agrees on the daily quota window for every provider that has one", () => {
+	it("keeps the daily quota window for every provider that has one", () => {
 		expect(parseEdgeRateLimits("const DAILY_RATE_LIMITS")).toEqual(
-			DAILY_RATE_LIMITS,
+			EXPECTED_DAILY_RATE_LIMITS,
 		);
 	});
 
 	it("tracks Strava's daily read cap (regression: only the 15-min window was modelled)", () => {
-		expect(DAILY_RATE_LIMITS.strava.requests).toBeLessThanOrEqual(1000);
-		expect(DAILY_RATE_LIMITS.strava.windowMs).toBe(24 * 60 * 60 * 1000);
+		const daily = parseEdgeRateLimits("const DAILY_RATE_LIMITS").strava;
+		expect(daily.requests).toBeLessThanOrEqual(1000);
+		expect(daily.windowMs).toBe(24 * 60 * 60 * 1000);
 	});
 
 	it("keeps every daily quota looser than its short-window counterpart", () => {
-		for (const [provider, daily] of Object.entries(DAILY_RATE_LIMITS)) {
-			expect(daily.windowMs).toBeGreaterThan(RATE_LIMITS[provider].windowMs);
-			expect(daily.requests).toBeGreaterThan(RATE_LIMITS[provider].requests);
+		const short = parseEdgeRateLimits();
+		for (const [provider, daily] of Object.entries(
+			parseEdgeRateLimits("const DAILY_RATE_LIMITS"),
+		)) {
+			expect(daily.windowMs).toBeGreaterThan(short[provider].windowMs);
+			expect(daily.requests).toBeGreaterThan(short[provider].requests);
 		}
 	});
 
@@ -147,8 +174,9 @@ describe("rate limit config parity (client vs sync queue processor)", () => {
 			strava: 100, // per 15 min, non-upload (read) limit
 			fitbit: 150, // per hour, per user
 		};
+		const limits = parseEdgeRateLimits();
 		for (const [provider, ceiling] of Object.entries(documented)) {
-			expect(RATE_LIMITS[provider].requests).toBeLessThanOrEqual(ceiling);
+			expect(limits[provider].requests).toBeLessThanOrEqual(ceiling);
 		}
 	});
 });
