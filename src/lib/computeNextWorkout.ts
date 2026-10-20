@@ -1,3 +1,4 @@
+import { differenceInCalendarDays } from "date-fns";
 import type { CycleDay } from "@/schemas/transforms";
 
 export interface NextWorkoutResult {
@@ -25,21 +26,9 @@ export function computeNextWorkout(
 ): NextWorkoutResult | null {
 	if (cycleDays.length === 0) return null;
 
-	// Normalize both dates to midnight local to avoid timezone drift
-	const startDay = new Date(
-		startedAt.getFullYear(),
-		startedAt.getMonth(),
-		startedAt.getDate(),
-	);
-	const todayDay = new Date(
-		today.getFullYear(),
-		today.getMonth(),
-		today.getDate(),
-	);
-
-	const daysSinceStart = Math.floor(
-		(todayDay.getTime() - startDay.getTime()) / (1000 * 60 * 60 * 24),
-	);
+	// Local calendar days. Dividing a midnight-to-midnight millisecond span
+	// by 86_400_000 is short a day across a 23h spring-forward.
+	const daysSinceStart = differenceInCalendarDays(today, startedAt);
 
 	// Before cycle started or cycle ended
 	if (daysSinceStart < 0) return null;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CycleDay } from "@/schemas/transforms";
 import { computeNextWorkout } from "./computeNextWorkout";
 
@@ -108,5 +108,98 @@ describe("computeNextWorkout", () => {
 		// Day 15 (daysSinceStart=14) = week 3
 		const day15 = computeNextWorkout(days, startDate, 4, new Date(2026, 0, 19));
 		expect(day15?.cycleWeek).toBe(3);
+	});
+});
+
+describe("computeNextWorkout across a DST transition", () => {
+	// 2026 US transitions in America/New_York: spring-forward on March 8
+	// (23h local day) and fall-back on November 1 (25h local day).
+	function inNewYork(run: () => void): void {
+		const previousTz = process.env.TZ;
+		process.env.TZ = "America/New_York";
+		try {
+			run();
+		} finally {
+			vi.useRealTimers();
+			if (previousTz === undefined) delete process.env.TZ;
+			else process.env.TZ = previousTz;
+		}
+	}
+
+	function atEastern(today: Date): void {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(today);
+	}
+
+	it("counts the 23-hour spring-forward day as one calendar day", () => {
+		const days = makeWeek();
+		inNewYork(() => {
+			expect(new Date(2026, 2, 7, 12).getTimezoneOffset()).toBe(300);
+			expect(new Date(2026, 2, 9, 12).getTimezoneOffset()).toBe(240);
+			const startedAt = new Date(2026, 2, 8, 8);
+			const today = new Date(2026, 2, 9, 15);
+			const baseline = computeNextWorkout(
+				days,
+				new Date(2026, 0, 5, 8),
+				4,
+				new Date(2026, 0, 6, 15),
+			);
+			atEastern(today);
+			const result = computeNextWorkout(days, startedAt, 4);
+			expect(result?.dayNumber).toBe(2);
+			expect(result?.cycleWeek).toBe(1);
+			expect(result?.dayNumber).toBe(baseline?.dayNumber);
+			expect(result?.cycleWeek).toBe(baseline?.cycleWeek);
+		});
+	});
+
+	it("advances the cycle week across the spring-forward", () => {
+		const days = makeWeek();
+		inNewYork(() => {
+			// Monday March 2 to Monday March 9 is 7 calendar days (week 2,
+			// day 1). The short Sunday makes a millisecond count land on day 7.
+			const startedAt = new Date(2026, 2, 2, 7);
+			const today = new Date(2026, 2, 9, 12);
+			atEastern(today);
+			const result = computeNextWorkout(days, startedAt, 4);
+			expect(result?.dayNumber).toBe(1);
+			expect(result?.cycleWeek).toBe(2);
+			expect(result?.isRestDay).toBe(false);
+		});
+	});
+
+	it("ends the cycle on the calendar day after a spring-forward", () => {
+		const days = makeWeek();
+		inNewYork(() => {
+			// One week starting on the spring-forward day. Seven calendar
+			// days later the cycle is over.
+			const startedAt = new Date(2026, 2, 8, 6);
+			const today = new Date(2026, 2, 15, 9);
+			atEastern(today);
+			expect(computeNextWorkout(days, startedAt, 1)).toBeNull();
+		});
+	});
+
+	it("keeps the same day across the 25-hour fall-back", () => {
+		const days = makeWeek();
+		inNewYork(() => {
+			expect(new Date(2026, 9, 31, 12).getTimezoneOffset()).toBe(240);
+			expect(new Date(2026, 10, 2, 12).getTimezoneOffset()).toBe(300);
+			const startedAt = new Date(2026, 9, 31, 21);
+			const today = new Date(2026, 10, 2, 1);
+			const baseline = computeNextWorkout(
+				days,
+				new Date(2026, 0, 5, 21),
+				4,
+				new Date(2026, 0, 7, 1),
+			);
+			atEastern(today);
+			const result = computeNextWorkout(days, startedAt, 4);
+			expect(result?.dayNumber).toBe(3);
+			expect(result?.isRestDay).toBe(true);
+			expect(result?.cycleWeek).toBe(1);
+			expect(result?.dayNumber).toBe(baseline?.dayNumber);
+			expect(result?.cycleWeek).toBe(baseline?.cycleWeek);
+		});
 	});
 });
