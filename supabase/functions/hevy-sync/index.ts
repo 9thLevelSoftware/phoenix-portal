@@ -1,6 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
-import { errorMessage } from '../_shared/errorMessage.ts';
 import {
   createHevyPageFetcher,
   fetchHevyBackfill,

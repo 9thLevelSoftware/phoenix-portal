@@ -1,6 +1,5 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
-import { errorMessage } from '../_shared/errorMessage.ts';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
 import { checkManualSyncRateLimit } from '../_shared/manualSyncRateLimit.ts';
 import { topOfCurrentHour } from '../_shared/providerRateLimit.ts';
@@ -688,9 +687,10 @@ async function runFitbitSync(
       { headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
-    // `errorMessage` is a deliberate passthrough of `.message`, which for a
-    // driver error carries constraint/column/relation names and for a parse
-    // failure carries a slice of the provider's body. Log it, return a code.
+    // Log the thrown value and return internal_error. The client gets a fixed
+    // code; the thrown message is not returned. The log can include a driver
+    // error's constraint, column, or relation names, or a slice of the provider
+    // body from a JSON parse failure.
     console.error('Fitbit sync error:', err);
     return new Response(
       JSON.stringify({ error: 'Fitbit sync failed', code: 'internal_error' }),
