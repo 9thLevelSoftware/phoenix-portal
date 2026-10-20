@@ -134,7 +134,6 @@ export function buildSubscriptionUpsertFromPaddleState({
     cancel_at_period_end: hasPendingPaddleScheduledChange(subscription),
     ...(eventId ? { last_event_id: eventId } : {}),
     ...(occurredAt ? { last_event_occurred_at: occurredAt } : {}),
-    updated_at: new Date().toISOString(),
   };
 }
 
