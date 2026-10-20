@@ -2,7 +2,7 @@ import { BodyChart, type BodyState, ViewSide } from "body-muscles";
 import { useEffect, useMemo, useRef } from "react";
 import type { BodyMuscleFocusModel } from "@/lib/body-muscle-analytics";
 
-export interface BodyMuscleHeatmapProps {
+interface BodyMuscleHeatmapProps {
 	model: BodyMuscleFocusModel;
 	side: "front" | "back";
 	selectedMuscleId: string | null;

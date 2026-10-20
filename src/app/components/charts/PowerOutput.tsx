@@ -12,7 +12,7 @@ import { ChartTooltipContent, useChartTooltip } from "./shared/ChartTooltip";
 
 const CHART_HEIGHT = 250;
 
-export interface PowerOutputProps {
+interface PowerOutputProps {
 	repSummaries: RepSummary[];
 }
 

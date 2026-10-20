@@ -1,4 +1,4 @@
-export interface PhaseStatisticsTrendRow {
+interface PhaseStatisticsTrendRow {
 	concentric_kg_avg: number | null;
 	concentric_kg_max: number | null;
 	concentric_vel_avg: number | null;

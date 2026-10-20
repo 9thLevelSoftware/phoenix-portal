@@ -40,7 +40,7 @@ interface MuscleGroupEntry {
 	color: string;
 }
 
-export interface BodyTabProps {
+interface BodyTabProps {
 	muscleGroupData: MuscleGroupEntry[];
 	muscleDonutOption: ChartOption | null;
 	muscleRadarData: Record<string, number>;

@@ -26,7 +26,7 @@ const COLOR_TEXT = "var(--foreground)";
 const CHART_HEIGHT = 300;
 
 // -- Types --
-export interface AsymmetryGaugeProps {
+interface AsymmetryGaugeProps {
 	repSummaries: RepSummary[];
 }
 

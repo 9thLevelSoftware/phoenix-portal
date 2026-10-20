@@ -26,7 +26,7 @@ interface Insight {
 	icon: LucideIcon;
 }
 
-export interface ProgressTabProps {
+interface ProgressTabProps {
 	unit: WeightUnit;
 	strengthEChartsOption: ChartOption | null;
 	volumeAreaOption: ChartOption | null;

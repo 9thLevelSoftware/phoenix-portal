@@ -10,7 +10,7 @@ import {
 	type RepMetrics,
 } from "@/lib/form-analysis";
 
-export interface FormAnalysisProps {
+interface FormAnalysisProps {
 	reps: RepMetrics[];
 }
 

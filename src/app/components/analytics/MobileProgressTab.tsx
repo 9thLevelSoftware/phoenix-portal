@@ -25,7 +25,7 @@ import { formatMetric } from "./formatMetric";
 import { ProgressionWorkbench } from "./ProgressionWorkbench";
 import type { PhaseMetricSummary } from "./phaseStatisticsTransforms";
 
-export interface MobileProgressTabProps {
+interface MobileProgressTabProps {
 	unit: WeightUnit;
 	mobileStrengthData: Array<{
 		exercise: string;

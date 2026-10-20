@@ -4,7 +4,7 @@ import {
 	loadBodyMuscleAnalytics,
 } from "@/lib/body-muscle-analytics-loader";
 
-export interface BodyMuscleAnalyticsState {
+interface BodyMuscleAnalyticsState {
 	analytics: BodyMuscleAnalyticsModule | null;
 	failed: boolean;
 }
