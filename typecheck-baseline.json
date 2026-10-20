@@ -25,9 +25,6 @@
       "src/app/components/TrainingCycles.tsx": {
         "TS2345": 1
       },
-      "src/app/components/WhatsNewBanner.tsx": {
-        "TS2554": 1
-      },
       "src/app/components/analytics/ExerciseDeepDive.tsx": {
         "TS2322": 1
       },
@@ -73,9 +70,6 @@
       },
       "src/app/components/TrainingCycles.tsx": {
         "TS2345": 1
-      },
-      "src/app/components/WhatsNewBanner.tsx": {
-        "TS2554": 1
       },
       "src/app/components/analytics/ExerciseDeepDive.tsx": {
         "TS2322": 1
