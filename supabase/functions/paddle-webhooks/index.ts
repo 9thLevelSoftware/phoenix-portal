@@ -136,8 +136,9 @@ async function listLiveCustomerSubscriptions(
   let response: Response;
   try {
     // A hung Paddle call must not hold the webhook open until the platform
-    // kills it; a timeout falls through to the previous behaviour (apply
-    // the cancellation) rather than blocking the delivery.
+    // kills it. A timeout returns null here, and the caller refuses the
+    // delivery with a 500 so Paddle redelivers; it does not apply the
+    // cancellation.
     response = await fetchPaddle(fetchImpl, url, {
       method: "GET",
       headers: {
