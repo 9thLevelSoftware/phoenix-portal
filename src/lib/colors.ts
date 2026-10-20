@@ -9,6 +9,7 @@ export interface PhoenixColors {
 	ashGray: string;
 	moltenSteel: string;
 	flameYellow: string;
+	atlasMastery: string;
 	mutedForeground: string;
 }
 
@@ -22,6 +23,7 @@ const _phoenix = memoByTheme(
 		ashGray: tokens.mutedForeground,
 		moltenSteel: tokens.border,
 		flameYellow: tokens.accent,
+		atlasMastery: tokens.accent,
 		mutedForeground: tokens.mutedForeground,
 	}),
 );

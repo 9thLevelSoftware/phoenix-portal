@@ -69,7 +69,7 @@ const METRIC_META: Record<
 	exerciseMastery: {
 		label: "Exercise Mastery",
 		unit: "exercises",
-		color: () => PHOENIX().flameYellow,
+		color: () => PHOENIX().atlasMastery,
 		aliases: ["exercisemastery", "exercise_mastery", "mastered_count"],
 	},
 };
