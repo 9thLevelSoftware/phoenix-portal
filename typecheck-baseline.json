@@ -31,12 +31,6 @@
       "src/app/components/analytics/ExerciseDeepDive.tsx": {
         "TS2322": 1
       },
-      "src/app/components/analytics/MobileOverviewTab.tsx": {
-        "TS2322": 1
-      },
-      "src/app/components/analytics/OverviewTab.tsx": {
-        "TS2322": 1
-      },
       "src/app/components/charts/RomTrend.tsx": {
         "TS2322": 1
       },
@@ -84,12 +78,6 @@
         "TS2554": 1
       },
       "src/app/components/analytics/ExerciseDeepDive.tsx": {
-        "TS2322": 1
-      },
-      "src/app/components/analytics/MobileOverviewTab.tsx": {
-        "TS2322": 1
-      },
-      "src/app/components/analytics/OverviewTab.tsx": {
         "TS2322": 1
       },
       "src/app/components/charts/RomTrend.tsx": {
