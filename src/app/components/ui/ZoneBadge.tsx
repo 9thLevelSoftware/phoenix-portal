@@ -2,7 +2,7 @@ import { withAlpha } from "@/lib/theme-tokens";
 import type { SimplifiedZoneInfo } from "@/lib/vbt";
 import { cn } from "./utils";
 
-export interface ZoneBadgeProps {
+interface ZoneBadgeProps {
 	zone: SimplifiedZoneInfo;
 	className?: string;
 }
@@ -37,7 +37,7 @@ export function ZoneBadge({ zone, className }: ZoneBadgeProps) {
 	);
 }
 
-export interface ZoneIndicatorProps {
+interface ZoneIndicatorProps {
 	className?: string;
 }
 

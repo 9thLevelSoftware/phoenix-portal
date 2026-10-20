@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useThemeTokens } from "@/lib/theme-tokens";
 import { EChartsWrapper } from "./shared/EChartsWrapper";
 
-export interface TrainingLoadGaugeProps {
+interface TrainingLoadGaugeProps {
 	score: number;
 	zone: "low" | "optimal" | "high";
 }

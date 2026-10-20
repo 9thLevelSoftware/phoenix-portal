@@ -35,7 +35,7 @@ interface MuscleEntry {
 	fill: string;
 }
 
-export interface MobileBodyTabProps {
+interface MobileBodyTabProps {
 	muscleGroupData: Array<{ name: string; value: number; color: string }>;
 	muscleRadarData: Record<string, number>;
 	mobileMuscleData: MuscleEntry[];

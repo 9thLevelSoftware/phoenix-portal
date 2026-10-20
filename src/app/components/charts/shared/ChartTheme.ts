@@ -9,7 +9,7 @@ import {
 	useThemeTokens,
 } from "@/lib/theme-tokens";
 
-export type ChartColors = {
+type ChartColors = {
 	primary: string;
 	secondary: string;
 	danger: string;

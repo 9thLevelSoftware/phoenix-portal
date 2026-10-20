@@ -28,12 +28,12 @@ import type { ExerciseProgress } from "@/schemas/telemetry";
 // Types
 // ---------------------------------------------------------------------------
 
-export interface ExerciseEntry {
+interface ExerciseEntry {
 	name: string;
 	sessionCount: number;
 }
 
-export interface ExerciseDeepDiveProps {
+interface ExerciseDeepDiveProps {
 	muscleGroup: string;
 	exercises: ExerciseEntry[];
 	userId: string;

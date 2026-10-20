@@ -2,7 +2,7 @@ import { defaultStyles, TooltipWithBounds, useTooltip } from "@visx/tooltip";
 import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { CHART_COLORS } from "./ChartTheme";
 
-export interface ChartTooltipData {
+interface ChartTooltipData {
 	label: string;
 	value: string;
 	color?: string;

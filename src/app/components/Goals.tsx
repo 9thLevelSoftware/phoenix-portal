@@ -77,7 +77,7 @@ import { GoalProgressRing } from "./GoalProgressRing";
 
 const PR_GOAL_RECORD_TYPES = new Set(["MAX_WEIGHT", "1RM"]);
 
-export type PrGoalRecord = Pick<
+type PrGoalRecord = Pick<
 	PersonalRecord,
 	"exercise_name" | "exercise_id" | "record_type" | "value"
 >;

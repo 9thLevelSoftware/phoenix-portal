@@ -8,7 +8,7 @@ import type { MuscleRecovery, SraStatus } from "@/lib/sra-recovery";
 
 // --- Props ---
 
-export interface SraRecoveryMatrixProps {
+interface SraRecoveryMatrixProps {
 	recoveries: MuscleRecovery[];
 	recommendations?: Recommendation[];
 }

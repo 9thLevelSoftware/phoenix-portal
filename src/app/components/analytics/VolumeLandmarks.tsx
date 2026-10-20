@@ -10,7 +10,7 @@ import {
 
 // --- Props ---
 
-export interface VolumeLandmarksProps {
+interface VolumeLandmarksProps {
 	weeklyVolume: Record<string, number>;
 	selectedMuscleGroup: string | null;
 	recommendations?: Recommendation[];

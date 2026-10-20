@@ -26,7 +26,7 @@ interface RepData {
 	points: TelemetryPoint[];
 }
 
-export interface ForceCurveProps {
+interface ForceCurveProps {
 	repData: RepData[];
 	height?: number;
 	normalized?: boolean;

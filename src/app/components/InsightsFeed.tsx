@@ -13,7 +13,7 @@ export interface InsightItem {
 	metric?: { name: string; value: number; unit: string; delta?: number };
 }
 
-export interface InsightsFeedProps {
+interface InsightsFeedProps {
 	insights: InsightItem[];
 	loading?: boolean;
 	/** Failed fetch is an error, not “complete more workouts.” */
