@@ -40,7 +40,6 @@ import {
   resolveDropSetUpsertFields,
 } from '../_shared/dropSetUpsert.ts';
 import { buildExerciseProgressRows } from '../_shared/exerciseProgressRows.ts';
-import { fetchAllByParentIds } from '../_shared/pagedByParent.ts';
 import { syncBroadcastTopic } from '../_shared/syncBroadcast.ts';
 import { DEFAULT_WIRE_MODE } from '../_shared/workoutModes.ts';
 import {
