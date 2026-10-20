@@ -1,7 +1,10 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { assertEquals, assertRejects, assertStringIncludes } from "jsr:@std/assert@1";
+import { assertNoSecretsLogged, captureLogs } from "../_shared/testLogCapture.ts";
 import {
   type CompletableProvider,
   createCompleteOAuthHandler,
+  exchangeFitbitCode,
+  exchangeStravaCode,
   type ExchangeOutcome,
 } from "./index.ts";
 
@@ -79,6 +82,8 @@ interface HarnessOptions {
   sweepDeletesNothing?: boolean;
   consumeError?: { code: string; message: string };
   exchange?: ExchangeOutcome;
+  /** Reject the injected exchange (a provider timeout throws rather than returning). */
+  exchangeRejection?: unknown;
   bindError?: { code: string; message: string };
 }
 
@@ -228,6 +233,9 @@ function makeHarness(options: HarnessOptions = {}): Harness {
     },
     exchangeCode(provider: CompletableProvider, code: string) {
       exchangeCalls.push({ provider, code });
+      if (options.exchangeRejection !== undefined) {
+        return Promise.reject(options.exchangeRejection);
+      }
       return Promise.resolve(
         options.exchange ?? {
           ok: true,
@@ -579,6 +587,122 @@ Deno.test("complete-oauth reports a failed exchange without storing anything", a
   assertEquals((await json(response)).error, "auth_failed");
   assertEquals(bindCalls(harness).length, 0);
   assertEquals(harness.inserts.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Code-exchange timeout
+//
+// The live exchanges are not on the injected handler path. These call them
+// with fetch and AbortSignal.timeout replaced, so nothing is sent and no
+// timer is left running. A timeout rejects, and the handler's existing catch
+// answers 500 internal_error.
+// ---------------------------------------------------------------------------
+
+/** Same duration as `REVOKE_TIMEOUT_MS` in providerRevoke.ts. */
+const CODE_EXCHANGE_TIMEOUT_MS = 10_000;
+
+function timeoutError(detail: string): DOMException {
+  return new DOMException(detail, "TimeoutError");
+}
+
+async function withEnv(
+  vars: Record<string, string>,
+  run: () => Promise<void>,
+): Promise<void> {
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(vars)) {
+    previous.set(key, Deno.env.get(key));
+    Deno.env.set(key, value);
+  }
+  try {
+    await run();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) Deno.env.delete(key);
+      else Deno.env.set(key, value);
+    }
+  }
+}
+
+async function assertExchangeAborts(
+  exchange: (code: string) => Promise<ExchangeOutcome>,
+  env: Record<string, string>,
+  url: string,
+): Promise<void> {
+  const signal = new AbortController().signal;
+  const timeouts: number[] = [];
+  const originalTimeout = AbortSignal.timeout;
+  const originalFetch = globalThis.fetch;
+  let seenUrl = "";
+  let seenInit: RequestInit | undefined;
+  AbortSignal.timeout = (ms: number) => {
+    timeouts.push(ms);
+    return signal;
+  };
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    seenUrl = String(input);
+    seenInit = init;
+    return Promise.reject(timeoutError("The operation was aborted due to timeout"));
+  }) as typeof fetch;
+  try {
+    await withEnv(env, async () => {
+      const error = await assertRejects(() => exchange(AUTH_CODE), DOMException);
+      assertEquals(error.name, "TimeoutError");
+    });
+  } finally {
+    AbortSignal.timeout = originalTimeout;
+    globalThis.fetch = originalFetch;
+  }
+  assertEquals(seenUrl, url);
+  assertEquals(timeouts, [CODE_EXCHANGE_TIMEOUT_MS]);
+  assertEquals(seenInit?.signal, signal);
+  assertEquals(seenInit?.signal instanceof AbortSignal, true);
+}
+
+Deno.test("complete-oauth passes an abort signal on the Strava code exchange", async () => {
+  await assertExchangeAborts(
+    exchangeStravaCode,
+    {
+      STRAVA_CLIENT_ID: "strava-client-id",
+      STRAVA_CLIENT_SECRET: "strava-client-secret",
+    },
+    "https://www.strava.com/oauth/token",
+  );
+});
+
+Deno.test("complete-oauth passes an abort signal on the Fitbit code exchange", async () => {
+  await assertExchangeAborts(
+    exchangeFitbitCode,
+    {
+      FITBIT_CLIENT_ID: "fitbit-client-id",
+      FITBIT_CLIENT_SECRET: "fitbit-client-secret",
+      SUPABASE_PUBLIC_URL: "https://example.test",
+    },
+    "https://api.fitbit.com/oauth2/token",
+  );
+});
+
+Deno.test("complete-oauth reports a timed-out code exchange as an internal error", async () => {
+  const harness = makeHarness({
+    exchangeRejection: timeoutError(
+      `The operation was aborted due to timeout while exchanging ${AUTH_CODE}`,
+    ),
+  });
+
+  const { result: response, logs } = await captureLogs(() =>
+    harness.handler(requestFor(validBody()))
+  );
+
+  assertEquals(response.status, 500);
+  assertEquals(await json(response), {
+    error: "internal_error",
+    message: "Internal server error",
+  });
+  assertEquals(bindCalls(harness).length, 0);
+  assertEquals(harness.inserts.length, 0);
+  // The outer catch logs the error name only, never the rejection text.
+  assertStringIncludes(logs, "TimeoutError");
+  assertNoSecretsLogged(logs, [AUTH_CODE, STATE_TOKEN]);
 });
 
 // ---------------------------------------------------------------------------
