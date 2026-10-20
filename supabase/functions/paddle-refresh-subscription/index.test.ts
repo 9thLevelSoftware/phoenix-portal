@@ -149,6 +149,7 @@ function fakeAdminClient(db: FakeDb) {
 interface PaddleCall {
   url: string;
   method: string;
+  timed: boolean;
 }
 
 function paddleSubscriptionBody(
@@ -192,7 +193,7 @@ function buildHandler(
     createAdminClient: () => fakeAdminClient(db),
     fetch: (input: URL | Request | string, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
-      options.calls.push({ url, method: init?.method ?? "GET" });
+      options.calls.push({ url, method: init?.method ?? "GET", timed: init?.signal instanceof AbortSignal });
       const response = options.respond?.(url);
       if (response) return Promise.resolve(response);
       return Promise.resolve(
@@ -287,6 +288,7 @@ Deno.test("paddle-refresh-subscription: an older Paddle updated_at does not regr
   assertEquals(db.clock, "2026-06-01T00:00:10Z");
   assertEquals(body.subscription.currentPeriodEnd, "2026-07-01T00:00:00Z");
   assertEquals(body.subscription.current_period_end, "2026-07-01T00:00:00Z");
+  assertEquals(calls.every((call) => call.timed), true);
   assertNotEquals(body.subscription.currentPeriodEnd, "2026-06-01T00:00:00Z");
 });
 
@@ -528,6 +530,7 @@ Deno.test("paddle-refresh-subscription: issued v2 transaction stays pending with
     assertEquals(response.status, 200);
     assertEquals(await response.json(), { status: "no_subscription", reason: "transaction_pending" });
     assertEquals(calls.length, 1);
+    assertEquals(calls.every((call) => call.timed), true);
     assertEquals(db.rpcCalls.length, 0);
     assertEquals(db.bindingCalls, undefined);
   }

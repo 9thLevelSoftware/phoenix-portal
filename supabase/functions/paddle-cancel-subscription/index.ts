@@ -10,6 +10,7 @@ import {
 } from "../_shared/paddleSubscriptionState.ts";
 import { resolvePaddleCancelRequest } from "../_shared/paddleSubscriptionUpdate.ts";
 import { paddleBaseUrl } from "../_shared/accountPurge.ts";
+import { fetchPaddle } from "../_shared/paddleFetch.ts";
 
 /** Anything with `get(key)`, e.g. `Deno.env`. */
 export interface EnvReader {
@@ -143,7 +144,8 @@ async function paddleCancelSubscriptionHandler(
       );
     }
 
-    const paddleResponse = await deps.fetch(
+    const paddleResponse = await fetchPaddle(
+      deps.fetch,
       `${baseUrl}/subscriptions/${sub.paddle_subscription_id}/cancel`,
       {
         method: "POST",
