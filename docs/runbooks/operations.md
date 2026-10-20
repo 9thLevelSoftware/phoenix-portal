@@ -472,9 +472,9 @@ UNION ALL SELECT 'shared_cycles', COUNT(*) FROM shared_cycles WHERE user_id = '<
 UNION ALL SELECT 'earned_badges', COUNT(*) FROM earned_badges WHERE user_id = '<uuid>'
 UNION ALL SELECT 'gamification_stats', COUNT(*) FROM gamification_stats WHERE user_id = '<uuid>'
 UNION ALL SELECT 'rpg_attributes', COUNT(*) FROM rpg_attributes WHERE user_id = '<uuid>'
-UNION ALL SELECT 'content_reports', COUNT(*) FROM content_reports WHERE user_id = '<uuid>'
-UNION ALL SELECT 'creator_follows', COUNT(*) FROM creator_follows WHERE user_id = '<uuid>'
-UNION ALL SELECT 'user_blocks', COUNT(*) FROM user_blocks WHERE user_id = '<uuid>'
+UNION ALL SELECT 'content_reports', COUNT(*) FROM content_reports WHERE reporter_id = '<uuid>'
+UNION ALL SELECT 'creator_follows', COUNT(*) FROM creator_follows WHERE follower_id = '<uuid>' OR followed_id = '<uuid>'
+UNION ALL SELECT 'user_blocks', COUNT(*) FROM user_blocks WHERE blocker_id = '<uuid>' OR blocked_id = '<uuid>'
 UNION ALL SELECT 'sync_queue', COUNT(*) FROM sync_queue WHERE user_id = '<uuid>'
 UNION ALL SELECT 'sync_tombstones', COUNT(*) FROM sync_tombstones WHERE user_id = '<uuid>'
 UNION ALL SELECT 'rate_limit_tracking', COUNT(*) FROM rate_limit_tracking WHERE user_id = '<uuid>'
@@ -510,9 +510,11 @@ ORDER BY 1;
 **FK-less tables the CASCADE does not reach.** `purgeUser` deletes these
 explicitly (`EXPLICIT_PURGE_TARGETS` in
 `supabase/functions/_shared/accountPurge.ts`); a manual deletion has to do the
-same or the rows outlive the account. Some are prod-only (they have no
-migration in this repo yet), so a query against them errors on a local stack —
-that is expected, skip the ones that do not exist here:
+same or the rows outlive the account. `goal_snapshots`, `overload_suggestions`,
+`telemetry_analysis`, `wearable_daily_summaries`, `subscription_events`, and
+`paddle_webhook_events` are created by migration `20260920000200` (each
+`CREATE TABLE` runs only when the relation is absent), so they exist on a
+local stack that has applied that migration:
 
 ```sql
 -- Always present
@@ -520,8 +522,8 @@ SELECT 'oauth_tokens' AS tbl, COUNT(*) FROM oauth_tokens WHERE user_id = '<uuid>
 UNION ALL SELECT 'rate_limit_tracking', COUNT(*) FROM rate_limit_tracking WHERE user_id = '<uuid>'
 UNION ALL SELECT 'sync_tombstones', COUNT(*) FROM sync_tombstones WHERE user_id = '<uuid>';
 
--- Prod-only (marked mayBeAbsent in EXPLICIT_PURGE_TARGETS): run one at a time
--- and ignore "relation does not exist" on a database that lacks them.
+-- Created by 20260920000200 when the relation is absent. Present after that
+-- migration has been applied, including on a local stack.
 SELECT COUNT(*) FROM paddle_webhook_events WHERE user_id = '<uuid>';
 SELECT COUNT(*) FROM paddle_webhook_events
  WHERE payload->'data'->'custom_data'->>'user_id' = '<uuid>';  -- rows whose user_id was never filled in
@@ -618,9 +620,9 @@ DELETE FROM cycle_days WHERE cycle_id IN (
 UPDATE community_comments SET user_id = NULL WHERE user_id = '<uuid>';
 DELETE FROM community_votes WHERE user_id = '<uuid>';
 DELETE FROM saved_community_items WHERE user_id = '<uuid>';
-DELETE FROM content_reports WHERE user_id = '<uuid>';
-DELETE FROM creator_follows WHERE user_id = '<uuid>';
-DELETE FROM user_blocks WHERE user_id = '<uuid>';
+DELETE FROM content_reports WHERE reporter_id = '<uuid>';
+DELETE FROM creator_follows WHERE follower_id = '<uuid>' OR followed_id = '<uuid>';
+DELETE FROM user_blocks WHERE blocker_id = '<uuid>' OR blocked_id = '<uuid>';
 
 -- SET NULL on shared routines/cycles (preserving community content)
 UPDATE shared_routines SET user_id = NULL WHERE user_id = '<uuid>';
@@ -650,21 +652,24 @@ DELETE FROM subscriptions WHERE user_id = '<uuid>';
 DELETE FROM profiles WHERE id = '<uuid>';
 ```
 
-Then the FK-less tables from Step 1 that the CASCADE never reaches. Skip any
-that do not exist on this database:
+Then the FK-less tables from Step 1 that the CASCADE never reaches.
+`subscription_events`, `paddle_webhook_events`, `goal_snapshots`,
+`overload_suggestions`, `telemetry_analysis`, and `wearable_daily_summaries`
+are created by migration `20260920000200` and are present once it has been
+applied:
 
 ```sql
 DELETE FROM oauth_tokens WHERE user_id = '<uuid>';
 DELETE FROM sync_tombstones WHERE user_id = '<uuid>';
 DELETE FROM rate_limit_tracking WHERE user_id = '<uuid>';
-DELETE FROM subscription_events WHERE user_id = '<uuid>';          -- prod-only
-DELETE FROM paddle_webhook_events WHERE user_id = '<uuid>';        -- prod-only
-DELETE FROM paddle_webhook_events                                  -- prod-only
+DELETE FROM subscription_events WHERE user_id = '<uuid>';
+DELETE FROM paddle_webhook_events WHERE user_id = '<uuid>';
+DELETE FROM paddle_webhook_events
  WHERE payload->'data'->'custom_data'->>'user_id' = '<uuid>';
-DELETE FROM goal_snapshots WHERE user_id = '<uuid>';               -- prod-only
-DELETE FROM overload_suggestions WHERE user_id = '<uuid>';         -- prod-only
-DELETE FROM telemetry_analysis WHERE user_id = '<uuid>';           -- prod-only
-DELETE FROM wearable_daily_summaries WHERE user_id = '<uuid>';     -- prod-only
+DELETE FROM goal_snapshots WHERE user_id = '<uuid>';
+DELETE FROM overload_suggestions WHERE user_id = '<uuid>';
+DELETE FROM telemetry_analysis WHERE user_id = '<uuid>';
+DELETE FROM wearable_daily_summaries WHERE user_id = '<uuid>';
 ```
 
 **Do NOT touch `deletion_requests` here.** Its `user_id` is
