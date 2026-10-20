@@ -3,7 +3,14 @@ import { queryKeys } from "@/queries/keys";
 
 function buildChain(terminal: { data: unknown; error: unknown }) {
 	const self: Record<string, ReturnType<typeof vi.fn>> = {};
-	for (const method of ["select", "eq", "gte", "order", "maybeSingle"]) {
+	for (const method of [
+		"select",
+		"eq",
+		"gte",
+		"order",
+		"limit",
+		"maybeSingle",
+	]) {
 		self[method] = vi.fn();
 	}
 	for (const method of Object.keys(self)) {
@@ -74,16 +81,23 @@ describe("recoverySessionsOptions", () => {
 	});
 });
 
+const activeCycleRow = {
+	current_week: 2,
+	duration_weeks: 6,
+	status: "active" as const,
+};
+
 describe("activeCyclePositionOptions", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		chain = buildChain({
-			data: { current_week: 2, duration_weeks: 6, status: "active" },
+			data: activeCycleRow,
 			error: null,
 		});
 	});
 
-	it("uses the all-profiles key and skips the profile filter when unset", async () => {
+	it("uses the all-profiles key and returns the only active cycle", async () => {
+		chain = buildChain({ data: [activeCycleRow], error: null });
 		const { activeCyclePositionOptions } = await import("../recovery");
 		const opts = activeCyclePositionOptions("user-1");
 
@@ -103,11 +117,39 @@ describe("activeCyclePositionOptions", () => {
 			"local_profile_id",
 			expect.anything(),
 		);
-		expect(result).toEqual({
-			current_week: 2,
-			duration_weeks: 6,
-			status: "active",
+		expect(chain.limit).toHaveBeenCalledWith(2);
+		expect(chain.maybeSingle).not.toHaveBeenCalled();
+		expect(result).toEqual(activeCycleRow);
+	});
+
+	it("returns null when All profiles has no active cycle", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { activeCyclePositionOptions } = await import("../recovery");
+
+		const result = await activeCyclePositionOptions("user-1").queryFn?.(
+			{} as never,
+		);
+
+		expect(result).toBeNull();
+	});
+
+	it("returns null for two active cycles across All profiles", async () => {
+		chain = buildChain({
+			data: [
+				activeCycleRow,
+				{ current_week: 1, duration_weeks: 4, status: "active" },
+			],
+			error: null,
 		});
+		const { activeCyclePositionOptions } = await import("../recovery");
+
+		const result = await activeCyclePositionOptions("user-1").queryFn?.(
+			{} as never,
+		);
+
+		expect(chain.limit).toHaveBeenCalledWith(2);
+		expect(chain.maybeSingle).not.toHaveBeenCalled();
+		expect(result).toBeNull();
 	});
 
 	it("filters the active cycle to the selected profile on a distinct key", async () => {
@@ -124,8 +166,11 @@ describe("activeCyclePositionOptions", () => {
 			activeCyclePositionOptions("user-1").queryKey,
 		);
 
-		await opts.queryFn?.({} as never);
+		const result = await opts.queryFn?.({} as never);
 
 		expect(chain.eq).toHaveBeenCalledWith("local_profile_id", "profile-1");
+		expect(chain.maybeSingle).toHaveBeenCalledOnce();
+		expect(chain.limit).not.toHaveBeenCalled();
+		expect(result).toEqual(activeCycleRow);
 	});
 });

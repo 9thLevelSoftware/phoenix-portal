@@ -67,6 +67,11 @@ export function wearableRecoveryOptions(userId: string) {
 /**
  * Fetch the user's active training cycle position.
  * Returns null if no active cycle exists.
+ *
+ * `idx_training_cycles_one_active` is unique per profile, so the default
+ * All-profiles filter can return more than one row. A non-singleton has no
+ * single cycle position and is treated as null. A selected profile still
+ * uses `maybeSingle`, which matches that per-profile uniqueness.
  */
 export function activeCyclePositionOptions(
 	userId: string,
@@ -80,20 +85,25 @@ export function activeCyclePositionOptions(
 			profileId ?? "all",
 		] as const,
 		queryFn: async () => {
-			let query = supabase
+			const query = supabase
 				.from("training_cycles")
 				.select("current_week, duration_weeks, status")
 				.eq("user_id", userId)
 				.eq("status", "active");
 
 			if (profileId) {
-				query = query.eq("local_profile_id", profileId);
+				const { data, error } = await query
+					.eq("local_profile_id", profileId)
+					.maybeSingle();
+				if (error) throw error;
+				if (!data) return null;
+				return activeCycleSchema.parse(data);
 			}
 
-			const { data, error } = await query.maybeSingle();
+			const { data, error } = await query.limit(2);
 			if (error) throw error;
-			if (!data) return null;
-			return activeCycleSchema.parse(data);
+			if (!data || data.length !== 1) return null;
+			return activeCycleSchema.parse(data[0]);
 		},
 		enabled: !!userId,
 	});
