@@ -5,6 +5,7 @@ import { TrainingLoadGauge } from "@/app/components/charts/TrainingLoadGauge";
 import { type InsightItem, InsightsFeed } from "@/app/components/InsightsFeed";
 import { Badge } from "@/app/components/ui/badge";
 import { Card } from "@/app/components/ui/card";
+import type { TrainingLoadZone } from "@/lib/training-load";
 
 // Use generic record type to avoid importing echarts just for the type
 type ChartOption = Record<string, unknown>;
@@ -36,7 +37,7 @@ export interface OverviewTabProps {
 	externalChartData: ExternalChartEntry[];
 	volumeEChartsOption: ChartOption | null;
 	muscleDonutOption: ChartOption | null;
-	trainingLoad: { rtl: number; zone: string };
+	trainingLoad: { rtl: number; zone: TrainingLoadZone };
 	consistencyData: ConsistencyData;
 	insightsFeedItems: InsightItem[];
 	insightsPending: boolean;

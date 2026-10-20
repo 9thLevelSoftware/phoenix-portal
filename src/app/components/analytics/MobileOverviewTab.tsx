@@ -13,6 +13,7 @@ import { TrainingLoadGauge } from "@/app/components/charts/TrainingLoadGauge";
 import { type InsightItem, InsightsFeed } from "@/app/components/InsightsFeed";
 import { PHOENIX } from "@/lib/colors";
 import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
+import type { TrainingLoadZone } from "@/lib/training-load";
 import { formatVolumeAxisTick } from "@/lib/units";
 
 interface ConsistencyData {
@@ -29,7 +30,7 @@ interface ConsistencyData {
 
 export interface MobileOverviewTabProps {
 	mobileVolumeData: Array<{ date: string; volume: number }>;
-	trainingLoad: { rtl: number; zone: string };
+	trainingLoad: { rtl: number; zone: TrainingLoadZone };
 	consistencyData: ConsistencyData;
 	insightsFeedItems: InsightItem[];
 	insightsPending: boolean;
