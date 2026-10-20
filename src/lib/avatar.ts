@@ -42,3 +42,17 @@ export const AVATAR_FILE_EXTENSIONS: Record<string, string> = {
 	"image/gif": "gif",
 	"image/avif": "avif",
 };
+
+/**
+ * Avatar-fallback initials for a creator display name.
+ * First letter of each space-separated word, at most two, uppercased.
+ * A single word contributes one letter; an empty name contributes none.
+ */
+export function getInitials(name: string): string {
+	return name
+		.split(" ")
+		.map((w) => w.charAt(0))
+		.join("")
+		.toUpperCase()
+		.slice(0, 2);
+}
