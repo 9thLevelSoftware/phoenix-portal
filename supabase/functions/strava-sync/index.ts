@@ -1,5 +1,10 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { decryptOAuthSecret, encryptOAuthSecret } from '../_shared/oauthTokenCrypto.ts';
+import {
+  refreshStravaAccessToken,
+  StravaRefreshError,
+  type StravaRefreshedTokens,
+} from '../_shared/stravaToken.ts';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import {
   checkReadBudget,
@@ -197,153 +202,12 @@ export function buildExternalActivityRow(
 
 // ---------------------------------------------------------------------------
 // Token refresh
+//
+// The exchange lives in `_shared/stravaToken.ts`. This handler logs
+// `StravaRefreshError.reason` (the bare classification). `.message` stays
+// `Token refresh failed: …`. Revoked vs transient is `isRevokedGrant()`
+// on that error, from `.details`.
 // ---------------------------------------------------------------------------
-
-const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token';
-
-interface StravaClientCredentials {
-  fetch: typeof fetch;
-  clientId: string | undefined;
-  clientSecret: string | undefined;
-  /** Optional abort signal (e.g. a timeout). */
-  signal?: AbortSignal;
-}
-
-/**
- * The parts of a Strava error entry that are safe to log: a small enumerated
- * vocabulary (`resource`, `field`, `code`), never free text or a token.
- */
-interface StravaErrorDetail {
-  resource: string | null;
-  field: string | null;
-  code: string | null;
-}
-
-interface StravaRefreshedTokens {
-  access_token: string;
-  refresh_token: string;
-  /** Unix seconds. */
-  expires_at: number;
-}
-
-/**
- * Thrown when the refresh fails. `status` is Strava's HTTP status (null for a
- * network error or missing client config). `reason` is one of a fixed set of
- * strings and `details` holds only Strava's enumerated error vocabulary, so
- * neither the response body nor any token can reach a log, a stored
- * `error_message` or an HTTP response.
- *
- * Same shape as PR 54's `_shared/stravaToken.ts` (`refreshStravaAccessToken` /
- * `StravaRefreshError`), plus `details`: when both land, keep `details` (the
- * refresh-token classification below needs it) and delete this copy.
- */
-class StravaRefreshError extends Error {
-  constructor(
-    readonly status: number | null,
-    reason: string,
-    readonly details: StravaErrorDetail[] = [],
-  ) {
-    super(reason);
-    this.name = 'StravaRefreshError';
-  }
-}
-
-/** Keep only the enumerated fields, and only if they are short identifiers. */
-function safeIdentifier(value: unknown): string | null {
-  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(value) ? value : null;
-}
-
-/**
- * Parse Strava's error body, which looks like
- * `{"message":"Bad Request","errors":[{"resource":"RefreshToken","field":"refresh_token","code":"invalid"}]}`.
- * Only `resource`/`field`/`code` are kept; `message` and anything unexpected
- * are dropped unread.
- */
-function parseStravaErrorDetails(body: unknown): StravaErrorDetail[] {
-  const errors = (body as { errors?: unknown } | null)?.errors;
-  if (!Array.isArray(errors)) return [];
-  return errors.slice(0, 5).map((entry) => ({
-    resource: safeIdentifier((entry as { resource?: unknown })?.resource),
-    field: safeIdentifier((entry as { field?: unknown })?.field),
-    code: safeIdentifier((entry as { code?: unknown })?.code),
-  }));
-}
-
-async function refreshAccessToken(
-  refreshToken: string,
-  credentials: StravaClientCredentials,
-): Promise<StravaRefreshedTokens> {
-  if (!credentials.clientId || !credentials.clientSecret) {
-    throw new StravaRefreshError(null, 'client not configured');
-  }
-  let response: Response;
-  try {
-    response = await credentials.fetch(STRAVA_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: credentials.clientId,
-        client_secret: credentials.clientSecret,
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken,
-      }),
-      signal: credentials.signal,
-    });
-  } catch (err) {
-    // The underlying message may name internals; log it, never propagate it.
-    console.error('[STRAVA_REFRESH] network error:', err);
-    throw new StravaRefreshError(null, 'network error');
-  }
-
-  if (!response.ok) {
-    // The body is read only to classify the failure (see
-    // parseStravaErrorDetails); it is never logged, stored or returned.
-    let details: StravaErrorDetail[] = [];
-    try {
-      details = parseStravaErrorDetails(await response.json());
-    } catch {
-      details = [];
-    }
-    throw new StravaRefreshError(response.status, `HTTP ${response.status}`, details);
-  }
-
-  let body: Partial<StravaRefreshedTokens> | null = null;
-  try {
-    body = await response.json() as Partial<StravaRefreshedTokens> | null;
-  } catch {
-    // A non-JSON 200 body: V8's SyntaxError quotes the body, so it is dropped.
-    throw new StravaRefreshError(response.status, 'malformed response');
-  }
-  if (!body || typeof body.access_token !== 'string' || typeof body.expires_at !== 'number') {
-    throw new StravaRefreshError(response.status, 'malformed response');
-  }
-  return {
-    access_token: body.access_token,
-    refresh_token: typeof body.refresh_token === 'string' ? body.refresh_token : refreshToken,
-    expires_at: body.expires_at,
-  };
-}
-
-/**
- * Whether the refresh failed because THIS USER's grant is gone.
- *
- * Strava answers with 400/401 for application-level problems too — a wrong
- * `client_secret` or `client_id` gives `resource: "Application"` — so the
- * status alone cannot be trusted: classifying an operator misconfiguration as
- * a revoked grant would move every Strava user to `token_expired` (and they
- * could not reconnect, since the OAuth exchange uses the same bad secret).
- *
- * Only an error that names the refresh token is treated as revoked. An
- * unrecognised body, a missing body, a 429, a network error and a missing
- * client config all fall through to the retryable branch, which keeps the
- * user connected.
- */
-function isRevokedGrant(err: StravaRefreshError): boolean {
-  if (err.status !== 400 && err.status !== 401) return false;
-  return err.details.some(
-    (detail) => detail.resource === 'RefreshToken' || detail.field === 'refresh_token',
-  );
-}
 
 /**
  * Whether `oauth_tokens.refresh_token` is still the token this run used.
@@ -380,12 +244,18 @@ async function storedRefreshTokenMatches(
   return true;
 }
 
-/** Enumerated classification inputs, safe to log. */
+/**
+ * Enumerated classification inputs, safe to log.
+ *
+ * `reason=` is `err.reason` — the bare string (`HTTP 400`, `network error`,
+ * …). `err.message` is `Token refresh failed: ${reason}` and is not what
+ * this line records.
+ */
 function describeRefreshFailure(err: StravaRefreshError): string {
   const details = err.details
     .map((d) => `${d.resource ?? '?'}/${d.field ?? '?'}/${d.code ?? '?'}`)
     .join(',');
-  return `status=${err.status ?? 'none'} reason=${err.message} errors=[${details}]`;
+  return `status=${err.status ?? 'none'} reason=${err.reason} errors=[${details}]`;
 }
 
 // ---------------------------------------------------------------------------
@@ -652,18 +522,27 @@ async function runStravaSync(
       console.log('Strava access token expired, refreshing...');
       let refreshed: StravaRefreshedTokens;
       try {
-        refreshed = await refreshAccessToken(refreshToken, {
+        refreshed = await refreshStravaAccessToken(refreshToken, {
           fetch: deps.fetch,
           clientId: deps.env('STRAVA_CLIENT_ID'),
           clientSecret: deps.env('STRAVA_CLIENT_SECRET'),
           signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
         });
       } catch (err) {
+        // The shared refresh lets a rejected fetch propagate (DNS, abort, the
+        // timeout above) so the signal stays observable. This handler still
+        // classifies that as a retryable network error: log the underlying
+        // error, then continue with a fixed reason so it never reaches the
+        // HTTP response or `error_message`.
+        if (!(err instanceof StravaRefreshError)) {
+          console.error('[STRAVA_REFRESH] network error:', err);
+        }
         const refreshError = err instanceof StravaRefreshError
           ? err
-          : new StravaRefreshError(null, 'unexpected error');
+          : new StravaRefreshError(null, 'network error');
         // Classification inputs only: statuses and Strava's enumerated error
-        // vocabulary. Never the response body.
+        // vocabulary. Never the response body. `reason=` is the bare reason,
+        // not `Token refresh failed: …`.
         console.error(`[STRAVA_REFRESH] ${describeRefreshFailure(refreshError)}`);
 
         // Migration 20260920005200 serializes all processing rows for this
@@ -671,7 +550,7 @@ async function runStravaSync(
         // rolling-deploy defense: an older handler that did not own a row may
         // still have exchanged the token before the index-aware release lands.
         // Downgrade only while the rejected token is still the stored one.
-        const revoked = isRevokedGrant(refreshError)
+        const revoked = refreshError.isRevokedGrant()
           && await storedRefreshTokenMatches(supabase, userId, refreshToken);
 
         if (revoked) {
