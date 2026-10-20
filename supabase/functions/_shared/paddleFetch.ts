@@ -8,6 +8,14 @@
  */
 export const PADDLE_API_TIMEOUT_MS = 10_000;
 
+/**
+ * Paddle Billing API origin. The exact string `sandbox` selects the sandbox
+ * host. Unset or any other value selects production.
+ */
+export function paddleApiBase(environment: string | undefined): string {
+  return environment === "sandbox" ? "https://sandbox-api.paddle.com" : "https://api.paddle.com";
+}
+
 export function fetchPaddle(
   fetchImpl: typeof fetch,
   input: Parameters<typeof fetch>[0],

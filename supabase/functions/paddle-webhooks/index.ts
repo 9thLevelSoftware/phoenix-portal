@@ -1,5 +1,5 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { bindCheckoutSubscription, paddleApiBase, verifyCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
+import { bindCheckoutSubscription, verifyCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
 import { readBoundedRequestBody, REQUEST_BODY_LIMITS } from '../_shared/requestBody.ts';
 import { paddlePriceConfigGateResponse } from "../_shared/paddlePriceConfigGate.ts";
 import {
@@ -24,8 +24,7 @@ import {
   verifyPaddleCustomDataSignature,
   verifyPaddleSignature,
 } from "../_shared/paddleWebhookSecurity.ts";
-import { paddleBaseUrl } from "../_shared/accountPurge.ts";
-import { fetchPaddle } from "../_shared/paddleFetch.ts";
+import { fetchPaddle, paddleApiBase } from "../_shared/paddleFetch.ts";
 
 const responseHeaders = {
   "Content-Type": "application/json",
@@ -126,7 +125,7 @@ async function listLiveCustomerSubscriptions(
     );
     return null;
   }
-  const baseUrl = paddleBaseUrl(env.get("PADDLE_ENVIRONMENT"));
+  const baseUrl = paddleApiBase(env.get("PADDLE_ENVIRONMENT"));
   // order_by makes "newest first" what we actually asked for, so two live
   // subscriptions resolve deterministically instead of by page order.
   const url =

@@ -1,4 +1,4 @@
-import { fetchPaddle } from "./paddleFetch.ts";
+import { fetchPaddle, paddleApiBase } from "./paddleFetch.ts";
 import { hmacSha256Hex } from "./hmac.ts";
 import { verifyPaddleCustomDataSignature } from "./paddleWebhookSecurity.ts";
 import { timingSafeEqualString } from "./timingSafe.ts";
@@ -39,10 +39,6 @@ export async function verifyCheckoutBinding(data: unknown, secret: string): Prom
   // `expected` is the server HMAC; `provided` is the caller signature. The
   // helper iterates `provided`, so the trip count never reveals the HMAC length.
   return timingSafeEqualString({ expected, provided: value.cd_sig });
-}
-
-export function paddleApiBase(environment: string | undefined): string {
-  return environment === "sandbox" ? "https://sandbox-api.paddle.com" : "https://api.paddle.com";
 }
 
 export interface CheckoutBindingDb {

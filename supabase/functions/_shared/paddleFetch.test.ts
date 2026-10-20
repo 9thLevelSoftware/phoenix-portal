@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { PADDLE_API_TIMEOUT_MS, fetchPaddle } from "./paddleFetch.ts";
+import { PADDLE_API_TIMEOUT_MS, fetchPaddle, paddleApiBase } from "./paddleFetch.ts";
 
 const FUNCTIONS_DIR = new URL("../", import.meta.url);
 
@@ -110,6 +110,25 @@ function rawPaddleFetches(source: string): string[] {
   if (/\bfetch\s*\(/.test(withoutDefaults)) violations.push("direct fetch()");
   return violations;
 }
+
+Deno.test("paddleApiBase selects sandbox only for the exact environment string", () => {
+  assertEquals(paddleApiBase("sandbox"), "https://sandbox-api.paddle.com");
+  assertEquals(paddleApiBase("production"), "https://api.paddle.com");
+  assertEquals(paddleApiBase(undefined), "https://api.paddle.com");
+  assertEquals(paddleApiBase(""), "https://api.paddle.com");
+  assertEquals(paddleApiBase("Sandbox"), "https://api.paddle.com");
+});
+
+Deno.test("the Paddle API base URL is chosen only in paddleFetch", async () => {
+  const owners: string[] = [];
+  for (const path of await productionSources(FUNCTIONS_DIR)) {
+    const source = withoutComments(await Deno.readTextFile(path));
+    if (source.includes("https://sandbox-api.paddle.com") || source.includes("https://api.paddle.com")) {
+      owners.push(path);
+    }
+  }
+  assertEquals(owners.map((path) => path.split("/").pop()), ["paddleFetch.ts"]);
+});
 
 Deno.test("every Paddle Billing fetch goes through fetchPaddle", async () => {
   const violations: string[] = [];

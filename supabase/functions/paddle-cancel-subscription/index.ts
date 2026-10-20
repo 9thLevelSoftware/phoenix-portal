@@ -9,8 +9,7 @@ import {
   syntheticSubscriptionEventId,
 } from "../_shared/paddleSubscriptionState.ts";
 import { resolvePaddleCancelRequest } from "../_shared/paddleSubscriptionUpdate.ts";
-import { paddleBaseUrl } from "../_shared/accountPurge.ts";
-import { fetchPaddle } from "../_shared/paddleFetch.ts";
+import { fetchPaddle, paddleApiBase } from "../_shared/paddleFetch.ts";
 
 /** Anything with `get(key)`, e.g. `Deno.env`. */
 export interface EnvReader {
@@ -133,7 +132,7 @@ async function paddleCancelSubscriptionHandler(
     }
 
     // Call Paddle API to cancel the subscription
-    const baseUrl = paddleBaseUrl(deps.env.get("PADDLE_ENVIRONMENT"));
+    const baseUrl = paddleApiBase(deps.env.get("PADDLE_ENVIRONMENT"));
     const apiKey = deps.env.get("PADDLE_API_KEY");
 
     if (!apiKey) {
