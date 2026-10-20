@@ -48,7 +48,7 @@ const REVOKE_TIMEOUT_MS = 10_000;
  */
 const REVOCABLE_PROVIDERS = new Set(['strava', 'fitbit', 'garmin']);
 
-export interface ProviderTokens {
+interface ProviderTokens {
   accessToken?: string | null;
   refreshToken?: string | null;
   /** `oauth_tokens.token_expires_at` (ISO), or null. */
@@ -83,11 +83,11 @@ export function defaultProviderRevokeDependencies(): ProviderRevokeDependencies 
  * answers 200 even for an unknown or already-invalid token, e.g. a refresh
  * token that fitbit-sync rotated but failed to persist (review R-5).
  */
-export type ProviderRevokeResult =
+type ProviderRevokeResult =
   | { attempted: false; reason: string }
   | { attempted: true; ok: boolean; status: number | null };
 
-export function isRevocableProvider(provider: string): boolean {
+function isRevocableProvider(provider: string): boolean {
   return REVOCABLE_PROVIDERS.has(provider);
 }
 
@@ -112,7 +112,7 @@ async function send(
  * throws, and never logs or returns the token or the provider's response
  * body.
  */
-export async function providerRevoke(
+async function providerRevoke(
   provider: string,
   tokens: ProviderTokens,
   deps: ProviderRevokeDependencies = defaultProviderRevokeDependencies(),
@@ -175,7 +175,7 @@ export async function providerRevoke(
   return { attempted: false, reason: 'provider_not_revocable' };
 }
 
-export type DisconnectResult =
+type DisconnectResult =
   | { ok: true; revoke: ProviderRevokeResult }
   | { ok: false; stage: 'token_read' | 'disconnect_rpc'; detail: string };
 
