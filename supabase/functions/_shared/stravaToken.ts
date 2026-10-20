@@ -31,7 +31,7 @@ export interface StravaRefreshedTokens {
  * The parts of a Strava error entry that are safe to log: a small enumerated
  * vocabulary (`resource`, `field`, `code`), never free text or a token.
  */
-export interface StravaErrorDetail {
+interface StravaErrorDetail {
   resource: string | null;
   field: string | null;
   code: string | null;
@@ -86,9 +86,13 @@ export function stravaTokenNeedsRefresh(
   return Number.isNaN(expiresAt) || now >= expiresAt - STRAVA_REFRESH_BUFFER_MS;
 }
 
-/** Keep only the enumerated fields, and only if they are short identifiers. */
+/**
+ * Keep only the enumerated fields, and only if they are short identifiers.
+ * Strava's vocabulary words are well under 32 characters; its tokens are 40
+ * hex characters, so the cap keeps an echoed token out of the logs.
+ */
 function safeIdentifier(value: unknown): string | null {
-  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(value) ? value : null;
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(value) ? value : null;
 }
 
 /**

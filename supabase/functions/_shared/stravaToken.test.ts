@@ -155,6 +155,19 @@ Deno.test("refreshStravaAccessToken classifies Strava's enumerated error body an
       revoked: false,
     },
     {
+      label: "token-shaped value is dropped",
+      status: 400,
+      body: {
+        errors: [{
+          resource: "RefreshToken",
+          field: "refresh_token",
+          code: "0123456789abcdef0123456789abcdef01234567",
+        }],
+      },
+      details: [{ resource: "RefreshToken", field: "refresh_token", code: null }],
+      revoked: true,
+    },
+    {
       label: "sixth entry is dropped",
       status: 400,
       body: {
