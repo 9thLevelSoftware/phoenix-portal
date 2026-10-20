@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import Papa from "papaparse";
+import { formatPersonalRecordTypeLabel } from "@/lib/personal-record-labels";
 import { convertWeight, getUnitLabel, type WeightUnit } from "@/lib/units";
 import type { PersonalRecord, WorkoutSession } from "@/schemas/transforms";
 
@@ -48,7 +49,7 @@ export function generateRecordsCSV(
 	const data = records.map((r) => ({
 		Exercise: r.exercise_name,
 		"Muscle Group": r.muscle_group,
-		"Record Type": formatRecordType(r.record_type),
+		"Record Type": formatPersonalRecordTypeLabel(r.record_type),
 		"Workout Phase": r.workout_phase ?? "Combined",
 		Value: r.unit === "kg" ? convertWeight(r.value, unit) : r.value,
 		Unit: r.unit === "kg" ? `${getUnitLabel(unit)} per cable` : r.unit,
@@ -60,19 +61,6 @@ export function generateRecordsCSV(
 	}));
 
 	return Papa.unparse(data, { escapeFormulae: true });
-}
-
-function formatRecordType(type: string): string {
-	const types: Record<string, string> = {
-		MAX_WEIGHT: "Max Weight",
-		MAX_REPS: "Max Reps",
-		MAX_VOLUME: "Max Volume",
-		"1RM": "Estimated 1RM",
-		FASTEST_TIME: "Fastest Time",
-		LONGEST_DISTANCE: "Longest Distance",
-	};
-	// Normalize so legacy lowercase values map too.
-	return types[(type ?? "").toUpperCase()] ?? type ?? "";
 }
 
 /**
