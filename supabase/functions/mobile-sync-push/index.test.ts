@@ -10476,7 +10476,7 @@ Deno.test({
       assertEquals(
         epochMs(sessions[0].updatedAt),
         epochMs(slowStamp),
-        "timestamp-mode pull reports the device stamp, not the server write clock",
+        "parity pull reports the device stamp, not the server write clock",
       );
     } finally {
       await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
