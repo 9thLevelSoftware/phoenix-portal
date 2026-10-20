@@ -507,14 +507,20 @@ WHERE c.table_schema = 'public' AND c.column_name = 'user_id'
 ORDER BY 1;
 ```
 
-**FK-less tables the CASCADE does not reach.** `purgeUser` deletes these
-explicitly (`EXPLICIT_PURGE_TARGETS` in
-`supabase/functions/_shared/accountPurge.ts`); a manual deletion has to do the
-same or the rows outlive the account. `goal_snapshots`, `overload_suggestions`,
-`telemetry_analysis`, `wearable_daily_summaries`, `subscription_events`, and
-`paddle_webhook_events` are created by migration `20260920000200` (each
-`CREATE TABLE` runs only when the relation is absent), so they exist on a
-local stack that has applied that migration:
+**Tables `purgeUser` deletes explicitly.** `purgeUser` sweeps these
+(`EXPLICIT_PURGE_TARGETS` in `supabase/functions/_shared/accountPurge.ts`); a
+manual deletion has to do the same. Only `subscription_events` and
+`paddle_webhook_events` have no FK to `auth.users`: the CASCADE in Step 5 never
+reaches them, so their rows outlive the account unless deleted here. The others
+cascade and are swept as a safety net (and for a database whose copy of the
+table predates the FK).
+
+`subscription_events`, `paddle_webhook_events`, `goal_snapshots`,
+`overload_suggestions`, `telemetry_analysis` and `wearable_daily_summaries` are
+created by migration `20260920000200` (each `CREATE TABLE` runs only when the
+relation is absent). On a database that has not applied it,
+skip the statements for any of them that do not exist (`purgeUser` marks them
+`mayBeAbsent`):
 
 ```sql
 -- Always present
@@ -522,8 +528,6 @@ SELECT 'oauth_tokens' AS tbl, COUNT(*) FROM oauth_tokens WHERE user_id = '<uuid>
 UNION ALL SELECT 'rate_limit_tracking', COUNT(*) FROM rate_limit_tracking WHERE user_id = '<uuid>'
 UNION ALL SELECT 'sync_tombstones', COUNT(*) FROM sync_tombstones WHERE user_id = '<uuid>';
 
--- Created by 20260920000200 when the relation is absent. Present after that
--- migration has been applied, including on a local stack.
 SELECT COUNT(*) FROM paddle_webhook_events WHERE user_id = '<uuid>';
 SELECT COUNT(*) FROM paddle_webhook_events
  WHERE payload->'data'->'custom_data'->>'user_id' = '<uuid>';  -- rows whose user_id was never filled in
@@ -652,11 +656,8 @@ DELETE FROM subscriptions WHERE user_id = '<uuid>';
 DELETE FROM profiles WHERE id = '<uuid>';
 ```
 
-Then the FK-less tables from Step 1 that the CASCADE never reaches.
-`subscription_events`, `paddle_webhook_events`, `goal_snapshots`,
-`overload_suggestions`, `telemetry_analysis`, and `wearable_daily_summaries`
-are created by migration `20260920000200` and are present once it has been
-applied:
+Then the explicit purge targets from Step 1 (skip any of the
+`20260920000200` tables that do not exist):
 
 ```sql
 DELETE FROM oauth_tokens WHERE user_id = '<uuid>';
