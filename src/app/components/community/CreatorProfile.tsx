@@ -26,6 +26,7 @@ import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { useBlockedUsers } from "@/hooks/useBlockedUsers";
+import { getInitials } from "@/lib/avatar";
 import {
 	useBlockUser,
 	useFollowCreator,
@@ -52,15 +53,6 @@ interface CreatorProfileProps {
 /** A creator-profile feed item is a routine when it carries `routine_id`. */
 function feedItemType(item: CommunityFeedItem): "routine" | "cycle" {
 	return "routine_id" in item ? "routine" : "cycle";
-}
-
-function getInitials(name: string): string {
-	return name
-		.split(" ")
-		.map((w) => w.charAt(0))
-		.join("")
-		.toUpperCase()
-		.slice(0, 2);
 }
 
 export function CreatorProfile({

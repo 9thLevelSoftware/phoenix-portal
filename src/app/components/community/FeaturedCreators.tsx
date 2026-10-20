@@ -5,19 +5,11 @@ import { ProfileAvatarImage } from "@/app/components/profile/ProfileAvatarImage"
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import { Skeleton } from "@/app/components/ui/skeleton";
 import { useBlockedUsers } from "@/hooks/useBlockedUsers";
+import { getInitials } from "@/lib/avatar";
 import { featuredCreatorsOptions } from "@/queries/community";
 
 interface FeaturedCreatorsProps {
 	onSelectCreator: (userId: string) => void;
-}
-
-function getInitials(name: string): string {
-	return name
-		.split(" ")
-		.map((w) => w.charAt(0))
-		.join("")
-		.toUpperCase()
-		.slice(0, 2);
 }
 
 export function FeaturedCreators({ onSelectCreator }: FeaturedCreatorsProps) {

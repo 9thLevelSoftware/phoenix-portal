@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { avatarObjectPath } from "../avatar";
+import { avatarObjectPath, getInitials } from "../avatar";
 
 const owner = "11111111-1111-4111-8111-111111111111";
 const prefix = `https://api.phoenix-portal.com/storage/v1/object/public/avatars/${owner}/`;
@@ -38,5 +38,25 @@ describe("avatar object references", () => {
 				"22222222-2222-4222-8222-222222222222",
 			),
 		).toBeNull();
+	});
+});
+
+describe("getInitials", () => {
+	it("uses the first letter of each of the first two words", () => {
+		expect(getInitials("Coach Phoenix")).toBe("CP");
+		expect(getInitials("mary ann smith")).toBe("MA");
+		expect(getInitials("Élodie Martin")).toBe("ÉM");
+	});
+
+	it("keeps a single letter for a one-word name", () => {
+		expect(getInitials("Phoenix")).toBe("P");
+		expect(getInitials("a")).toBe("A");
+	});
+
+	it("drops empty segments from repeated or surrounding spaces", () => {
+		expect(getInitials("Coach  Phoenix")).toBe("CP");
+		expect(getInitials(" Phoenix")).toBe("P");
+		expect(getInitials("")).toBe("");
+		expect(getInitials("  ")).toBe("");
 	});
 });
