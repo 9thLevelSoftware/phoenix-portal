@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createHevyPageFetcher,
 	fetchHevyBackfill,
 	fetchHevyEvents,
 	foldWorkoutEvents,
 	HEVY_PAGE_SIZE,
+	HEVY_REQUEST_TIMEOUT_MS,
 	HevyAuthError,
 	type HevyWorkout,
 	type HevyWorkoutEvent,
@@ -339,6 +340,76 @@ describe("createHevyPageFetcher", () => {
 	function jsonResponse(body: unknown, status = 200) {
 		return new Response(JSON.stringify(body), { status });
 	}
+
+	// Real AbortSignal.timeout keeps a 30s timer. Record the bound and hand
+	// back a signal that never fires so the suite can exit.
+	const seenTimeouts: number[] = [];
+	beforeEach(() => {
+		seenTimeouts.length = 0;
+		vi.spyOn(AbortSignal, "timeout").mockImplementation((ms: number) => {
+			seenTimeouts.push(ms);
+			return new AbortController().signal;
+		});
+	});
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("caps each request at the default 30s timeout", async () => {
+		const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
+		const fetchPage = createHevyPageFetcher(
+			"key",
+			fetchImpl as unknown as typeof fetch,
+		);
+
+		await fetchPage("/workouts", new URLSearchParams({ page: "1" }));
+
+		expect(HEVY_REQUEST_TIMEOUT_MS).toBe(30_000);
+		expect(seenTimeouts).toEqual([HEVY_REQUEST_TIMEOUT_MS]);
+		const [, init] = fetchImpl.mock.calls[0] as unknown as [
+			string,
+			RequestInit,
+		];
+		expect(init.signal).toBeInstanceOf(AbortSignal);
+		expect(init.signal?.aborted).toBe(false);
+	});
+
+	it("lets a caller-supplied fetch replace the timeout signal", async () => {
+		const replacement = new AbortController().signal;
+		const inner = vi.fn(
+			async (_input: Parameters<typeof fetch>[0], _init?: RequestInit) =>
+				jsonResponse({ ok: true }),
+		);
+		const fetchImpl = (async (input, init) =>
+			inner(input, {
+				...init,
+				signal: replacement,
+			})) as typeof fetch;
+		const fetchPage = createHevyPageFetcher("key", fetchImpl);
+
+		await fetchPage("/workouts", new URLSearchParams());
+
+		const [, init] = inner.mock.calls[0] as unknown as [string, RequestInit];
+		expect(init.signal).toBe(replacement);
+	});
+
+	it("lets a timeout rejection propagate", async () => {
+		const timeoutError = new DOMException(
+			"The operation was aborted due to timeout",
+			"TimeoutError",
+		);
+		const fetchImpl = vi.fn(async () => {
+			throw timeoutError;
+		});
+		const fetchPage = createHevyPageFetcher(
+			"key",
+			fetchImpl as unknown as typeof fetch,
+		);
+
+		await expect(fetchPage("/workouts", new URLSearchParams())).rejects.toBe(
+			timeoutError,
+		);
+	});
 
 	it("sends the api-key header and builds the query string", async () => {
 		const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
