@@ -291,7 +291,8 @@ Deno.test("complete-oauth binds the provider account for the calling session", a
   // Single-use: the state row is gone.
   assertEquals(harness.stateRows.length, 0);
 
-  // The initial sync is queued, as the provider callbacks do today.
+  // complete-oauth is the place that enqueues the initial sync. strava-oauth
+  // only relays here, and fitbit-oauth and garmin-oauth answer 410.
   assertEquals(harness.inserts.length, 1);
   assertEquals(harness.inserts[0].table, "sync_queue");
 });

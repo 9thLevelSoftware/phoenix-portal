@@ -503,8 +503,10 @@ async function completeOAuthHandler(
       );
     }
 
-    // Queue the initial sync, mirroring the provider callbacks. Non-fatal: the
-    // tokens are stored and a sync can be triggered manually.
+    // Queue the initial sync. complete-oauth is the place that enqueues it:
+    // strava-oauth only relays here, and fitbit-oauth and garmin-oauth answer
+    // 410. Non-fatal: the tokens are stored and a sync can be triggered
+    // manually.
     const { error: queueError } = await supabase.from('sync_queue').insert({
       user_id: user.id,
       provider: parsed.provider,
