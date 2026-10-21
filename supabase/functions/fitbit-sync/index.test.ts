@@ -372,6 +372,101 @@ Deno.test("fitbit-sync: an invalid refresh body on a cancelled row keeps the rot
 /** A body Fitbit might return; it must never be written to a log. */
 const PROVIDER_ERROR_BODY = "refresh_token=super-secret-fitbit-error-body";
 
+/** Same ceiling strava-sync, hevy-sync and liftosaur-sync put on each provider call. */
+const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
+
+function timeoutError(): DOMException {
+  return new DOMException("The operation was aborted due to timeout", "TimeoutError");
+}
+
+/**
+ * Replaces `AbortSignal.timeout` so a test can see the requested ceiling
+ * without leaving a real timer running. The returned signal is inert.
+ */
+function spyOnAbortTimeout(): { calls: number[]; restore: () => void; signal: AbortSignal } {
+  const calls: number[] = [];
+  const signal = new AbortController().signal;
+  const original = AbortSignal.timeout;
+  AbortSignal.timeout = (ms: number) => {
+    calls.push(ms);
+    return signal;
+  };
+  return {
+    calls,
+    signal,
+    restore: () => {
+      AbortSignal.timeout = original;
+    },
+  };
+}
+
+Deno.test("fitbit-sync: a timed-out token refresh is a retryable 502 and leaves the integration connected", async () => {
+  const state = db({ tokenExpiresAt: new Date(Date.now() + 60_000).toISOString() });
+  const before = { ...state.rows("user_integrations")[0] };
+  const lease = "2026-09-01T00:00:00.000Z";
+  state.rows("sync_queue")[0].started_at = lease;
+  const api = fitbit([]);
+  const seen: RequestInit[] = [];
+  api.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    seen.push(init ?? {});
+    const url = String(input);
+    if (url.includes("/oauth2/token")) return Promise.reject(timeoutError());
+    return Promise.resolve(Response.json({ activities: [] }));
+  }) as typeof fetch;
+  const spy = spyOnAbortTimeout();
+  try {
+    const res = await silenced(() => handler(state, api)(request({ queue_id: QUEUE_ID })));
+    assertEquals(res.status, 502, await res.clone().text());
+    assertEquals(await res.json(), {
+      error: "Fitbit token refresh failed",
+      code: "refresh_failed",
+    });
+    assertEquals(spy.calls, [PROVIDER_REQUEST_TIMEOUT_MS]);
+    assertEquals(seen[0]?.signal, spy.signal);
+    assertEquals(seen.length, 1);
+    assertEquals(state.rows("user_integrations")[0], before);
+    assertEquals(state.rows("sync_queue")[0].status, "processing");
+    assertEquals(state.rows("sync_queue")[0].started_at, lease);
+    assertEquals(state.rows("external_activities"), []);
+  } finally {
+    spy.restore();
+  }
+});
+
+Deno.test("fitbit-sync: a timed-out activities fetch is a retryable 502 and does not heartbeat", async () => {
+  const state = db();
+  const before = { ...state.rows("user_integrations")[0] };
+  const lease = "2026-09-01T00:00:00.000Z";
+  state.rows("sync_queue")[0].started_at = lease;
+  const api = fitbit([]);
+  const seen: RequestInit[] = [];
+  api.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    seen.push(init ?? {});
+    const url = String(input);
+    if (url.includes("/activities/")) return Promise.reject(timeoutError());
+    return Promise.resolve(Response.json({ activities: [] }));
+  }) as typeof fetch;
+  const spy = spyOnAbortTimeout();
+  try {
+    const res = await silenced(() => handler(state, api)(request({ queue_id: QUEUE_ID })));
+    assertEquals(res.status, 502, await res.clone().text());
+    assertEquals(await res.json(), {
+      error: "Failed to fetch Fitbit activities",
+      code: "activities_fetch_failed",
+    });
+    assertEquals(spy.calls, [PROVIDER_REQUEST_TIMEOUT_MS]);
+    assertEquals(seen[0]?.signal, spy.signal);
+    assertEquals(state.rows("user_integrations")[0], before);
+    assertEquals(state.rows("sync_queue")[0].status, "processing");
+    // The per-page heartbeat runs only after a response. A timeout returns
+    // before it, so the lease timestamp stays where the dispatcher left it.
+    assertEquals(state.rows("sync_queue")[0].started_at, lease);
+    assertEquals(state.rows("external_activities"), []);
+  } finally {
+    spy.restore();
+  }
+});
+
 Deno.test("fitbit-sync: token refresh and activities failures are logged by status only", async () => {
   const expiring = db({ tokenExpiresAt: new Date(Date.now() + 60_000).toISOString() });
   const refreshApi = fitbit([], { tokenStatus: 400, errorBody: PROVIDER_ERROR_BODY });
