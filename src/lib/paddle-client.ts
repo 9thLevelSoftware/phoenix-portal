@@ -131,7 +131,7 @@ let activeCallbacks: {
  * set to sandbox environment.
  * Safe to call multiple times -- subsequent calls are no-ops.
  */
-export async function initializePaddle(): Promise<void> {
+async function initializePaddle(): Promise<void> {
 	if (initialized) return;
 
 	const token = import.meta.env.VITE_PADDLE_CLIENT_TOKEN as string | undefined;
