@@ -6,6 +6,7 @@ import {
 	toStopAtPosition,
 	toSupersetColorName,
 	toWireMode,
+	WIRE_MODE_LABELS,
 } from "../../supabase/functions/_shared/workoutModes.ts";
 
 // Routine-exercise settings read in mobile's vocabulary. A value outside it
@@ -40,15 +41,12 @@ const nullableOptionalDate = z
 	.refine(validDate, { message: "Invalid date" });
 const perCableWeight = z.number();
 
-// Workout mode mapping from DB enum values to friendly display names
+// Session display names. The six wire labels live in WIRE_MODE_LABELS;
+// CLASSIC is the Android legacy alias for Old School. Unknown values,
+// including the retired POWER mode, stay verbatim.
 const workoutModeMap: Record<string, string> = {
-	OLD_SCHOOL: "Old School",
-	ECHO: "Echo",
-	PUMP: "Pump",
-	TUT: "TUT",
-	TUT_BEAST: "TUT Beast",
-	ECCENTRIC_ONLY: "Eccentric Only",
-	CLASSIC: "Old School", // Android legacy alias for OLD_SCHOOL
+	...WIRE_MODE_LABELS,
+	CLASSIC: WIRE_MODE_LABELS.OLD_SCHOOL,
 };
 
 const workoutModeSchema = z

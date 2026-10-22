@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+	WIRE_MODE_LABELS,
+	WIRE_MODES,
+} from "../../../supabase/functions/_shared/workoutModes.ts";
+import {
 	exerciseSchema,
 	gamificationStatsSchema,
 	personalRecordSchema,
@@ -73,6 +77,39 @@ describe("workoutSessionSchema", () => {
 			workout_mode: "CLASSIC",
 		});
 		expect(result.workout_mode).toBe("Old School");
+	});
+
+	it("labels the six wire modes, aliases CLASSIC, and passes unknown modes through", () => {
+		expect(WIRE_MODES).toHaveLength(6);
+		for (const mode of WIRE_MODES) {
+			const result = workoutSessionSchema.parse({
+				...validSession,
+				workout_mode: mode,
+			});
+			expect(result.workout_mode).toBe(WIRE_MODE_LABELS[mode]);
+		}
+		expect(WIRE_MODE_LABELS).toEqual({
+			OLD_SCHOOL: "Old School",
+			PUMP: "Pump",
+			TUT: "TUT",
+			TUT_BEAST: "TUT Beast",
+			ECCENTRIC_ONLY: "Eccentric Only",
+			ECHO: "Echo",
+		});
+
+		const classic = workoutSessionSchema.parse({
+			...validSession,
+			workout_mode: "CLASSIC",
+		});
+		expect(classic.workout_mode).toBe(WIRE_MODE_LABELS.OLD_SCHOOL);
+
+		for (const mode of ["POWER", "CUSTOM_MODE"]) {
+			const result = workoutSessionSchema.parse({
+				...validSession,
+				workout_mode: mode,
+			});
+			expect(result.workout_mode).toBe(mode);
+		}
 	});
 
 	it("maps ECHO to 'Echo'", () => {
