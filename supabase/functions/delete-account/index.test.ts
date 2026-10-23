@@ -9,6 +9,7 @@ import {
 } from "../_shared/accountPurge.ts";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
 import { assertNoSecretsLogged, captureLogs } from "../_shared/testLogCapture.ts";
+import { EXCLUDED, USER_DATA_MANIFEST } from "../_shared/userDataManifest.ts";
 import {
   createDeleteAccountHandler,
   PROCESS_DUE_BATCH_SIZE,
@@ -1944,65 +1945,62 @@ Deno.test("process_due: a folder that still holds objects after the removal is n
 // ---------------------------------------------------------------------------
 
 /**
- * Column-owned tables of the PR 36 user-data manifest (USER_DATA_MANIFEST and
- * EXCLUDED), with the column that holds the user id. Parent-owned tables
- * (routine_exercises, cycle_days) are checked through their parents.
- * Tables that do not exist on the local stack are skipped.
+ * Column-owned user-id checks derived from `USER_DATA_MANIFEST` and
+ * `EXCLUDED`. Parent-owned tables (`routine_exercises`, `cycle_days`) are
+ * checked through their parents. `set_telemetry_sample_ids` is keyed by
+ * `set_id`, not a user id, so it is left out. `creator_follows.followed_id`
+ * and `user_blocks.blocked_id` are extra pairs the manifest does not use as
+ * the owner's column; deletion still removes them. The webhook payload probe
+ * stays in `rowsReferencing`.
  *
- * INTEGRATION POINT (PR 36): this is a hand copy of the manifest. When PR 36
- * lands, derive it from `USER_DATA_MANIFEST` / `EXCLUDED` so a table added to
- * the manifest is checked here too.
+ * A missing relation or column is skipped there (`isMissingRelation` /
+ * `isMissingColumn`), so a derived table that this stack does not have does
+ * not fail the integration check.
  */
-const MANIFEST_USER_COLUMNS: readonly [string, string][] = [
-  ["profiles", "id"],
-  ["subscriptions", "user_id"],
-  ["subscription_events", "user_id"],
-  ["deletion_requests", "user_id"],
-  ["user_onboarding", "user_id"],
-  ["local_profiles", "user_id"],
-  ["local_profile_preferences", "user_id"],
-  ["workout_sessions", "user_id"],
-  ["exercises", "user_id"],
-  ["sets", "user_id"],
-  ["rep_summaries", "user_id"],
-  ["rep_telemetry", "user_id"],
-  ["personal_records", "user_id"],
-  ["exercise_progress", "user_id"],
-  ["session_phase_statistics", "user_id"],
-  ["exercise_signatures", "user_id"],
-  ["vbt_assessments", "user_id"],
-  ["exercise_catalog", "user_id"],
-  ["routines", "user_id"],
-  ["training_cycles", "user_id"],
-  ["sync_tombstones", "user_id"],
-  ["user_goals", "user_id"],
-  ["goal_snapshots", "user_id"],
-  ["overload_suggestions", "user_id"],
-  ["telemetry_analysis", "user_id"],
-  ["wearable_daily_summaries", "user_id"],
-  ["earned_badges", "user_id"],
-  ["gamification_stats", "user_id"],
-  ["rpg_attributes", "user_id"],
-  ["user_insights", "user_id"],
-  ["shared_routines", "user_id"],
-  ["shared_cycles", "user_id"],
-  ["community_comments", "user_id"],
-  ["community_votes", "user_id"],
-  ["saved_community_items", "user_id"],
-  ["challenge_participants", "user_id"],
-  ["creator_follows", "follower_id"],
-  ["creator_follows", "followed_id"],
-  ["user_blocks", "blocker_id"],
-  ["user_blocks", "blocked_id"],
-  ["content_reports", "reporter_id"],
-  ["user_integrations", "user_id"],
-  ["external_activities", "user_id"],
-  ["sync_queue", "user_id"],
-  ["oauth_tokens", "user_id"],
-  ["oauth_states", "user_id"],
-  ["rate_limit_tracking", "user_id"],
-  ["paddle_webhook_events", "user_id"],
-];
+function manifestUserColumns(): readonly [string, string][] {
+  const pairs: [string, string][] = [];
+  for (const entry of USER_DATA_MANIFEST) {
+    if (entry.ownership.kind !== "column") continue;
+    pairs.push([entry.table, entry.ownership.column]);
+    if (entry.table === "creator_follows") pairs.push([entry.table, "followed_id"]);
+    if (entry.table === "user_blocks") pairs.push([entry.table, "blocked_id"]);
+  }
+  for (const entry of EXCLUDED) {
+    if (entry.table === "set_telemetry_sample_ids") continue;
+    pairs.push([entry.table, entry.purgeMatch.column]);
+  }
+  return pairs;
+}
+
+const MANIFEST_USER_COLUMNS = manifestUserColumns();
+
+Deno.test("manifest residue columns follow USER_DATA_MANIFEST and EXCLUDED", () => {
+  const pairs = new Set(
+    MANIFEST_USER_COLUMNS.map(([table, column]) => `${table}.${column}`),
+  );
+
+  for (const entry of USER_DATA_MANIFEST) {
+    if (entry.ownership.kind !== "column") {
+      assert(
+        !MANIFEST_USER_COLUMNS.some(([table]) => table === entry.table),
+        `${entry.table} is parent-owned`,
+      );
+      continue;
+    }
+    assert(pairs.has(`${entry.table}.${entry.ownership.column}`), entry.table);
+  }
+  for (const entry of EXCLUDED) {
+    if (entry.table === "set_telemetry_sample_ids") {
+      assert(!pairs.has("set_telemetry_sample_ids.set_id"));
+      continue;
+    }
+    assert(pairs.has(`${entry.table}.${entry.purgeMatch.column}`), entry.table);
+  }
+  assert(pairs.has("creator_follows.followed_id"));
+  assert(pairs.has("user_blocks.blocked_id"));
+  assert(pairs.has("profiles.id"));
+  assert(pairs.has("paddle_webhook_events.user_id"));
+});
 
 function integrationAdmin(): SupabaseClient {
   assert(localIntegrationEnvironment);
@@ -2077,10 +2075,11 @@ async function seedPurgeFixture(
     access_token: "fixture-token",
     refresh_token: "fixture-refresh-token",
   }));
-  // Prod-only table (no migration until PR 2 captures it; it cannot be
-  // created through PostgREST): seeded when the local stack has it. One row
-  // by user_id, one naming the user only in the payload, and rows keyed only
-  // by the user's Paddle subscription / customer id.
+  // 20260920000200_capture_dashboard_functions_and_cron.sql creates
+  // paddle_webhook_events (and subscription_events). Seeded when this stack
+  // has the table; a missing relation is not a fixture failure. One row by
+  // user_id, one naming the user only in the payload, and rows keyed only by
+  // the user's Paddle subscription id.
   const webhooks = await admin.from("paddle_webhook_events").insert([
     { user_id: user.id, event_type: "subscription.updated", payload: { data: {} } },
     {
@@ -2167,11 +2166,11 @@ async function avatarNames(admin: SupabaseClient, userId: string): Promise<strin
 async function cleanupUsers(admin: SupabaseClient, userIds: string[]) {
   for (const userId of userIds) {
     await admin.storage.from("avatars").remove([`${userId}/avatar.png`]);
-    await admin.from("sync_tombstones").delete().eq("user_id", userId);
     await admin.from("rate_limit_tracking").delete().eq("user_id", userId);
     await admin.auth.admin.deleteUser(userId);
-    // FK-less tables (the last two exist only where prod-only DDL is applied).
-    for (const table of ["sync_tombstones", "subscription_events", "paddle_webhook_events"]) {
+    // No FK to auth.users (20260920000200 creates both). sync_tombstones.user_id
+    // is ON DELETE CASCADE (20260920001600), so deleteUser removes those rows.
+    for (const table of ["subscription_events", "paddle_webhook_events"]) {
       await admin.from(table).delete().eq("user_id", userId);
     }
     await admin.from("paddle_webhook_events").delete().eq(
@@ -2251,7 +2250,14 @@ Deno.test({
 
       assertEquals(result.ok, false);
       assertEquals(!result.ok && result.stage, "billing_cancel");
-      assertEquals(await rowsReferencing(admin, user.id), before, "no row deleted");
+      // The billing step records each listed subscription in
+      // paddle_checkout_authorizations before it cancels, so that evidence
+      // survives an abort (accountPurge.ts). Every other row is untouched.
+      const ledger = "paddle_checkout_authorizations.user_id=1";
+      const after = await rowsReferencing(admin, user.id);
+      assert(!before.includes(ledger));
+      assert(after.includes(ledger), "cancellation evidence recorded");
+      assertEquals(after.filter((row) => row !== ledger), before, "no row deleted");
 
       const stillThere = await admin.auth.admin.getUserById(user.id);
       assertEquals(stillThere.data.user?.id, user.id);
@@ -2421,7 +2427,8 @@ Deno.test({
       const seeded = await admin.from("paddle_webhook_events").insert(rows).select("id");
       if (seeded.error) {
         if (isMissingRelation(seeded.error)) {
-          // Prod-only table (a migration arrives with PR 2): nothing to exercise here.
+          // 20260920000200 creates paddle_webhook_events. Nothing to exercise
+          // on a stack that does not have the table.
           console.warn("paddle_webhook_events absent: R-21 real-SQL check skipped on this stack");
           return;
         }
