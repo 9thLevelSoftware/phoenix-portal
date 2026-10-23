@@ -85,11 +85,14 @@ export interface ExplicitPurgeTarget {
 /**
  * Tables `purgeUser` deletes explicitly, by user id.
  *
- * INTEGRATION POINT (PR 36): this list mirrors the `purge: "explicit"` entries
- * of `USER_DATA_MANIFEST` / `EXCLUDED` in `_shared/userDataManifest.ts`, plus
- * `oauth_tokens` (cascades, but deleted first on purpose; step 1b has already
- * revoked and disconnected each provider, so this is the safety net). When PR 36 lands, derive this list from the manifest and
- * carry over `postOnly` and `mayBeAbsent`.
+ * The table names match the `purge: "explicit"` entries of
+ * `USER_DATA_MANIFEST` and `EXCLUDED` in `_shared/userDataManifest.ts`,
+ * plus `oauth_tokens`. Those entries already live in the manifest. This
+ * array is written by hand. `postOnly` and `mayBeAbsent` are declared on
+ * the targets in this array. `oauth_tokens` is `purge: "cascade"` in
+ * `EXCLUDED` (`user_id` references `auth.users` ON DELETE CASCADE). Purge
+ * still deletes it in the pre-pass: step 1b has already revoked and
+ * disconnected each provider, so this delete is the safety net.
  */
 export const EXPLICIT_PURGE_TARGETS: readonly ExplicitPurgeTarget[] = [
   { table: 'oauth_tokens', column: 'user_id' },
