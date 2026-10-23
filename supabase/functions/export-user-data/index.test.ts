@@ -897,8 +897,11 @@ Deno.test({
           status: "completed",
         })),
       ]);
-      // Synthetic composite-keyed entry: no composite-keyed manifest table
-      // (sync_tombstones, PR 16) has DDL on this branch.
+      // Synthetic composite key (provider, id) on sync_queue. sync_tombstones
+      // is a composite-keyed manifest table (keyColumns entity + entity_id,
+      // created in 20260920001600), and its entity values are only 'routine'
+      // and 'cycle'. This test needs provider strings with quotes and commas,
+      // so the keyset stays on sync_queue.
       const entry: UserDataTable = {
         table: "sync_queue",
         ownership: { kind: "column", column: "user_id" },
