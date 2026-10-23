@@ -77,8 +77,8 @@ import {
 } from "@/lib/workout-phases";
 import {
 	muscleGroupOptions,
+	periodToDays,
 	phaseStatisticsTrendOptions,
-	periodToDays as queryPeriodDays,
 	strengthProgressOptions,
 	volumeComparisonOptions,
 	volumeTrendOptions,
@@ -163,8 +163,8 @@ const TAB_MIGRATION: Record<string, string> = {
 
 const VALID_TABS = ["overview", "progress", "body", "performance", "records"];
 
-// Time period to query period mapping
-function periodToDays(timePeriod: string): string {
+// UI period labels ("7D", "30D", …) to analytics query period keys ("1w", "4w", …).
+function uiPeriodToQueryPeriod(timePeriod: string): string {
 	switch (timePeriod) {
 		case "7D":
 			return "1w";
@@ -589,7 +589,7 @@ export function Analytics() {
 		setSearchParams(nextParams);
 	};
 
-	const queryPeriod = periodToDays(timePeriod);
+	const queryPeriod = uiPeriodToQueryPeriod(timePeriod);
 	const insightPeriod = periodToInsightPeriod(timePeriod);
 	const userId = user?.id ?? "";
 	const { activeProfileId } = useProfileFilterStore();
@@ -872,7 +872,7 @@ export function Analytics() {
 		? []
 		: buildLocalInsights(
 				insightComparison,
-				queryPeriodDays(insightPeriod),
+				periodToDays(insightPeriod),
 				muscleGroupData,
 				unit,
 			);
@@ -880,7 +880,7 @@ export function Analytics() {
 	// the chart window.
 	const progressInsights = buildLocalInsights(
 		volumeComparison,
-		queryPeriodDays(queryPeriod),
+		periodToDays(queryPeriod),
 		muscleGroupData,
 		unit,
 	);
