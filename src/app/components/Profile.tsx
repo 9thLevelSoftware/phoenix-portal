@@ -762,8 +762,10 @@ export function Profile() {
 										<span className="text-muted-foreground">Total Volume</span>
 										<span className="text-primary font-data">
 											{/* One source only: the session-derived per-cable sum.
-											    gamification_stats.total_volume_kg is a device-pushed
-											    two-cable total until PR 25 derives it server-side. */}
+											    Since 20260920002500,
+											    gamification_stats.total_volume_kg is the
+											    account-wide per-cable sum. Device-pushed
+											    totals live in device_total_volume_kg. */}
 											{statsLoading
 												? "..."
 												: formatProfileVolume(stats?.totalVolume, weightUnit)}
