@@ -528,10 +528,12 @@ created by migration `20260920000200` (each `CREATE TABLE` runs only when the
 relation is absent). On a database that has not applied it,
 skip the statements for any of them that do not exist (`purgeUser` marks them
 `mayBeAbsent`). `rep_telemetry_legacy` is on the same list (`user_id`,
-`postOnly`, `mayBeAbsent`): `20260925200000` renamed `rep_telemetry` to it, its
-`user_id` still cascades from `auth.users`, and the table is dropped once the
-`set_telemetry` backfill is verified. Skip that statement when the relation is
-absent. It is not one of the `20260920000200` tables:
+`postOnly`, `mayBeAbsent`): `20260925200000` renamed `rep_telemetry` to it and
+its `user_id` still cascades from `auth.users`. A later migration drops it once
+the `set_telemetry` backfill is verified, after first rewriting the views and
+functions from `20260925200000` that still read it (the `rep_telemetry` view
+among them). Skip its statements when the relation is absent. It is not one of
+the `20260920000200` tables:
 
 ```sql
 -- Always present
@@ -560,8 +562,9 @@ trusting it.
 `purgeUser` cancels the user's Paddle subscription **first**, from Paddle's
 live status (never from `subscriptions.status`, which can be stale), and aborts
 the whole purge if it cannot. Do the same by hand: Step 4 deletes the
-`subscriptions` row, which is the only local record of the Paddle ids — once it
-is gone you cannot find the subscription to cancel, and the user keeps being
+`subscriptions` row, the primary local record of the Paddle ids
+(`paddle_checkout_authorizations` keeps a copy only until Step 5's cascade).
+Once that row is gone the subscription is easy to miss, and the user keeps being
 billed.
 
 ```sql
@@ -611,7 +614,8 @@ WHERE bucket_id = 'avatars'
 ```sql
 -- Telemetry and rep data (deepest nesting). rep_telemetry is a read-only
 -- view since 20260925200000 (a DELETE on it raises 42501); delete its two
--- backing tables. set_telemetry_sample_ids goes with set_telemetry.
+-- backing tables. set_telemetry_sample_ids goes with set_telemetry. Skip the
+-- rep_telemetry_legacy line when that relation is absent (Step 1).
 DELETE FROM set_telemetry WHERE user_id = '<uuid>';
 DELETE FROM rep_telemetry_legacy WHERE user_id = '<uuid>';
 DELETE FROM rep_summaries WHERE user_id = '<uuid>';
@@ -669,8 +673,8 @@ DELETE FROM profiles WHERE id = '<uuid>';
 ```
 
 Then the explicit purge targets from Step 1 (skip any of the
-`20260920000200` tables that do not exist, and skip `rep_telemetry_legacy`
-when that relation is absent):
+`20260920000200` tables that do not exist; `rep_telemetry_legacy` was already
+cleared with the telemetry block above):
 
 ```sql
 DELETE FROM oauth_tokens WHERE user_id = '<uuid>';
@@ -684,7 +688,6 @@ DELETE FROM goal_snapshots WHERE user_id = '<uuid>';
 DELETE FROM overload_suggestions WHERE user_id = '<uuid>';
 DELETE FROM telemetry_analysis WHERE user_id = '<uuid>';
 DELETE FROM wearable_daily_summaries WHERE user_id = '<uuid>';
-DELETE FROM rep_telemetry_legacy WHERE user_id = '<uuid>';
 ```
 
 **Do NOT touch `deletion_requests` here.** Its `user_id` is
