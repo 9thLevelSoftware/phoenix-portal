@@ -40,6 +40,7 @@ import { useStreak } from "@/hooks/useStreak";
 import { fadeUpVariants, hover, staggerContainer } from "@/lib/animations";
 import { formatChallengeValue } from "@/lib/challenges";
 import { PHOENIX } from "@/lib/colors";
+import { daysRemaining } from "@/lib/daysRemaining";
 import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import {
 	convertWeight,
@@ -110,11 +111,6 @@ function formatRelativeTime(date: Date): string {
 	if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
 	if (diffDays === 1) return "Yesterday";
 	return `${diffDays} days ago`;
-}
-
-function getDaysRemaining(endDate: string): number {
-	const diffMs = new Date(endDate).getTime() - Date.now();
-	return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
 }
 
 export function formatPersonalRecordValue(
@@ -322,7 +318,7 @@ function ActiveChallengesSection({
 								variant="outline"
 								className="border-primary/30 text-primary"
 							>
-								{getDaysRemaining(challenge.end_date)}d left
+								{daysRemaining(challenge.end_date)}d left
 							</Badge>
 						</div>
 						<div className="mb-2 flex items-center justify-between text-xs">
