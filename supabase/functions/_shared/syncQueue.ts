@@ -55,8 +55,7 @@ export interface CompleteSyncQueueEntryOptions {
  * a row that was reclaimed after a lease expiry, cancelled or already
  * finished must not be overwritten by a late worker. Without a queue id
  * there is nothing this run owns, and nothing is completed.
- */
-/**
+ *
  * Returns true only when this worker's `processing` row became `completed`
  * (or there is no row). False on a write error, and also when the update
  * matched nothing: the row was cancelled by a disconnect or reclaimed, so the

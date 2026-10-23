@@ -660,13 +660,6 @@ function isOwnerRefusal(
 }
 
 /**
- * Hard-delete the caller's rows by id in chunks of 100, like the ownership
- * probe. One `.in()` with every tombstone id (up to 10,000 by schema) can
- * exceed the PostgREST URL limit, which would fail identically on every
- * retry and wedge sync behind a permanent 503. Deletes are idempotent, so a
- * failure after some chunks committed is still safe to retry.
- */
-/**
  * Unique ids in one stable order. Delete chunks run in this order so two
  * pushes deleting the same rows in opposite payload orders (inside
  * SYNC_PUSH_TRANSACTION, which holds each chunk's locks to COMMIT) take the
@@ -677,6 +670,13 @@ export function sortedUniqueIds(ids: readonly string[]): string[] {
     .sort((a, b) => (normalizeUuid(a) < normalizeUuid(b) ? -1 : normalizeUuid(a) > normalizeUuid(b) ? 1 : 0));
 }
 
+/**
+ * Hard-delete the caller's rows by id in chunks of 100, like the ownership
+ * probe. One `.in()` with every tombstone id (up to 10,000 by schema) can
+ * exceed the PostgREST URL limit, which would fail identically on every
+ * retry and wedge sync behind a permanent 503. Deletes are idempotent, so a
+ * failure after some chunks committed is still safe to retry.
+ */
 async function deleteOwnedRowsInChunks(
   supabase: SupabaseClient,
   table: string,
