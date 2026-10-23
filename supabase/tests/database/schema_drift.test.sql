@@ -43,7 +43,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions;
 
-SELECT plan(38);
+SELECT plan(39);
 
 SELECT diag('database:schema-drift-columns');
 
@@ -79,6 +79,11 @@ SELECT col_type_is('public', 'user_goals', 'last_snapshot_at', 'timestamp with t
 SELECT col_is_null('public', 'user_goals', 'last_snapshot_at', 'user_goals.last_snapshot_at is nullable');
 SELECT col_hasnt_default('public', 'user_goals', 'last_snapshot_at',
     'user_goals.last_snapshot_at has no default');
+
+-- 20261021230000: prod had this NOT NULL although 20260318120000 drops it, so
+-- every canceled subscription write failed with 23502.
+SELECT col_is_null('public', 'subscriptions', 'current_period_end',
+    'subscriptions.current_period_end is nullable (canceled rows store null)');
 
 SELECT diag('database:schema-drift-echo-levels-jsonb-shape');
 
