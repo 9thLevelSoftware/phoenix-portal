@@ -17,8 +17,7 @@ import {
 } from "../_shared/paddleSubscriptionState.ts";
 import { verifyPaddleCustomDataSignature } from "../_shared/paddleWebhookSecurity.ts";
 import { bindCheckoutSubscription, type CheckoutBinding, verifyCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
-import { paddleBaseUrl } from "../_shared/accountPurge.ts";
-import { fetchPaddle } from "../_shared/paddleFetch.ts";
+import { fetchPaddle, paddleApiBase } from "../_shared/paddleFetch.ts";
 
 /** Anything with `get(key)`, e.g. `Deno.env`. */
 export interface EnvReader {
@@ -239,7 +238,7 @@ async function paddleRefreshSubscriptionHandler(
       );
     }
 
-    const baseUrl = paddleBaseUrl(deps.env.get("PADDLE_ENVIRONMENT"));
+    const baseUrl = paddleApiBase(deps.env.get("PADDLE_ENVIRONMENT"));
 
     const { data: storedSubscription, error: subError } = await supabaseAdmin
       .from("subscriptions")

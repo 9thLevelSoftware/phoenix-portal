@@ -49,7 +49,7 @@
  */
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { listPaddleCustomerSubscriptions, verifyCheckoutBinding } from './paddleCheckoutBinding.ts';
-import { fetchPaddle } from './paddleFetch.ts';
+import { fetchPaddle, paddleApiBase } from './paddleFetch.ts';
 import { verifyPaddleCustomDataSignature } from './paddleWebhookSecurity.ts';
 import {
   defaultProviderRevokeDependencies,
@@ -170,13 +170,6 @@ export function defaultPurgeUserDependencies(): PurgeUserDependencies {
     paddleCustomDataSecret: Deno.env.get('PADDLE_CUSTOM_DATA_SECRET'),
     providerRevoke: defaultProviderRevokeDependencies(),
   };
-}
-
-/** Paddle Billing API origin. Unset or anything other than `sandbox` is production. */
-export function paddleBaseUrl(environment: string | undefined): string {
-  return (environment ?? 'production') === 'sandbox'
-    ? 'https://sandbox-api.paddle.com'
-    : 'https://api.paddle.com';
 }
 
 interface PostgrestLikeError {
@@ -344,7 +337,7 @@ async function paddleRequest(
   init: RequestInit = {},
 ): Promise<PaddleResponse> {
   try {
-    const res = await fetchPaddle(deps.fetch, `${paddleBaseUrl(deps.paddleEnvironment)}${path}`, {
+    const res = await fetchPaddle(deps.fetch, `${paddleApiBase(deps.paddleEnvironment)}${path}`, {
       ...init,
       headers: {
         Authorization: `Bearer ${apiKey}`,

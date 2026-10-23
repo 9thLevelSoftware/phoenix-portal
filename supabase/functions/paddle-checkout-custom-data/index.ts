@@ -8,8 +8,8 @@ import {
 import { getCorsHeaders } from "../_shared/cors.ts";
 import { paddlePriceConfigGateResponse } from "../_shared/paddlePriceConfigGate.ts";
 import { getAllAllowedPriceIds } from "../_shared/paddlePriceIds.ts";
-import { CHECKOUT_LIFETIME_MS, paddleApiBase, signCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
-import { fetchPaddle } from "../_shared/paddleFetch.ts";
+import { CHECKOUT_LIFETIME_MS, signCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
+import { fetchPaddle, paddleApiBase } from "../_shared/paddleFetch.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
 import { readBoundedRequestBody } from "../_shared/requestBody.ts";
 
