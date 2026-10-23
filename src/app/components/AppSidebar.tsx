@@ -41,6 +41,7 @@ import {
 	useSidebar,
 } from "@/app/components/ui/sidebar";
 import { useAuth } from "@/app/hooks/useAuth";
+import { getInitials } from "@/lib/avatar";
 import { profileOptions } from "@/queries/profile";
 import { useUIStore } from "@/stores/useUIStore";
 import { LocalProfileFilter } from "./LocalProfileFilter";
@@ -197,12 +198,7 @@ export function AppSidebar() {
 	});
 	const displayName =
 		profile?.display_name ?? user?.email?.split("@")[0] ?? "User";
-	const initials = displayName
-		.split(" ")
-		.map((part: string) => part[0])
-		.join("")
-		.toUpperCase()
-		.slice(0, 2);
+	const initials = getInitials(displayName);
 	const isNavItemActive = (item: NavItem) => {
 		const fullPath = `${location.pathname}${location.search}`;
 
