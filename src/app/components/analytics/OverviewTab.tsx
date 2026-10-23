@@ -31,7 +31,7 @@ interface ConsistencyData {
 	mostActiveDay: string;
 }
 
-export interface OverviewTabProps {
+interface OverviewTabProps {
 	totalWorkouts: number;
 	externalCount: number;
 	externalChartData: ExternalChartEntry[];

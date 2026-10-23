@@ -28,7 +28,7 @@ interface ConsistencyData {
 	mostActiveDay: string;
 }
 
-export interface MobileOverviewTabProps {
+interface MobileOverviewTabProps {
 	mobileVolumeData: Array<{ date: string; volume: number }>;
 	trainingLoad: { rtl: number; zone: TrainingLoadZone };
 	consistencyData: ConsistencyData;
