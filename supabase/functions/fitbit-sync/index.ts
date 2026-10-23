@@ -65,16 +65,12 @@ const FITBIT_HOURLY_LIMIT = 150;
  * page), matching strava-sync, hevy-sync and liftosaur-sync.
  *
  * This run heartbeats only after a page comes back. A hung request never
- * reaches that heartbeat and can outlast the queue lease. `AbortSignal.timeout`
- * rejects with a `TimeoutError`, which is answered 502 so process-sync-queue
- * retries it. The handler's catch-all 500 is not in that retry set.
+ * reaches that heartbeat and can outlast the queue lease. A request that fails
+ * before a response (this timeout, a DNS failure, a connection reset) is
+ * answered 502, as strava-sync does, so process-sync-queue retries it. The
+ * handler's catch-all 500 is not in that retry set.
  */
 const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
-
-/** `AbortSignal.timeout` rejects with a DOMException named `TimeoutError`. */
-function isRequestTimeout(err: unknown): boolean {
-  return err instanceof Error && err.name === 'TimeoutError';
-}
 
 interface FitbitTokens {
   access_token: string;
@@ -128,9 +124,9 @@ type FitbitStateSave = (
 /**
  * Refresh Fitbit access token if expired or about to expire (<10 min remaining).
  * Fitbit uses Basic auth for token refresh, same as initial exchange.
- * Returns updated tokens, a response that stops the run (a timed-out refresh,
- * or a state save that was refused or failed), or throws on failure after a
- * successful state save.
+ * Returns updated tokens, a response that stops the run (a refresh that failed
+ * before a response, or a state save that was refused or failed), or throws on
+ * failure after a successful state save.
  * `oauth_tokens` writes stay direct; only integration status goes through
  * `saveState`.
  */
@@ -167,11 +163,10 @@ async function refreshTokenIfNeeded(
       }),
       signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
     });
-  } catch (err) {
-    if (!isRequestTimeout(err)) throw err;
+  } catch {
     // No response, so the grant is unchanged and the integration stays
     // connected. 502 is in process-sync-queue's retry set; a 500 is not.
-    console.error('Fitbit token refresh timed out');
+    console.error('Fitbit token refresh failed before a response');
     return new Response(
       JSON.stringify({ error: 'Fitbit token refresh failed', code: 'refresh_failed' }),
       { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
@@ -567,8 +562,9 @@ async function runFitbitSync(
       token_expires_at: rawTok.token_expires_at,
     };
 
-    // Refresh token if needed. A timeout returns 502 before any activity
-    // fetch, and a refused or failed state save stops the run the same way.
+    // Refresh token if needed. A refresh with no response returns 502 before
+    // any activity fetch, and a refused or failed state save stops the run
+    // the same way.
     // A refresh that saved its state and then failed still throws and lands
     // in the handler's 500 below.
     const refreshed = await refreshTokenIfNeeded(
@@ -612,11 +608,11 @@ async function runFitbitSync(
           },
           signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
         });
-      } catch (err) {
-        if (!isRequestTimeout(err)) throw err;
-        // The page heartbeat below runs only after a response. 502 is in
+      } catch {
+        // Timeouts, DNS failures and connection resets are transient. The
+        // page heartbeat below runs only after a response. 502 is in
         // process-sync-queue's retry set; a 500 would fail the task.
-        console.error('Fitbit activities request timed out');
+        console.error('Fitbit activities request failed before a response');
         return new Response(
           JSON.stringify({
             error: 'Failed to fetch Fitbit activities',

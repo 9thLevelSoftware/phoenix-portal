@@ -467,6 +467,29 @@ Deno.test("fitbit-sync: a timed-out activities fetch is a retryable 502 and does
   }
 });
 
+Deno.test("fitbit-sync: a connection failure before any response is a retryable 502, not a 500", async () => {
+  // A DNS failure or connection reset rejects fetch with a TypeError. It is as
+  // transient as a timeout, so both calls answer 502 like strava-sync.
+  const reset = () => Promise.reject(new TypeError("error sending request: connection reset"));
+
+  const expiring = db({ tokenExpiresAt: new Date(Date.now() + 60_000).toISOString() });
+  const refreshApi = fitbit([]);
+  refreshApi.fetch = reset as typeof fetch;
+  const refreshRes = await silenced(() => handler(expiring, refreshApi)(request({ queue_id: QUEUE_ID })));
+  assertEquals(refreshRes.status, 502, await refreshRes.clone().text());
+  assertEquals((await refreshRes.json()).code, "refresh_failed");
+  assertEquals(expiring.rows("sync_queue")[0].status, "processing");
+
+  const state = db();
+  const api = fitbit([]);
+  api.fetch = reset as typeof fetch;
+  const res = await silenced(() => handler(state, api)(request({ queue_id: QUEUE_ID })));
+  assertEquals(res.status, 502, await res.clone().text());
+  assertEquals((await res.json()).code, "activities_fetch_failed");
+  assertEquals(state.rows("sync_queue")[0].status, "processing");
+  assertEquals(state.rows("external_activities"), []);
+});
+
 Deno.test("fitbit-sync: token refresh and activities failures are logged by status only", async () => {
   const expiring = db({ tokenExpiresAt: new Date(Date.now() + 60_000).toISOString() });
   const refreshApi = fitbit([], { tokenStatus: 400, errorBody: PROVIDER_ERROR_BODY });
