@@ -60,6 +60,18 @@ function resolveDeps(d: FitbitSyncHandlerDependencies): FitbitSyncDependencies {
  */
 const FITBIT_HOURLY_LIMIT = 150;
 
+/**
+ * Per-request ceiling for every Fitbit call (token refresh and each activity
+ * page), matching strava-sync, hevy-sync and liftosaur-sync.
+ *
+ * This run heartbeats only after a page comes back. A hung request never
+ * reaches that heartbeat and can outlast the queue lease. A request that fails
+ * before a response (this timeout, a DNS failure, a connection reset) is
+ * answered 502, as strava-sync does, so process-sync-queue retries it. The
+ * handler's catch-all 500 is not in that retry set.
+ */
+const PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
+
 interface FitbitTokens {
   access_token: string;
   refresh_token: string;
@@ -112,8 +124,9 @@ type FitbitStateSave = (
 /**
  * Refresh Fitbit access token if expired or about to expire (<10 min remaining).
  * Fitbit uses Basic auth for token refresh, same as initial exchange.
- * Returns updated tokens, a response that stops the run (the state save was
- * refused or failed), or throws on failure after a successful state save.
+ * Returns updated tokens, a response that stops the run (a refresh that failed
+ * before a response, or a state save that was refused or failed), or throws on
+ * failure after a successful state save.
  * `oauth_tokens` writes stay direct; only integration status goes through
  * `saveState`.
  */
@@ -123,6 +136,7 @@ async function refreshTokenIfNeeded(
   tokens: FitbitTokens,
   deps: FitbitSyncDependencies,
   saveState: FitbitStateSave,
+  cors: Record<string, string>,
 ): Promise<FitbitTokens | Response> {
   const expiresAt = new Date(tokens.token_expires_at).getTime();
   const tenMinutesFromNow = Date.now() + 10 * 60 * 1000;
@@ -135,17 +149,29 @@ async function refreshTokenIfNeeded(
 
   const basicAuth = btoa(`${deps.env('FITBIT_CLIENT_ID')}:${deps.env('FITBIT_CLIENT_SECRET')}`);
 
-  const response = await deps.fetch('https://api.fitbit.com/oauth2/token', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${basicAuth}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: tokens.refresh_token,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await deps.fetch('https://api.fitbit.com/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${basicAuth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: tokens.refresh_token,
+      }),
+      signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    // No response, so the grant is unchanged and the integration stays
+    // connected. 502 is in process-sync-queue's retry set; a 500 is not.
+    console.error('Fitbit token refresh failed before a response');
+    return new Response(
+      JSON.stringify({ error: 'Fitbit token refresh failed', code: 'refresh_failed' }),
+      { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
+    );
+  }
 
   if (!response.ok) {
     // Status only. Fitbit's body can carry tokens; Strava refresh drops it
@@ -536,15 +562,18 @@ async function runFitbitSync(
       token_expires_at: rawTok.token_expires_at,
     };
 
-    // Refresh token if needed. A refused or failed state save stops the run
-    // before any activity fetch; a refresh that saved its state still throws
-    // and lands in the handler's 500 below.
+    // Refresh token if needed. A refresh with no response returns 502 before
+    // any activity fetch, and a refused or failed state save stops the run
+    // the same way.
+    // A refresh that saved its state and then failed still throws and lands
+    // in the handler's 500 below.
     const refreshed = await refreshTokenIfNeeded(
       supabase,
       userId,
       decrypted,
       deps,
       stopUnlessStateSaved,
+      cors,
     );
     if (refreshed instanceof Response) return refreshed;
     const tokens = refreshed;
@@ -571,11 +600,27 @@ async function runFitbitSync(
       activitiesUrl.searchParams.set('offset', String(offset));
       activitiesUrl.searchParams.set('limit', String(limit));
 
-      const activitiesResponse = await deps.fetch(activitiesUrl.toString(), {
-        headers: {
-          'Authorization': `Bearer ${tokens.access_token}`,
-        },
-      });
+      let activitiesResponse: Response;
+      try {
+        activitiesResponse = await deps.fetch(activitiesUrl.toString(), {
+          headers: {
+            'Authorization': `Bearer ${tokens.access_token}`,
+          },
+          signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+        });
+      } catch {
+        // Timeouts, DNS failures and connection resets are transient. The
+        // page heartbeat below runs only after a response. 502 is in
+        // process-sync-queue's retry set; a 500 would fail the task.
+        console.error('Fitbit activities request failed before a response');
+        return new Response(
+          JSON.stringify({
+            error: 'Failed to fetch Fitbit activities',
+            code: 'activities_fetch_failed',
+          }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
 
       await heartbeatSyncQueueEntry(supabase, ownedQueueId, userId);
 
@@ -605,7 +650,21 @@ async function runFitbitSync(
         throw new Error(`Fitbit API error: ${activitiesResponse.status}`);
       }
 
-      const data = await activitiesResponse.json();
+      // The request timeout also covers the body, so an abort can land after
+      // the headers. That is as transient as one before them: answer 502.
+      let data: { activities?: Record<string, unknown>[] };
+      try {
+        data = await activitiesResponse.json();
+      } catch {
+        console.error('Fitbit activities response body could not be read');
+        return new Response(
+          JSON.stringify({
+            error: 'Failed to fetch Fitbit activities',
+            code: 'activities_fetch_failed',
+          }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
       const activities = data.activities ?? [];
 
       if (activities.length === 0) {
