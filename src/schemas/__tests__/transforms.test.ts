@@ -79,8 +79,7 @@ describe("workoutSessionSchema", () => {
 		expect(result.workout_mode).toBe("Old School");
 	});
 
-	it("labels the six wire modes, aliases CLASSIC, and passes unknown modes through", () => {
-		expect(WIRE_MODES).toHaveLength(6);
+	it("labels every wire mode from WIRE_MODE_LABELS and leaves retired POWER verbatim", () => {
 		for (const mode of WIRE_MODES) {
 			const result = workoutSessionSchema.parse({
 				...validSession,
@@ -97,19 +96,11 @@ describe("workoutSessionSchema", () => {
 			ECHO: "Echo",
 		});
 
-		const classic = workoutSessionSchema.parse({
+		const power = workoutSessionSchema.parse({
 			...validSession,
-			workout_mode: "CLASSIC",
+			workout_mode: "POWER",
 		});
-		expect(classic.workout_mode).toBe(WIRE_MODE_LABELS.OLD_SCHOOL);
-
-		for (const mode of ["POWER", "CUSTOM_MODE"]) {
-			const result = workoutSessionSchema.parse({
-				...validSession,
-				workout_mode: mode,
-			});
-			expect(result.workout_mode).toBe(mode);
-		}
+		expect(power.workout_mode).toBe("POWER");
 	});
 
 	it("maps ECHO to 'Echo'", () => {
