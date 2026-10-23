@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+	WIRE_MODE_LABELS,
+	WIRE_MODES,
+} from "../../../supabase/functions/_shared/workoutModes.ts";
+import {
 	exerciseSchema,
 	gamificationStatsSchema,
 	personalRecordSchema,
@@ -73,6 +77,30 @@ describe("workoutSessionSchema", () => {
 			workout_mode: "CLASSIC",
 		});
 		expect(result.workout_mode).toBe("Old School");
+	});
+
+	it("labels every wire mode from WIRE_MODE_LABELS and leaves retired POWER verbatim", () => {
+		for (const mode of WIRE_MODES) {
+			const result = workoutSessionSchema.parse({
+				...validSession,
+				workout_mode: mode,
+			});
+			expect(result.workout_mode).toBe(WIRE_MODE_LABELS[mode]);
+		}
+		expect(WIRE_MODE_LABELS).toEqual({
+			OLD_SCHOOL: "Old School",
+			PUMP: "Pump",
+			TUT: "TUT",
+			TUT_BEAST: "TUT Beast",
+			ECCENTRIC_ONLY: "Eccentric Only",
+			ECHO: "Echo",
+		});
+
+		const power = workoutSessionSchema.parse({
+			...validSession,
+			workout_mode: "POWER",
+		});
+		expect(power.workout_mode).toBe("POWER");
 	});
 
 	it("maps ECHO to 'Echo'", () => {
