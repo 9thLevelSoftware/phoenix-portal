@@ -387,8 +387,8 @@ After any rollback, check these surfaces:
 
 ## 5. Manual GDPR Deletion
 
-> Last verified against `8f7d3b8` (PR 35 `delete-account` / `_shared/accountPurge.ts`,
-> migration `20260920003500`).
+> Last verified against `892cca9e` (`delete-account` / `_shared/accountPurge.ts`,
+> `EXPLICIT_PURGE_TARGETS`, and `user_id` columns in `src/lib/database.types.ts`).
 
 ### When to use
 
@@ -451,6 +451,8 @@ UNION ALL SELECT 'exercises', COUNT(*) FROM exercises WHERE user_id = '<uuid>'
 UNION ALL SELECT 'sets', COUNT(*) FROM sets WHERE user_id = '<uuid>'
 UNION ALL SELECT 'rep_summaries', COUNT(*) FROM rep_summaries WHERE user_id = '<uuid>'
 UNION ALL SELECT 'rep_telemetry', COUNT(*) FROM rep_telemetry WHERE user_id = '<uuid>'
+UNION ALL SELECT 'set_telemetry', COUNT(*) FROM set_telemetry WHERE user_id = '<uuid>'
+UNION ALL SELECT 'rep_telemetry_legacy', COUNT(*) FROM rep_telemetry_legacy WHERE user_id = '<uuid>'
 UNION ALL SELECT 'personal_records', COUNT(*) FROM personal_records WHERE user_id = '<uuid>'
 UNION ALL SELECT 'exercise_progress', COUNT(*) FROM exercise_progress WHERE user_id = '<uuid>'
 UNION ALL SELECT 'routines', COUNT(*) FROM routines WHERE user_id = '<uuid>'
@@ -462,6 +464,7 @@ UNION ALL SELECT 'external_activities', COUNT(*) FROM external_activities WHERE 
 UNION ALL SELECT 'user_integrations', COUNT(*) FROM user_integrations WHERE user_id = '<uuid>'
 UNION ALL SELECT 'oauth_tokens', COUNT(*) FROM oauth_tokens WHERE user_id = '<uuid>'
 UNION ALL SELECT 'subscriptions', COUNT(*) FROM subscriptions WHERE user_id = '<uuid>'
+UNION ALL SELECT 'paddle_checkout_authorizations', COUNT(*) FROM paddle_checkout_authorizations WHERE user_id = '<uuid>'
 UNION ALL SELECT 'community_comments', COUNT(*) FROM community_comments WHERE user_id = '<uuid>'
 UNION ALL SELECT 'community_votes', COUNT(*) FROM community_votes WHERE user_id = '<uuid>'
 UNION ALL SELECT 'saved_community_items', COUNT(*) FROM saved_community_items WHERE user_id = '<uuid>'
@@ -495,6 +498,10 @@ UNION ALL SELECT 'profile_ownership_events', COUNT(*) FROM profile_ownership_eve
 UNION ALL SELECT 'profile_ownership_claims', COUNT(*) FROM profile_ownership_claims WHERE user_id = '<uuid>';
 ```
 
+`paddle_checkout_authorizations` cascades on `auth.users` (`user_id uuid NOT NULL
+REFERENCES auth.users(id) ON DELETE CASCADE`), so it is counted but not deleted
+manually before billing is settled. Step 5 removes it with the auth user.
+
 Every `public` table with a `user_id` column should appear above. To check for
 drift before trusting the list, compare it with:
 
@@ -520,7 +527,13 @@ table predates the FK).
 created by migration `20260920000200` (each `CREATE TABLE` runs only when the
 relation is absent). On a database that has not applied it,
 skip the statements for any of them that do not exist (`purgeUser` marks them
-`mayBeAbsent`):
+`mayBeAbsent`). `rep_telemetry_legacy` is on the same list (`user_id`,
+`postOnly`, `mayBeAbsent`): `20260925200000` renamed `rep_telemetry` to it and
+its `user_id` still cascades from `auth.users`. A later migration drops it once
+the `set_telemetry` backfill is verified, after first rewriting the views and
+functions from `20260925200000` that still read it (the `rep_telemetry` view
+among them). Skip its statements when the relation is absent. It is not one of
+the `20260920000200` tables:
 
 ```sql
 -- Always present
@@ -536,6 +549,7 @@ SELECT COUNT(*) FROM goal_snapshots WHERE user_id = '<uuid>';
 SELECT COUNT(*) FROM overload_suggestions WHERE user_id = '<uuid>';
 SELECT COUNT(*) FROM telemetry_analysis WHERE user_id = '<uuid>';
 SELECT COUNT(*) FROM wearable_daily_summaries WHERE user_id = '<uuid>';
+SELECT COUNT(*) FROM rep_telemetry_legacy WHERE user_id = '<uuid>';
 ```
 
 This list is transcribed from `EXPLICIT_PURGE_TARGETS` on the branch this
@@ -548,8 +562,9 @@ trusting it.
 `purgeUser` cancels the user's Paddle subscription **first**, from Paddle's
 live status (never from `subscriptions.status`, which can be stale), and aborts
 the whole purge if it cannot. Do the same by hand: Step 4 deletes the
-`subscriptions` row, which is the only local record of the Paddle ids — once it
-is gone you cannot find the subscription to cancel, and the user keeps being
+`subscriptions` row, the primary local record of the Paddle ids
+(`paddle_checkout_authorizations` keeps a copy only until Step 5's cascade).
+Once that row is gone the subscription is easy to miss, and the user keeps being
 billed.
 
 ```sql
@@ -599,7 +614,8 @@ WHERE bucket_id = 'avatars'
 ```sql
 -- Telemetry and rep data (deepest nesting). rep_telemetry is a read-only
 -- view since 20260925200000 (a DELETE on it raises 42501); delete its two
--- backing tables. set_telemetry_sample_ids goes with set_telemetry.
+-- backing tables. set_telemetry_sample_ids goes with set_telemetry. Skip the
+-- rep_telemetry_legacy line when that relation is absent (Step 1).
 DELETE FROM set_telemetry WHERE user_id = '<uuid>';
 DELETE FROM rep_telemetry_legacy WHERE user_id = '<uuid>';
 DELETE FROM rep_summaries WHERE user_id = '<uuid>';
@@ -657,7 +673,8 @@ DELETE FROM profiles WHERE id = '<uuid>';
 ```
 
 Then the explicit purge targets from Step 1 (skip any of the
-`20260920000200` tables that do not exist):
+`20260920000200` tables that do not exist; `rep_telemetry_legacy` was already
+cleared with the telemetry block above):
 
 ```sql
 DELETE FROM oauth_tokens WHERE user_id = '<uuid>';
@@ -1614,8 +1631,11 @@ exactly one server tier, and that the tier matches:
   than one tier returns HTTP 500 `{ "error": "Billing configuration invalid" }`
   before `mapPriceIdToTier` runs. The log names the duplicated ids.
 **(b) Log-based.** Trigger one call to `paddle-webhooks`,
-`paddle-update-subscription` or `paddle-refresh-subscription` -- the three that
-validate the price-ID configuration on entry -- and read that function's logs.
+`paddle-update-subscription`, `paddle-refresh-subscription` or
+`paddle-checkout-custom-data` -- the four that call
+`paddlePriceConfigGateResponse` on entry -- and read that function's logs.
+`paddle-cancel-subscription` does not preflight the price config.
+
 Both of these are fatal configuration errors and each returns 500:
 | Log line                                                                                                                             | Cause                                               |
 | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
