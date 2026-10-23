@@ -27,6 +27,7 @@ import {
 } from "@/app/components/ui/tabs";
 import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { fadeUp } from "@/lib/animations";
+import { daysRemaining } from "@/lib/daysRemaining";
 import { formatLeaderboardValue, type WeightUnit } from "@/lib/units";
 import { useAuth } from "@/providers/AuthProvider";
 import {
@@ -375,11 +376,7 @@ function WeeklyChallengeTab({
 	}
 
 	const endDate = new Date(data.endDate);
-	const now = new Date();
-	const daysLeft = Math.max(
-		0,
-		Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
-	);
+	const daysLeft = daysRemaining(endDate);
 
 	return (
 		<div className="flex flex-col gap-4">

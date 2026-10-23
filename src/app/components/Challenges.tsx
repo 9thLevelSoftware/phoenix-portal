@@ -33,6 +33,7 @@ import {
 } from "@/app/components/ui/tabs";
 import { usePreferredWeightUnit } from "@/app/hooks/usePreferredWeightUnit";
 import { formatChallengeValue } from "@/lib/challenges";
+import { daysRemaining } from "@/lib/daysRemaining";
 import type { WeightUnit } from "@/lib/units";
 import { useJoinChallenge, useLeaveChallenge } from "@/mutations/challenges";
 import { useAuth } from "@/providers/AuthProvider";
@@ -58,15 +59,6 @@ function getDifficultyColor(difficulty: string) {
 		default:
 			return "from-muted to-muted";
 	}
-}
-
-function getDaysRemaining(endDate: string) {
-	const end = new Date(endDate);
-	const now = new Date();
-	const diff = Math.ceil(
-		(end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-	);
-	return Math.max(0, diff);
 }
 
 // ---- Shared progress bar component ----
@@ -161,7 +153,7 @@ function ChallengeCard({
 	joinPending: boolean;
 	leavePending: boolean;
 }) {
-	const daysLeft = getDaysRemaining(challenge.end_date);
+	const daysLeft = daysRemaining(challenge.end_date);
 
 	return (
 		<motion.div
@@ -450,7 +442,7 @@ function MobileChallengeCard({
 							<span>{challenge.difficulty}</span>
 						</div>
 						<div className="flex items-center gap-1">
-							<span>{getDaysRemaining(challenge.end_date)} days left</span>
+							<span>{daysRemaining(challenge.end_date)} days left</span>
 						</div>
 					</div>
 				</div>
