@@ -1,6 +1,6 @@
 # Billing Incident Response Runbook
 
-> Last updated: 2026-10-16
+> Last updated: 2026-10-23
 > Webhook handler: `supabase/functions/paddle-webhooks/index.ts`
 
 ## 1. Identifying Affected Users
@@ -333,12 +333,15 @@ read in the Dashboard as above. The same applies to every log check in this runb
 ### `[BILLING_ALERT]` catalogue
 
 Every alert in this section is logged verbatim with a `[BILLING_ALERT]` prefix.
-The four billing functions log separately. Open each of
+Five Edge Functions emit it. Open each of
 **Edge Functions > paddle-webhooks > Logs/Invocations**,
 **Edge Functions > paddle-refresh-subscription > Logs/Invocations**,
-**Edge Functions > paddle-update-subscription > Logs/Invocations**, and
-**Edge Functions > paddle-cancel-subscription > Logs/Invocations**, and filter
-on `[BILLING_ALERT]`.
+**Edge Functions > paddle-update-subscription > Logs/Invocations**,
+**Edge Functions > paddle-cancel-subscription > Logs/Invocations**, and
+**Edge Functions > paddle-checkout-custom-data > Logs/Invocations**, and filter
+on `[BILLING_ALERT]`. `[BILLING_ALERT] Webhook signature too old:` is logged by
+`verifyPaddleSignature` in `supabase/functions/_shared/paddleWebhookSecurity.ts`.
+`paddle-webhooks` is the only Edge Function that calls it, so that line is in the `paddle-webhooks` log.
 
 #### Double-subscription alerts (`paddle-webhooks`)
 
@@ -376,8 +379,12 @@ is documented in the handler, not a defect introduced by the rescue.
 
 | Alert string                                                    | What happened                                                                                                                         | What the operator does                                                                                                 |
 | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `[BILLING_ALERT] Unknown price ID <id> — preserving existing tier <tier>` (and the `during refresh` / `after update` variants) | A price id is not in the `PADDLE_*_PRICE_IDS` env vars. The existing tier is kept rather than dropping the user to FREE. | Add the price id to the env of **every** billing function and redeploy, then refresh the affected users.                     |
-| `[BILLING_ALERT] Unknown price ID — no existing tier to preserve:` | Same, but there was no paid tier to fall back on. The function answers 500 and writes nothing, so a paying user with no row stays unbound (§8.5). | HIGH. Fix the env immediately, then run `paddle-refresh-subscription` for each affected user.                                 |
+| `[BILLING_ALERT] Unknown price ID <id> — preserving existing tier <tier>` | `paddle-webhooks`. A price id is not in the `PADDLE_*_PRICE_IDS` env vars. The existing tier is kept rather than dropping the user to FREE. | Add the price id to the env of **every** billing function and redeploy, then refresh the affected users. |
+| `[BILLING_ALERT] Unknown price ID <id> during refresh — preserving existing tier <tier>` | `paddle-refresh-subscription`. Same preserve path: the existing tier is kept. | Add the price id to the env of **every** billing function and redeploy, then refresh the affected users. |
+| `[BILLING_ALERT] Unknown price ID <id> after update — preserving existing tier <tier>` | `paddle-update-subscription`. Same preserve path: the existing tier is kept. | Add the price id to the env of **every** billing function and redeploy, then refresh the affected users. |
+| `[BILLING_ALERT] Unknown price ID — no existing tier to preserve (check PADDLE_* price envs):` | `paddle-webhooks`. There was no paid tier to fall back on. The function answers 500 and writes nothing, so a paying user with no row stays unbound (§8.5). The price id is the next argument. | HIGH. Fix the env immediately, then run `paddle-refresh-subscription` for each affected user. |
+| `[BILLING_ALERT] Unknown price ID during refresh — no existing tier to preserve:` | `paddle-refresh-subscription`. There was no paid tier to fall back on. The function answers 500 and writes nothing. The price id is the next argument. | HIGH. Fix the env immediately, then run `paddle-refresh-subscription` for each affected user. |
+| `[BILLING_ALERT] Unknown price ID after update — no existing tier to preserve:` | `paddle-update-subscription`. There was no paid tier to fall back on. The function answers 500 and writes nothing. The price id is the next argument. | HIGH. Fix the env immediately, then run `paddle-refresh-subscription` for each affected user. |
 | `[BILLING_ALERT] Missing or invalid cd_sig in custom_data (user_id spoofing attempt?):` | An event's `custom_data.user_id` was not accompanied by a valid signature.                                       | Security signal. Investigate before touching data; do not hand-apply the event.                                              |
 | `[BILLING_ALERT] Malformed custom_data.user_id in Paddle event:` | `custom_data.user_id` is not a UUID.                                                                                                 | A checkout flow is passing the wrong value. Find the caller.                                                                 |
 | `[BILLING_ALERT] Missing or invalid Paddle occurred_at:`        | The event carries no usable ordering clock, so it cannot be ordered against the stored row.                                          | Rare; check the Paddle notification payload before replaying.                                                                |
