@@ -761,9 +761,11 @@ export function Profile() {
 									<div className="flex items-center justify-between py-2">
 										<span className="text-muted-foreground">Total Volume</span>
 										<span className="text-primary font-data">
-											{/* One source only: the session-derived per-cable sum.
-											    gamification_stats.total_volume_kg is a device-pushed
-											    two-cable total until PR 25 derives it server-side. */}
+											{/* One source only: profile_workout_stats.total_volume, the
+											    per-cable sum for the selected local profile (KD-8, never
+											    doubled). gamification_stats.total_volume_kg is the
+											    account-wide equivalent; device-pushed totals live in
+											    device_total_volume_kg. */}
 											{statsLoading
 												? "..."
 												: formatProfileVolume(stats?.totalVolume, weightUnit)}
