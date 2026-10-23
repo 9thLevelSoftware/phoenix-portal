@@ -105,10 +105,13 @@ jobs:
       # execute production seed data. The checkout is ephemeral so this
       # overwrite never touches the committed file.
       #
-      # Context: the committed seed.sql raises
-      #   'No user found in auth.users. Sign up first!'
-      # when run against a fresh DB with no users — which is exactly what this
-      # CI job has. Seeding is orthogonal to drift detection.
+      # The stub is written before `supabase start` and `supabase db reset
+      # --no-seed`, so this job applies the stub. The committed seed, when
+      # auth.users is empty, RAISE NOTICE
+      # 'No user found in auth.users; skipping seed data load.' and returns.
+      # `supabase start` still loads supabase/seed.sql on a fresh stack, so
+      # the stub has to land first; the reset below passes --no-seed.
+      # Seeding is orthogonal to drift detection.
       - name: Disable seed.sql for clean-apply check
         run: echo "-- seed disabled for migrations CI; see .github/workflows/migrations.yml" > supabase/seed.sql
 
@@ -185,7 +188,7 @@ jobs:
         env:
           # Minimum aggregate Tests= for the suite. Raise this when
           # assertions are added.
-          PGTAP_TEST_FLOOR: "2058"
+          PGTAP_TEST_FLOOR: "2059"
         run: |
           set -euo pipefail
           log="${RUNNER_TEMP}/pgtap-suite.log"

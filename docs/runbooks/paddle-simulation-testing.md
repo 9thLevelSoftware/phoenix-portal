@@ -225,7 +225,7 @@ On a direct write the handler does not pass that resolved id into `buildSubscrip
 Before applying a `canceled` portal status, when `data.id` and `data.customer_id` are both strings, the handler `GET`s:
 
 ```text
-{base}/subscriptions?customer_id={customer_id}&status=active,trialing,past_due&order_by=-created_at
+{base}/subscriptions?customer_id={customer_id}&status=active,trialing,past_due&order_by=id%5BDESC%5D
 ```
 
 `{base}` is `https://sandbox-api.paddle.com` when `PADDLE_ENVIRONMENT` is exactly `sandbox`, and `https://api.paddle.com` otherwise. The call uses `Authorization: Bearer <PADDLE_API_KEY>` and aborts after 10 seconds.
@@ -242,7 +242,7 @@ Confirm the listing before a pause or full-cancel scenario. A non-200 from this 
 
 ```bash
 curl -sS -D - \
-  "${PADDLE_BASE}/subscriptions?customer_id=${CUSTOMER_ID}&status=active,trialing,past_due&order_by=-created_at" \
+  "${PADDLE_BASE}/subscriptions?customer_id=${CUSTOMER_ID}&status=active,trialing,past_due&order_by=id%5BDESC%5D" \
   -H "Authorization: Bearer ${PADDLE_API_KEY}"
 ```
 

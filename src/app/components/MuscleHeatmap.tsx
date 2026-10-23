@@ -3,7 +3,7 @@ import { PHOENIX } from "@/lib/colors";
 import { useRerenderOnThemeChange } from "@/lib/theme-tokens";
 import { formatVolume, type WeightUnit } from "@/lib/units";
 
-export interface MuscleHeatmapProps {
+interface MuscleHeatmapProps {
 	muscleVolumes: Record<string, number>;
 	unit?: WeightUnit;
 }

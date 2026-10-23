@@ -9,11 +9,30 @@ import { getCorsHeaders } from "../_shared/cors.ts";
 import { paddlePriceConfigGateResponse } from "../_shared/paddlePriceConfigGate.ts";
 import { getAllAllowedPriceIds } from "../_shared/paddlePriceIds.ts";
 import { CHECKOUT_LIFETIME_MS, paddleApiBase, signCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
+import { fetchPaddle } from "../_shared/paddleFetch.ts";
 import { checkRateLimit } from "../_shared/rateLimit.ts";
 import { readBoundedRequestBody } from "../_shared/requestBody.ts";
 
 class PaddleTransactionHttpError extends Error {
-  constructor(readonly status: number) { super(`Paddle transaction request failed: HTTP ${status}`); }
+  constructor(readonly status: number, request: string, paddleError: string) {
+    super(`Paddle transaction request failed: HTTP ${status} (${request})${paddleError}`);
+  }
+}
+
+/**
+ * Paddle's error `code` and `request_id`, for the log only. A bare status
+ * hides the cause: a 403 `forbidden` on `POST /transactions` means the API
+ * key lacks `transaction.write`, and Paddle support asks for the request_id.
+ */
+async function paddleErrorSummary(response: Response): Promise<string> {
+  try {
+    const body = await response.json();
+    const code = typeof body?.error?.code === "string" ? ` code=${body.error.code}` : "";
+    const requestId = typeof body?.meta?.request_id === "string" ? ` request_id=${body.meta.request_id}` : "";
+    return code + requestId;
+  } catch {
+    return "";
+  }
 }
 
 /** Anything with `get(key)`, e.g. `Deno.env`. */
@@ -178,11 +197,13 @@ async function paddleCheckoutCustomDataHandler(
     const environment = deps.env.get("PADDLE_ENVIRONMENT") === "sandbox" ? "sandbox" : "production";
     const admin = deps.createAdminClient();
     const paddle = async (path: string, method = "GET", body?: unknown) => {
-      const response = await deps.fetch(`${paddleApiBase(environment)}${path}`, {
+      const response = await fetchPaddle(deps.fetch, `${paddleApiBase(environment)}${path}`, {
         method, headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-        ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(10_000),
+        ...(body ? { body: JSON.stringify(body) } : {}),
       });
-      if (!response.ok) throw new PaddleTransactionHttpError(response.status);
+      if (!response.ok) {
+        throw new PaddleTransactionHttpError(response.status, `${method} ${path}`, await paddleErrorSummary(response));
+      }
       return (await response.json()).data;
     };
     // Paddle paused maps to local canceled and can resume later. A terminal

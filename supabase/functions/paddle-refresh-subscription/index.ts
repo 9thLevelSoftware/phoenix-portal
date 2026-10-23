@@ -18,6 +18,7 @@ import {
 import { verifyPaddleCustomDataSignature } from "../_shared/paddleWebhookSecurity.ts";
 import { bindCheckoutSubscription, type CheckoutBinding, verifyCheckoutBinding } from "../_shared/paddleCheckoutBinding.ts";
 import { paddleBaseUrl } from "../_shared/accountPurge.ts";
+import { fetchPaddle } from "../_shared/paddleFetch.ts";
 
 /** Anything with `get(key)`, e.g. `Deno.env`. */
 export interface EnvReader {
@@ -267,7 +268,8 @@ async function paddleRefreshSubscriptionHandler(
     const environment = deps.env.get("PADDLE_ENVIRONMENT") === "sandbox" ? "sandbox" : "production";
 
     if (requestedTransactionId) {
-      const transactionResponse = await deps.fetch(
+      const transactionResponse = await fetchPaddle(
+        deps.fetch,
         `${baseUrl}/transactions/${requestedTransactionId}`,
         {
           method: "GET",
@@ -398,7 +400,8 @@ async function paddleRefreshSubscriptionHandler(
       cancel_at_period_end: false,
     };
 
-    const paddleResponse = await deps.fetch(
+    const paddleResponse = await fetchPaddle(
+      deps.fetch,
       `${baseUrl}/subscriptions/${paddleSubscriptionId}`,
       {
         method: "GET",

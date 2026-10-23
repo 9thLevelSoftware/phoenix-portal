@@ -1,3 +1,4 @@
+import { fetchPaddle } from "./paddleFetch.ts";
 import { hmacSha256Hex } from "./hmac.ts";
 import { verifyPaddleCustomDataSignature } from "./paddleWebhookSecurity.ts";
 import { timingSafeEqualString } from "./timingSafe.ts";
@@ -63,8 +64,8 @@ export async function bindCheckoutSubscription({ data, userId, subscriptionId, c
   const binding = data as CheckoutBinding;
   if (binding.user_id !== userId || binding.cd_environment !== environment || binding.cd_price_id !== priceId) return false;
   if (!apiKey) throw new Error("Paddle API key required to verify checkout transaction");
-  const response = await fetchImpl(`${paddleApiBase(environment)}/transactions/${encodeURIComponent(binding.cd_transaction_id)}`, {
-    headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(10_000),
+  const response = await fetchPaddle(fetchImpl, `${paddleApiBase(environment)}/transactions/${encodeURIComponent(binding.cd_transaction_id)}`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
   });
   if (!response.ok) throw new Error(`Checkout transaction lookup failed: HTTP ${response.status}`);
   const transaction = (await response.json())?.data;
@@ -93,7 +94,7 @@ export async function listPaddleCustomerSubscriptions(
   for (let page = 0; url && page < 100; page++) {
     if (seen.has(url)) throw new Error("Paddle pagination repeated a page");
     seen.add(url);
-    const response: Response = await fetchImpl(url, { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(10_000) });
+    const response: Response = await fetchPaddle(fetchImpl, url, { headers: { Authorization: `Bearer ${apiKey}` } });
     if (!response.ok) throw new Error(`Paddle listing failed: HTTP ${response.status}`);
     const body: { data?: Array<Record<string, unknown>>; meta?: { pagination?: { has_more?: boolean; next?: string } } } = await response.json();
     if (!Array.isArray(body?.data) || !body?.meta?.pagination || typeof body.meta.pagination.has_more !== "boolean") {

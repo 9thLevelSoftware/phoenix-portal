@@ -16,7 +16,7 @@ import type {
 	ReplayPhaseSegment,
 } from "@/lib/replay-phase-analytics";
 
-export interface ReplayPhaseAnalyticsPanelProps {
+interface ReplayPhaseAnalyticsPanelProps {
 	analytics: ReplayPhaseAnalytics;
 }
 

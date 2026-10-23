@@ -3,7 +3,7 @@ import {
 	type WorkoutPhaseFilter,
 } from "@/lib/workout-phases";
 
-export interface StrengthPhaseRecord {
+interface StrengthPhaseRecord {
 	exercise_name: string;
 	exercise_id?: string | null;
 	record_type?: string | null;
@@ -12,7 +12,7 @@ export interface StrengthPhaseRecord {
 	achieved_at: string;
 }
 
-export interface StrengthPhaseSeries {
+interface StrengthPhaseSeries {
 	key: string;
 	name: string;
 	exerciseName: string;
@@ -21,7 +21,7 @@ export interface StrengthPhaseSeries {
 	latestValue: number;
 }
 
-export interface StrengthPhaseSummary {
+interface StrengthPhaseSummary {
 	prCount: number;
 	daysSinceLastPR: number | null;
 }

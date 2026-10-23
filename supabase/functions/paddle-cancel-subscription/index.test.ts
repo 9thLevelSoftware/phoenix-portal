@@ -14,6 +14,7 @@ interface PaddleCall {
   url: string;
   method: string;
   body: Record<string, unknown> | null;
+  timed: boolean;
 }
 
 interface SubscriptionRow {
@@ -136,6 +137,7 @@ function buildHandler(
         url: typeof input === "string" ? input : input.toString(),
         method: init?.method ?? "GET",
         body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
+        timed: init?.signal instanceof AbortSignal,
       });
       return Promise.resolve(
         cancelResponse?.() ??
@@ -190,6 +192,7 @@ Deno.test("paddle-cancel-subscription: active cancels at the end of the billing 
   });
   assertEquals(calls[0]?.url, "https://sandbox-api.paddle.com/subscriptions/sub_1/cancel");
   assertEquals(calls[0]?.body, { effective_from: "next_billing_period" });
+  assertEquals(calls[0]?.timed, true);
 
   // The local write goes through the ordered writer, carries Paddle's own
   // clock, and keeps the plan the row already had.
@@ -327,5 +330,47 @@ Deno.test("paddle-cancel-subscription: nothing to cancel for canceled or missing
     assertEquals(await response.json(), { error: "No active subscription found" });
     assertEquals(calls.length, 0);
     assertEquals(db.rpcCalls.length, 0);
+  }
+});
+
+Deno.test("paddle-cancel-subscription: a Paddle timeout is the existing internal error", async () => {
+  const timeout = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+  const db: FakeDb = {
+    row: {
+      paddle_subscription_id: "sub_1",
+      status: "active",
+      tier: "FLAME",
+      price_id: "pri_flame_monthly",
+    },
+    clock: null,
+    rpcCalls: [],
+  };
+  const logs: unknown[][] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    logs.push(args);
+  };
+  try {
+    const handler = createPaddleCancelSubscriptionHandler({
+      createAuthClient: () => ({
+        auth: {
+          getUser: () => Promise.resolve({ data: { user: { id: USER_ID } }, error: null }),
+        },
+      } as unknown as Pick<SupabaseClient, "auth">),
+      createAdminClient: () => fakeAdminClient(db),
+      fetch: () => Promise.reject(timeout),
+      env: { get: (key: string) => ENV[key] },
+      now: () => NOW,
+    });
+
+    const response = await handler(cancelRequest());
+
+    assertEquals(response.status, 500);
+    assertEquals(await response.json(), { error: "Internal server error" });
+    assertEquals(logs[0]?.[0], "paddle-cancel-subscription error:");
+    assertEquals(logs[0]?.[1], timeout);
+    assertEquals(db.rpcCalls.length, 0);
+  } finally {
+    console.error = original;
   }
 });

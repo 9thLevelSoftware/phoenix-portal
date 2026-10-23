@@ -13,7 +13,7 @@ export interface RankingItem {
 	estimated?: boolean;
 }
 
-export interface CommunityRankingsProps {
+interface CommunityRankingsProps {
 	rankings: RankingItem[];
 }
 

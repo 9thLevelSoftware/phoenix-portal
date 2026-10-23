@@ -25,6 +25,7 @@ import {
   verifyPaddleSignature,
 } from "../_shared/paddleWebhookSecurity.ts";
 import { paddleBaseUrl } from "../_shared/accountPurge.ts";
+import { fetchPaddle } from "../_shared/paddleFetch.ts";
 
 const responseHeaders = {
   "Content-Type": "application/json",
@@ -94,9 +95,6 @@ function defaultPaddleWebhooksDependencies(): PaddleWebhooksDependencies {
 }
 
 
-/** Cap on the webhook's one outbound Paddle call. */
-const PADDLE_LISTING_TIMEOUT_MS = 10_000;
-
 /**
  * The customer's other live Paddle subscriptions, newest first.
  *
@@ -130,23 +128,26 @@ async function listLiveCustomerSubscriptions(
   }
   const baseUrl = paddleBaseUrl(env.get("PADDLE_ENVIRONMENT"));
   // order_by makes "newest first" what we actually asked for, so two live
-  // subscriptions resolve deterministically instead of by page order.
+  // subscriptions resolve deterministically instead of by page order. `id` is
+  // the only field Paddle orders subscriptions by, and Paddle IDs sort in
+  // creation order, so id[DESC] is newest first. Any other value is a 400,
+  // which refuses every cancellation delivery.
   const url =
     `${baseUrl}/subscriptions?customer_id=${encodeURIComponent(customerId)}` +
-    `&status=${PADDLE_LIVE_STATUS_FILTER}&order_by=-created_at`;
+    `&status=${PADDLE_LIVE_STATUS_FILTER}&order_by=id%5BDESC%5D`;
 
   let response: Response;
   try {
-    response = await fetchImpl(url, {
+    // A hung Paddle call must not hold the webhook open until the platform
+    // kills it. A timeout returns null here, and the caller refuses the
+    // delivery with a 500 so Paddle redelivers; it does not apply the
+    // cancellation.
+    response = await fetchPaddle(fetchImpl, url, {
       method: "GET",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      // A hung Paddle call must not hold the webhook open until the platform
-      // kills it; a timeout falls through to the previous behaviour (apply
-      // the cancellation) rather than blocking the delivery.
-      signal: AbortSignal.timeout(PADDLE_LISTING_TIMEOUT_MS),
     });
   } catch (err) {
     console.error("[Paddle] Customer subscription listing failed:", err);
@@ -382,9 +383,9 @@ async function paddleWebhooksHandler(
       if (owned && event.data.status !== "canceled") {
         const apiKey = env.get("PADDLE_API_KEY");
         if (!apiKey) throw new Error("Paddle API required to cancel rejected checkout");
-        const canceled = await fetchImpl(`${paddleApiBase(env.get("PADDLE_ENVIRONMENT"))}/subscriptions/${encodeURIComponent(event.data.id)}/cancel`, {
+        const canceled = await fetchPaddle(fetchImpl, `${paddleApiBase(env.get("PADDLE_ENVIRONMENT"))}/subscriptions/${encodeURIComponent(event.data.id)}/cancel`, {
           method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ effective_from: "immediately" }), signal: AbortSignal.timeout(10_000),
+          body: JSON.stringify({ effective_from: "immediately" }),
         });
         if (!canceled.ok || (await canceled.json())?.data?.status !== "canceled") throw new Error("Rejected checkout cancellation failed");
         return new Response(JSON.stringify({ received: true, ignored: "unauthorized_checkout", billingCanceled: true }), { headers: responseHeaders });
@@ -580,7 +581,7 @@ async function paddleWebhooksHandler(
       }
       // Walk every candidate, not just the newest: a third party who checked
       // out under this user's billing email shares the Paddle customer, and
-      // with order_by=-created_at their (unadoptable) subscription sits at
+      // with order_by=id[DESC] their (unadoptable) subscription sits at
       // [0]. Stopping there would abandon the rescue and drop a customer who
       // IS still paying to FREE, with their own provably-owned sibling
       // sitting at [1] (security round-2 R-6). The ownership proof below is

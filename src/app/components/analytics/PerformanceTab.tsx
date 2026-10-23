@@ -27,7 +27,7 @@ interface VolumeComparisonData {
 	}>;
 }
 
-export interface PerformanceTabProps {
+interface PerformanceTabProps {
 	volumeComparison: VolumeComparisonData | undefined;
 	unit: WeightUnit;
 	userId: string;

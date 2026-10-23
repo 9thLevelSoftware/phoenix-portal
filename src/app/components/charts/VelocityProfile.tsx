@@ -17,7 +17,7 @@ import { ChartTooltipContent, useChartTooltip } from "./shared/ChartTooltip";
 
 const CHART_HEIGHT = 280;
 
-export interface VelocityProfileProps {
+interface VelocityProfileProps {
 	repSummaries: RepSummary[];
 }
 

@@ -95,7 +95,13 @@ function jsonResponse(
 // Provider code exchange (live network calls; injected so tests never make one)
 // ---------------------------------------------------------------------------
 
-async function exchangeStravaCode(code: string): Promise<ExchangeOutcome> {
+/**
+ * Same 10s bound as the Strava refresh and provider revoke
+ * (`REVOKE_TIMEOUT_MS` in providerRevoke.ts, which is not exported).
+ */
+const CODE_EXCHANGE_TIMEOUT_MS = 10_000;
+
+export async function exchangeStravaCode(code: string): Promise<ExchangeOutcome> {
   const clientId = Deno.env.get('STRAVA_CLIENT_ID');
   const clientSecret = Deno.env.get('STRAVA_CLIENT_SECRET');
   if (!clientId || !clientSecret) {
@@ -112,6 +118,7 @@ async function exchangeStravaCode(code: string): Promise<ExchangeOutcome> {
       code,
       grant_type: 'authorization_code',
     }),
+    signal: AbortSignal.timeout(CODE_EXCHANGE_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -142,7 +149,7 @@ async function exchangeStravaCode(code: string): Promise<ExchangeOutcome> {
   };
 }
 
-async function exchangeFitbitCode(code: string): Promise<ExchangeOutcome> {
+export async function exchangeFitbitCode(code: string): Promise<ExchangeOutcome> {
   const clientId = Deno.env.get('FITBIT_CLIENT_ID');
   const clientSecret = Deno.env.get('FITBIT_CLIENT_SECRET');
   if (!clientId || !clientSecret) {
@@ -166,6 +173,7 @@ async function exchangeFitbitCode(code: string): Promise<ExchangeOutcome> {
       redirect_uri: redirectUri,
       code,
     }),
+    signal: AbortSignal.timeout(CODE_EXCHANGE_TIMEOUT_MS),
   });
 
   if (!response.ok) {

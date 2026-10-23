@@ -16,7 +16,7 @@ import { CHART_COLORS, CHART_MARGINS } from "./shared/ChartTheme";
 const CHART_HEIGHT = 250;
 
 // -- Types --
-export interface RomTrendProps {
+interface RomTrendProps {
 	repSummaries: RepSummary[];
 }
 

@@ -10455,9 +10455,10 @@ Deno.test({
         );
       }
 
-      // Device B: timestamp delta pull (lastSync > 0, no parity lists; no
-      // profile filter, see the PR 21 summary for the legacy 'default'
-      // profile filter gap).
+      // Device B: parity pull (lastSync > 0, no knownEntityIds, no profileId).
+      // Sessions and routines always use get_*_excluding_ids. Empty known ids
+      // return the whole profile — here, only the rows just pushed. A null
+      // p_profile_id applies no profile filter.
       const response = await pull(requestFromBody({
         deviceId: "device-b",
         lastSync: lastSyncB,
@@ -10469,13 +10470,13 @@ Deno.test({
       const routines = body.routines as Array<Record<string, unknown>>;
       assertEquals(sessions.map((s) => s.id), [ids.sessionId]);
       assertEquals(routines.map((r) => r.id), [ids.routineId]);
-      // R-4, legacy timestamp-mode branch (lastSync > 0, no parity lists, so
-      // the pull uses `select('*')` rather than get_sessions_excluding_ids):
-      // the reported updatedAt is the device's own LWW key here too.
+      // R-4: session updatedAt is client_updated_at (the device LWW key),
+      // falling back to updated_at. That is the parity RPC mapping for every
+      // session; the pull does not select('*') on workout_sessions.
       assertEquals(
         epochMs(sessions[0].updatedAt),
         epochMs(slowStamp),
-        "timestamp-mode pull reports the device stamp, not the server write clock",
+        "parity pull reports the device stamp, not the server write clock",
       );
     } finally {
       await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);

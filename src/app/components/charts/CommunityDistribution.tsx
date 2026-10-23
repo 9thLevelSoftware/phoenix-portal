@@ -3,7 +3,7 @@ import { useThemeTokens, withAlpha } from "@/lib/theme-tokens";
 import { CHART_COLORS } from "./shared/ChartTheme";
 import { EChartsWrapper } from "./shared/EChartsWrapper";
 
-export interface CommunityDistributionProps {
+interface CommunityDistributionProps {
 	percentiles: Record<string, number>;
 	userValue: number;
 	color: string;

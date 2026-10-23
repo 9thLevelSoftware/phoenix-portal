@@ -103,5 +103,6 @@ describe("RecordsTab", () => {
 		expect(
 			screen.getByRole("button", { name: /load older records/i }),
 		).toBeInTheDocument();
+		expect(screen.getByText("Weight PR")).toBeInTheDocument();
 	});
 });

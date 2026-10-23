@@ -39,7 +39,9 @@ export const STALE_OVERLAP_MS = 2 * 60 * 1000;
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Mobile Sync Pull — returns portal data modified since the client's last sync.
+ * Mobile Sync Pull — returns the caller's portal entities. Sessions, routines,
+ * cycles, badges and personal records always come from the excluding-ids RPCs
+ * (Sync Modes).
  *
  * POST /functions/v1/mobile-sync-pull
  * Authorization: Bearer <GoTrue JWT>
@@ -49,7 +51,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  *   profileId?: string,
  *   cursor?: string,          // Optional: pagination cursor from previous response
  *   pageSize?: number,        // Optional: entities per page (default 75, max 300)
- *   knownEntityIds?: {        // Optional: parity-based sync (new)
+ *   knownEntityIds?: {        // Optional. Empty or absent: the whole profile
  *     sessionIds?: string[],
  *     routineIds?: string[],
  *     cycleIds?: string[],

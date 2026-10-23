@@ -1292,6 +1292,159 @@ Deno.test("strava-sync: a refresh 429, 5xx or network error is retryable and kee
   assertEquals(integrationOf(thrown).status, "connected");
 });
 
+const REFRESH_FAILED_BODY = JSON.stringify({
+  error: "Strava token refresh failed",
+  code: "refresh_failed",
+});
+const TOKEN_EXPIRED_BODY = JSON.stringify({
+  error: "Strava authorization expired or was revoked",
+  code: "token_expired",
+});
+
+Deno.test("strava-sync: refresh failures log the bare reason and the same response bodies", async () => {
+  const cases: Array<{
+    label: string;
+    status: number;
+    response: () => Response;
+    http: number;
+    body: string;
+    log: string;
+    absent: string[];
+    integration: string;
+  }> = [
+    {
+      label: "revoked grant",
+      status: 400,
+      response: () => json({
+        message: "Bad Request",
+        errors: [
+          { resource: "RefreshToken", field: "refresh_token", code: "invalid" },
+          { resource: "Application", field: "client_id", code: "invalid" },
+        ],
+      }, 400),
+      http: 401,
+      body: TOKEN_EXPIRED_BODY,
+      log: "[STRAVA_REFRESH] status=400 reason=HTTP 400 errors=[RefreshToken/refresh_token/invalid,Application/client_id/invalid]",
+      absent: ["Token refresh failed:", "Bad Request"],
+      integration: "token_expired",
+    },
+    {
+      label: "field-only refresh token",
+      status: 401,
+      response: () => json({
+        errors: [{ resource: "Athlete", field: "refresh_token", code: "invalid" }],
+      }, 401),
+      http: 401,
+      body: TOKEN_EXPIRED_BODY,
+      log: "[STRAVA_REFRESH] status=401 reason=HTTP 401 errors=[Athlete/refresh_token/invalid]",
+      absent: ["Token refresh failed:"],
+      integration: "token_expired",
+    },
+    {
+      label: "application secret",
+      status: 400,
+      response: () => json(BAD_CLIENT_BODY, 400),
+      http: 502,
+      body: REFRESH_FAILED_BODY,
+      log: "[STRAVA_REFRESH] status=400 reason=HTTP 400 errors=[Application/client_secret/invalid]",
+      absent: ["Token refresh failed:"],
+      integration: "connected",
+    },
+    {
+      label: "non-json body",
+      status: 400,
+      response: () => new Response("<html>nope</html>", { status: 400 }),
+      http: 502,
+      body: REFRESH_FAILED_BODY,
+      log: "[STRAVA_REFRESH] status=400 reason=HTTP 400 errors=[]",
+      absent: ["Token refresh failed:", "<html>nope</html>"],
+      integration: "connected",
+    },
+    {
+      label: "free text is not classified or logged",
+      status: 400,
+      response: () => json({
+        message: "LEAKED-MESSAGE",
+        errors: [{
+          resource: "not an identifier",
+          field: "refresh token",
+          code: "leak.token.value",
+        }],
+      }, 400),
+      http: 502,
+      body: REFRESH_FAILED_BODY,
+      log: "[STRAVA_REFRESH] status=400 reason=HTTP 400 errors=[?/?/?]",
+      absent: ["Token refresh failed:", "LEAKED-MESSAGE", "leak.token.value", "not an identifier"],
+      integration: "connected",
+    },
+  ];
+
+  for (const item of cases) {
+    const tables = expiredTokenTables();
+    if (item.http === 401) {
+      tables.sync_queue = [queueRow(QUEUE_ID, "incremental", "processing", CLAIMED_AT)];
+    }
+    const h = queueHarness(tables, tokenRoute(item.response));
+    const { result, logs } = await captureLogs(() =>
+      h.call({
+        sync_type: "incremental",
+        ...(item.http === 401 ? { queue_id: QUEUE_ID } : {}),
+      })
+    );
+    assertEquals(result.status, item.http, item.label);
+    assertEquals(await result.text(), item.body, item.label);
+    assertStringIncludes(logs, item.log, item.label);
+    for (const secret of item.absent) {
+      assert(!logs.includes(secret), `${item.label} leaked ${secret} into logs: ${logs}`);
+      assert(!item.body.includes(secret), item.label);
+    }
+    assertEquals(integrationOf(h).status, item.integration, item.label);
+  }
+});
+
+Deno.test("strava-sync: a refresh network error keeps the network-error log line and the retry body", async () => {
+  const thrown = queueHarness(expiredTokenTables(), () => {
+    throw new TypeError("error sending request to https://www.strava.com/oauth/token");
+  });
+  const { result, logs } = await captureLogs(() => thrown.call({ sync_type: "incremental" }));
+  assertEquals(result.status, 502);
+  assertEquals(await result.text(), REFRESH_FAILED_BODY);
+  assertStringIncludes(logs, "[STRAVA_REFRESH] network error:");
+  assertStringIncludes(logs, "[STRAVA_REFRESH] status=none reason=network error errors=[]");
+  assert(!logs.includes("Token refresh failed:"), logs);
+  assert(!logs.includes("reason=unexpected error"), logs);
+  assertEquals(integrationOf(thrown).status, "connected");
+});
+
+Deno.test("strava-sync: a malformed refresh 200 logs malformed response and retries", async () => {
+  const h = queueHarness(
+    expiredTokenTables(),
+    tokenRoute(() => new Response("not-json", { status: 200 })),
+  );
+  const { result, logs } = await captureLogs(() => h.call({ sync_type: "incremental" }));
+  assertEquals(result.status, 502);
+  assertEquals(await result.text(), REFRESH_FAILED_BODY);
+  assertStringIncludes(logs, "[STRAVA_REFRESH] status=200 reason=malformed response errors=[]");
+  assert(!logs.includes("Token refresh failed:"), logs);
+  assert(!logs.includes("not-json"), logs);
+  assertEquals(integrationOf(h).status, "connected");
+});
+
+Deno.test("strava-sync: a missing client secret logs client not configured and never calls Strava", async () => {
+  const h = queueHarness(
+    expiredTokenTables(),
+    tokenRoute(() => json(REVOKED_GRANT_BODY, 400)),
+    { env: { STRAVA_CLIENT_SECRET: "" } },
+  );
+  const { result, logs } = await captureLogs(() => h.call({ sync_type: "incremental" }));
+  assertEquals(result.status, 502);
+  assertEquals(await result.text(), REFRESH_FAILED_BODY);
+  assertStringIncludes(logs, "[STRAVA_REFRESH] status=none reason=client not configured errors=[]");
+  assert(!logs.includes("Token refresh failed:"), logs);
+  assertEquals(h.fetchUrls, []);
+  assertEquals(integrationOf(h).status, "connected");
+});
+
 Deno.test("strava-sync: a missing client secret never disconnects the user and never calls Strava", async () => {
   const h = queueHarness(
     expiredTokenTables(),

@@ -1,4 +1,4 @@
-export interface ConsistencyWidgetProps {
+interface ConsistencyWidgetProps {
 	weeklyData: {
 		current: number;
 		target: number;

@@ -15,7 +15,7 @@ import { PRIORITY_ORDER, type Recommendation } from "@/lib/recommendations";
 
 // --- Props ---
 
-export interface RecommendationsPanelProps {
+interface RecommendationsPanelProps {
 	recommendations: Recommendation[];
 }
 
