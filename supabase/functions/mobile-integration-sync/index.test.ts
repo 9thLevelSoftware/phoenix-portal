@@ -413,3 +413,16 @@ Deno.test("mobile-integration-sync: a Hevy backfill past its page budget is stor
   assertEquals(integration.last_sync_at, "2026-09-01T00:00:00.000Z");
   assertEquals(integration.status, "error");
 });
+
+Deno.test("mobile-integration-sync: a thrown Hevy request timeout is a 502", async () => {
+  const db = importDb("hevy");
+  const timeout = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+  const hevy = (() => Promise.reject(timeout)) as typeof fetch;
+
+  const res = await silenced(() => importHandler(db, hevy)(post({ provider: "hevy", action: "sync" })));
+  assertEquals(res.status, 502);
+  assertEquals((await res.json()).code, "provider_fetch_failed");
+  const [integration] = db.rows("user_integrations");
+  assertEquals(integration.status, "error");
+  assertEquals(integration.error_message, "Provider sync failed; will retry");
+});

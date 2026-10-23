@@ -24,6 +24,13 @@ export const HEVY_PAGE_SIZE = 10;
  */
 export const HEVY_MAX_PAGES = 100;
 
+/**
+ * Per-request ceiling, so one hung Hevy call cannot hang the importer.
+ * `hevy-sync` replaces this signal with its own 30s abort; other callers,
+ * including mobile-integration-sync, keep this default.
+ */
+export const HEVY_REQUEST_TIMEOUT_MS = 30_000;
+
 /** Raised for 401/403 so callers can mark the integration as key-invalid. */
 export class HevyAuthError extends Error {
   constructor(message: string) {
@@ -107,7 +114,9 @@ export type HevyPageFetcher = (
 
 /**
  * Build a page fetcher bound to an API key, mapping Hevy's auth failures onto
- * HevyAuthError and any other non-2xx onto a generic Error.
+ * HevyAuthError and any other non-2xx onto a generic Error. Every request
+ * carries a timeout. A caller-supplied fetch may replace `signal` (hevy-sync
+ * does, with its own 30s abort) and that replacement wins.
  */
 export function createHevyPageFetcher(
   apiKey: string,
@@ -121,6 +130,7 @@ export function createHevyPageFetcher(
           'api-key': apiKey,
           'Content-Type': 'application/json',
         },
+        signal: AbortSignal.timeout(HEVY_REQUEST_TIMEOUT_MS),
       },
     );
 
