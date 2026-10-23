@@ -752,7 +752,7 @@ Deno.test("paddle-webhooks: two tabs — A then B active, then A canceled, the r
   assertEquals(
     calls[0]?.url,
     "https://sandbox-api.paddle.com/subscriptions?customer_id=ctm_01" +
-      "&status=active,trialing,past_due&order_by=-created_at",
+      "&status=active,trialing,past_due&order_by=id%5BDESC%5D",
   );
   // Two writes in all: A active, then ONE write that moves the row straight
   // to B. The cancellation is never applied, so no reader can observe a
@@ -1126,12 +1126,12 @@ Deno.test("paddle-webhooks: the customer listing asks Paddle for a deterministic
   assertEquals(
     calls[0]?.url,
     "https://sandbox-api.paddle.com/subscriptions?customer_id=ctm_01" +
-      "&status=active,trialing,past_due&order_by=-created_at",
+      "&status=active,trialing,past_due&order_by=id%5BDESC%5D",
   );
 });
 
 Deno.test("paddle-webhooks: a plant at [0] cannot hide the user's own sibling at [1]", async () => {
-  // order_by=-created_at puts the newest first, so a third party who checked
+  // order_by=id[DESC] puts the newest first, so a third party who checked
   // out under this user's billing email occupies [0]. Inspecting only [0]
   // would abandon the rescue and drop a still-paying customer to FREE
   // (security round-2 R-6). The attacker gains nothing either way — the

@@ -345,7 +345,7 @@ total is shown beside it only when `exercises.cable_count` is exactly 1 or 2.
 ### 1RM Estimate Parity (PARITY-CRITICAL)
 - Estimated 1RM is computed on MOBILE (hybrid: Brzycki reps<=10, Epley reps>10) and shipped as `estimatedOneRepMaxKg` per exercise. The edge function stores it verbatim in `exercise_progress.estimated_1rm_kg`.
 - `supabase/functions/_shared/exerciseProgressRows.ts#estimateOneRepMaxKg` and `src/lib/biomechanics.ts#estimateOneRepMax` are FALLBACKS only and MUST match the mobile formula. Mirror any change in the Project-Phoenix-MP counterpart (`OneRepMaxCalculator.estimate`).
-- `personal_records` holds max-weight/max-volume PRs (a different metric) — never relabel them as "1RM". Record-type label maps (`csv.ts`, `RecordsTab.tsx`) key on the UPPERCASE DB values (`MAX_WEIGHT`, `MAX_VOLUME`, `1RM`).
+- `personal_records` holds max-weight/max-volume PRs (a different metric) — never relabel them as "1RM". The record-type label map (`src/lib/personal-record-labels.ts`, shared by `csv.ts` and `RecordsTab.tsx`) keys on the UPPERCASE DB values (`MAX_WEIGHT`, `MAX_VOLUME`, `1RM`).
 
 ### Styling
 - Dark theme by default (`--background: #06060a` in `src/styles/theme.css`)

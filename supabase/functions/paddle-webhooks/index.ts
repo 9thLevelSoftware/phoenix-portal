@@ -127,10 +127,13 @@ async function listLiveCustomerSubscriptions(
   }
   const baseUrl = paddleApiBase(env.get("PADDLE_ENVIRONMENT"));
   // order_by makes "newest first" what we actually asked for, so two live
-  // subscriptions resolve deterministically instead of by page order.
+  // subscriptions resolve deterministically instead of by page order. `id` is
+  // the only field Paddle orders subscriptions by, and Paddle IDs sort in
+  // creation order, so id[DESC] is newest first. Any other value is a 400,
+  // which refuses every cancellation delivery.
   const url =
     `${baseUrl}/subscriptions?customer_id=${encodeURIComponent(customerId)}` +
-    `&status=${PADDLE_LIVE_STATUS_FILTER}&order_by=-created_at`;
+    `&status=${PADDLE_LIVE_STATUS_FILTER}&order_by=id%5BDESC%5D`;
 
   let response: Response;
   try {
@@ -577,7 +580,7 @@ async function paddleWebhooksHandler(
       }
       // Walk every candidate, not just the newest: a third party who checked
       // out under this user's billing email shares the Paddle customer, and
-      // with order_by=-created_at their (unadoptable) subscription sits at
+      // with order_by=id[DESC] their (unadoptable) subscription sits at
       // [0]. Stopping there would abandon the rescue and drop a customer who
       // IS still paying to FREE, with their own provably-owned sibling
       // sitting at [1] (security round-2 R-6). The ownership proof below is

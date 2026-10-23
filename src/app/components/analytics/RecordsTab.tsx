@@ -21,6 +21,7 @@ import { CardSkeleton, Skeleton } from "@/app/components/ui/skeleton";
 import { useAuth } from "@/app/hooks/useAuth";
 import { fadeUp } from "@/lib/animations";
 import { getMuscleGroupColor } from "@/lib/muscle-group-chip";
+import { formatPersonalRecordTypeLabel } from "@/lib/personal-record-labels";
 import type { WeightUnit } from "@/lib/units";
 import { formatLoad } from "@/lib/units/loadDisplay";
 import {
@@ -48,19 +49,6 @@ const milestones = [
 const TIMELINE_INITIAL_LIMIT = 5;
 
 const knownGroups = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core"];
-
-function formatRecordTypeLabel(recordType: string): string {
-	const labels: Record<string, string> = {
-		MAX_WEIGHT: "Weight PR",
-		"1RM": "1RM PR",
-		MAX_VOLUME: "Volume PR",
-		MAX_REPS: "Reps PR",
-		MAX_DURATION: "Duration PR",
-		MAX_FORCE: "Force PR",
-		MAX_VELOCITY: "Velocity PR",
-	};
-	return labels[(recordType ?? "").toUpperCase()] ?? recordType ?? "";
-}
 
 function formatRecordMeasurement(
 	value: number,
@@ -433,7 +421,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 														)}
 													</div>
 													<div className="text-xs text-primary">
-														{formatRecordTypeLabel(exercise.recordType)}
+														{formatPersonalRecordTypeLabel(exercise.recordType)}
 													</div>
 												</div>
 												<div className="flex items-center gap-1.5">
@@ -499,7 +487,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 																						)}
 																					</div>
 																					<div className="text-xs text-muted-foreground">
-																						{formatRecordTypeLabel(
+																						{formatPersonalRecordTypeLabel(
 																							entry.record_type,
 																						)}
 																					</div>
@@ -587,7 +575,9 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 																			variant="outline"
 																			className="border-primary/30 text-primary"
 																		>
-																			{formatRecordTypeLabel(entry.record_type)}
+																			{formatPersonalRecordTypeLabel(
+																				entry.record_type,
+																			)}
 																		</Badge>
 																	</td>
 																	<td className="py-2.5">
@@ -691,7 +681,7 @@ export default function RecordsTab({ unit }: RecordsTabProps) {
 														variant="outline"
 														className="border-primary/30 text-primary mb-1 block"
 													>
-														{formatRecordTypeLabel(pr.record_type)}
+														{formatPersonalRecordTypeLabel(pr.record_type)}
 													</Badge>
 													<div className="text-xs text-muted-foreground">
 														{pr.achieved_at.toLocaleDateString("en-US", {
