@@ -188,7 +188,7 @@ jobs:
         env:
           # Minimum aggregate Tests= for the suite. Raise this when
           # assertions are added.
-          PGTAP_TEST_FLOOR: "2058"
+          PGTAP_TEST_FLOOR: "2059"
         run: |
           set -euo pipefail
           log="${RUNNER_TEMP}/pgtap-suite.log"
