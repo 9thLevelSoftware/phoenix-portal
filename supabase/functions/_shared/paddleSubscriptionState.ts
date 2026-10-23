@@ -1,6 +1,6 @@
 import { ENTITLEMENT_KEEPING_STATUSES } from "./billingAction.ts";
 
-export type PortalSubscriptionStatus =
+type PortalSubscriptionStatus =
   | 'active'
   | 'past_due'
   | 'canceled'
@@ -81,7 +81,7 @@ export function mapPaddleStatusToSubscriptionStatus(
   }
 }
 
-export function hasPendingPaddleScheduledChange(
+function hasPendingPaddleScheduledChange(
   subscription: PaddleSubscriptionState,
 ): boolean {
   const status = mapPaddleStatusToSubscriptionStatus(subscription.status);
@@ -143,7 +143,7 @@ export function buildSubscriptionUpsertFromPaddleState({
  * Minimal shape of the service-role client used to call the ordered writer.
  * Narrow on purpose so handler tests can pass a fake.
  */
-export interface ApplySubscriptionEventClient {
+interface ApplySubscriptionEventClient {
   rpc(
     fn: "apply_subscription_event",
     args: Record<string, unknown>,
@@ -157,7 +157,7 @@ export interface ApplySubscriptionEventClient {
  * untracked-subscription guard" (PR 44). Callers have to tell those apart —
  * one is routine, the other is worth an alert — so this splits them.
  */
-export type SubscriptionEventWriteOutcome =
+type SubscriptionEventWriteOutcome =
   /** The row now holds this state. */
   | "applied"
   /** A newer event already wrote the row; the row was left alone. */

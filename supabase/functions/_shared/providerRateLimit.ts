@@ -39,7 +39,7 @@ export function startOfUtcDay(now: Date = new Date()): string {
 
 // ─── Header parsing ──────────────────────────────────────────────────────────
 
-export interface RateLimitPair {
+interface RateLimitPair {
   /** Quota for the 15-minute window. */
   shortTerm: number | null;
   /** Quota for the rolling day. */
@@ -106,7 +106,7 @@ export function parseRetryAfterSeconds(
 
 // ─── Budget decisions ────────────────────────────────────────────────────────
 
-export interface BudgetCheck {
+interface BudgetCheck {
   /** True when another request may be issued. */
   hasHeadroom: boolean;
   /** Requests left before the tighter of the two windows is exhausted. */
@@ -150,7 +150,7 @@ export function checkReadBudget(
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
 /** Suffix for the companion row tracking a provider's daily quota. */
-export const DAILY_KEY_SUFFIX = ':daily';
+const DAILY_KEY_SUFFIX = ':daily';
 
 export function dailyRateLimitKey(provider: string): string {
   return `${provider}${DAILY_KEY_SUFFIX}`;
@@ -165,7 +165,7 @@ type DbClient = any;
  * `userId` is null for application-scoped quotas, matching the
  * `uq_rate_limit_key_user` index which collapses NULL onto the zero UUID.
  */
-export async function upsertRateLimitRow(
+async function upsertRateLimitRow(
   supabase: DbClient,
   key: string,
   userId: string | null,

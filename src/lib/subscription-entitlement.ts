@@ -20,18 +20,17 @@ import {
 
 export {
 	ENTITLEMENT_GRACE_HOURS,
-	type EntitlementOptions,
 	type SubscriptionStatus,
 	type SubscriptionTier,
 	TIER_LEVEL,
 } from "../../supabase/functions/_shared/subscriptionEntitlement.ts";
 
-export const ACTIVE_SUBSCRIPTION_STATUSES: ReadonlySet<SubscriptionStatus> =
-	new Set(["active", "trialing"]);
+const ACTIVE_SUBSCRIPTION_STATUSES: ReadonlySet<SubscriptionStatus> = new Set([
+	"active",
+	"trialing",
+]);
 
-export function isActiveSubscriptionStatus(
-	status: SubscriptionStatus,
-): boolean {
+function isActiveSubscriptionStatus(status: SubscriptionStatus): boolean {
 	return ACTIVE_SUBSCRIPTION_STATUSES.has(status);
 }
 

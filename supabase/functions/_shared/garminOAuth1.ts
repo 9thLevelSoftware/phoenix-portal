@@ -9,7 +9,7 @@
  * Generate OAuth 1.0a signature base string and HMAC-SHA1 signature.
  * Per RFC 5849 Section 3.4.
  */
-export async function generateOAuthSignature(
+async function generateOAuthSignature(
   method: string,
   url: string,
   params: Record<string, string>,
@@ -48,14 +48,14 @@ export async function generateOAuthSignature(
 /**
  * Generate a random nonce for OAuth requests.
  */
-export function generateNonce(): string {
+function generateNonce(): string {
   return crypto.randomUUID().replace(/-/g, '');
 }
 
 /**
  * Build an OAuth 1.0a Authorization header.
  */
-export function buildAuthHeader(params: Record<string, string>): string {
+function buildAuthHeader(params: Record<string, string>): string {
   const headerParts = Object.entries(params)
     .map(([k, v]) => `${encodeURIComponent(k)}="${encodeURIComponent(v)}"`)
     .join(', ');
