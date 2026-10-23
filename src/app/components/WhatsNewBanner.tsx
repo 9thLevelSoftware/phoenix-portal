@@ -20,7 +20,7 @@ const newFeatures = [
  */
 export function WhatsNewBanner({ onDismiss }: WhatsNewBannerProps) {
 	const [visible, setVisible] = useState(true);
-	const dismissTimerRef = useRef<ReturnType<typeof setTimeout>>();
+	const dismissTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
 	// Clear any pending dismiss timer on unmount so it can't fire after the
 	// component (e.g. on a route change) and mutate onboarding state.
