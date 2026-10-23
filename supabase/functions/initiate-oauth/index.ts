@@ -24,7 +24,7 @@ import { requireSubscription } from '../_shared/requireSubscription.ts';
  */
 
 /** Providers the portal can actually start a connection for today. */
-export const LAUNCHED_OAUTH_PROVIDERS = ['strava'] as const;
+const LAUNCHED_OAUTH_PROVIDERS = ['strava'] as const;
 
 /**
  * Providers whose UI card says "coming soon" because their developer-program

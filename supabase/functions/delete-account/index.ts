@@ -18,7 +18,7 @@ export const PROCESS_DUE_BATCH_SIZE = 10;
 /** An `executing` claim older than this belongs to a crashed run. */
 export const STUCK_CLAIM_MINUTES = 15;
 /** A request still open this long past `scheduled_for` raises an alert. */
-export const OVERDUE_ALERT_DAYS = 2;
+const OVERDUE_ALERT_DAYS = 2;
 /** Orphan avatar folders removed per run by the residue sweep. */
 const SWEEP_AVATAR_FOLDER_LIMIT = 100;
 /** The purge stage only support can resolve; `process_due` never retries it. */

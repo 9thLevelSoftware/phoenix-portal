@@ -10,7 +10,7 @@
 const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token';
 
 /** Refresh when the access token expires within this window. */
-export const STRAVA_REFRESH_BUFFER_MS = 60_000;
+const STRAVA_REFRESH_BUFFER_MS = 60_000;
 
 export interface StravaClientCredentials {
   fetch: typeof fetch;

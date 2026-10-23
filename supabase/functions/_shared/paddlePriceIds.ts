@@ -63,7 +63,7 @@ export function getConfiguredPriceIdForTierInterval(
   return env.get(PRICE_ID_BY_TIER_INTERVAL[tier][billingInterval])?.trim() || null;
 }
 
-export function getPaddlePriceIdSets(env: {
+function getPaddlePriceIdSets(env: {
   get(key: string): string | undefined;
 }): {
   ember: Set<string>;
