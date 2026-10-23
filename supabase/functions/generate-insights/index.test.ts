@@ -274,7 +274,9 @@ function subscriptionRow(tier: string, status = 'active'): Row {
     user_id: userId(1),
     tier,
     status,
-    current_period_end: '2026-10-20T00:00:00.000Z',
+    // requireSubscription reads the real clock, so a fixed date expires the
+    // fixture once it passes (plus the 48h grace) and turns these into 402s.
+    current_period_end: new Date(Date.now() + 30 * 86_400_000).toISOString(),
     cancel_at_period_end: false,
   };
 }
