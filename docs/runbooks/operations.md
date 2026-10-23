@@ -1532,8 +1532,8 @@ tier at all.
 - The client treats only the exact string `sandbox` as sandbox
   (`initializePaddle` in `src/lib/paddle-client.ts`). Empty or unset means **production**.
 - Server functions default `PADDLE_ENVIRONMENT` to `"production"` when unset
-  (for example `paddle-cancel-subscription`, and `paddleBaseUrl` in
-  `_shared/accountPurge.ts`, which `delete-account` uses).
+  (`paddleApiBase` in `_shared/paddleFetch.ts`, which `delete-account` and
+  every `paddle-*` function use; only the exact string `sandbox` selects sandbox).
 So "I didn't set it" means production on both sides, and nothing warns you.
 ### The four groups
 Names only. Never record a value in this repo or in a ticket; a value that must
