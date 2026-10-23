@@ -898,7 +898,7 @@ Deno.test({
         })),
       ]);
       // Synthetic composite key (provider, id) on sync_queue. sync_tombstones
-      // is the composite-keyed manifest table (keyColumns entity + entity_id,
+      // is a composite-keyed manifest table (keyColumns entity + entity_id,
       // created in 20260920001600), and its entity values are only 'routine'
       // and 'cycle'. This test needs provider strings with quotes and commas,
       // so the keyset stays on sync_queue.
