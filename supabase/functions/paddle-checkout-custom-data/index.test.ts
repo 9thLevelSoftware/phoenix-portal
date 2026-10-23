@@ -488,6 +488,24 @@ Deno.test("paddle-checkout-custom-data: definitive POST rejection releases creat
   } finally { console.error = original; }
 });
 
+Deno.test("paddle-checkout-custom-data: a Paddle 403 logs its code and request_id but not to the client", async () => {
+  const handler = buildHandler(null, {
+    rpc: (name, args) => Promise.resolve({
+      data: name === "reserve_paddle_checkout" ? { action: "create", nonce: args.p_nonce, expires_at: args.p_expires_at } : true,
+      error: null,
+    }),
+    fetch: () => Promise.resolve(new Response(JSON.stringify({
+      error: { type: "request_error", code: "forbidden", detail: "You aren't permitted to perform this request." },
+      meta: { request_id: "req_forbidden_1" },
+    }), { status: 403 })),
+  });
+  const { result: response, logs } = await captureLogs(() => handler(signRequest()));
+
+  assertEquals(response.status, 500);
+  assertEquals(await response.json(), { error: "Internal server error" });
+  assertEquals(logs.includes("HTTP 403 (POST /transactions) code=forbidden request_id=req_forbidden_1"), true);
+});
+
 Deno.test("paddle-checkout-custom-data: a locally canceled but live paused contract refuses checkout before reservation", async () => {
   let reservations = 0;
   const methods: string[] = [];
