@@ -650,7 +650,21 @@ async function runFitbitSync(
         throw new Error(`Fitbit API error: ${activitiesResponse.status}`);
       }
 
-      const data = await activitiesResponse.json();
+      // The request timeout also covers the body, so an abort can land after
+      // the headers. That is as transient as one before them: answer 502.
+      let data: { activities?: Record<string, unknown>[] };
+      try {
+        data = await activitiesResponse.json();
+      } catch {
+        console.error('Fitbit activities response body could not be read');
+        return new Response(
+          JSON.stringify({
+            error: 'Failed to fetch Fitbit activities',
+            code: 'activities_fetch_failed',
+          }),
+          { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
+        );
+      }
       const activities = data.activities ?? [];
 
       if (activities.length === 0) {

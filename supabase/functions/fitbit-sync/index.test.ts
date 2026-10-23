@@ -490,6 +490,28 @@ Deno.test("fitbit-sync: a connection failure before any response is a retryable 
   assertEquals(state.rows("external_activities"), []);
 });
 
+Deno.test("fitbit-sync: a timeout while reading the activities body is a retryable 502", async () => {
+  // Headers arrived, then the request's own timeout aborted the body read.
+  const state = db();
+  const api = fitbit([]);
+  api.fetch = (() =>
+    Promise.resolve(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(timeoutError());
+          },
+        }),
+        { status: 200 },
+      ),
+    )) as typeof fetch;
+  const res = await silenced(() => handler(state, api)(request({ queue_id: QUEUE_ID })));
+  assertEquals(res.status, 502, await res.clone().text());
+  assertEquals((await res.json()).code, "activities_fetch_failed");
+  assertEquals(state.rows("sync_queue")[0].status, "processing");
+  assertEquals(state.rows("external_activities"), []);
+});
+
 Deno.test("fitbit-sync: token refresh and activities failures are logged by status only", async () => {
   const expiring = db({ tokenExpiresAt: new Date(Date.now() + 60_000).toISOString() });
   const refreshApi = fitbit([], { tokenStatus: 400, errorBody: PROVIDER_ERROR_BODY });
