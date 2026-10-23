@@ -2250,7 +2250,14 @@ Deno.test({
 
       assertEquals(result.ok, false);
       assertEquals(!result.ok && result.stage, "billing_cancel");
-      assertEquals(await rowsReferencing(admin, user.id), before, "no row deleted");
+      // The billing step records each listed subscription in
+      // paddle_checkout_authorizations before it cancels, so that evidence
+      // survives an abort (accountPurge.ts). Every other row is untouched.
+      const ledger = "paddle_checkout_authorizations.user_id=1";
+      const after = await rowsReferencing(admin, user.id);
+      assert(!before.includes(ledger));
+      assert(after.includes(ledger), "cancellation evidence recorded");
+      assertEquals(after.filter((row) => row !== ledger), before, "no row deleted");
 
       const stillThere = await admin.auth.admin.getUserById(user.id);
       assertEquals(stillThere.data.user?.id, user.id);
