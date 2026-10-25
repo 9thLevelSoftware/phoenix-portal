@@ -130,7 +130,8 @@ export function AuthCallback() {
 					}
 
 					if (error) {
-						setErrorMessage(error.message);
+						console.error("[AuthCallback] getSession failed:", error);
+						setErrorMessage(GENERIC_AUTH_FAILURE_MESSAGE);
 						return;
 					}
 
