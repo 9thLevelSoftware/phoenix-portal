@@ -17,6 +17,7 @@ export type Database = {
 					joined_at: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					challenge_id: string;
 					completed_at?: string | null;
@@ -56,6 +57,7 @@ export type Database = {
 					target_unit: string | null;
 					target_value: number;
 				};
+				ComputedFields: never;
 				Insert: {
 					challenge_type: string;
 					created_at?: string;
@@ -91,15 +93,16 @@ export type Database = {
 					id: string;
 					metric_key: string | null;
 					metric_type: string;
-					percentile_values: Json;
+					percentile_values: NonNullable<Json>;
 					total_users: number;
 					updated_at: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					id?: string;
 					metric_key?: string | null;
 					metric_type: string;
-					percentile_values?: Json;
+					percentile_values?: NonNullable<Json>;
 					total_users?: number;
 					updated_at?: string | null;
 				};
@@ -107,7 +110,7 @@ export type Database = {
 					id?: string;
 					metric_key?: string | null;
 					metric_type?: string;
-					percentile_values?: Json;
+					percentile_values?: NonNullable<Json>;
 					total_users?: number;
 					updated_at?: string | null;
 				};
@@ -124,6 +127,7 @@ export type Database = {
 					updated_at: string;
 					user_id: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					body: string;
 					created_at?: string;
@@ -176,6 +180,7 @@ export type Database = {
 					item_type: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					created_at?: string;
 					id?: string;
@@ -202,6 +207,7 @@ export type Database = {
 					id: string;
 					reporter_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					category: string;
 					content_id: string;
@@ -229,6 +235,7 @@ export type Database = {
 					follower_id: string;
 					id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					created_at?: string;
 					followed_id: string;
@@ -258,6 +265,7 @@ export type Database = {
 					routine_id: string | null;
 					weight_adjustment: number;
 				};
+				ComputedFields: never;
 				Insert: {
 					cycle_id: string;
 					day_number: number;
@@ -319,6 +327,7 @@ export type Database = {
 					status: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					cancelled_at?: string | null;
 					claimed_at?: string | null;
@@ -361,6 +370,7 @@ export type Database = {
 					id: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					badge_description?: string | null;
 					badge_id: string;
@@ -411,6 +421,7 @@ export type Database = {
 					updated_at: string;
 					user_id: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					aliases?: string[] | null;
 					archived?: boolean;
@@ -487,6 +498,7 @@ export type Database = {
 					user_id: string;
 					velocity_estimated_1rm_kg: number | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					estimated_1rm_kg?: number;
 					exercise_id?: string | null;
@@ -556,6 +568,7 @@ export type Database = {
 					user_id: string;
 					velocity_profile: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					cable_config?: string | null;
 					confidence?: number | null;
@@ -597,6 +610,7 @@ export type Database = {
 					session_id: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					cable_count?: number | null;
 					exercise_id?: string | null;
@@ -653,6 +667,7 @@ export type Database = {
 					updated_at: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					activity_type?: string | null;
 					avg_heart_rate?: number | null;
@@ -712,6 +727,7 @@ export type Database = {
 					updated_at: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					best_streak?: number;
 					current_streak?: number;
@@ -764,6 +780,7 @@ export type Database = {
 					snapshotted_at: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					current_value?: number;
 					goal_id: string;
@@ -806,6 +823,7 @@ export type Database = {
 					start_date: string;
 					updated_at: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					created_at?: string | null;
 					description?: string | null;
@@ -843,6 +861,7 @@ export type Database = {
 					user_id: string;
 					value: number;
 				};
+				ComputedFields: never;
 				Insert: {
 					computed_at?: string;
 					metric: string;
@@ -888,9 +907,9 @@ export type Database = {
 					body_weight_kg: number;
 					core_revision: number;
 					core_updated_at: string;
-					equipment_rack: Json;
+					equipment_rack: NonNullable<Json>;
 					led_color_scheme_id: number;
-					led_preferences: Json;
+					led_preferences: NonNullable<Json>;
 					led_revision: number;
 					led_updated_at: string;
 					local_profile_id: string;
@@ -900,37 +919,38 @@ export type Database = {
 					updated_at: string | null;
 					user_id: string;
 					vbt_enabled: boolean;
-					vbt_preferences: Json;
+					vbt_preferences: NonNullable<Json>;
 					vbt_revision: number;
 					vbt_updated_at: string;
 					weight_increment: number;
 					weight_unit: string;
-					workout_preferences: Json;
+					workout_preferences: NonNullable<Json>;
 					workout_revision: number;
 					workout_updated_at: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					body_weight_kg?: number;
 					core_revision?: number;
 					core_updated_at?: string;
-					equipment_rack?: Json;
+					equipment_rack?: NonNullable<Json>;
 					led_color_scheme_id?: number;
-					led_preferences?: Json;
+					led_preferences?: NonNullable<Json>;
 					led_revision?: number;
 					led_updated_at?: string;
 					local_profile_id: string;
 					rack_revision?: number;
 					rack_updated_at?: string;
 					schema_version?: number;
-					updated_at?: string | null;
+					updated_at?: never;
 					user_id: string;
 					vbt_enabled?: boolean;
-					vbt_preferences?: Json;
+					vbt_preferences?: NonNullable<Json>;
 					vbt_revision?: number;
 					vbt_updated_at?: string;
 					weight_increment?: number;
 					weight_unit?: string;
-					workout_preferences?: Json;
+					workout_preferences?: NonNullable<Json>;
 					workout_revision?: number;
 					workout_updated_at?: string;
 				};
@@ -938,24 +958,24 @@ export type Database = {
 					body_weight_kg?: number;
 					core_revision?: number;
 					core_updated_at?: string;
-					equipment_rack?: Json;
+					equipment_rack?: NonNullable<Json>;
 					led_color_scheme_id?: number;
-					led_preferences?: Json;
+					led_preferences?: NonNullable<Json>;
 					led_revision?: number;
 					led_updated_at?: string;
 					local_profile_id?: string;
 					rack_revision?: number;
 					rack_updated_at?: string;
 					schema_version?: number;
-					updated_at?: string | null;
+					updated_at?: never;
 					user_id?: string;
 					vbt_enabled?: boolean;
-					vbt_preferences?: Json;
+					vbt_preferences?: NonNullable<Json>;
 					vbt_revision?: number;
 					vbt_updated_at?: string;
 					weight_increment?: number;
 					weight_unit?: string;
-					workout_preferences?: Json;
+					workout_preferences?: NonNullable<Json>;
 					workout_revision?: number;
 					workout_updated_at?: string;
 				};
@@ -979,6 +999,7 @@ export type Database = {
 					updated_at: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					color_index?: number;
 					created_at?: string;
@@ -1008,6 +1029,7 @@ export type Database = {
 					state_token: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					created_at?: string | null;
 					expires_at: string;
@@ -1038,6 +1060,7 @@ export type Database = {
 					updated_at: string | null;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					access_token?: string | null;
 					api_key?: string | null;
@@ -1076,6 +1099,7 @@ export type Database = {
 					suggestion_type: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					confidence: number;
 					created_at?: string;
@@ -1125,6 +1149,7 @@ export type Database = {
 					transaction_id: string | null;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					created_at?: string;
 					customer_id?: string | null;
@@ -1161,10 +1186,11 @@ export type Database = {
 					notification_id: string | null;
 					paddle_customer_id: string | null;
 					paddle_subscription_id: string | null;
-					payload: Json;
+					payload: NonNullable<Json>;
 					received_at: string;
 					user_id: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					environment?: string | null;
 					event_id?: string | null;
@@ -1174,7 +1200,7 @@ export type Database = {
 					notification_id?: string | null;
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
-					payload: Json;
+					payload: NonNullable<Json>;
 					received_at?: string;
 					user_id?: string | null;
 				};
@@ -1187,7 +1213,7 @@ export type Database = {
 					notification_id?: string | null;
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
-					payload?: Json;
+					payload?: NonNullable<Json>;
 					received_at?: string;
 					user_id?: string | null;
 				};
@@ -1214,6 +1240,7 @@ export type Database = {
 					weight_kg: number | null;
 					workout_phase: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					achieved_at?: string;
 					deleted_at?: string | null;
@@ -1287,6 +1314,7 @@ export type Database = {
 					target_profile_id: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					claimed_at?: string;
 					entity_id: string;
@@ -1319,6 +1347,7 @@ export type Database = {
 					user_id: string;
 					workout_session_ids: string[];
 				};
+				ComputedFields: never;
 				Insert: {
 					cycle_ids?: string[];
 					mutation_id: string;
@@ -1368,6 +1397,7 @@ export type Database = {
 					user_id: string;
 					workout_session_ids: string[];
 				};
+				ComputedFields: never;
 				Insert: {
 					cycle_ids?: string[];
 					mutation_id: string;
@@ -1414,6 +1444,7 @@ export type Database = {
 					user_id: string | null;
 					weight_unit: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					avatar_url?: string | null;
 					challenge_updates?: boolean;
@@ -1430,7 +1461,7 @@ export type Database = {
 					streak_reminders?: boolean;
 					stripe_customer_id?: string | null;
 					updated_at?: string | null;
-					user_id?: string | null;
+					user_id?: never;
 					weight_unit?: string;
 				};
 				Update: {
@@ -1449,7 +1480,7 @@ export type Database = {
 					streak_reminders?: boolean;
 					stripe_customer_id?: string | null;
 					updated_at?: string | null;
-					user_id?: string | null;
+					user_id?: never;
 					weight_unit?: string;
 				};
 				Relationships: [];
@@ -1465,6 +1496,7 @@ export type Database = {
 					user_id: string | null;
 					window_started_at: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					id?: string;
 					key?: string | null;
@@ -1507,6 +1539,7 @@ export type Database = {
 					user_id: string;
 					vbt_zone: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					asymmetry_pct?: number | null;
 					id?: string;
@@ -1566,6 +1599,7 @@ export type Database = {
 					user_id: string;
 					velocity_mps: number | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					cable?: string | null;
 					force_n?: number | null;
@@ -1630,6 +1664,7 @@ export type Database = {
 					warmup_sets: string | null;
 					weight: number;
 				};
+				ComputedFields: never;
 				Insert: {
 					created_at?: string;
 					drop_set_enabled?: boolean;
@@ -1730,6 +1765,7 @@ export type Database = {
 					updated_at: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					client_updated_at?: string | null;
 					created_at?: string;
@@ -1787,6 +1823,7 @@ export type Database = {
 					updated_at: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					character_class?: string | null;
 					consistency?: number;
@@ -1827,6 +1864,7 @@ export type Database = {
 					shared_item_id: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					id?: string;
 					imported_cycle_id?: string | null;
@@ -1881,6 +1919,7 @@ export type Database = {
 					session_id: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					concentric_kg_avg?: number | null;
 					concentric_kg_max?: number | null;
@@ -1941,6 +1980,7 @@ export type Database = {
 					user_id: string;
 					velocity_mps: number[];
 				};
+				ComputedFields: never;
 				Insert: {
 					cable: string[];
 					created_at?: string;
@@ -1982,6 +2022,7 @@ export type Database = {
 					id: string;
 					set_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					id: string;
 					set_id: string;
@@ -2014,6 +2055,7 @@ export type Database = {
 					weight_kg: number;
 					workout_mode: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					actual_reps?: number;
 					exercise_id: string;
@@ -2068,6 +2110,7 @@ export type Database = {
 					user_id: string | null;
 					vote_count: number;
 				};
+				ComputedFields: never;
 				Insert: {
 					comment_count?: number;
 					cycle_id: string;
@@ -2152,6 +2195,7 @@ export type Database = {
 					user_id: string | null;
 					vote_count: number;
 				};
+				ComputedFields: never;
 				Insert: {
 					comment_count?: number;
 					description?: string;
@@ -2234,7 +2278,7 @@ export type Database = {
 					paddle_customer_id: string | null;
 					paddle_subscription_id: string | null;
 					price_id: string | null;
-					row_snapshot: Json;
+					row_snapshot: NonNullable<Json>;
 					status: string | null;
 					subscription_created_at: string | null;
 					subscription_row_id: string | null;
@@ -2242,6 +2286,7 @@ export type Database = {
 					tier: string | null;
 					user_id: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					cancel_at_period_end?: boolean | null;
 					current_period_end?: string | null;
@@ -2256,7 +2301,7 @@ export type Database = {
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
 					price_id?: string | null;
-					row_snapshot?: Json;
+					row_snapshot?: NonNullable<Json>;
 					status?: string | null;
 					subscription_created_at?: string | null;
 					subscription_row_id?: string | null;
@@ -2278,7 +2323,7 @@ export type Database = {
 					paddle_customer_id?: string | null;
 					paddle_subscription_id?: string | null;
 					price_id?: string | null;
-					row_snapshot?: Json;
+					row_snapshot?: NonNullable<Json>;
 					status?: string | null;
 					subscription_created_at?: string | null;
 					subscription_row_id?: string | null;
@@ -2306,6 +2351,7 @@ export type Database = {
 					updated_at: string | null;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					cancel_at_period_end?: boolean | null;
 					created_at?: string | null;
@@ -2355,6 +2401,7 @@ export type Database = {
 					sync_type: string | null;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					completed_at?: string | null;
 					created_at?: string | null;
@@ -2389,6 +2436,7 @@ export type Database = {
 					entity_id: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					client_deleted_at?: string;
 					deleted_at?: string;
@@ -2410,16 +2458,17 @@ export type Database = {
 					analysis_type: string;
 					computed_at: string;
 					id: string;
-					result: Json;
+					result: NonNullable<Json>;
 					set_id: string;
 					user_id: string;
 					worker_version: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					analysis_type: string;
 					computed_at?: string;
 					id?: string;
-					result: Json;
+					result: NonNullable<Json>;
 					set_id: string;
 					user_id: string;
 					worker_version?: string | null;
@@ -2428,7 +2477,7 @@ export type Database = {
 					analysis_type?: string;
 					computed_at?: string;
 					id?: string;
-					result?: Json;
+					result?: NonNullable<Json>;
 					set_id?: string;
 					user_id?: string;
 					worker_version?: string | null;
@@ -2441,6 +2490,7 @@ export type Database = {
 					deleted_at: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					cycle_id: string;
 					deleted_at: string;
@@ -2476,6 +2526,7 @@ export type Database = {
 					user_id: string;
 					workout_days: number;
 				};
+				ComputedFields: never;
 				Insert: {
 					client_updated_at?: string | null;
 					current_week?: number;
@@ -2537,6 +2588,7 @@ export type Database = {
 					created_at: string;
 					id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					blocked_id: string;
 					blocker_id: string;
@@ -2570,6 +2622,7 @@ export type Database = {
 					updated_at: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					completed_at?: string | null;
 					created_at?: string;
@@ -2632,6 +2685,7 @@ export type Database = {
 					title: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					created_at?: string | null;
 					description: string;
@@ -2678,6 +2732,7 @@ export type Database = {
 					status: string | null;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					backfill_after?: string | null;
 					backfill_before?: string | null;
@@ -2710,16 +2765,17 @@ export type Database = {
 				Row: {
 					completed_at: string | null;
 					created_at: string;
-					dismissed_hints: Json;
+					dismissed_hints: NonNullable<Json>;
 					dismissed_whats_new: boolean;
 					id: string;
 					user_id: string;
 					version_seen: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					completed_at?: string | null;
 					created_at?: string;
-					dismissed_hints?: Json;
+					dismissed_hints?: NonNullable<Json>;
 					dismissed_whats_new?: boolean;
 					id?: string;
 					user_id: string;
@@ -2728,7 +2784,7 @@ export type Database = {
 				Update: {
 					completed_at?: string | null;
 					created_at?: string;
-					dismissed_hints?: Json;
+					dismissed_hints?: NonNullable<Json>;
 					dismissed_whats_new?: boolean;
 					id?: string;
 					user_id?: string;
@@ -2747,6 +2803,7 @@ export type Database = {
 					user_id: string;
 					user_override_kg: number | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					assessment_session_id?: string | null;
 					created_at?: string | null;
@@ -2788,6 +2845,7 @@ export type Database = {
 					summary_date: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					awake_minutes?: number | null;
 					body_battery?: number | null;
@@ -2838,6 +2896,7 @@ export type Database = {
 					scope: string;
 					user_id: string;
 				};
+				ComputedFields: never;
 				Insert: {
 					component_session_id?: string | null;
 					deleted_at: string;
@@ -2897,6 +2956,7 @@ export type Database = {
 					working_reps: number | null;
 					workout_mode: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					avg_asymmetry_pct?: number | null;
 					avg_velocity_mps?: number | null;
@@ -2984,17 +3044,19 @@ export type Database = {
 					featured_count: number | null;
 					total_shares: number | null;
 					total_upvotes: number | null;
-					user_id: string | null;
+					user_id: string;
 				};
+				ComputedFields: never;
 				Relationships: [];
 			};
 			public_profiles: {
 				Row: {
 					avatar_url: string | null;
 					display_name: string | null;
-					id: string | null;
+					id: string;
 					user_id: string | null;
 				};
+				ComputedFields: never;
 				Insert: {
 					avatar_url?: string | null;
 					display_name?: string | null;
@@ -3020,6 +3082,27 @@ export type Database = {
 					user_id: string | null;
 					velocity_mps: number | null;
 				};
+				ComputedFields: never;
+				Insert: {
+					cable?: string | null;
+					force_n?: number | null;
+					id?: string | null;
+					position_mm?: number | null;
+					set_id?: string | null;
+					timestamp_ms?: number | null;
+					user_id?: string | null;
+					velocity_mps?: number | null;
+				};
+				Update: {
+					cable?: string | null;
+					force_n?: number | null;
+					id?: string | null;
+					position_mm?: number | null;
+					set_id?: string | null;
+					timestamp_ms?: number | null;
+					user_id?: string | null;
+					velocity_mps?: number | null;
+				};
 				Relationships: [];
 			};
 			telemetry_points: {
@@ -3032,6 +3115,27 @@ export type Database = {
 					timestamp_ms: number | null;
 					user_id: string | null;
 					velocity_mps: number | null;
+				};
+				ComputedFields: never;
+				Insert: {
+					cable?: string | null;
+					force_n?: number | null;
+					id?: string | null;
+					position_mm?: number | null;
+					set_id?: string | null;
+					timestamp_ms?: number | null;
+					user_id?: string | null;
+					velocity_mps?: number | null;
+				};
+				Update: {
+					cable?: string | null;
+					force_n?: number | null;
+					id?: string | null;
+					position_mm?: number | null;
+					set_id?: string | null;
+					timestamp_ms?: number | null;
+					user_id?: string | null;
+					velocity_mps?: number | null;
 				};
 				Relationships: [];
 			};
@@ -3075,7 +3179,10 @@ export type Database = {
 				Args: { p_error: string; p_payload: Json };
 				Returns: undefined;
 			};
-			backfill_client_updated_at: { Args: never; Returns: undefined };
+			backfill_client_updated_at: {
+				Args: Record<PropertyKey, never>;
+				Returns: undefined;
+			};
 			bind_integration_tokens: {
 				Args: {
 					p_access_token: string;
@@ -3666,7 +3773,10 @@ export type Database = {
 			kotlin_to_long_or_null: { Args: { p_value: string }; Returns: number };
 			local_profile_preference_section_canonical: {
 				Args: {
-					p_row: Database["public"]["Tables"]["local_profile_preferences"]["Row"];
+					p_row: Omit<
+						Database["public"]["Tables"]["local_profile_preferences"]["Row"],
+						Database["public"]["Tables"]["local_profile_preferences"]["ComputedFields"]
+					>;
 					p_section: string;
 				};
 				Returns: Json;
@@ -3761,7 +3871,10 @@ export type Database = {
 					total_workouts: number;
 				}[];
 			};
-			recompute_all_gamification_stats: { Args: never; Returns: number };
+			recompute_all_gamification_stats: {
+				Args: Record<PropertyKey, never>;
+				Returns: number;
+			};
 			recompute_gamification_stats: {
 				Args: { p_user_id: string };
 				Returns: undefined;
@@ -3770,9 +3883,18 @@ export type Database = {
 				Args: { p_nonce: string; p_transaction_id: string; p_user_id: string };
 				Returns: boolean;
 			};
-			refresh_community_benchmarks: { Args: never; Returns: undefined };
-			refresh_hot_scores: { Args: never; Returns: undefined };
-			refresh_leaderboard_snapshots: { Args: never; Returns: undefined };
+			refresh_community_benchmarks: {
+				Args: Record<PropertyKey, never>;
+				Returns: undefined;
+			};
+			refresh_hot_scores: {
+				Args: Record<PropertyKey, never>;
+				Returns: undefined;
+			};
+			refresh_leaderboard_snapshots: {
+				Args: Record<PropertyKey, never>;
+				Returns: undefined;
+			};
 			replace_session_children: {
 				Args: {
 					p_exercises: Json;
@@ -3790,7 +3912,7 @@ export type Database = {
 				Returns: number;
 			};
 			request_account_deletion: {
-				Args: never;
+				Args: Record<PropertyKey, never>;
 				Returns: {
 					cancelled_at: string | null;
 					claimed_at: string | null;
@@ -3841,7 +3963,10 @@ export type Database = {
 				};
 				Returns: boolean;
 			};
-			seed_device_gamification_stats: { Args: never; Returns: number };
+			seed_device_gamification_stats: {
+				Args: Record<PropertyKey, never>;
+				Returns: number;
+			};
 			session_volume_buckets: {
 				Args: { p_period?: string; p_profile_id?: string; p_tz?: string };
 				Returns: {
@@ -3954,7 +4079,10 @@ export type Database = {
 				}[];
 			};
 			user_has_min_tier: { Args: { min_tier: string }; Returns: boolean };
-			user_subscription_tier: { Args: never; Returns: string };
+			user_subscription_tier: {
+				Args: Record<PropertyKey, never>;
+				Returns: string;
+			};
 			verify_profile_recovery_source: {
 				Args: {
 					p_cycle_ids: string[];
