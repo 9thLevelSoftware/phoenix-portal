@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { localIntegrationEnvironment } from "../_shared/localIntegrationEnvironment.ts";
+import { REQUEST_BODY_LIMITS } from "../_shared/requestBody.ts";
 import {
   EXCLUDED,
   getUserDataTable,
@@ -189,7 +190,24 @@ Deno.test("an unparseable JSON body gives 400 without charging the rate limit", 
   const { handler, recorded } = doubleHandler();
   const response = await handler(request(null, { rawBody: "{not json" }));
   assertEquals(response.status, 400);
+  assertEquals(await response.json(), { error: "Invalid JSON body" });
   assertEquals(recorded.rpc, []);
+});
+
+Deno.test("an oversized body gives 413 and a normal request still returns a page", async () => {
+  const oversized = doubleHandler();
+  const tooBig = await oversized.handler(request(null, {
+    rawBody: "x".repeat(REQUEST_BODY_LIMITS.exportUserData + 1),
+  }));
+  assertEquals(tooBig.status, 413);
+  assertEquals(await tooBig.json(), { error: "Request body too large" });
+  assertEquals(oversized.recorded.rpc, []);
+  assertEquals(oversized.recorded.from, []);
+
+  const normal = doubleHandler();
+  const ok = await normal.handler(request({ table: "routines" }));
+  assertEquals(ok.status, 200);
+  assertEquals(normal.recorded.from, ["routines"]);
 });
 
 Deno.test("unknown and excluded tables give 400 without querying or charging the rate limit", async () => {
