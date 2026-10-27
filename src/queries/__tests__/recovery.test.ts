@@ -7,6 +7,8 @@ function buildChain(terminal: { data: unknown; error: unknown }) {
 		"select",
 		"eq",
 		"gte",
+		"in",
+		"not",
 		"order",
 		"limit",
 		"maybeSingle",
@@ -172,5 +174,65 @@ describe("activeCyclePositionOptions", () => {
 		expect(chain.maybeSingle).toHaveBeenCalledOnce();
 		expect(chain.limit).not.toHaveBeenCalled();
 		expect(result).toEqual(activeCycleRow);
+	});
+});
+
+const wearableRow = {
+	id: "00000000-0000-4000-8000-000000000001",
+	provider: "garmin",
+	raw_data: { hrv: 42 },
+	synced_at: "2026-10-01T00:00:00.000Z",
+};
+
+describe("wearableRecoveryOptions", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		chain = buildChain({ data: [wearableRow], error: null });
+	});
+
+	it("drops null synced_at rows and sorts the rest nulls last", async () => {
+		const { wearableRecoveryOptions } = await import("../recovery");
+		const opts = wearableRecoveryOptions("user-1");
+
+		expect(opts.queryKey).toEqual(queryKeys.recovery.wearable("user-1"));
+
+		const result = await opts.queryFn?.({} as never);
+
+		expect(fromFn).toHaveBeenCalledWith("external_activities");
+		expect(chain.select).toHaveBeenCalledWith(
+			"id, provider, raw_data, synced_at",
+		);
+		expect(chain.eq).toHaveBeenCalledWith("user_id", "user-1");
+		expect(chain.in).toHaveBeenCalledWith("provider", ["garmin", "fitbit"]);
+		expect(chain.not).toHaveBeenCalledWith("synced_at", "is", null);
+		expect(chain.order).toHaveBeenCalledWith("synced_at", {
+			ascending: false,
+			nullsFirst: false,
+		});
+		expect(chain.limit).toHaveBeenCalledWith(5);
+		expect(result).toEqual([
+			{
+				id: wearableRow.id,
+				provider: wearableRow.provider,
+				raw_data: wearableRow.raw_data,
+				synced_at: new Date("2026-10-01T00:00:00.000Z"),
+			},
+		]);
+	});
+
+	it("returns null when no synced wearable row remains", async () => {
+		chain = buildChain({ data: [], error: null });
+		const { wearableRecoveryOptions } = await import("../recovery");
+
+		const result = await wearableRecoveryOptions("user-1").queryFn?.(
+			{} as never,
+		);
+
+		expect(chain.not).toHaveBeenCalledWith("synced_at", "is", null);
+		expect(chain.order).toHaveBeenCalledWith("synced_at", {
+			ascending: false,
+			nullsFirst: false,
+		});
+		expect(result).toBeNull();
 	});
 });
