@@ -26,6 +26,14 @@ EXCEPTION WHEN OTHERS THEN
 END
 $assertion$;
 
+-- Upserts name the arbiter as the partial unique index
+-- storage.idx_objects_current_version (bucket_id, name) WHERE archived_at IS NULL.
+-- storage-api migration 0072 (drop-bucketid-objname-index) removed the plain
+-- bucketid_objname unique index, so a bare ON CONFLICT (bucket_id, name) has no
+-- arbiter and fails with 42P10. Hosted projects already run that migration;
+-- the local stack has it from the storage-api that ships with the pinned CLI. The
+-- predicate also matches the older local shape, where both indexes exist.
+
 SELECT diag('database:storage-avatars-catalog');
 
 SELECT is(
@@ -104,7 +112,7 @@ SELECT lives_ok(
             'a1a1a1a1-0000-4000-8000-000000000073',
             '{"v":1}'::jsonb
         )
-        ON CONFLICT (bucket_id, name) DO UPDATE
+        ON CONFLICT (bucket_id, name) WHERE archived_at IS NULL DO UPDATE
         SET metadata = EXCLUDED.metadata,
             owner_id = EXCLUDED.owner_id
     $sql$,
@@ -120,7 +128,7 @@ SELECT lives_ok(
             'a1a1a1a1-0000-4000-8000-000000000073',
             '{"v":2}'::jsonb
         )
-        ON CONFLICT (bucket_id, name) DO UPDATE
+        ON CONFLICT (bucket_id, name) WHERE archived_at IS NULL DO UPDATE
         SET metadata = EXCLUDED.metadata,
             owner_id = EXCLUDED.owner_id
     $sql$,
@@ -164,7 +172,7 @@ SELECT pg_temp.assert_sqlstate(
             'b2b2b2b2-0000-4000-8000-000000000073',
             '{"v":"hijack"}'::jsonb
         )
-        ON CONFLICT (bucket_id, name) DO UPDATE
+        ON CONFLICT (bucket_id, name) WHERE archived_at IS NULL DO UPDATE
         SET metadata = EXCLUDED.metadata,
             owner_id = EXCLUDED.owner_id
     $sql$,
@@ -289,7 +297,7 @@ SELECT lives_ok(
             'a1a1a1a1-0000-4000-8000-000000000073',
             '{"v":3}'::jsonb
         )
-        ON CONFLICT (bucket_id, name) DO UPDATE
+        ON CONFLICT (bucket_id, name) WHERE archived_at IS NULL DO UPDATE
         SET metadata = EXCLUDED.metadata,
             owner_id = EXCLUDED.owner_id
     $sql$,

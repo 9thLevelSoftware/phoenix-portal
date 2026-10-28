@@ -29,7 +29,7 @@ name: Deploy Edge Functions
 #      migration -> Edge code (expand/contract, KD-3).
 #
 # CLI pin change (NF-11): this workflow moved from a literal `2.76.9` to the
-# repo-wide pin in `.supabase-cli-version` (currently 2.117.0). That swaps the
+# repo-wide pin in `.supabase-cli-version`. That swaps the
 # CLI that bundles and uploads every Edge Function to prod, and the first run
 # after merge is the first real exercise of the new upload path. The operator
 # should watch that run and smoke-test one function afterwards. The invocation

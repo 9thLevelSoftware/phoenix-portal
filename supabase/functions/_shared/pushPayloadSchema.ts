@@ -60,9 +60,12 @@ export const localProfileIdSchema = z
  * Platform normalizer. Accepts any input; always returns a canonical
  * "android" | "ios" | "unknown". Delegates to `normalizeSyncPlatform` so
  * blank and unknown inputs stay one source of truth.
+ * `.optional()` keeps an absent key valid: a bare `z.unknown()` object key is
+ * required in newer zod, so a push without `platform` would 400.
  */
 export const platformSchema = z
 	.unknown()
+	.optional()
 	.transform<"android" | "ios" | "unknown">((value: unknown) =>
 		normalizeSyncPlatform(value),
 	);
