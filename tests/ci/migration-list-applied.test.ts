@@ -5,9 +5,9 @@
  * `supabase_migrations.schema_migrations` table: `<scenario>.json` from
  * `supabase migration list --db-url … --output-format json` on CLI 2.117.0
  * (the pin when they were captured), and `<scenario>.table` from the same
- * scenario on CLI 2.76.9, whose
- * text table the workflows used to parse. The new JSON parser must yield the
- * same applied set, and so the same pass/fail decision, as the old parser.
+ * scenario on CLI 2.76.9, whose text table the workflows used to parse. The
+ * new JSON parser must yield the same applied set, and so the same pass/fail
+ * decision, as the old parser.
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
