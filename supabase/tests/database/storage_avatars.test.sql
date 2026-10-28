@@ -31,7 +31,7 @@ $assertion$;
 -- storage-api migration 0072 (drop-bucketid-objname-index) removed the plain
 -- bucketid_objname unique index, so a bare ON CONFLICT (bucket_id, name) has no
 -- arbiter and fails with 42P10. Hosted projects already run that migration;
--- the local stack has it from Supabase CLI 2.122.0 (storage-api v1.84.19). The
+-- the local stack has it from the storage-api that ships with the pinned CLI. The
 -- predicate also matches the older local shape, where both indexes exist.
 
 SELECT diag('database:storage-avatars-catalog');

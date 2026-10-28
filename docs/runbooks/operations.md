@@ -1669,7 +1669,7 @@ entry, or a file on disk.
 2. Read it once and pipe it straight into the Edge secret store. The Supabase
    CLI has no stdin mode for this -- `supabase secrets set` takes either
    `NAME=VALUE` arguments (which land in shell history) or `--env-file <path>`
-   (verified against CLI 2.117.0 `secrets set --help`). Use process
+   (verified against CLI 2.122.0 `secrets set --help`). Use process
    substitution so the path is a pipe and the value never touches disk:
    ```bash
    supabase secrets set --env-file \
