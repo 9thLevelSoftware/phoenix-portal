@@ -25,6 +25,10 @@ describe("platformSchema", () => {
 		expect(platformSchema.parse("   ")).toBe("unknown");
 	});
 
+	it("returns unknown when the push omits platform", () => {
+		expect(pushPayloadSchema.parse({ deviceId: "d" }).platform).toBe("unknown");
+	});
+
 	it("returns unknown for anything that isn't android or ios", () => {
 		expect(platformSchema.parse("windows")).toBe("unknown");
 		expect(platformSchema.parse(42)).toBe("unknown");
