@@ -49,12 +49,15 @@ export function wearableRecoveryOptions(userId: string) {
 	return queryOptions({
 		queryKey: queryKeys.recovery.wearable(userId),
 		queryFn: async () => {
+			// DESC sorts NULLS FIRST, so an unsynced row would win "latest".
+			// Drop those rows; do not substitute an epoch or other fake time.
 			const { data, error } = await supabase
 				.from("external_activities")
 				.select("id, provider, raw_data, synced_at")
 				.eq("user_id", userId)
 				.in("provider", ["garmin", "fitbit"])
-				.order("synced_at", { ascending: false })
+				.not("synced_at", "is", null)
+				.order("synced_at", { ascending: false, nullsFirst: false })
 				.limit(5);
 			if (error) throw error;
 			if (!data || data.length === 0) return null;
