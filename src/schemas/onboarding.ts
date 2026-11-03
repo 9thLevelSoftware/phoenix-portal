@@ -15,7 +15,7 @@ export const onboardingSchema = z.object({
 			message: "Invalid date",
 		}),
 	version_seen: z.string().nullable(),
-	dismissed_hints: z.record(z.boolean()).default({}),
+	dismissed_hints: z.record(z.string(), z.boolean()).default({}),
 	dismissed_whats_new: z.boolean(),
 	created_at: z.coerce.date(),
 });
