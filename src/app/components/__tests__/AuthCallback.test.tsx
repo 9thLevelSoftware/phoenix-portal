@@ -148,6 +148,42 @@ describe("AuthCallback", () => {
 		expect(screen.queryByText(/evil\.example/i)).not.toBeInTheDocument();
 	});
 
+	it("shows the generic failure message when getSession returns an error", async () => {
+		const consoleError = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+		const sessionError = {
+			message: "Refresh Token Not Found: secret-provider-detail",
+		};
+		mockGetSession.mockResolvedValue({
+			data: { session: null },
+			error: sessionError,
+		});
+
+		renderAuthCallback("/auth/callback?provider=google");
+
+		expect(
+			await screen.findByRole("heading", { name: /google sign-in failed/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				/authentication could not be completed\. please try again\./i,
+			),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText(/refresh token not found/i),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/secret-provider-detail/i),
+		).not.toBeInTheDocument();
+		expect(consoleError).toHaveBeenCalledWith(
+			"[AuthCallback] getSession failed:",
+			sessionError,
+		);
+		expect(mockNavigate).not.toHaveBeenCalled();
+		consoleError.mockRestore();
+	});
+
 	it("maps an unknown error code to the generic fallback", async () => {
 		renderAuthCallback(
 			"/auth/callback?error=server_error&error_description=Internal+details+from+the+provider",
