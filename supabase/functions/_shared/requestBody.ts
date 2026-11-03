@@ -46,6 +46,8 @@ export async function readBoundedRequestBody(request: Request, limit: number): P
 
 export const REQUEST_BODY_LIMITS = {
   deleteAccount: 4 * 1024,
+  // POST { table, cursor? }. Cursor values are capped at 512 characters.
+  exportUserData: 16 * 1024,
   generateInsights: 16 * 1024,
   garminWebhook: 1024 * 1024,
   paddleWebhook: 1024 * 1024,
