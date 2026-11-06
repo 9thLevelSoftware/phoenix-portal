@@ -59,7 +59,8 @@ vi.mock("@/lib/supabase", () => {
 
 import { DataSharingSection } from "@/app/components/profile/DataSharingSection";
 
-const SECRET = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw";
+// Obviously fake, and not shaped like a real secret: nothing here verifies it.
+const SECRET = "whsec_test-only-not-a-real-secret";
 
 function endpoint(overrides: Record<string, unknown> = {}) {
 	return {

@@ -685,7 +685,7 @@ export async function installMockSupabase(
 					state.webhookEndpoints.push(created);
 					await respond(201, {
 						endpoint: created,
-						signingSecret: "whsec_e2eSecretShownOnlyOnce0000000000e2e1",
+						signingSecret: "whsec_e2e-test-only-shown-once-1",
 					});
 					return;
 				}
@@ -752,7 +752,7 @@ export async function installMockSupabase(
 					endpoint.signing_key_hint = "e2e2";
 					await respond(200, {
 						endpoint,
-						signingSecret: "whsec_e2eRotatedSecretShownOnce00000000e2e2",
+						signingSecret: "whsec_e2e-test-only-shown-once-2",
 					});
 					return;
 				}
