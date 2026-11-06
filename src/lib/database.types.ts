@@ -4192,8 +4192,8 @@ export type Database = {
 			};
 			set_webhook_endpoint_header: {
 				Args: {
-					p_custom_header_name: string;
-					p_custom_header_value_enc: string;
+					p_custom_header_name?: string;
+					p_custom_header_value_enc?: string;
 					p_endpoint_id: string;
 					p_user_id: string;
 				};
