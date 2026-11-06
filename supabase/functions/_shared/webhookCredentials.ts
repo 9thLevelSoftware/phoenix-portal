@@ -50,8 +50,15 @@ export async function loadWebhookCredentials(
       row.previous_expires_at !== null &&
       Date.parse(row.previous_expires_at) > params.now.getTime();
     if (previousLive) {
-      const previous = await decrypt(row.previous_signing_secret_enc!);
-      if (previous) secrets.push(previous);
+      // The previous secret only smooths a rotation. If it cannot be read,
+      // deliveries still go out signed with the current one; failing here
+      // would stop every delivery over a secret that is being retired.
+      try {
+        const previous = await decrypt(row.previous_signing_secret_enc!);
+        if (previous) secrets.push(previous);
+      } catch {
+        // Signed with the current secret only.
+      }
     }
 
     let customHeader: WebhookCredentials['customHeader'] = null;

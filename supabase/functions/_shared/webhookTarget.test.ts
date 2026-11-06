@@ -153,6 +153,16 @@ Deno.test("webhookTarget: one private address among public ones is a refusal", a
   }
 });
 
+Deno.test("webhookTarget: a resolver that never answers fails closed at the deadline", async () => {
+  const hanging: DnsResolver = () => new Promise<string[]>(() => {});
+  const started = Date.now();
+
+  const target = await resolveWebhookTarget("https://hooks.example.com/in", OWN_HOSTS, hanging, 30);
+
+  assertEquals(target.ok ? "ok" : target.code, "dns_failed");
+  assert(Date.now() - started < 2000);
+});
+
 Deno.test("webhookTarget: a resolver error or an empty answer fails closed", async () => {
   const failing: DnsResolver = () => Promise.reject(new Error("resolver down"));
 

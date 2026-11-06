@@ -417,6 +417,28 @@ Deno.test("webhook-endpoints: a lapsed user can still pause and delete, but not 
   assertEquals(resumed.outbound.length, 0);
 });
 
+Deno.test("webhook-endpoints: rotate, test and resend are refused below FLAME and change nothing", async () => {
+  for (const action of ["rotate_secret", "test", "resend_all"]) {
+    // Arrange
+    const before = endpointRow();
+    const secretBefore = await secretRow();
+    const { call, db, outbound } = harness({
+      tier: "EMBER",
+      tables: { webhook_endpoints: [{ ...before }], webhook_endpoint_secrets: [{ ...secretBefore }] },
+    });
+
+    // Act
+    const response = await call({ action, endpointId: ENDPOINT_A });
+
+    // Assert
+    assertEquals(response.status, 402, action);
+    assertEquals(db.rows("webhook_endpoints"), [before], action);
+    assertEquals(db.rows("webhook_endpoint_secrets"), [secretBefore], action);
+    assertEquals(outbound.length, 0, action);
+    assertEquals(db.rpcCallNames(), [], action);
+  }
+});
+
 Deno.test("webhook-endpoints: pausing a disabled endpoint keeps the reason it was switched off for", async () => {
   const { call, db } = harness({
     tables: {
