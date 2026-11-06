@@ -148,3 +148,8 @@ verify_jwt = false
 
 [functions.strava-sync]
 verify_jwt = true
+
+[functions.webhook-endpoints]
+# Data sharing: the user's JWT is the only credential. The handler also
+# calls auth.getUser() with it and scopes every query by that user id.
+verify_jwt = true

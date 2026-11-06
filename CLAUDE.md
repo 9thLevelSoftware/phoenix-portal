@@ -92,6 +92,7 @@ Edge Function secrets (Supabase Dashboard → Edge Functions → Secrets; read w
 - `SYNC_LWW_ENABLED` — cold-start flag in `supabase/functions/_shared/flags.ts`, `"false"` unless the secret is trimmed any-case `true` (`parseBoolFlag`). Flipping it requires a redeploy; there is no runtime refresh. Its production value is not recorded in this repo — ask the operator rather than assuming.
 - `SYNC_PUSH_TRANSACTION` — cold-start flag in the same file, `"false"` unless the secret is trimmed any-case `true` (`parseBoolFlag`). When on, `mobile-sync-push` runs its whole write sequence in one Postgres transaction (F-014, `_shared/pushTransaction.ts`): a failure part-way commits nothing, and the `sync_complete` broadcast happens only after COMMIT. It connects with `SUPABASE_DB_URL` (provided by Supabase to Edge Functions); if that connection cannot be opened the push falls back to per-call writes and logs `PushTransactionUnavailable`. The response contract is identical either way.
 - `OAUTH_TOKEN_ENCRYPTION_KEY`, `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET`, `FITBIT_CLIENT_ID` / `FITBIT_CLIENT_SECRET`, `GARMIN_CONSUMER_KEY` / `GARMIN_CONSUMER_SECRET`, `GARMIN_WEBHOOK_SECRET` (the webhook 503s without it). The Fitbit client secrets are still read by `complete-oauth`, `fitbit-sync` and `_shared/providerRevoke.ts`, the Garmin consumer secrets only by `_shared/providerRevoke.ts`; the disabled `fitbit-oauth` / `garmin-oauth` callbacks read none.
+- `OAUTH_TOKEN_ENCRYPTION_KEY` also encrypts data-sharing webhook signing secrets and custom header values (`webhook_endpoint_secrets`, written by `webhook-endpoints`); there is no separate webhook key.
 
 Tooling only: `SUPABASE_PROJECT_REF` and the `SUPABASE_AUTH_*` values used by
 `npm run auth:social:push`; `LINEAR_API_KEY` for Symphony.
@@ -193,6 +194,7 @@ a map, not a count.
 - **Mobile:** mobile-sync-push, mobile-sync-pull, mobile-integration-sync
 - **Account / GDPR:** delete-account, export-user-data
 - **Integrations:** disconnect-integration
+- **Data sharing:** webhook-endpoints (FLAME+; the only write path for a user's outbound webhook endpoints. Reads go through owner RLS on `webhook_endpoints` / `webhook_deliveries`)
 - **Analytics:** generate-insights
 - **Rankings:** compute-rankings
 
@@ -214,6 +216,34 @@ else is a 401. Its schedule is created by
 requires an `Authorization` header and verifies the caller itself, 401ing
 without one. **A gateway `verify_jwt = false` never means "unauthenticated" —
 read the handler.**
+
+### Data sharing (outbound webhooks)
+
+A FLAME+ user registers up to three HTTPS endpoints and the portal POSTs their
+own data there as signed events. Read `supabase/functions/_shared/dataSharingScopes.ts`
+before adding a table to it.
+
+- **Capture is by DB trigger, not in `mobile-sync-push`.** Statement-level
+  triggers generated from `private.webhook_entity_sources`
+  (`20261106120000`) insert thin rows into `webhook_deliveries`; the payload
+  is built at send time. A capture error is a WARNING, never an aborted write.
+- **Three lists must agree** (`tests/security/data-sharing-scopes.test.ts`):
+  `dataSharingScopes.ts`, `private.webhook_entity_sources`, and
+  `USER_DATA_MANIFEST`. Every manifest table is either part of an entity or in
+  `NOT_SHAREABLE` with a reason. Never share an INFERNO-gated table, raw
+  telemetry, or Strava-sourced `external_activities` rows.
+- **`_shared/webhookTarget.ts` is the only code that may fetch a user-chosen
+  URL.** https only, public addresses only (checked on save and before every
+  send), redirects never followed, response body never read. DNS rebinding is
+  a stated residual risk there, not a solved one. Send through
+  `_shared/webhookSend.ts`; it adds no Supabase credential and a test asserts
+  that.
+- **Signing is Standard Webhooks** (`_shared/webhookSigning.ts`): the HMAC key
+  is the base64-decoded bytes after `whsec_`. The reference vector in
+  `webhookSigning.test.ts` fails if that changes.
+- The signing secret is returned once, by `create` and `rotate_secret`.
+  `delete` and a pause run before the tier gate so a lapsed user can always
+  stop sharing.
 
 ### The mobile sync contract
 
