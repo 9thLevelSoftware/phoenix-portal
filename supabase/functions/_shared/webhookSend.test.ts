@@ -7,11 +7,12 @@ import {
   webhookEnvelope,
   type WebhookSendDependencies,
 } from "./webhookSend.ts";
+import { testWebhookSecret } from "./testing/webhookSecrets.ts";
 import { signWebhook } from "./webhookSigning.ts";
 import type { DnsResolver } from "./webhookTarget.ts";
 
-const SECRET = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw";
-const OLD_SECRET = "whsec_C2FVsBQIhrscChlQIMV+b5sSYspob7oD";
+const SECRET = testWebhookSecret("a");
+const OLD_SECRET = testWebhookSecret("b");
 const NOW = new Date("2026-11-06T12:00:00.000Z");
 const URL_OK = "https://hooks.example.com/in";
 
