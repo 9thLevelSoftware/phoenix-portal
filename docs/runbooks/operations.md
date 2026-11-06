@@ -1737,6 +1737,89 @@ no reopen path, because auto-reopening would let a records edit un-achieve a
 goal.
 ---
 
+## 15. Data Sharing Webhooks
+
+A Flame+ user's own data is pushed to endpoints they register (Profile >
+Settings > Data Sharing). Receiver-facing behaviour is in
+[`docs/data-sharing-webhooks.md`](../data-sharing-webhooks.md).
+
+### Switch deliveries on, and the kill switch
+
+The `deliver-webhooks` pg_cron job is **created inactive**. Activate it only
+after the `deliver-webhooks` Edge Function is deployed:
+
+```sql
+SELECT cron.alter_job(
+  (SELECT jobid FROM cron.job WHERE jobname = 'deliver-webhooks'),
+  active := true);
+```
+
+Setting `active := false` stops every delivery for every user. Changes keep
+being captured (one waiting row per item, so the queue does not grow without
+bound) and are sent when the job is switched back on. Nothing is lost by
+pausing.
+
+It uses the same Vault secret (`edge_cron_secret`) and Edge secret
+(`CRON_SECRET`) as the other cron-invoked functions; there is nothing extra to
+set.
+
+### Is it working?
+
+```sql
+-- The worker's own responses: 200 = a pass ran; 401 = the Vault secret and
+-- CRON_SECRET differ; 404 = the function is not deployed.
+SELECT id, status_code, timed_out, error_msg, created
+FROM net._http_response ORDER BY created DESC LIMIT 20;
+
+-- Queue depth and what is failing.
+SELECT status, last_error_code, count(*)
+FROM public.webhook_deliveries
+WHERE created_at > now() - interval '24 hours'
+GROUP BY 1, 2 ORDER BY 3 DESC;
+
+-- Endpoints that are not active, and why.
+SELECT status, disabled_reason, count(*)
+FROM public.webhook_endpoints GROUP BY 1, 2;
+```
+
+| `last_error_code` | Meaning |
+| --- | --- |
+| `http_error`, `timeout`, `connection_failed`, `dns_failed`, `redirect_not_followed` | The receiver's side. Retried on the backoff schedule. |
+| `target_not_allowed` | The stored URL now resolves to a private or reserved address, or is one of our own hosts. Not sent. |
+| `internal_error` | Ours: the endpoint's secret could not be read or decrypted, or a payload read failed. Check `OAUTH_TOKEN_ENCRYPTION_KEY` and the function logs (`[DELIVER_WEBHOOKS]`). |
+| `subscription_lapsed` | The owner dropped below Flame; the endpoint was paused. Expected. |
+| `superseded`, `scope_removed`, `endpoint_inactive`, `not_shareable` | Closed without sending, by design. |
+
+A row stuck in `delivering` is a worker that died mid-send; it is reclaimed
+after its 3-minute lease with no action needed.
+
+### A user reports an endpoint "switched itself off"
+
+`webhook_endpoints.disabled_reason` says why: `too_many_failures` (a delivery
+used all nine attempts), `endpoint_gone` (the receiver answered 410), or
+`subscription_lapsed`. The user switches it back on in the portal, which sends
+one test delivery first. Do not set `status = 'active'` by hand: the table
+requires `disabled_reason` to be cleared in the same statement, and skipping
+the test delivery hides the fault that switched it off.
+
+### Stop one user's sharing immediately
+
+```sql
+UPDATE public.webhook_endpoints
+SET status = 'paused', disabled_reason = 'user_paused'
+WHERE user_id = '<user id>' AND status = 'active';
+```
+
+Account deletion removes endpoints, secrets and the delivery log by cascade.
+
+### What must never be logged or pasted into a ticket
+
+An endpoint's URL path or query (it may itself be a credential), a signing
+secret, a custom header value, or a payload. The functions log ids, status
+codes and fixed reason codes only.
+
+---
+
 ## Related Runbooks
 
 - [Billing Incident Response](billing-incident-response.md) -- manual fixes,

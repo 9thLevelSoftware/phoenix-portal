@@ -838,6 +838,14 @@ describe("SPA -> Edge _shared import boundary", () => {
 		// re-open the door; it passes every predicate the test below checks.
 		"userDataManifest.ts",
 		"workoutModes.ts",
+		// Reviewed 2026-11-06 for data sharing: `src/lib/dataSharing.ts`
+		// re-exports the scope list and its user-facing copy so the settings
+		// form offers exactly the scopes the server and the table constraint
+		// accept (parity: tests/security/data-sharing-scopes.test.ts). Pure
+		// data and two lookup helpers with ZERO import statements; it names
+		// table names only, no credential and no client. Checked against every
+		// predicate in the test below.
+		"dataSharingScopes.ts",
 	];
 
 	function readShared(file: string) {
