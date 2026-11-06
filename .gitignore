@@ -69,3 +69,6 @@ stats.html
 
 # Open-catalogue fetch cache (images + upstream JSON)
 supabase/seed-data/.cache/
+
+# Supabase CLI local branch marker (written by `supabase start`)
+supabase/.branches/
