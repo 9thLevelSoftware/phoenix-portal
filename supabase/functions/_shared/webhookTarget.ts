@@ -30,6 +30,8 @@
 
 export const WEBHOOK_URL_MAX_LENGTH = 2048;
 export const WEBHOOK_REQUEST_TIMEOUT_MS = 10_000;
+/** A resolver that does not answer in this long counts as a failed lookup. */
+export const WEBHOOK_DNS_TIMEOUT_MS = 5_000;
 
 export type WebhookTargetRejection =
   | 'url_invalid'
@@ -277,10 +279,19 @@ export type ResolvedWebhookTarget =
  * One private answer among public ones is a refusal, since the connection
  * may use any of them. A resolver error, or no address at all, fails closed.
  */
+function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('dns_timeout')), ms);
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
 export async function resolveWebhookTarget(
   raw: unknown,
   ownHosts: readonly string[],
   resolveDns: DnsResolver,
+  dnsTimeoutMs: number = WEBHOOK_DNS_TIMEOUT_MS,
 ): Promise<ResolvedWebhookTarget> {
   const parsed = parseWebhookUrl(raw, ownHosts);
   if (!parsed.ok) return parsed;
@@ -288,10 +299,16 @@ export async function resolveWebhookTarget(
 
   let addresses: string[];
   try {
-    const [v4, v6] = await Promise.all([
-      resolveDns(parsed.hostname, 'A'),
-      resolveDns(parsed.hostname, 'AAAA'),
-    ]);
+    // The request timeout only starts once the fetch does; without a
+    // deadline here a resolver that hangs would hold a delivery, and the
+    // worker pass it belongs to, for as long as it liked.
+    const [v4, v6] = await withDeadline(
+      Promise.all([
+        resolveDns(parsed.hostname, 'A'),
+        resolveDns(parsed.hostname, 'AAAA'),
+      ]),
+      dnsTimeoutMs,
+    );
     addresses = [...v4, ...v6];
   } catch {
     return { ok: false, code: 'dns_failed' };
