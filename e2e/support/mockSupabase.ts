@@ -108,6 +108,8 @@ interface MockSupabaseOptions {
 	personalRecords?: Record<string, unknown>[];
 	phaseStatistics?: Record<string, unknown>[];
 	exerciseProgress?: Record<string, unknown>[];
+	/** Data sharing endpoints the user already has (webhook_endpoints rows). */
+	webhookEndpoints?: Record<string, unknown>[];
 }
 
 const MONTHLY_PRICE_IDS: Record<MockSubscriptionTier, string | null> = {
@@ -168,6 +170,8 @@ export async function installMockSupabase(
 		personalRecords: options.personalRecords ?? [],
 		phaseStatistics: options.phaseStatistics ?? [],
 		exerciseProgress: options.exerciseProgress ?? [],
+		webhookEndpoints: options.webhookEndpoints ?? [],
+		webhookDeliveries: [] as Record<string, unknown>[],
 		onboarding: {
 			id: "onboarding-1",
 			user_id: userId,
@@ -624,6 +628,138 @@ export async function installMockSupabase(
 				return;
 			}
 
+			// Data sharing: the one write path for webhook endpoints. Mirrors the
+			// Edge Function's contract closely enough for the UI: the tier gate
+			// (402 below FLAME, except delete and a pause-only update), the
+			// one-time secret, and a test delivery written to the log.
+			if (functionName === "webhook-endpoints") {
+				const respond = (status: number, payload: unknown) =>
+					route.fulfill({
+						status,
+						contentType: "application/json",
+						body: JSON.stringify(payload),
+					});
+				const pauseOnly =
+					body.action === "update" &&
+					body.status === "paused" &&
+					Object.keys(body).every((key) =>
+						["action", "endpointId", "status"].includes(key),
+					);
+				const tier = state.subscription?.tier ?? "FREE";
+				const flame = tier === "FLAME" || tier === "INFERNO";
+				if (body.action !== "delete" && !pauseOnly && !flame) {
+					await respond(402, {
+						error: "subscription_required",
+						message: "This feature requires FLAME.",
+						requiredTier: "FLAME",
+						currentTier: tier,
+					});
+					return;
+				}
+				const timestamp = new Date().toISOString();
+
+				if (body.action === "create") {
+					if (!String(body.url).startsWith("https://")) {
+						await respond(400, {
+							error: "url_not_https",
+							message: "The URL must start with https://.",
+						});
+						return;
+					}
+					const created = {
+						id: nextId("endpoint"),
+						user_id: userId,
+						label: body.label,
+						url: body.url,
+						scopes: body.scopes,
+						status: "active",
+						disabled_reason: null,
+						custom_header_name: body.customHeader?.name ?? null,
+						signing_key_hint: "e2e1",
+						consecutive_failures: 0,
+						last_success_at: null,
+						last_failure_at: null,
+						created_at: timestamp,
+						updated_at: timestamp,
+					};
+					state.webhookEndpoints.push(created);
+					await respond(201, {
+						endpoint: created,
+						signingSecret: "whsec_e2e-test-only-shown-once-1",
+					});
+					return;
+				}
+
+				const endpoint = state.webhookEndpoints.find(
+					(row) => row.id === body.endpointId,
+				);
+				if (!endpoint) {
+					await respond(404, {
+						error: "endpoint_not_found",
+						message: "Endpoint not found.",
+					});
+					return;
+				}
+				if (body.action === "delete") {
+					state.webhookEndpoints = state.webhookEndpoints.filter(
+						(row) => row.id !== body.endpointId,
+					);
+					await respond(200, { deleted: true });
+					return;
+				}
+				if (body.action === "update") {
+					if (body.label !== undefined) endpoint.label = body.label;
+					if (body.url !== undefined) endpoint.url = body.url;
+					if (body.scopes !== undefined) endpoint.scopes = body.scopes;
+					if (body.status === "paused" && endpoint.status === "active") {
+						endpoint.status = "paused";
+						endpoint.disabled_reason = "user_paused";
+					}
+					if (body.status === "active") {
+						endpoint.status = "active";
+						endpoint.disabled_reason = null;
+					}
+					endpoint.updated_at = timestamp;
+					await respond(200, { endpoint });
+					return;
+				}
+				if (body.action === "test") {
+					state.webhookDeliveries.unshift({
+						id: nextId("delivery"),
+						endpoint_id: endpoint.id,
+						user_id: userId,
+						entity: "ping",
+						entity_id: "ping",
+						event_type: "ping",
+						status: "delivered",
+						attempt_count: 1,
+						next_attempt_at: timestamp,
+						last_status_code: 200,
+						last_error_code: null,
+						duration_ms: 42,
+						created_at: timestamp,
+						finished_at: timestamp,
+					});
+					await respond(200, {
+						delivered: true,
+						statusCode: 200,
+						errorCode: null,
+						durationMs: 42,
+					});
+					return;
+				}
+				if (body.action === "rotate_secret") {
+					endpoint.signing_key_hint = "e2e2";
+					await respond(200, {
+						endpoint,
+						signingSecret: "whsec_e2e-test-only-shown-once-2",
+					});
+					return;
+				}
+				await respond(200, { enqueued: 0 });
+				return;
+			}
+
 			await route.fulfill({
 				status: 200,
 				contentType: "application/json",
@@ -901,6 +1037,29 @@ export async function installMockSupabase(
 					status: 200,
 					contentType: "application/json",
 					body: JSON.stringify(rows),
+				});
+				return;
+			}
+			case "webhook_endpoints": {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify(state.webhookEndpoints),
+				});
+				return;
+			}
+			case "webhook_deliveries": {
+				const endpointId = url.searchParams
+					.get("endpoint_id")
+					?.replace(/^eq\./, "");
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify(
+						state.webhookDeliveries.filter(
+							(row) => !endpointId || row.endpoint_id === endpointId,
+						),
+					),
 				});
 				return;
 			}

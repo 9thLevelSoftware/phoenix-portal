@@ -48,6 +48,7 @@ export const TIER_PRICING: TierPricing[] = [
 			"Community hub, routines & cycles",
 			"Analytics, leaderboards, challenges & compare",
 			"Integrations (Strava, Hevy, Liftosaur) & session replay (rep-by-rep)",
+			"Data sharing: send your own data to an endpoint you choose (webhooks)",
 		],
 	},
 	{

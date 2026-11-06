@@ -20,6 +20,7 @@ import { Link, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { PageShell } from "@/app/components/PageShell";
 import { DangerZone } from "@/app/components/profile/DangerZone";
+import { DataSharingSection } from "@/app/components/profile/DataSharingSection";
 import { ExportSection } from "@/app/components/profile/ExportSection";
 import { ProfileAvatarImage } from "@/app/components/profile/ProfileAvatarImage";
 import { TierBadge } from "@/app/components/TierBadge";
@@ -1162,6 +1163,10 @@ export function Profile() {
 
 						{/* Data Export - available to all tiers (no SubscriptionGate) */}
 						<ExportSection />
+
+						{/* Data sharing: listed for every tier so a lapsed user can pause
+						    or delete; adding and editing need Flame (server-enforced). */}
+						<DataSharingSection />
 
 						{/* Account Deletion - available to all tiers (GDPR right to erasure) */}
 						<DangerZone />
