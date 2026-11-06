@@ -46,6 +46,13 @@
 -- Idempotent: safe to re-run. Re-applying never flips a cron job's `active`
 -- flag and re-issues every grant.
 --
+-- Operator, applying this file: it creates three triggers on each of the
+-- busiest tables (workout_sessions, exercises, personal_records, routines,
+-- ...), and each CREATE TRIGGER needs a brief lock that waits behind any
+-- write in progress. Run it, and its BEGIN ... ROLLBACK rehearsal, at low
+-- traffic. A `lock_timeout` failure is a clean retry: the file is one
+-- transaction, so nothing was applied.
+--
 -- Operator, after the `deliver-webhooks` Edge Function is deployed:
 --   SELECT cron.alter_job(
 --     (SELECT jobid FROM cron.job WHERE jobname = 'deliver-webhooks'),
@@ -753,16 +760,32 @@ BEGIN
     v_next := pg_catalog.now() + pg_catalog.make_interval(secs => v_wait);
   END IF;
 
-  UPDATE public.webhook_deliveries d
-  SET status = v_status,
-      event_type = coalesce(p_event_type, d.event_type),
-      last_status_code = p_status_code,
-      last_error_code = v_error,
-      duration_ms = p_duration_ms,
-      next_attempt_at = coalesce(v_next, d.next_attempt_at),
-      claimed_at = NULL,
-      finished_at = CASE WHEN v_status = 'pending' THEN NULL ELSE pg_catalog.now() END
-  WHERE d.id = v_row.id;
+  BEGIN
+    UPDATE public.webhook_deliveries d
+    SET status = v_status,
+        event_type = coalesce(p_event_type, d.event_type),
+        last_status_code = p_status_code,
+        last_error_code = v_error,
+        duration_ms = p_duration_ms,
+        next_attempt_at = coalesce(v_next, d.next_attempt_at),
+        claimed_at = NULL,
+        finished_at = CASE WHEN v_status = 'pending' THEN NULL ELSE pg_catalog.now() END
+    WHERE d.id = v_row.id;
+  EXCEPTION WHEN unique_violation THEN
+    -- A capture trigger committed a pending row for the same entity between
+    -- the EXISTS check above and this UPDATE (READ COMMITTED). Same outcome
+    -- as finding it up front: the newer row carries the current state.
+    v_status := 'skipped';
+    UPDATE public.webhook_deliveries d
+    SET status = 'skipped',
+        event_type = coalesce(p_event_type, d.event_type),
+        last_status_code = p_status_code,
+        last_error_code = 'superseded',
+        duration_ms = p_duration_ms,
+        claimed_at = NULL,
+        finished_at = pg_catalog.now()
+    WHERE d.id = v_row.id;
+  END;
 
   IF p_outcome = 'delivered' THEN
     UPDATE public.webhook_endpoints e

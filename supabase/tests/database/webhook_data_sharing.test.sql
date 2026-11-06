@@ -379,6 +379,37 @@ SELECT is(pg_temp.pending('a', 'external_activity'), 1,
 SELECT pg_temp.settle();
 
 -- ---------------------------------------------------------------------------
+-- FP-3: a capture that fails must not abort the user's write.
+-- The outbox is made to reject routine rows; the routine must still be saved.
+-- ---------------------------------------------------------------------------
+SELECT diag('database:webhook-capture-failure-never-aborts-the-write');
+
+ALTER TABLE public.webhook_deliveries
+    ADD CONSTRAINT wh_force_capture_failure CHECK (entity <> 'routine') NOT VALID;
+
+SELECT lives_ok(
+    $q$INSERT INTO public.routines (id, user_id, name)
+       VALUES ('d0d0d0d0-000e-4000-8000-00000000000a',
+               'd0d0d0d0-0000-4000-8000-00000000000a', 'Survives a broken outbox')$q$,
+    'a write succeeds even when its webhook capture fails'
+);
+
+SELECT is(
+    (SELECT count(*)::int FROM public.routines
+      WHERE id = 'd0d0d0d0-000e-4000-8000-00000000000a'),
+    1,
+    'the row written during the failed capture is stored'
+);
+
+SELECT is(pg_temp.pending('a', 'routine'), 0,
+    'the failed capture left no delivery behind');
+
+ALTER TABLE public.webhook_deliveries DROP CONSTRAINT wh_force_capture_failure;
+
+DELETE FROM public.routines WHERE id = 'd0d0d0d0-000e-4000-8000-00000000000a';
+SELECT pg_temp.settle();
+
+-- ---------------------------------------------------------------------------
 -- A paused endpoint captures nothing.
 -- ---------------------------------------------------------------------------
 SELECT diag('database:webhook-capture-paused-endpoint');
