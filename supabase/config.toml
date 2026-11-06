@@ -153,3 +153,11 @@ verify_jwt = true
 # Data sharing: the user's JWT is the only credential. The handler also
 # calls auth.getUser() with it and scopes every query by that user id.
 verify_jwt = true
+
+[functions.deliver-webhooks]
+# Auth: not a browser endpoint. pg_cron reaches it through
+# private.invoke_edge_function with no JWT (job `deliver-webhooks`). The
+# handler compares `x-cron-secret` in constant time to CRON_SECRET
+# (_shared/cronSecret.ts) or accepts the service-role bearer; anything else
+# is a 401 before any row is claimed.
+verify_jwt = false

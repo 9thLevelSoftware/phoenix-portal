@@ -194,7 +194,7 @@ a map, not a count.
 - **Mobile:** mobile-sync-push, mobile-sync-pull, mobile-integration-sync
 - **Account / GDPR:** delete-account, export-user-data
 - **Integrations:** disconnect-integration
-- **Data sharing:** webhook-endpoints (FLAME+; the only write path for a user's outbound webhook endpoints. Reads go through owner RLS on `webhook_endpoints` / `webhook_deliveries`)
+- **Data sharing:** webhook-endpoints (FLAME+; the only write path for a user's outbound webhook endpoints. Reads go through owner RLS on `webhook_endpoints` / `webhook_deliveries`), deliver-webhooks (the delivery worker; `verify_jwt = false`, `x-cron-secret` or service role, invoked every minute by the `deliver-webhooks` pg_cron job, which is created inactive)
 - **Analytics:** generate-insights
 - **Rankings:** compute-rankings
 
@@ -241,6 +241,14 @@ before adding a table to it.
 - **Signing is Standard Webhooks** (`_shared/webhookSigning.ts`): the HMAC key
   is the base64-decoded bytes after `whsec_`. The reference vector in
   `webhookSigning.test.ts` fails if that changes.
+- **`_shared/webhookPayload.ts` is the only code that reads user data for a
+  webhook.** The root row is read with its id AND the delivery owner's user
+  id; children are read under ids from that read. Retries, backoff, the
+  FLAME check and auto-disable live in SQL (`claim_webhook_deliveries`,
+  `complete_webhook_delivery`), not in the worker.
+- **Kill switch:** `SELECT cron.alter_job((SELECT jobid FROM cron.job WHERE
+  jobname = 'deliver-webhooks'), active := false);` stops every delivery.
+  Rows keep queueing (coalesced) and are sent when it is switched back on.
 - The signing secret is returned once, by `create` and `rotate_secret`.
   `delete` and a pause run before the tier gate so a lapsed user can always
   stop sharing.
