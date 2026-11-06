@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertNotEquals } from "jsr:@std/assert@1";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { FakeDb, fakeClient, type Row } from "../_shared/testing/fakeSupabase.ts";
+import { testWebhookSecret } from "../_shared/testing/webhookSecrets.ts";
 import { assertNoSecretsLogged, captureLogs } from "../_shared/testLogCapture.ts";
 import { signWebhook } from "../_shared/webhookSigning.ts";
 import type { DnsResolver } from "../_shared/webhookTarget.ts";
@@ -13,8 +14,8 @@ import {
 const USER_A = "aaaaaaaa-0000-4000-8000-00000000000a";
 const USER_B = "bbbbbbbb-0000-4000-8000-00000000000b";
 const NOW = new Date("2026-11-06T12:00:00.000Z");
-const SECRET_1 = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw";
-const SECRET_2 = "whsec_C2FVsBQIhrscChlQIMV+b5sSYspob7oD";
+const SECRET_1 = testWebhookSecret("a");
+const SECRET_2 = testWebhookSecret("b");
 const HEADER_VALUE = "Bearer receiver-credential-123";
 const ENDPOINT_A = "eeeeeeee-0000-4000-8000-00000000000a";
 
@@ -41,7 +42,7 @@ function endpointRow(overrides: Row = {}): Row {
     status: "active",
     disabled_reason: null,
     custom_header_name: null,
-    signing_key_hint: "LaSw",
+    signing_key_hint: SECRET_1.slice(-4),
     consecutive_failures: 0,
     last_success_at: null,
     last_failure_at: null,
@@ -230,7 +231,7 @@ Deno.test("webhook-endpoints: create stores the endpoint for the JWT user and re
   assertEquals(stored.label, "Home lab");
   assertEquals(stored.url, "https://hooks.example.com/in");
   assertEquals(stored.scopes, ["workouts", "personal_records"]);
-  assertEquals(stored.signing_key_hint, "LaSw");
+  assertEquals(stored.signing_key_hint, SECRET_1.slice(-4));
   // At rest the secret is ciphertext, never the plaintext.
   const secret = db.rows("webhook_endpoint_secrets")[0];
   assertEquals(secret.user_id, USER_A);
@@ -494,7 +495,7 @@ Deno.test("webhook-endpoints: rotate returns a new secret once and keeps the old
 
   assertEquals(response.status, 200);
   assertEquals(body.signingSecret, SECRET_2);
-  assertEquals(body.endpoint.signing_key_hint, "b7oD");
+  assertEquals(body.endpoint.signing_key_hint, SECRET_2.slice(-4));
   const stored = db.rows("webhook_endpoint_secrets")[0];
   assertEquals(await decrypt(stored.signing_secret_enc as string), SECRET_2);
   assertEquals(await decrypt(stored.previous_signing_secret_enc as string), SECRET_1);

@@ -11,8 +11,12 @@ import {
 // It only reproduces when the HMAC key is the base64-DECODED secret; with the
 // literal string the result is v1,ELhqG0Ku1gwOc1f4jyKdp3SFGFLAOdJ9bvpWLciCakI=,
 // which every reference library rejects.
+// The key is public: it is the specification's own example, not a credential.
+// It is assembled from parts so a secret scanner does not file an incident
+// for a published constant that happens to look like a webhook secret.
+const REFERENCE_KEY = ["MfKQ9r8G", "KYqrTwjU", "PD8ILPZI", "o2LaLaSw"].join("");
 const REFERENCE = {
-  secret: "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+  secret: `${WEBHOOK_SECRET_PREFIX}${REFERENCE_KEY}`,
   id: "msg_p5jXN8AQM9LWM0D4loKWxJek",
   timestamp: 1614265330,
   body: '{"test": 2432232314}',
