@@ -163,7 +163,48 @@ describe("data sharing scope registry", () => {
 			// The capture records the parent id found in this column.
 			expect(child?.fkColumn).toBe(row.idColumn);
 			expect(child?.parent).toBe(entity?.table);
+			// A table with its own trigger does not lean on another one.
+			expect(child?.capturedThrough, row.sourceTable).toBeUndefined();
 		}
+	});
+
+	it("has a capture path for every payload child: its own trigger, or a sibling's it names", () => {
+		// The other direction. A child that is built into the payload but that
+		// nothing captures would change without a delivery ever being queued.
+		const capturedTables = new Set(sources.map((source) => source.sourceTable));
+		for (const entity of DATA_SHARING_ENTITIES) {
+			for (const child of entity.children) {
+				if (capturedTables.has(child.table)) continue;
+				expect(
+					child.capturedThrough,
+					`${child.table} is in the ${entity.entity} payload but has no capture trigger and names no sibling that covers it`,
+				).toBeDefined();
+				const sibling = entity.children.find(
+					(entry) => entry.table === child.capturedThrough,
+				);
+				expect(
+					sibling,
+					`${child.table} -> ${child.capturedThrough}`,
+				).toBeDefined();
+				expect(
+					capturedTables.has(child.capturedThrough ?? ""),
+					`${child.capturedThrough} is not a capture source`,
+				).toBe(true);
+			}
+		}
+	});
+
+	it("keeps billing and internal profile columns out of every payload", () => {
+		// The manifest exports stripe_customer_id on purpose (it is the user's
+		// own billing id), and its credential-name rule does not match it, so
+		// this list is the only thing keeping it out of a third-party endpoint.
+		expect(DATA_SHARING_OMITTED_COLUMNS.profiles).toEqual(
+			expect.arrayContaining([
+				"stripe_customer_id",
+				"feature_flags",
+				"digest_last_sent_at",
+			]),
+		);
 	});
 
 	it("excludes in the trigger exactly what the payload builder excludes", () => {

@@ -102,6 +102,51 @@ SELECT is(
     'every entity source table has its insert, update and delete capture trigger'
 );
 
+-- A trigger's arguments are frozen when it is created. If a migration edits
+-- private.webhook_entity_sources and does not call
+-- private.sync_webhook_capture_triggers() again, capture and backfill would
+-- disagree (for example about the Strava exclusion) with nothing to show it.
+SELECT is(
+    (SELECT count(*)::int
+       FROM private.webhook_entity_sources s
+       JOIN pg_trigger t
+         ON t.tgrelid = format('public.%I', s.source_table)::regclass
+        AND t.tgname IN ('webhook_capture_insert', 'webhook_capture_update',
+                         'webhook_capture_delete')
+      WHERE encode(t.tgargs, 'escape') IS DISTINCT FROM
+            concat_ws('\000', s.scope, s.entity, s.id_column,
+                      coalesce(s.user_column, ''), coalesce(s.parent_table, ''),
+                      coalesce(s.row_filter, '')) || '\000'),
+    0,
+    'every capture trigger carries the arguments of its current entity source row'
+);
+
+SELECT is(
+    (SELECT count(*)::int FROM pg_trigger t
+      WHERE NOT t.tgisinternal
+        AND t.tgname IN ('webhook_capture_insert', 'webhook_capture_update',
+                         'webhook_capture_delete')),
+    (SELECT 3 * count(*)::int FROM private.webhook_entity_sources),
+    'no capture trigger exists on a table that is not an entity source'
+);
+
+-- `sets` and `rep_summaries` are sent inside a workout but have no capture
+-- trigger: they are only ever written together with `exercises`, which has
+-- one. That holds while no browser role can write them. If this fails, a
+-- set-only edit has become possible and needs its own capture path.
+SELECT is(
+    (SELECT count(*)::int
+       FROM (VALUES ('public.sets'), ('public.rep_summaries')) AS t(rel)
+      CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(role)
+      CROSS JOIN (VALUES ('INSERT'), ('UPDATE'), ('DELETE')) AS p(priv)
+      WHERE has_table_privilege(r.role, t.rel, p.priv)),
+    0,
+    'no browser role can write sets or rep_summaries, which workout capture relies on'
+);
+
+SELECT has_index('public', 'webhook_endpoints', 'webhook_endpoints_active_scopes_idx',
+    'the active-scope probe has a partial GIN index');
+
 -- ---------------------------------------------------------------------------
 -- Fixtures: A and B are FLAME, C has no subscription (FREE).
 -- ---------------------------------------------------------------------------
