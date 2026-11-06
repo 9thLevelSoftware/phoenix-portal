@@ -2884,6 +2884,160 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			webhook_deliveries: {
+				Row: {
+					attempt_count: number;
+					claimed_at: string | null;
+					created_at: string;
+					duration_ms: number | null;
+					endpoint_id: string;
+					entity: string;
+					entity_id: string;
+					event_type: string | null;
+					finished_at: string | null;
+					id: string;
+					last_error_code: string | null;
+					last_status_code: number | null;
+					next_attempt_at: string;
+					status: string;
+					user_id: string;
+				};
+				ComputedFields: never;
+				Insert: {
+					attempt_count?: number;
+					claimed_at?: string | null;
+					created_at?: string;
+					duration_ms?: number | null;
+					endpoint_id: string;
+					entity: string;
+					entity_id: string;
+					event_type?: string | null;
+					finished_at?: string | null;
+					id?: string;
+					last_error_code?: string | null;
+					last_status_code?: number | null;
+					next_attempt_at?: string;
+					status?: string;
+					user_id: string;
+				};
+				Update: {
+					attempt_count?: number;
+					claimed_at?: string | null;
+					created_at?: string;
+					duration_ms?: number | null;
+					endpoint_id?: string;
+					entity?: string;
+					entity_id?: string;
+					event_type?: string | null;
+					finished_at?: string | null;
+					id?: string;
+					last_error_code?: string | null;
+					last_status_code?: number | null;
+					next_attempt_at?: string;
+					status?: string;
+					user_id?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "webhook_deliveries_endpoint_fkey";
+						columns: ["endpoint_id", "user_id"];
+						isOneToOne: false;
+						referencedRelation: "webhook_endpoints";
+						referencedColumns: ["id", "user_id"];
+					},
+				];
+			};
+			webhook_endpoint_secrets: {
+				Row: {
+					custom_header_value_enc: string | null;
+					endpoint_id: string;
+					previous_expires_at: string | null;
+					previous_signing_secret_enc: string | null;
+					signing_secret_enc: string;
+					updated_at: string;
+					user_id: string;
+				};
+				ComputedFields: never;
+				Insert: {
+					custom_header_value_enc?: string | null;
+					endpoint_id: string;
+					previous_expires_at?: string | null;
+					previous_signing_secret_enc?: string | null;
+					signing_secret_enc: string;
+					updated_at?: string;
+					user_id: string;
+				};
+				Update: {
+					custom_header_value_enc?: string | null;
+					endpoint_id?: string;
+					previous_expires_at?: string | null;
+					previous_signing_secret_enc?: string | null;
+					signing_secret_enc?: string;
+					updated_at?: string;
+					user_id?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "webhook_endpoint_secrets_endpoint_fkey";
+						columns: ["endpoint_id", "user_id"];
+						isOneToOne: false;
+						referencedRelation: "webhook_endpoints";
+						referencedColumns: ["id", "user_id"];
+					},
+				];
+			};
+			webhook_endpoints: {
+				Row: {
+					consecutive_failures: number;
+					created_at: string;
+					custom_header_name: string | null;
+					disabled_reason: string | null;
+					id: string;
+					label: string;
+					last_failure_at: string | null;
+					last_success_at: string | null;
+					scopes: string[];
+					signing_key_hint: string;
+					status: string;
+					updated_at: string;
+					url: string;
+					user_id: string;
+				};
+				ComputedFields: never;
+				Insert: {
+					consecutive_failures?: number;
+					created_at?: string;
+					custom_header_name?: string | null;
+					disabled_reason?: string | null;
+					id?: string;
+					label: string;
+					last_failure_at?: string | null;
+					last_success_at?: string | null;
+					scopes: string[];
+					signing_key_hint: string;
+					status?: string;
+					updated_at?: string;
+					url: string;
+					user_id: string;
+				};
+				Update: {
+					consecutive_failures?: number;
+					created_at?: string;
+					custom_header_name?: string | null;
+					disabled_reason?: string | null;
+					id?: string;
+					label?: string;
+					last_failure_at?: string | null;
+					last_success_at?: string | null;
+					scopes?: string[];
+					signing_key_hint?: string;
+					status?: string;
+					updated_at?: string;
+					url?: string;
+					user_id?: string;
+				};
+				Relationships: [];
+			};
 			workout_deletion_tombstones: {
 				Row: {
 					component_session_id: string | null;
@@ -3220,6 +3374,21 @@ export type Database = {
 					retry_after_seconds: number;
 				}[];
 			};
+			claim_webhook_deliveries: {
+				Args: {
+					p_lease_seconds?: number;
+					p_limit?: number;
+					p_per_endpoint?: number;
+				};
+				Returns: {
+					delivery_attempt: number;
+					delivery_endpoint_id: string;
+					delivery_entity: string;
+					delivery_entity_id: string;
+					delivery_id: string;
+					delivery_user_id: string;
+				}[];
+			};
 			cleanup_routine_exercise_orphans: {
 				Args: {
 					p_keep_ids?: string[];
@@ -3227,6 +3396,19 @@ export type Database = {
 					p_user_id: string;
 				};
 				Returns: number;
+			};
+			complete_webhook_delivery: {
+				Args: {
+					p_attempt: number;
+					p_delivery_id: string;
+					p_duration_ms?: number;
+					p_error_code?: string;
+					p_event_type?: string;
+					p_outcome: string;
+					p_retry_after_seconds?: number;
+					p_status_code?: number;
+				};
+				Returns: string;
 			};
 			create_cycle_with_days: {
 				Args: {
@@ -3251,6 +3433,19 @@ export type Database = {
 					p_exercises: Json;
 					p_local_profile_id?: string;
 					p_name: string;
+				};
+				Returns: string;
+			};
+			create_webhook_endpoint: {
+				Args: {
+					p_custom_header_name?: string;
+					p_custom_header_value_enc?: string;
+					p_label: string;
+					p_scopes: string[];
+					p_signing_key_hint: string;
+					p_signing_secret_enc: string;
+					p_url: string;
+					p_user_id: string;
 				};
 				Returns: string;
 			};
@@ -3323,6 +3518,10 @@ export type Database = {
 			disconnect_integration: {
 				Args: { p_provider: string; p_timestamp: string; p_user_id: string };
 				Returns: undefined;
+			};
+			enqueue_webhook_backfill: {
+				Args: { p_endpoint_id: string; p_user_id: string };
+				Returns: number;
 			};
 			exercise_frequency: { Args: { p_profile_id?: string }; Returns: Json };
 			exercise_names: { Args: { p_profile_id?: string }; Returns: Json };
@@ -3945,6 +4144,16 @@ export type Database = {
 				};
 				Returns: Json;
 			};
+			rotate_webhook_signing_secret: {
+				Args: {
+					p_endpoint_id: string;
+					p_overlap_seconds?: number;
+					p_signing_key_hint: string;
+					p_signing_secret_enc: string;
+					p_user_id: string;
+				};
+				Returns: boolean;
+			};
 			safe_jsonb_int: {
 				Args: { p_default: number; p_key: string; p_obj: Json };
 				Returns: number;
@@ -3980,6 +4189,15 @@ export type Database = {
 			set_insights_batch_cursor: {
 				Args: { p_cursor: string };
 				Returns: undefined;
+			};
+			set_webhook_endpoint_header: {
+				Args: {
+					p_custom_header_name?: string;
+					p_custom_header_value_enc?: string;
+					p_endpoint_id: string;
+					p_user_id: string;
+				};
+				Returns: boolean;
 			};
 			subscription_tier_for: { Args: { p_user_id: string }; Returns: string };
 			sweep_deleted_account_residue: {
