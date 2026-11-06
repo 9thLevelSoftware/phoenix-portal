@@ -176,12 +176,18 @@ export class FakeQuery implements PromiseLike<Result> {
   private orderBy: { col: string; asc: boolean } | null = null;
   private max: number | null = null;
   private returning = false;
+  private deleting = false;
 
   constructor(private rows: Row[], private uniqueIndexes: FakeUniqueIndex[] = []) {}
 
   select(_cols?: string) {
     // `insert(...).select()` returns the inserted rows, as PostgREST does.
     if (this.insertRows) this.returning = true;
+    return this;
+  }
+  /** `delete().eq(...)`: removes the matching rows; `.select()` returns them. */
+  delete() {
+    this.deleting = true;
     return this;
   }
   update(patch: Row) {
@@ -306,6 +312,10 @@ export class FakeQuery implements PromiseLike<Result> {
       return { data: copies[0] ?? null, error: null };
     }
     let matched = this.rows.filter((r) => this.filters.every((f) => f(r)));
+    if (this.deleting) {
+      for (const row of matched) this.rows.splice(this.rows.indexOf(row), 1);
+      return { data: matched.map((r) => ({ ...r })), error: null };
+    }
     if (this.patch) {
       // Unique indexes hold for UPDATEs too, all or nothing (as Postgres).
       const patched = matched.map((r) => ({ ...r, ...this.patch }));
