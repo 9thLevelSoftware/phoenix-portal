@@ -20,9 +20,14 @@
 --      (id, user_id) makes it impossible to pair one user's entity with
 --      another user's endpoint (FP-1).
 --   4. private.webhook_entity_sources: which table feeds which entity and
---      scope. It drives the capture triggers and the backfill, so the two
---      cannot drift. supabase/functions/_shared/dataSharingScopes.ts mirrors
---      it for the payload builder (parity: tests/security/data-sharing-scopes.test.ts).
+--      scope. The backfill reads it directly. The capture triggers are
+--      built FROM it by private.sync_webhook_capture_triggers(), and a
+--      trigger's arguments are frozen when it is created: a later migration
+--      that edits a row MUST call that function again, or the triggers keep
+--      the old values. webhook_data_sharing.test.sql fails when a trigger's
+--      arguments differ from its row. supabase/functions/_shared/
+--      dataSharingScopes.ts mirrors the table for the payload builder
+--      (parity: tests/security/data-sharing-scopes.test.ts).
 --   5. private.enqueue_webhook_deliveries(): statement-level capture trigger
 --      on every source table. Triggers, not a hook in mobile-sync-push, so
 --      both SYNC_LWW_ENABLED paths, the push transaction, portal PostgREST
@@ -115,6 +120,13 @@ CREATE TABLE IF NOT EXISTS public.webhook_endpoints (
 
 CREATE INDEX IF NOT EXISTS webhook_endpoints_user_idx
   ON public.webhook_endpoints (user_id);
+
+-- Every write to a shared table first asks "does any active endpoint share
+-- this scope?" (private.enqueue_webhook_deliveries). This keeps that probe
+-- off a sequential scan as the table grows.
+CREATE INDEX IF NOT EXISTS webhook_endpoints_active_scopes_idx
+  ON public.webhook_endpoints USING gin (scopes)
+  WHERE status = 'active';
 
 DROP TRIGGER IF EXISTS webhook_endpoints_updated_at ON public.webhook_endpoints;
 CREATE TRIGGER webhook_endpoints_updated_at
@@ -268,6 +280,11 @@ VALUES
   ('workout_sessions',         'workouts',            'workout',            true,  'id',         'user_id', NULL, NULL, NULL),
   -- replace_session_children rewrites the children without touching the
   -- parent row, so the session trigger alone would miss it.
+  -- `sets` and `rep_summaries` travel in the workout payload but are not
+  -- sources: no browser role can write them, and every server writer
+  -- rewrites `exercises` in the same call, which is captured here.
+  -- webhook_data_sharing.test.sql fails if a browser role gains a write
+  -- grant on either, because that would open a path this does not see.
   ('exercises',                'workouts',            'workout',            false, 'session_id', 'user_id', NULL, NULL, NULL),
   -- Soft-deleted records are sent as personal_record.deleted when the delete
   -- happens; a backfill does not replay old deletions.
@@ -318,10 +335,12 @@ DECLARE
   c_row_filter CONSTANT text := NULLIF(TG_ARGV[5], '');
   v_sql text;
 BEGIN
-  -- Nobody shares this scope: cost one indexed probe and leave.
+  -- Nobody shares this scope: one probe of the partial GIN index
+  -- (webhook_endpoints_active_scopes_idx) and leave. `@>` rather than
+  -- `= ANY` because only the former can use that index.
   IF NOT EXISTS (
     SELECT 1 FROM public.webhook_endpoints e
-    WHERE e.status = 'active' AND c_scope = ANY (e.scopes)
+    WHERE e.status = 'active' AND e.scopes @> ARRAY[c_scope]
   ) THEN
     RETURN NULL;
   END IF;
@@ -372,48 +391,74 @@ $fn$;
 REVOKE ALL ON FUNCTION private.enqueue_webhook_deliveries()
   FROM PUBLIC, anon, authenticated, service_role;
 
--- One trigger per event: a transition table belongs to a single event.
-DO $$
+-- Builds the capture triggers from private.webhook_entity_sources. One
+-- trigger per event, because a transition table belongs to a single event.
+-- Idempotent, and it removes capture triggers from tables that are no longer
+-- a source. Call it again from any migration that changes that table.
+CREATE OR REPLACE FUNCTION private.sync_webhook_capture_triggers()
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $fn$
 DECLARE
   s record;
+  stale record;
   v_args text;
 BEGIN
+  FOR stale IN
+    SELECT c.relname AS table_name, t.tgname
+    FROM pg_trigger t
+    JOIN pg_class c ON c.oid = t.tgrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND NOT t.tgisinternal
+      AND t.tgname IN ('webhook_capture_insert', 'webhook_capture_update', 'webhook_capture_delete')
+      AND c.relname NOT IN (SELECT source_table FROM private.webhook_entity_sources)
+  LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS %I ON public.%I', stale.tgname, stale.table_name);
+  END LOOP;
+
   FOR s IN SELECT * FROM private.webhook_entity_sources ORDER BY source_table LOOP
-    IF pg_catalog.to_regclass(pg_catalog.format('public.%I', s.source_table)) IS NULL THEN
+    IF to_regclass(format('public.%I', s.source_table)) IS NULL THEN
       RAISE NOTICE 'webhook capture: public.% does not exist; skipped', s.source_table;
       CONTINUE;
     END IF;
 
-    v_args := pg_catalog.format('%L, %L, %L, %L, %L, %L',
+    v_args := format('%L, %L, %L, %L, %L, %L',
       s.scope, s.entity, s.id_column, COALESCE(s.user_column, ''),
       COALESCE(s.parent_table, ''), COALESCE(s.row_filter, ''));
 
-    EXECUTE pg_catalog.format(
+    EXECUTE format(
       'DROP TRIGGER IF EXISTS webhook_capture_insert ON public.%I', s.source_table);
-    EXECUTE pg_catalog.format(
+    EXECUTE format(
       'CREATE TRIGGER webhook_capture_insert AFTER INSERT ON public.%I '
       || 'REFERENCING NEW TABLE AS changed_rows FOR EACH STATEMENT '
       || 'EXECUTE FUNCTION private.enqueue_webhook_deliveries(%s)',
       s.source_table, v_args);
 
-    EXECUTE pg_catalog.format(
+    EXECUTE format(
       'DROP TRIGGER IF EXISTS webhook_capture_update ON public.%I', s.source_table);
-    EXECUTE pg_catalog.format(
+    EXECUTE format(
       'CREATE TRIGGER webhook_capture_update AFTER UPDATE ON public.%I '
       || 'REFERENCING NEW TABLE AS changed_rows FOR EACH STATEMENT '
       || 'EXECUTE FUNCTION private.enqueue_webhook_deliveries(%s)',
       s.source_table, v_args);
 
-    EXECUTE pg_catalog.format(
+    EXECUTE format(
       'DROP TRIGGER IF EXISTS webhook_capture_delete ON public.%I', s.source_table);
-    EXECUTE pg_catalog.format(
+    EXECUTE format(
       'CREATE TRIGGER webhook_capture_delete AFTER DELETE ON public.%I '
       || 'REFERENCING OLD TABLE AS changed_rows FOR EACH STATEMENT '
       || 'EXECUTE FUNCTION private.enqueue_webhook_deliveries(%s)',
       s.source_table, v_args);
   END LOOP;
 END
-$$;
+$fn$;
+
+REVOKE ALL ON FUNCTION private.sync_webhook_capture_triggers()
+  FROM PUBLIC, anon, authenticated, service_role;
+
+SELECT private.sync_webhook_capture_triggers();
 
 -- ---------------------------------------------------------------------------
 -- 6. Endpoint writers. Service role only; SECURITY INVOKER (the service role
@@ -531,8 +576,8 @@ COMMENT ON FUNCTION public.rotate_webhook_signing_secret(uuid, uuid, text, text,
 CREATE OR REPLACE FUNCTION public.set_webhook_endpoint_header(
   p_user_id uuid,
   p_endpoint_id uuid,
-  p_custom_header_name text,
-  p_custom_header_value_enc text
+  p_custom_header_name text DEFAULT NULL,
+  p_custom_header_value_enc text DEFAULT NULL
 )
 RETURNS boolean
 LANGUAGE plpgsql
@@ -994,7 +1039,7 @@ BEGIN
                           'complete_webhook_delivery', 'enqueue_webhook_backfill'))
       OR (n.nspname = 'private'
         AND p.proname IN ('enqueue_webhook_deliveries', 'prune_webhook_deliveries',
-                          'schedule_webhook_jobs'))
+                          'schedule_webhook_jobs', 'sync_webhook_capture_triggers'))
     )
     AND has_function_privilege(r.rolname, p.oid, 'EXECUTE');
 

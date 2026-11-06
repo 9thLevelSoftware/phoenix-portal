@@ -107,6 +107,12 @@ export interface DataSharingChild {
 	table: string;
 	parent: string;
 	fkColumn: string;
+	/**
+	 * Set when the table has no capture trigger of its own: the sibling table
+	 * whose trigger covers its changes, because the two are only ever written
+	 * together. Left out when the table is itself a capture source.
+	 */
+	capturedThrough?: string;
 }
 
 export interface DataSharingEntity {
@@ -133,8 +139,21 @@ export const DATA_SHARING_ENTITIES: readonly DataSharingEntity[] = [
 		userColumn: "user_id",
 		children: [
 			{ table: "exercises", parent: "workout_sessions", fkColumn: "session_id" },
-			{ table: "sets", parent: "exercises", fkColumn: "exercise_id" },
-			{ table: "rep_summaries", parent: "sets", fkColumn: "set_id" },
+			// No browser role can write sets or rep summaries, and every server
+			// writer rewrites `exercises` in the same call (pgTAP guards the
+			// grant), so the `exercises` trigger captures their changes too.
+			{
+				table: "sets",
+				parent: "exercises",
+				fkColumn: "exercise_id",
+				capturedThrough: "exercises",
+			},
+			{
+				table: "rep_summaries",
+				parent: "sets",
+				fkColumn: "set_id",
+				capturedThrough: "exercises",
+			},
 		],
 	},
 	{
