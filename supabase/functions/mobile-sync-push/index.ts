@@ -2624,10 +2624,9 @@ async function mobileSyncPushHandler(
       }
 
       // --- 4b-pre. Atomic delete + re-insert of session children (issue #33, F343) ---
-      // Current mobile keeps the exercise id stable (its session id, issue
-      // #33) but generates new set/rep/telemetry UUIDs each sync push (older
-      // clients regenerated exercise ids too), so upsert-by-id never matches
-      // the old child rows and duplicates pile up. We therefore delete the
+      // Mobile keeps the exercise id stable (its session id, issue #33).
+      // Older clients regenerate set IDs, rep IDs can still change, and a
+      // set can be removed from the current graph. We therefore delete the
       // existing exercises for the affected sessions (CASCADE removes their
       // sets, rep_summaries and rep_telemetry) and re-insert the new rows.
       // Stored telemetry of a set the payload re-sends WITHOUT telemetry is
@@ -2641,10 +2640,19 @@ async function mobileSyncPushHandler(
       // delete permanently destroyed the user's data. The child rows are built
       // and ownership-checked here; the single RPC call near the end of this
       // block does the atomic swap.
-      const affectedSessionIds = payload.sessions
+      const acceptedSessions = payload.sessions
         .filter((s) => childAllowed(acceptedSessionIds, s.id))
-        .filter((s) => !blockedWorkoutSessionIds.has(s.id))
-        .map((s) => s.id);
+        .filter((s) => !blockedWorkoutSessionIds.has(s.id));
+      const affectedSessionIds = acceptedSessions.map((s) => s.id);
+      const completions = acceptedSessions.flatMap((s) => {
+        if (!s.completedAt || !s.exercises.some((e) => e.sets.length > 0) ||
+          s.exercises.some((e) => blockedWorkoutComponentIds.has(e.id))) return [];
+        return [{
+          id: s.id,
+          client_updated_at: s.updatedAt ?? pushReceivedAt,
+          completed_at: new Date(s.completedAt).toISOString(),
+        }];
+      });
 
       // --- 4b. Build exercise rows ---
       // When LWW is enabled, only accept exercises whose parent session was
@@ -2751,10 +2759,9 @@ async function mobileSyncPushHandler(
       //
       // Gate telemetry to the sets being written this push, mirroring how
       // exercises/sets/rep_summaries are gated by the LWW acceptance filter.
-      // Mobile regenerates set UUIDs on every push, so a set_id only ever
-      // refers to a set in THIS payload; if its parent session was LWW-rejected
-      // that set is not (re-)inserted, so its telemetry would reference a
-      // non-existent row. Before this gate the whole replace_session_children
+      // Older mobile releases regenerate set UUIDs on every push. If the
+      // parent session was LWW-rejected, its set is not (re-)inserted, so its
+      // telemetry can reference a non-existent row. Before this gate the whole replace_session_children
       // transaction (now atomic) would roll back on that FK violation, blocking
       // every other session's data in the same push. Drop the stale telemetry
       // instead — we are keeping the server's newer version of that session.
@@ -2787,9 +2794,6 @@ async function mobileSyncPushHandler(
       // exercise loses its row (F-069; migration
       // 20260920002400_progress_refresh_and_indexes.sql). Always an array, so
       // an accepted session that now has no progress rows is cleared too.
-      const acceptedSessions = payload.sessions
-        .filter((s) => childAllowed(acceptedSessionIds, s.id))
-        .filter((s) => !blockedWorkoutSessionIds.has(s.id));
       const progressIdentityKey = (row: {
         session_id: string;
         exercise_id: string | null;
@@ -2828,7 +2832,7 @@ async function mobileSyncPushHandler(
         dedupedExerciseRows.length > 0 ||
         dedupedTelemetryRows.length > 0
       ) {
-        const { data: replaceData, error: replaceErr } = await db.rpc('replace_session_children', {
+        const childRows = {
           p_user_id: userId,
           p_session_ids: affectedSessionIds,
           p_exercises: dedupedExerciseRows,
@@ -2836,7 +2840,13 @@ async function mobileSyncPushHandler(
           p_rep_summaries: dedupedRepRows,
           p_rep_telemetry: dedupedTelemetryRows,
           p_progress: progressRows,
-        });
+        };
+        const { data: replaceData, error: replaceErr } = completions.length > 0
+          ? await db.rpc('replace_session_children_with_completion', {
+            ...childRows,
+            p_completions: completions,
+          })
+          : await db.rpc('replace_session_children', childRows);
         if (replaceErr) {
           throw new PartialWriteRetryError('session children replace', replaceErr);
         }

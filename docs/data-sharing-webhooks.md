@@ -141,6 +141,7 @@ test delivery from the portal's "Send test" button.
 | Scope (chosen per endpoint) | Entity | `record` is a row of | `children` |
 |---|---|---|---|
 | Workouts | `workout` | `workout_sessions` | `exercises`, `sets`, `rep_summaries` |
+| Completed workouts | `workout` (`workout.completed`) | `workout_sessions` | `exercises`, `sets`, `rep_summaries` |
 | Personal records | `personal_record` | `personal_records` | — |
 | Routines | `routine` | `routines` | `routine_exercises` |
 | Training cycles | `cycle` | `training_cycles` | `cycle_days` |
@@ -152,6 +153,26 @@ test delivery from the portal's "Send test" button.
 
 Field names are the database column names, the same ones the "Download All My
 Data" export uses. The account's internal user id is not included.
+
+### Completed workouts
+
+Select **Completed workouts** for an endpoint that imports finished workouts.
+Clear **Workouts** on that endpoint if it only needs completion events. This
+scope sends one logical `workout.completed` when a supported Phoenix app
+records the finish and syncs the final sets. The full workout snapshot includes
+`data.record.completed_at`. Later edits do not generate another completion.
+The normal retry rules still apply.
+
+`data.id` is the workout ID. In completion events, a set's ID uses its
+exercise row ID and, for set numbers other than 1, its set number. The rep
+summaries use the corresponding `set_id`. The **Workouts** scope continues
+to send the database IDs, which are stable for sets synced by the updated app.
+If a receiver previously stored legacy set IDs, it can replace the workout
+snapshot by `data.id` on its next update.
+
+**Resend all** replays workouts with a recorded completion. Workouts synced
+before completion tracking was available have no completion timestamp. Use
+the **Workouts** scope to import that history.
 
 **Never sent this way:** raw force-curve telemetry, the Inferno biomechanics
 tables, activities imported from Strava, community content, billing data, or

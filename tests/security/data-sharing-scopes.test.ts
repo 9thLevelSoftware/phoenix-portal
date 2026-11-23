@@ -19,8 +19,10 @@ import {
 	DATA_SHARING_OMITTED_COLUMNS,
 	DATA_SHARING_SCOPE_INFO,
 	DATA_SHARING_SCOPES,
+	getDataSharingEntity,
 	MAX_WEBHOOK_ENDPOINTS,
 	NOT_SHAREABLE,
+	WORKOUT_COMPLETION_ENTITY,
 } from "../../supabase/functions/_shared/dataSharingScopes.ts";
 import {
 	getUserDataTable,
@@ -31,6 +33,13 @@ const migration = readFileSync(
 	join(
 		process.cwd(),
 		"supabase/migrations/20261106120000_webhook_data_sharing.sql",
+	),
+	"utf8",
+);
+const completionMigration = readFileSync(
+	join(
+		process.cwd(),
+		"supabase/migrations/20261123194138_webhook_workout_completion.sql",
 	),
 	"utf8",
 );
@@ -221,11 +230,17 @@ describe("data sharing scope registry", () => {
 	});
 
 	it("allows the same scopes and entities in the table constraints", () => {
-		expect(quotedList(migration, "scopes <@ ARRAY[", "]").sort()).toEqual(
-			[...DATA_SHARING_SCOPES].sort(),
-		);
-		expect(quotedList(migration, "CHECK (entity IN (", ")").sort()).toEqual(
-			[...DATA_SHARING_ENTITIES.map((entry) => entry.entity), "ping"].sort(),
+		expect(
+			quotedList(completionMigration, "scopes <@ ARRAY[", "]").sort(),
+		).toEqual([...DATA_SHARING_SCOPES].sort());
+		expect(
+			quotedList(completionMigration, "CHECK (entity IN (", ")").sort(),
+		).toEqual(
+			[
+				...DATA_SHARING_ENTITIES.map((entry) => entry.entity),
+				"ping",
+				WORKOUT_COMPLETION_ENTITY,
+			].sort(),
 		);
 		expect(migration).toContain(
 			`c_max_endpoints CONSTANT integer := ${MAX_WEBHOOK_ENDPOINTS};`,
@@ -238,7 +253,8 @@ describe("data sharing scope registry", () => {
 		]);
 		for (const scope of DATA_SHARING_SCOPES) {
 			expect(
-				DATA_SHARING_ENTITIES.some((entry) => entry.scope === scope),
+				DATA_SHARING_ENTITIES.some((entry) => entry.scope === scope) ||
+					getDataSharingEntity(WORKOUT_COMPLETION_ENTITY)?.scope === scope,
 				scope,
 			).toBe(true);
 		}

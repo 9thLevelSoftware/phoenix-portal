@@ -295,6 +295,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"user_id",
 		"name",
 		"started_at",
+		"completed_at",
 		"duration_seconds",
 		"total_volume",
 		"set_count",

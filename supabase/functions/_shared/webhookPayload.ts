@@ -22,6 +22,7 @@ import {
   DATA_SHARING_OMITTED_COLUMNS,
   type DataSharingEntity,
   getDataSharingEntity,
+  WORKOUT_COMPLETION_ENTITY,
 } from './dataSharingScopes.ts';
 import { getUserDataTable } from './userDataManifest.ts';
 
@@ -35,7 +36,7 @@ const IN_CHUNK = 150;
 const MAX_CHILD_ROWS = 20_000;
 
 export type WebhookEvent =
-  | { kind: 'updated'; type: string; data: Row }
+  | { kind: 'updated' | 'completed'; type: string; data: Row }
   | { kind: 'deleted'; type: string; data: Row }
   | { kind: 'skip'; reason: 'unknown_entity' | 'not_shareable' | 'payload_too_large' }
   | { kind: 'error' };
@@ -64,6 +65,30 @@ function project(row: Row, columns: readonly string[]): Row {
     if (column in row) out[column] = row[column];
   }
   return out;
+}
+
+/** Keep completion IDs stable even if a legacy app rewrites database set IDs. */
+function useStableSetIds(children: Record<string, Row[]>): void {
+  const sets = children.sets;
+  const keyFor = (set: Row) => set.set_number === 1
+    ? String(set.exercise_id)
+    : `${set.exercise_id}:${set.set_number}`;
+  const counts = new Map<string, number>();
+  for (const set of sets) {
+    const key = keyFor(set);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const replacementIds = new Map<unknown, string>();
+  for (const set of sets) {
+    const key = keyFor(set);
+    // Keep distinct rows distinct even if historical data has duplicate ordinals.
+    if (counts.get(key) !== 1) continue;
+    replacementIds.set(set.id, key);
+    set.id = key;
+  }
+  for (const rep of children.rep_summaries) {
+    rep.set_id = replacementIds.get(rep.set_id) ?? rep.set_id;
+  }
 }
 
 /** Every child row under `parentIds`, keyset-paged by id. */
@@ -104,6 +129,8 @@ export async function buildWebhookEvent(
 ): Promise<WebhookEvent> {
   const definition: DataSharingEntity | undefined = getDataSharingEntity(params.entity);
   if (!definition) return { kind: 'skip', reason: 'unknown_entity' };
+  const isCompletion = params.entity === WORKOUT_COMPLETION_ENTITY;
+  const entity = isCompletion ? 'workout' : definition.entity;
 
   const needed = [
     definition.idColumn,
@@ -113,7 +140,7 @@ export async function buildWebhookEvent(
   const rootShape = tableShape(definition.table, needed);
   if (!rootShape) return { kind: 'skip', reason: 'unknown_entity' };
 
-  const base = { endpointId: params.endpointId, entity: definition.entity, id: params.entityId };
+  const base = { endpointId: params.endpointId, entity, id: params.entityId };
 
   const { data, error } = await admin
     .from(definition.table)
@@ -125,7 +152,8 @@ export async function buildWebhookEvent(
   if (error) return { kind: 'error' };
 
   const root = data as unknown as Row | null;
-  if (!root) return { kind: 'deleted', type: `${definition.entity}.deleted`, data: base };
+  if (isCompletion && !root?.completed_at) return { kind: 'skip', reason: 'not_shareable' };
+  if (!root) return { kind: 'deleted', type: `${entity}.deleted`, data: base };
   if (definition.exclude && root[definition.exclude.column] === definition.exclude.equals) {
     return { kind: 'skip', reason: 'not_shareable' };
   }
@@ -152,9 +180,11 @@ export async function buildWebhookEvent(
     children[child.table] = read.rows.map((row) => project(row, shape.shared));
   }
 
+  if (isCompletion) useStableSetIds(children);
+
   return {
-    kind: 'updated',
-    type: `${definition.entity}.updated`,
+    kind: isCompletion ? 'completed' : 'updated',
+    type: isCompletion ? 'workout.completed' : `${entity}.updated`,
     data: {
       ...base,
       // Every weight and volume is per cable, as the phone shows it.

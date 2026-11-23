@@ -22,6 +22,7 @@
 
 export const DATA_SHARING_SCOPES = [
 	"workouts",
+	"completed_workouts",
 	"personal_records",
 	"routines",
 	"cycles",
@@ -52,7 +53,13 @@ export const DATA_SHARING_SCOPE_INFO: readonly DataSharingScopeInfo[] = [
 		scope: "workouts",
 		label: "Workouts",
 		description:
-			"Sessions with their exercises, sets and rep summaries. Loads are per cable, as on the phone. Raw force-curve telemetry is not included.",
+			"Workout snapshots as sessions change, including during a workout. Loads are per cable.",
+	},
+	{
+		scope: "completed_workouts",
+		label: "Completed workouts",
+		description:
+			"One event when a supported Phoenix app finishes and syncs a workout, with its exercises, sets and rep summaries.",
 	},
 	{
 		scope: "personal_records",
@@ -329,9 +336,19 @@ const ENTITY_BY_NAME: ReadonlyMap<string, DataSharingEntity> = new Map(
 	DATA_SHARING_ENTITIES.map((entry) => [entry.entity, entry]),
 );
 
+export const WORKOUT_COMPLETION_ENTITY = "workout_completion";
+
+// Captured by the completion transition trigger, rather than by table changes.
+const workoutCompletion: DataSharingEntity = {
+	...DATA_SHARING_ENTITIES[0],
+	entity: WORKOUT_COMPLETION_ENTITY,
+	scope: "completed_workouts",
+};
+
 export function getDataSharingEntity(
 	entity: string,
 ): DataSharingEntity | undefined {
+	if (entity === WORKOUT_COMPLETION_ENTITY) return workoutCompletion;
 	return ENTITY_BY_NAME.get(entity);
 }
 
