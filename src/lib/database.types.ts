@@ -3080,6 +3080,7 @@ export type Database = {
 					avg_asymmetry_pct: number | null;
 					avg_velocity_mps: number | null;
 					client_updated_at: string | null;
+					completed_at: string | null;
 					deload_warnings: number | null;
 					dominant_side: string | null;
 					duration_seconds: number;
@@ -3115,6 +3116,7 @@ export type Database = {
 					avg_asymmetry_pct?: number | null;
 					avg_velocity_mps?: number | null;
 					client_updated_at?: string | null;
+					completed_at?: string | null;
 					deload_warnings?: number | null;
 					dominant_side?: string | null;
 					duration_seconds?: number;
@@ -3149,6 +3151,7 @@ export type Database = {
 					avg_asymmetry_pct?: number | null;
 					avg_velocity_mps?: number | null;
 					client_updated_at?: string | null;
+					completed_at?: string | null;
 					deload_warnings?: number | null;
 					dominant_side?: string | null;
 					duration_seconds?: number;
@@ -4098,6 +4101,19 @@ export type Database = {
 				Args: {
 					p_exercises: Json;
 					p_progress?: Json;
+					p_rep_summaries: Json;
+					p_rep_telemetry: Json;
+					p_session_ids: string[];
+					p_sets: Json;
+					p_user_id: string;
+				};
+				Returns: Json;
+			};
+			replace_session_children_with_completion: {
+				Args: {
+					p_completions: Json;
+					p_exercises: Json;
+					p_progress: Json;
 					p_rep_summaries: Json;
 					p_rep_telemetry: Json;
 					p_session_ids: string[];

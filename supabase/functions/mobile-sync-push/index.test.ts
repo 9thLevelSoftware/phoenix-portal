@@ -1211,8 +1211,36 @@ Deno.test("cycles gate the parent and its days in one merge RPC; a rejected cycl
 // `exercise_progress`. Properties carried forward: a rejected parent gets no
 // component replacement at all, and the replacement is never decomposed into
 // per-table child writes.
+Deno.test("a completed workout is written with its final sets in the completion RPC", async () => {
+  const body = validNestedRelationshipBody();
+  const startedAt = "2026-07-11T12:00:00.000Z";
+  const completedAt = "2026-07-11T13:00:00.000Z";
+  Object.assign((body.sessions as Array<Record<string, unknown>>)[0], {
+    startedAt,
+    completedAt,
+    updatedAt: completedAt,
+  });
+  const harness = makeHarness(undefined, { syncLwwEnabled: false });
+  const response = await harness.handler(requestFromBody(body));
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  const call = harness.adminRpcCalls.find((entry) =>
+    entry.name === "replace_session_children_with_completion"
+  );
+  assertEquals(call?.args.p_completions, [{
+    id: SESSION_ID,
+    client_updated_at: completedAt,
+    completed_at: completedAt,
+  }]);
+  assertEquals((call?.args.p_sets as Array<{ id: string }>).map((set) => set.id), [
+    SET_ID,
+  ]);
+});
+
 Deno.test("a rejected session parent gets no component replacement and no per-table child writes", async () => {
   const body = validNestedRelationshipBody();
+  Object.assign((body.sessions as Array<Record<string, unknown>>)[0], {
+    completedAt: "2026-09-20T12:00:00.000Z",
+  });
   body.routines = [];
   body.cycles = [];
   const harness = makeHarness(undefined, {
@@ -1248,7 +1276,7 @@ Deno.test("a rejected session parent gets no component replacement and no per-ta
   // No component replacement for a rejected parent, and never a per-table
   // child write (including exercise_progress) standing in for one.
   assertEquals(
-    harness.adminRpcCalls.filter((call) => call.name === "replace_session_children"),
+    harness.adminRpcCalls.filter((call) => call.name.startsWith("replace_session_children")),
     [],
   );
   assertEquals(

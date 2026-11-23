@@ -2,6 +2,7 @@ import { assert, assertEquals } from "jsr:@std/assert@1";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { FakeDb, fakeClient, type Row } from "./testing/fakeSupabase.ts";
 import { buildWebhookEvent } from "./webhookPayload.ts";
+import { WORKOUT_COMPLETION_ENTITY } from "./dataSharingScopes.ts";
 
 const USER_A = "aaaaaaaa-0000-4000-8000-00000000000a";
 const USER_B = "bbbbbbbb-0000-4000-8000-00000000000b";
@@ -73,6 +74,36 @@ Deno.test("webhookPayload: the owner's user id is not copied into the record or 
   assert(event.kind === "updated");
   assert(!JSON.stringify(event.data).includes(USER_A));
   assertEquals("user_id" in (event.data.record as Row), false);
+});
+
+Deno.test("webhookPayload: a completed workout retains set identity and rep links through a legacy resync", async () => {
+  const tables = workoutTables();
+  const completedAt = "2026-11-23T19:00:00Z";
+  tables.workout_sessions[0].completed_at = completedAt;
+  const first = await build(client(tables).admin, WORKOUT_COMPLETION_ENTITY, "s-a");
+
+  tables.sets[0].id = "new-set-from-legacy-sync";
+  tables.rep_summaries[0].set_id = tables.sets[0].id;
+  const second = await build(client(tables).admin, WORKOUT_COMPLETION_ENTITY, "s-a");
+
+  for (const event of [first, second]) {
+    assert(event.kind === "completed");
+    assertEquals(event.type, "workout.completed");
+    assertEquals(event.data.entity, "workout");
+    assertEquals((event.data.record as Row).completed_at, completedAt);
+    const children = event.data.children as Record<string, Row[]>;
+    assertEquals(children.sets.map((set) => set.id).sort(), ["e-a1", "e-a2"]);
+    assertEquals(children.rep_summaries[0].set_id, "e-a1");
+  }
+});
+
+Deno.test("webhookPayload: completion jobs skip unfinished and missing workouts", async () => {
+  const { admin } = client(workoutTables());
+  for (const id of ["s-a", "missing"]) {
+    assertEquals(await build(admin, WORKOUT_COMPLETION_ENTITY, id), {
+      kind: "skip", reason: "not_shareable",
+    });
+  }
 });
 
 Deno.test("webhookPayload: loads are sent per cable exactly as stored", async () => {

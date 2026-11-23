@@ -37,7 +37,9 @@ test.describe("Data sharing", () => {
 		const form = page.getByRole("dialog");
 		await form.getByLabel("Name", { exact: true }).fill("Home server");
 		await form.getByLabel("Endpoint URL").fill("https://hooks.example.com/in");
-		await form.getByRole("switch", { name: "Workouts" }).click();
+		await form
+			.getByRole("switch", { name: "Completed workouts", exact: true })
+			.click();
 		await form.getByRole("button", { name: "Add endpoint" }).click();
 
 		// The secret is shown once, then cannot be found anywhere on the page.
@@ -48,6 +50,9 @@ test.describe("Data sharing", () => {
 		await expect(page.getByText(/whsec_/)).toHaveCount(0);
 
 		await expect(section.getByText("Home server")).toBeVisible();
+		await expect(
+			section.getByText("Completed workouts", { exact: true }),
+		).toBeVisible();
 		await expect(section.getByText("Active", { exact: true })).toBeVisible();
 
 		await section.getByRole("button", { name: "Send test" }).click();

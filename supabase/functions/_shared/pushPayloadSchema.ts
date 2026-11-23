@@ -248,6 +248,7 @@ const sessionSchema = z.object({
 	name: nullableField(z.string()),
 	startedAt: datetimeWithDefault(() => new Date().toISOString()),
 	updatedAt: nullableDatetime(),
+	completedAt: nullableDatetime(),
 	// DB NOT-NULL-DEFAULT numeric columns: coerce nullish → 0.
 	// durationSeconds: see sessionDurationSecondsField above — negative
 	// values are accepted here and normalized to 0 in the handler.
