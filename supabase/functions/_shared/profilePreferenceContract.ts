@@ -628,11 +628,6 @@ export const customEquipmentSlug = (label: string): string =>
     "",
   );
 
-export const customEquipmentTokenFor = (label: string): string | null => {
-  const slug = customEquipmentSlug(label);
-  return slug.length === 0 ? null : "U_" + slug;
-};
-
 export function validateCustomEquipmentPayload(value: unknown): JsonRecord {
   const payload = requireExactRecord(value, ["version", "items"], "payload");
   requireVersionOne(payload.version, "payload.version");
