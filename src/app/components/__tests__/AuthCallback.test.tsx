@@ -57,6 +57,7 @@ describe("AuthCallback", () => {
 	});
 
 	afterEach(() => {
+		vi.restoreAllMocks();
 		vi.clearAllMocks();
 	});
 
@@ -148,10 +149,11 @@ describe("AuthCallback", () => {
 		expect(screen.queryByText(/evil\.example/i)).not.toBeInTheDocument();
 	});
 
-	it("shows the generic failure message when getSession returns an error", async () => {
+	it("shows generic copy without logging when getSession returns an error", async () => {
 		const consoleError = vi
 			.spyOn(console, "error")
 			.mockImplementation(() => {});
+		const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 		const sessionError = {
 			message: "Refresh Token Not Found: secret-provider-detail",
 		};
@@ -176,12 +178,9 @@ describe("AuthCallback", () => {
 		expect(
 			screen.queryByText(/secret-provider-detail/i),
 		).not.toBeInTheDocument();
-		expect(consoleError).toHaveBeenCalledWith(
-			"[AuthCallback] getSession failed:",
-			sessionError,
-		);
+		expect(consoleError).not.toHaveBeenCalled();
+		expect(consoleLog).not.toHaveBeenCalled();
 		expect(mockNavigate).not.toHaveBeenCalled();
-		consoleError.mockRestore();
 	});
 
 	it("maps an unknown error code to the generic fallback", async () => {
