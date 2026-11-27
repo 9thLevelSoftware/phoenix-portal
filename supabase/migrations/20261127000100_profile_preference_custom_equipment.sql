@@ -52,72 +52,99 @@ ALTER TABLE public.local_profile_preferences
 -- the mobile Kotlin validator implement the same rules; do not fork them.
 CREATE OR REPLACE FUNCTION public.validate_custom_equipment_document(p_document jsonb)
 RETURNS boolean
-LANGUAGE sql
+LANGUAGE plpgsql
 IMMUTABLE
+SET search_path = ''
 AS $validate$
-    SELECT CASE
-        WHEN p_document IS NULL THEN false
-        WHEN jsonb_typeof(p_document) <> 'object' THEN false
-        WHEN NOT (p_document ? 'version') THEN false
-        WHEN jsonb_typeof(p_document -> 'version') <> 'number' THEN false
-        WHEN (p_document ->> 'version')::integer <> 1 THEN false
-        WHEN NOT (p_document ? 'items') THEN false
-        WHEN jsonb_typeof(p_document -> 'items') <> 'array' THEN false
-        WHEN jsonb_array_length(p_document -> 'items') > 24 THEN false
-        WHEN octet_length(p_document::text) > 8192 THEN false
-        WHEN EXISTS (
-            SELECT 1
-              FROM jsonb_array_elements(p_document -> 'items') AS item(value)
-             WHERE jsonb_typeof(item.value) <> 'object'
-                OR (SELECT count(*) FROM jsonb_object_keys(item.value) AS entry(key)) <> 3
-                OR EXISTS (
-                    SELECT 1
-                      FROM jsonb_object_keys(item.value) AS entry(key)
-                     WHERE entry.key NOT IN ('token', 'label', 'createdAt')
-                )
-                OR jsonb_typeof(item.value -> 'token') <> 'string'
-                OR jsonb_typeof(item.value -> 'label') <> 'string'
-                OR jsonb_typeof(item.value -> 'createdAt') <> 'number'
-                OR (item.value ->> 'token') !~ '^U_[A-Z0-9_]{1,40}$'
-                OR btrim(item.value ->> 'label') = ''
-                OR length(btrim(item.value ->> 'label')) > 32
-                OR (item.value ->> 'label') LIKE '%,%'
-                OR (item.value ->> 'label') ~ '[[:cntrl:]]'
-                OR btrim(
-                       upper(
-                           regexp_replace(btrim(item.value ->> 'label'), '[^A-Za-z0-9]+', '_', 'g')
-                       ),
-                       '_'
-                   ) = ''
-                OR btrim(
-                       upper(
-                           regexp_replace(btrim(item.value ->> 'label'), '[^A-Za-z0-9]+', '_', 'g')
-                       ),
-                       '_'
-                   ) = ANY (ARRAY[
-                       'LONG_BAR', 'BENCH', 'HANDLES', 'SHORT_BAR', 'ANKLE_STRAP', 'BELT',
-                       'ROPE', 'BODYWEIGHT', 'CABLE', 'BAR', 'BARBELL', 'SINGLE_HANDLE',
-                       'BOTH_HANDLES', 'STRAPS', 'BLACK_CABLES', 'RED_CABLES', 'GREY_CABLES',
-                       'CABLES', 'PUMP_HANDLES', 'DUMBBELLS'
-                   ]::text[])
-        ) THEN false
-        WHEN EXISTS (
-            SELECT 1
-              FROM jsonb_array_elements(p_document -> 'items') AS item(value)
-             GROUP BY item.value ->> 'token'
-            HAVING count(*) > 1
-        ) THEN false
-        WHEN EXISTS (
-            SELECT 1
-              FROM jsonb_array_elements(p_document -> 'items') AS item(value)
-             GROUP BY btrim(
-                 upper(regexp_replace(btrim(item.value ->> 'label'), '[^A-Za-z0-9]+', '_', 'g')),
-                 '_'
-             )
-            HAVING count(*) > 1
-        ) THEN false
-        ELSE true
-    END
+DECLARE
+    item jsonb;
+    token text;
+    label text;
+    trimmed_label text;
+    label_slug text;
+    created_at numeric;
+    tokens text[] := ARRAY[]::text[];
+    label_slugs text[] := ARRAY[]::text[];
+    document_bytes integer := octet_length('{"version":1,"items":[]}');
+    reserved_slugs constant text[] := ARRAY[
+        'LONG_BAR', 'BENCH', 'HANDLES', 'SHORT_BAR', 'ANKLE_STRAP', 'BELT',
+        'ROPE', 'BODYWEIGHT', 'CABLE', 'BAR', 'BARBELL', 'SINGLE_HANDLE',
+        'BOTH_HANDLES', 'STRAPS', 'BLACK_CABLES', 'RED_CABLES', 'GREY_CABLES',
+        'CABLES', 'PUMP_HANDLES', 'DUMBBELLS'
+    ];
+BEGIN
+    IF jsonb_typeof(p_document) IS DISTINCT FROM 'object' THEN
+        RETURN false;
+    END IF;
+    IF p_document - ARRAY['version', 'items'] <> '{}'::jsonb
+       OR (p_document -> 'version') IS DISTINCT FROM '1'::jsonb
+       OR jsonb_typeof(p_document -> 'items') IS DISTINCT FROM 'array' THEN
+        RETURN false;
+    END IF;
+    IF jsonb_array_length(p_document -> 'items') > 24 THEN
+        RETURN false;
+    END IF;
+
+    FOR item IN SELECT value FROM jsonb_array_elements(p_document -> 'items') LOOP
+        IF jsonb_typeof(item) IS DISTINCT FROM 'object' THEN
+            RETURN false;
+        END IF;
+        IF item - ARRAY['token', 'label', 'createdAt'] <> '{}'::jsonb
+           OR jsonb_typeof(item -> 'token') IS DISTINCT FROM 'string'
+           OR jsonb_typeof(item -> 'label') IS DISTINCT FROM 'string'
+           OR jsonb_typeof(item -> 'createdAt') IS DISTINCT FROM 'number' THEN
+            RETURN false;
+        END IF;
+
+        token := item ->> 'token';
+        label := item ->> 'label';
+        created_at := (item ->> 'createdAt')::numeric;
+        IF token COLLATE "C" !~ '^U_[A-Z0-9_]{1,40}$'
+           OR token = ANY (tokens)
+           OR position(',' IN label) > 0
+           OR label COLLATE "C" ~ U&'[\0001-\001f\007f]'
+           OR created_at NOT BETWEEN -9007199254740991 AND 9007199254740991
+           OR created_at <> trunc(created_at) THEN
+            RETURN false;
+        END IF;
+
+        -- Match the Edge validator's trim and UTF-16 code-unit length.
+        trimmed_label := btrim(label, U&' \00a0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200a\2028\2029\202f\205f\3000\feff');
+        IF trimmed_label = ''
+           OR length(trimmed_label) + length(regexp_replace(
+               trimmed_label COLLATE "C", U&'[^\+010000-\+10ffff]', '', 'g'
+           )) > 32 THEN
+            RETURN false;
+        END IF;
+
+        -- Full Unicode uppercase precedes the ASCII filter in mobile and Edge.
+        label_slug := btrim(regexp_replace(
+            upper(trimmed_label COLLATE pg_catalog."und-x-icu") COLLATE "C",
+            '[^A-Z0-9]+', '_', 'g'
+        ), '_');
+
+        IF label_slug = ''
+           OR label_slug = ANY (reserved_slugs)
+           OR label_slug = ANY (label_slugs) THEN
+            RETURN false;
+        END IF;
+
+        -- JSONB's object separators carry spaces. Count compact JSON to match
+        -- the mobile and Edge byte cap, and serialize safe integers canonically.
+        document_bytes := document_bytes
+            + CASE WHEN cardinality(tokens) > 0 THEN 1 ELSE 0 END
+            + octet_length('{"token":,"label":,"createdAt":}')
+            + octet_length((item -> 'token')::text)
+            + octet_length((item -> 'label')::text)
+            + octet_length(trunc(created_at)::text);
+        IF document_bytes > 8192 THEN
+            RETURN false;
+        END IF;
+        tokens := array_append(tokens, token);
+        label_slugs := array_append(label_slugs, label_slug);
+    END LOOP;
+    RETURN true;
+END
 $validate$;
 
 REVOKE ALL ON FUNCTION public.validate_custom_equipment_document(jsonb) FROM PUBLIC, anon, authenticated;
@@ -148,7 +175,7 @@ AS $canonical$
             WHEN 'WORKOUT' THEN (p_row.workout_preferences ->> 'version')::integer
             WHEN 'LED' THEN (p_row.led_preferences ->> 'version')::integer
             WHEN 'VBT' THEN (p_row.vbt_preferences ->> 'version')::integer
-            WHEN 'CUSTOM_EQUIPMENT' THEN (p_row.custom_equipment ->> 'version')::integer
+            WHEN 'CUSTOM_EQUIPMENT' THEN 1
         END,
         'serverRevision', CASE p_section
             WHEN 'CORE' THEN p_row.core_revision

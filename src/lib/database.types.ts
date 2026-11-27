@@ -417,6 +417,7 @@ export type Database = {
 					sidedness: string | null;
 					source: string | null;
 					source_id: string | null;
+					sync_updated_at: string;
 					thumbnail_url: string | null;
 					updated_at: string;
 					user_id: string | null;
@@ -447,6 +448,7 @@ export type Database = {
 					sidedness?: string | null;
 					source?: string | null;
 					source_id?: string | null;
+					sync_updated_at?: string;
 					thumbnail_url?: string | null;
 					updated_at?: string;
 					user_id?: string | null;
@@ -476,6 +478,7 @@ export type Database = {
 					sidedness?: string | null;
 					source?: string | null;
 					source_id?: string | null;
+					sync_updated_at?: string;
 					thumbnail_url?: string | null;
 					updated_at?: string;
 					user_id?: string | null;
@@ -3704,6 +3707,44 @@ export type Database = {
 					target_value: number;
 				}[];
 			};
+			get_known_personal_record_changes: {
+				Args: {
+					p_cursor_id: string;
+					p_cursor_updated_at: string;
+					p_known_ids: string[];
+					p_last_sync_at: string;
+					p_limit: number;
+					p_profile_id: string;
+					p_user_id: string;
+				};
+				Returns: {
+					achieved_at: string;
+					deleted_at: string | null;
+					exercise_id: string | null;
+					exercise_name: string;
+					id: string;
+					local_profile_id: string | null;
+					muscle_group: string;
+					previous_value: number | null;
+					record_type: string;
+					reps: number | null;
+					session_id: string | null;
+					source: string | null;
+					unit: string;
+					updated_at: string;
+					user_id: string;
+					value: number;
+					weight_kg: number | null;
+					workout_mode: string | null;
+					workout_phase: string | null;
+				}[];
+				SetofOptions: {
+					from: "*";
+					to: "personal_records";
+					isOneToOne: false;
+					isSetofReturn: true;
+				};
+			};
 			get_muscle_distribution: {
 				Args: { p_profile_id?: string; p_user_id: string };
 				Returns: {
@@ -4285,6 +4326,10 @@ export type Database = {
 					id: string;
 					server_updated_at: string;
 				}[];
+			};
+			upsert_mobile_custom_exercises: {
+				Args: { p_rows: Json; p_user_id: string };
+				Returns: boolean;
 			};
 			upsert_routine_lww: {
 				Args: { p_rows: Json };

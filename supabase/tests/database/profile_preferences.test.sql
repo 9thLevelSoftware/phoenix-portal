@@ -1084,6 +1084,22 @@ SELECT results_eq(
 
 SELECT diag('database:custom-equipment-payload-validation');
 
+SELECT ok(
+    public.validate_custom_equipment_document(
+        '{"version":1,"items":[{"token":"U_SS","label":"\u00df","createdAt":9007199254740991},{"token":"U_FFI","label":"\ufb03","createdAt":-9007199254740991}]}'::jsonb
+    ),
+    'Unicode uppercase expansions and both safe integer limits pass validation'
+);
+
+SELECT ok(
+    public.validate_custom_equipment_document(
+        jsonb_build_object('version', 1, 'items', jsonb_build_array(
+            jsonb_build_object('token', 'U_X', 'label', repeat(' ', 8127) || 'X', 'createdAt', 0)
+        ))
+    ),
+    'the compact 8192-byte document is accepted even when JSONB adds separator spaces'
+);
+
 SELECT results_eq(
     $sql$
         SELECT
@@ -1142,6 +1158,48 @@ SELECT lives_ok(
         SELECT custom_case.case_name, result.*
         FROM (
             VALUES
+                (
+                    'extra-document-key',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":1,"items":[],"unexpected":true}'::jsonb
+                ),
+                (
+                    'fractional-created-at',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":1,"items":[{"token":"U_EZ_BAR","label":"EZ Bar","createdAt":1.5}]}'::jsonb
+                ),
+                (
+                    'unsafe-created-at',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":1,"items":[{"token":"U_EZ_BAR","label":"EZ Bar","createdAt":9007199254740992}]}'::jsonb
+                ),
+                (
+                    'scalar-item',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":1,"items":[42]}'::jsonb
+                ),
+                (
+                    'invalid-version',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":2147483648,"items":[]}'::jsonb
+                ),
+                (
+                    'duplicate-label-unicode',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":1,"items":[{"token":"U_SS","label":"\u00df","createdAt":0},{"token":"U_SECOND","label":"SS","createdAt":0}]}'::jsonb
+                ),
+                (
+                    'reserved-label-unicode',
+                    'CUSTOM_EQUIPMENT',
+                    1::bigint,
+                    '{"version":1,"items":[{"token":"U_ALTERNATE","label":"PUMP HANDLE\u017f","createdAt":0}]}'::jsonb
+                ),
                 (
                     'invalid-token-prefix',
                     'CUSTOM_EQUIPMENT',
@@ -1228,13 +1286,20 @@ SELECT results_eq(
         VALUES
             ('duplicate-label'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('duplicate-label-case-equivalent'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('duplicate-label-unicode'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('extra-document-key'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('fractional-created-at'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('invalid-token-prefix'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('invalid-version'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('label-too-long'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('label-with-comma'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('label-with-control-character'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('oversized-document'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('reserved-label-unicode'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('scalar-item'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('twenty-five-items'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
-            ('unknown-section-name'::text COLLATE "C", false, 'UNSUPPORTED_SECTION'::text COLLATE "C", 0::bigint, NULL::jsonb)
+            ('unknown-section-name'::text COLLATE "C", false, 'UNSUPPORTED_SECTION'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('unsafe-created-at'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb)
     $values$,
     'custom equipment contract violations return the exact validation rejection contract and unknown sections stay unsupported'
 );

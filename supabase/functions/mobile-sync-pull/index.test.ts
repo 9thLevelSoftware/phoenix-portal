@@ -134,7 +134,7 @@ function createAdminDouble(
         );
       return builder;
     }
-    if (name === "get_personal_record_tombstones") {
+    if (name === "get_known_personal_record_changes") {
       return Promise.resolve(
         options.rpcResults?.[name] ?? { data: [], error: null },
       );
@@ -675,7 +675,7 @@ Deno.test("known personal record tombstones use the bounded RPC and remain tombs
   const harness = makeHarness(undefined, {
     rpcResults: {
       get_personal_records_excluding_ids: { data: [], error: null },
-      get_personal_record_tombstones: {
+      get_known_personal_record_changes: {
         data: [{
           id: personalRecordId,
           user_id: VALID_USER_ID,
@@ -709,7 +709,7 @@ Deno.test("known personal record tombstones use the bounded RPC and remain tombs
 
   assertEquals(response.status, 200, JSON.stringify(body));
   const tombstoneCall = harness.adminCalls.find((call) =>
-    call.kind === "rpc" && call.name === "get_personal_record_tombstones"
+    call.kind === "rpc" && call.name === "get_known_personal_record_changes"
   );
   assert(tombstoneCall);
   assertEquals(tombstoneCall.args?.p_known_ids, [personalRecordId]);
@@ -1042,6 +1042,62 @@ function applyPersonalRecordCursor(
   return filtered.slice(0, limit);
 }
 
+Deno.test("AUD-010: known repaired records and tombstones share the personal-record cursor", async () => {
+  const [unseen, repair, tombstoneBase] = exactPagePersonalRecords(3);
+  const changedAt = "2026-07-08T14:24:09.648091+00:00";
+  for (const row of [unseen, repair, tombstoneBase]) row.updated_at = changedAt;
+  const repaired = { ...repair, workout_mode: "ECHO" };
+  const tombstone = { ...tombstoneBase, deleted_at: changedAt };
+  const knownIds = [repair.id, tombstoneBase.id];
+  const harness = makeHarness(undefined, {
+    rpcImpl: (name, args) => {
+      if (name === "get_personal_records_excluding_ids") {
+        return { data: applyPersonalRecordCursor([unseen], args), error: null };
+      }
+      if (name === "get_known_personal_record_changes") {
+        return { data: applyPersonalRecordCursor([repaired, tombstone], args), error: null };
+      }
+      return undefined;
+    },
+  });
+  const request = {
+    ...validPullBody(),
+    lastSync: Date.parse("2026-07-08T14:25:00Z"),
+    pageSize: 2,
+    knownEntityIds: { personalRecordIds: knownIds },
+  };
+  const firstResponse = await harness.handler(requestFromBody(request));
+  assertEquals(firstResponse.status, 200);
+  const first = await json(firstResponse);
+  const firstRecords = first.personalRecords as Array<Record<string, unknown>>;
+  assertEquals(firstRecords.map((row) => [row.id, row.workoutMode, row.deletedAt]), [
+    [unseen.id, null, null],
+    [repair.id, "ECHO", null],
+  ]);
+  assertEquals(first.hasMore, true);
+  assert(typeof first.nextCursor === "string");
+
+  const nextResponse = await harness.handler(requestFromBody({ ...request, cursor: first.nextCursor }));
+  assertEquals(nextResponse.status, 200);
+  const next = await json(nextResponse);
+  const nextRecords = next.personalRecords as Array<Record<string, unknown>>;
+  assertEquals(nextRecords.map((row) => [row.id, row.deletedAt]), [[tombstoneBase.id, changedAt]]);
+  assertEquals(next.hasMore, false);
+
+  const calls = harness.adminCalls.filter((call) => call.name === "get_known_personal_record_changes");
+  const args = {
+    p_user_id: VALID_USER_ID,
+    p_known_ids: knownIds,
+    p_last_sync_at: "2026-07-08T14:23:00.000Z",
+    p_profile_id: VALID_PROFILE_ID,
+    p_limit: 3,
+  };
+  assertEquals(calls.map((call) => call.args), [
+    { ...args, p_cursor_updated_at: null, p_cursor_id: null },
+    { ...args, p_cursor_updated_at: changedAt, p_cursor_id: repair.id },
+  ]);
+});
+
 Deno.test("identical-microsecond personal records produce a distinct nextCursor", async () => {
   const sharedUpdatedAt = "2026-07-08T14:24:09.648091+00:00";
   const dataset = Array.from({ length: 200 }, (_, index) => ({
@@ -1188,7 +1244,75 @@ const EXACT_PAGE_CUSTOM_EXERCISE = {
   equipment: ["cable"],
   default_cable_config: "DOUBLE",
   updated_at: "2026-07-08T14:26:00.000000+00:00",
+  sync_updated_at: "2026-07-15T10:01:02.123456+00:00",
 };
+
+Deno.test("custom exercise pull pages by server receipt time and preserves client clocks", async () => {
+  const firstExercise = {
+    ...EXACT_PAGE_CUSTOM_EXERCISE,
+    id: 'custom-"É",row',
+    archived: true,
+  };
+  const secondExercise = { ...EXACT_PAGE_CUSTOM_EXERCISE, id: "custom-z" };
+  const harness = makeHarness(undefined, {
+    fromImpl: (name, operations) => {
+      if (name !== "exercise_catalog") return undefined;
+      return {
+        data: operations.some((operation) => operation.name === "or")
+          ? [secondExercise]
+          : [firstExercise, secondExercise],
+        error: null,
+      };
+    },
+  });
+  const lastSync = Date.parse("2026-07-15T10:00:00Z");
+  const legacyCursor = btoa(JSON.stringify({
+    type: "customExercises",
+    updatedAt: firstExercise.updated_at,
+    id: "old-cursor-id",
+  }));
+  const request = { ...validPullBody(), lastSync, pageSize: 1 };
+  const first = await harness.handler(requestFromBody({ ...request, cursor: legacyCursor }));
+  assertEquals(first.status, 200);
+  const firstBody = await json(first);
+  assertEquals(firstBody.hasMore, true);
+  const [archived] = firstBody.customExercises as Array<Record<string, unknown>>;
+  assertEquals(archived.updatedAt, firstExercise.updated_at);
+  assertEquals(archived.deletedAt, firstExercise.updated_at);
+  assertEquals(JSON.parse(atob(String(firstBody.nextCursor))), {
+    type: "customExercises",
+    updatedAt: firstExercise.sync_updated_at,
+    id: firstExercise.id,
+    clock: "server",
+  });
+
+  const second = await harness.handler(requestFromBody({
+    ...request,
+    cursor: firstBody.nextCursor,
+  }));
+  assertEquals(second.status, 200);
+  const secondBody = await json(second);
+  assertEquals(secondBody.hasMore, false);
+  assertEquals(
+    (secondBody.customExercises as Array<{ clientId: string }>).map(({ clientId }) => clientId),
+    [secondExercise.id],
+  );
+
+  const [firstQuery, secondQuery] = harness.adminCalls.filter((call) =>
+    call.kind === "from" && call.name === "exercise_catalog"
+  );
+  assert(firstQuery?.operations && secondQuery?.operations);
+  assertEquals(firstQuery.operations.filter(({ name }) => name === "gt" || name === "order" || name === "or"), [
+    { name: "gt", args: ["sync_updated_at", new Date(lastSync - STALE_OVERLAP_MS).toISOString()] },
+    { name: "order", args: ["sync_updated_at", { ascending: true }] },
+    { name: "order", args: ["id", { ascending: true }] },
+  ]);
+  const clock = JSON.stringify(firstExercise.sync_updated_at);
+  assertEquals(secondQuery.operations.filter(({ name }) => name === "or"), [{
+    name: "or",
+    args: [`sync_updated_at.gt.${clock},and(sync_updated_at.eq.${clock},id.gt.${JSON.stringify(firstExercise.id)})`],
+  }]);
+});
 
 // Codex P1 on PR 218: a section that returned exactly the remaining page
 // budget left hasMore false, so every later pageable entity was skipped and
@@ -4095,10 +4219,11 @@ Deno.test("AUD-010: pull emits workoutMode on personalRecords and defaults missi
   assertEquals(prs[1].workoutMode, null);
 });
 
-Deno.test("AUD-041: pull emits stringified rackBehaviorOverrides or null on routine exercises", async () => {
+Deno.test("AUD-041: pull distinguishes a cleared rackBehaviorOverrides map from an unset value", async () => {
   const routineId = "00000000-0000-4000-8000-000000000201";
   const ex1Id = "00000000-0000-4000-8000-000000000202";
   const ex2Id = "00000000-0000-4000-8000-000000000203";
+  const ex3Id = "00000000-0000-4000-8000-000000000204";
   const harness = makeHarness(undefined, {
     rpcImpl: (name) => {
       if (name === "get_routines_excluding_ids") {
@@ -4108,7 +4233,7 @@ Deno.test("AUD-041: pull emits stringified rackBehaviorOverrides or null on rout
             user_id: VALID_USER_ID,
             name: "Rack Test Routine",
             description: "",
-            exercise_count: 2,
+            exercise_count: 3,
             estimated_duration: 300,
             times_completed: 0,
             is_favorite: false,
@@ -4152,6 +4277,21 @@ Deno.test("AUD-041: pull emits stringified rackBehaviorOverrides or null on rout
             rack_behavior_overrides: null,
             catalog: null,
           },
+          {
+            id: ex3Id,
+            routine_id: routineId,
+            exercise_id: null,
+            name: "Deadlift",
+            muscle_group: "Legs",
+            sets: 3,
+            reps: 10,
+            weight: 60,
+            rest_seconds: 90,
+            mode: "OLD_SCHOOL",
+            order_index: 2,
+            rack_behavior_overrides: {},
+            catalog: null,
+          },
         ],
         error: null,
       }],
@@ -4169,6 +4309,7 @@ Deno.test("AUD-041: pull emits stringified rackBehaviorOverrides or null on rout
     JSON.stringify({ "rack-1": "COUNTERWEIGHT" }),
   );
   assertEquals(routines[0].exercises[1].rackBehaviorOverrides, null);
+  assertEquals(routines[0].exercises[2].rackBehaviorOverrides, "{}");
 });
 
 Deno.test("AUD-061: pull emits archived, deletedAt, updatedAt, and createdAt on customExercises", async () => {

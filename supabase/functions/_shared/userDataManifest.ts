@@ -496,6 +496,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"user_id",
 			"created_at",
 			"updated_at",
+			"sync_updated_at",
 			"source",
 			"source_id",
 			"license",

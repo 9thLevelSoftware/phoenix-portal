@@ -291,6 +291,32 @@ const repTelemetrySchema = z.object({
 	cable: nullableField(z.string()),
 });
 
+// Keep these names aligned with mobile's RackItemBehavior enum.
+const rackItemBehavior = z.enum(["ADDED_RESISTANCE", "COUNTERWEIGHT", "DISPLAY_ONLY"]);
+const rackBehaviorOverridesSchema = z.string().transform((wire: string, ctx: z.RefinementCtx) => {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(wire);
+	} catch {
+		// Use the same validation error for malformed JSON and invalid maps.
+	}
+	if (
+		parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) &&
+		Object.values(parsed).every((behavior: unknown) =>
+			rackItemBehavior.safeParse(behavior).success
+		)
+	) {
+		// Validate the values without reconstructing the object so every JSON
+		// string key survives, including names inherited by ordinary objects.
+		return parsed as Record<string, z.infer<typeof rackItemBehavior>>;
+	}
+	ctx.addIssue({
+		code: z.ZodIssueCode.custom,
+		message: "expected a JSON object mapping rack item IDs to supported behaviors",
+	});
+	return z.NEVER;
+});
+
 const routineExerciseSchema = z.object({
 	id: uuid,
 	routineId: uuid,
@@ -319,7 +345,7 @@ const routineExerciseSchema = z.object({
 	echoLevel: nullableField(z.string()),
 	perSetEchoLevels: nullableField(z.string()),
 	warmupSets: nullableField(z.string()),
-	rackBehaviorOverrides: nullableField(z.string()),
+	rackBehaviorOverrides: nullableField(rackBehaviorOverridesSchema),
 	// Do not manufacture `false` for an omitted flag. Older mobile builds omit
 	// this field; defaulting it would upsert `drop_set_enabled=false` over a
 	// value written by the portal or a newer device (SYNC_LWW_ENABLED is off).

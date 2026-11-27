@@ -808,6 +808,9 @@ function makeHarness(
       ) {
         return options.personalRecordsResult;
       }
+      if (name === "upsert_mobile_custom_exercises") {
+        return { data: true, error: null };
+      }
       if (name === "upsert_set_derived_personal_records") {
         // Real function returns rows inserted or changed; with an empty store
         // every distinct row is a fresh insert.
@@ -4588,6 +4591,13 @@ function personalRecordRpcStore() {
           row.source === "set_derived" && row.deleted_at == null &&
           setDerivedSqlIdentity(row) === identity
         );
+        if (incoming.fill_missing_workout_mode_only === true) {
+          if (existing && existing.workout_mode == null && incoming.workout_mode != null) {
+            existing.workout_mode = incoming.workout_mode;
+            affected += 1;
+          }
+          continue;
+        }
         if (existing) {
           if (existing.value !== incoming.value) {
             existing.value = incoming.value;
@@ -4637,11 +4647,13 @@ Deno.test("PR 57: two pushes of the same set-derived PR yield one row; a dedicat
   const upsertCalls = harness.adminRpcCalls.filter((call) =>
     call.name === "upsert_set_derived_personal_records"
   );
-  assertEquals(upsertCalls.length, 1);
+  assertEquals(upsertCalls.length, 2);
   assertEquals(upsertCalls[0].args.p_user_id, VALID_USER_ID);
   const sentRow = (upsertCalls[0].args.p_rows as Record<string, unknown>[])[0];
   assertEquals(sentRow.source, "set_derived");
   assert(!Object.hasOwn(sentRow, "id"));
+  const replayRow = (upsertCalls[1].args.p_rows as Record<string, unknown>[])[0];
+  assertEquals(replayRow.fill_missing_workout_mode_only, true);
   // Set-derived rows never use the PostgREST table write (it cannot target
   // the partial unique index).
   assertEquals(
@@ -4687,7 +4699,7 @@ Deno.test("PR 57: two pushes of the same set-derived PR yield one row; a dedicat
     harness.adminRpcCalls.filter((call) =>
       call.name === "upsert_set_derived_personal_records"
     ).length,
-    1,
+    upsertCalls.length,
   );
 });
 
@@ -10989,6 +11001,74 @@ Deno.test({
 });
 
 Deno.test({
+  name: `integration: custom exercise incremental pull pages backdated writes (LWW=${SYNC_LWW_ENABLED})`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const push = realTombstonePushHandler(fixture);
+      const pull = realPullHandlerFor(fixture);
+      const createdAt = "2025-12-01T12:00:00.000Z";
+      const initialClock = "2025-12-02T12:00:00.000Z";
+      const deleteClock = "2025-12-03T12:00:00.000Z";
+      const editClock = "2025-12-04T12:00:00.000Z";
+      const deleted = {
+        clientId: `custom-${fixture.ownerId},("É")\\archive`,
+        name: "Custom Press",
+      };
+      const edited = {
+        clientId: `custom-${fixture.ownerId}-edit`,
+        name: "Custom Row",
+      };
+      await pushOk(push, {
+        ...validPushBody(),
+        customExercises: [deleted, edited].map((exercise) => ({
+          ...exercise, createdAt, updatedAt: initialClock,
+        })),
+      });
+
+      const lastSync = Date.now();
+      await pushOk(push, {
+        ...validPushBody(),
+        customExercises: [{ ...deleted, deletedAt: deleteClock }],
+      });
+      await pushOk(push, {
+        ...validPushBody(),
+        customExercises: [{ ...edited, name: "Renamed Custom Row", updatedAt: editClock }],
+      });
+
+      const request = { deviceId: "other-device", lastSync, pageSize: 1 };
+      const firstResponse = await pull(requestFromBody(request));
+      const first = await json(firstResponse);
+      assertEquals(firstResponse.status, 200, JSON.stringify(first));
+      assertEquals(first.hasMore, true);
+      const firstRows = first.customExercises as Array<Record<string, unknown>>;
+      assertEquals(firstRows.map((row) => row.clientId), [deleted.clientId]);
+      assertEquals(firstRows[0].archived, true);
+      assertEquals(epochMs(firstRows[0].createdAt), epochMs(createdAt));
+      assertEquals(epochMs(firstRows[0].updatedAt), epochMs(deleteClock));
+      assertEquals(epochMs(firstRows[0].deletedAt), epochMs(deleteClock));
+      const cursor = JSON.parse(atob(String(first.nextCursor)));
+      assertEquals(cursor.type, "customExercises");
+      assertEquals(cursor.id, deleted.clientId);
+      assert(epochMs(cursor.updatedAt) >= lastSync, "the cursor uses the server receipt clock");
+
+      const secondResponse = await pull(requestFromBody({ ...request, cursor: first.nextCursor }));
+      const second = await json(secondResponse);
+      assertEquals(secondResponse.status, 200, JSON.stringify(second));
+      assertEquals(second.hasMore, false);
+      const secondRows = second.customExercises as Array<Record<string, unknown>>;
+      assertEquals(secondRows.map((row) => row.clientId), [edited.clientId]);
+      assertEquals(secondRows[0].archived, false);
+      assertEquals(secondRows[0].name, "Renamed Custom Row");
+      assertEquals(epochMs(secondRows[0].updatedAt), epochMs(editClock));
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
   name:
     "integration: a foreign cycle_days id in a push leaves the victim row untouched",
   ignore: localIntegrationEnvironment === null,
@@ -12916,6 +12996,38 @@ Deno.test("AUD-010: push forwards workoutMode on both set-derived and dedicated 
   assertEquals(writtenRow.updated_at, clientUpdatedAt);
 });
 
+Deno.test("AUD-010: a replay fills a missing set-derived mode without rewriting the record", async () => {
+  const store = personalRecordRpcStore();
+  const harness = makeHarness(undefined, { rpcBehavior: store.rpcBehavior });
+  const session = makePrSession();
+  const pushSession = (payload: Omit<typeof session, "workoutMode"> & { workoutMode?: string }) =>
+    harness.handler(requestFromBody({ ...validPushBody(), sessions: [payload] }));
+
+  const first = await pushSession({ ...session, workoutMode: undefined });
+  assertEquals(first.status, 200);
+  assertEquals((await json(first)).personalRecordsInserted, 1);
+  const [stored] = store.rows.values();
+  assertEquals(stored.workout_mode, null);
+  const original = { ...stored };
+
+  const replay = await pushSession({ ...session, workoutMode: "ECHO" });
+  assertEquals(replay.status, 200);
+  assertEquals((await json(replay)).personalRecordsInserted, 1);
+  assertEquals(store.rows.size, 1);
+  assertEquals(stored, { ...original, workout_mode: "ECHO" });
+
+  const repeat = await pushSession({ ...session, workoutMode: "TUT" });
+  assertEquals(repeat.status, 200);
+  assertEquals((await json(repeat)).personalRecordsInserted, 0);
+  assertEquals(stored, { ...original, workout_mode: "ECHO" });
+
+  const replayCall = harness.adminRpcCalls.filter((call) =>
+    call.name === "upsert_set_derived_personal_records"
+  )[1];
+  const [replayRow] = replayCall.args.p_rows as Array<Record<string, unknown>>;
+  assertEquals(replayRow.fill_missing_workout_mode_only, true);
+});
+
 Deno.test("AUD-041: routine exercise rackBehaviorOverrides preserves omitted rows and parses explicit updates", async () => {
   const { rackBehaviorOverrides: _omitted, ...omittedExercise } = currentMobileRoutineExercise(
     ROUTINE_EXERCISE_ID,
@@ -12928,38 +13040,36 @@ Deno.test("AUD-041: routine exercise rackBehaviorOverrides preserves omitted row
   const [omittedRow] = routineExerciseUpsertRows(omittedHarness);
   assertEquals("rack_behavior_overrides" in omittedRow, false);
 
-  const mixedHarness = makeHarness(async () => VALID_AUTH_RESULT, {
-    tableResults: {
-      routine_exercises: storedRoutineExercises([{
-        id: ROUTINE_EXERCISE_ID,
-        drop_set_enabled: false,
-        drop_set_min_weight_kg: null,
-        duration_seconds: null,
-        rack_behavior_overrides: { "rack-existing": "ADDED_RESISTANCE" },
-      }]),
-    },
-  });
+  const mixedHarness = makeHarness();
   const mixedRes = await mixedHarness.handler(
     requestFromBody(routinePushBody([
       omittedExercise,
       {
         ...currentMobileRoutineExercise(TIMED_ROUTINE_EXERCISE_ID),
         orderIndex: 1,
-        rackBehaviorOverrides: JSON.stringify({ "rack-1": "COUNTERWEIGHT" }),
+        rackBehaviorOverrides: JSON.stringify({
+          "rack-1": "COUNTERWEIGHT",
+          ["__proto__"]: "DISPLAY_ONLY",
+        }),
       },
     ])),
   );
   assertEquals(mixedRes.status, 200);
-  const byId = new Map(
-    routineExerciseUpsertRows(mixedHarness).map((r) => [r.id, r]),
+  const [withoutOverrides, withOverrides] = mixedHarness.adminWriteArgs
+    .filter((call) => call.table === "routine_exercises" && call.method === "upsert")
+    .map((call) => call.payload as Array<Record<string, unknown>>);
+  assertEquals(withoutOverrides.map((row) => row.id), [ROUTINE_EXERCISE_ID]);
+  assertEquals(withOverrides.map((row) => row.id), [TIMED_ROUTINE_EXERCISE_ID]);
+  assertEquals(Object.hasOwn(withoutOverrides[0], "rack_behavior_overrides"), false);
+  assert(
+    mixedHarness.adminQueryCalls.every((call) =>
+      call.table !== "routine_exercises" || call.method !== "select" ||
+      !String(call.args[0]).includes("rack_behavior_overrides")
+    ),
   );
   assertEquals(
-    byId.get(ROUTINE_EXERCISE_ID)?.rack_behavior_overrides,
-    { "rack-existing": "ADDED_RESISTANCE" },
-  );
-  assertEquals(
-    byId.get(TIMED_ROUTINE_EXERCISE_ID)?.rack_behavior_overrides,
-    { "rack-1": "COUNTERWEIGHT" },
+    withOverrides[0].rack_behavior_overrides,
+    { "rack-1": "COUNTERWEIGHT", ["__proto__"]: "DISPLAY_ONLY" },
   );
 
   const clearHarness = makeHarness();
@@ -12971,131 +13081,126 @@ Deno.test("AUD-041: routine exercise rackBehaviorOverrides preserves omitted row
   );
   assertEquals(clearRes.status, 200);
   const [clearedRow] = routineExerciseUpsertRows(clearHarness);
-  assertEquals(clearedRow.rack_behavior_overrides, null);
+  assertEquals(clearedRow.rack_behavior_overrides, {});
 });
 
-Deno.test("AUD-061: customExercises soft-delete sync respects LWW, prevents tombstone resurrection, and preserves backward compat", async () => {
-  // 1. Legacy client omitting archived/deletedAt/updatedAt/createdAt still works.
-  const legacyHarness = makeHarness();
-  const legacyRes = await legacyHarness.handler(requestFromBody({
-    ...validPushBody(),
-    customExercises: [{
-      clientId: "custom-legacy",
-      name: "Legacy Press",
-      muscleGroup: "Chest",
-      equipment: "HANDLES",
-      defaultCableConfig: "DOUBLE",
-    }],
-  }));
-  assertEquals(legacyRes.status, 200);
-  const legacyWrite = legacyHarness.adminWritePayloads.find((c) =>
-    c.table === "exercise_catalog" && c.method === "upsert"
-  );
-  assert(legacyWrite);
-  const [legacyRow] = legacyWrite.payload as Array<Record<string, unknown>>;
-  assertEquals(legacyRow.archived, false);
-  assertEquals(typeof legacyRow.updated_at, "string");
-  assertEquals(typeof legacyRow.created_at, "string");
+Deno.test("AUD-041: rejects invalid routine exercise rackBehaviorOverrides before any writes", async () => {
+  for (const rackBehaviorOverrides of [
+    "{",
+    "null",
+    "[]",
+    '"COUNTERWEIGHT"',
+    '{"rack-1":null}',
+    '{"rack-1":{}}',
+    '{"rack-1":"UNKNOWN"}',
+    '{"__proto__":"UNKNOWN"}',
+    { "rack-1": "COUNTERWEIGHT" },
+  ]) {
+    const harness = makeHarness();
+    const response = await harness.handler(
+      requestFromBody(routinePushBody([{
+        ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
+        rackBehaviorOverrides,
+      }])),
+    );
+    assertEquals(response.status, 400, JSON.stringify(rackBehaviorOverrides));
+    assertEquals(harness.adminWriteArgs, []);
+  }
+});
 
-  // 2. Soft-delete with epoch ms deletedAt sets archived=true and ISO updated_at.
-  const deleteHarness = makeHarness();
-  const deletedMs = Date.parse("2026-07-15T12:00:00.000Z");
-  const createdMs = Date.parse("2026-07-01T12:00:00.000Z");
-  const deleteRes = await deleteHarness.handler(requestFromBody({
-    ...validPushBody(),
-    customExercises: [{
-      clientId: "custom-del",
-      name: "Deleted Press",
-      muscleGroup: "Chest",
-      equipment: "HANDLES",
-      defaultCableConfig: "DOUBLE",
-      deletedAt: deletedMs,
-      updatedAt: deletedMs,
-      createdAt: createdMs,
-    }],
-  }));
-  assertEquals(deleteRes.status, 200);
-  const deleteWrite = deleteHarness.adminWritePayloads.find((c) =>
-    c.table === "exercise_catalog" && c.method === "upsert"
-  );
-  assert(deleteWrite);
-  const [deletedRow] = deleteWrite.payload as Array<Record<string, unknown>>;
-  assertEquals(deletedRow.archived, true);
-  assertEquals(deletedRow.updated_at, "2026-07-15T12:00:00.000Z");
-  assertEquals(deletedRow.created_at, "2026-07-01T12:00:00.000Z");
-
-  // 3. Stale or undated client edit never resurrects an existing archived tombstone.
-  const staleHarness = makeHarness(undefined, {
-    catalogBehavior: (query) => {
-      if (query.calls.some((c) => c.method === "in")) {
-        return {
-          data: [{
-            id: "custom-tombstoned",
-            is_custom: true,
-            user_id: VALID_USER_ID,
-            archived: true,
-            created_at: "2026-07-01T00:00:00.000Z",
-            updated_at: "2026-07-15T12:00:00.000Z",
-          }],
-          error: null,
-        };
-      }
-      return undefined;
+Deno.test("AUD-041: failure of the second exercise batch remains retryable before orphan cleanup", async () => {
+  const { rackBehaviorOverrides: _omitted, ...exerciseWithoutOverrides } =
+    currentMobileRoutineExercise(ROUTINE_EXERCISE_ID);
+  let exerciseUpserts = 0;
+  const harness = makeHarness(undefined, {
+    tableResults: {
+      routine_exercises: (operations) => {
+        const failed = operations.some((operation) => operation.name === "upsert") &&
+          ++exerciseUpserts === 2;
+        return { data: [], error: failed ? INJECTED_DB_ERROR : null };
+      },
     },
   });
-  const staleRes = await staleHarness.handler(requestFromBody({
+  const response = await harness.handler(requestFromBody(routinePushBody([
+    exerciseWithoutOverrides,
+    currentMobileRoutineExercise(TIMED_ROUTINE_EXERCISE_ID),
+  ])));
+  await assertPartialWriteRetry(harness, response, "routine_exercises.upsert");
+  assertEquals(exerciseUpserts, 2);
+  assertEquals(
+    harness.adminWriteArgs.some((call) =>
+      call.table === "routine_exercises" && call.method === "delete"
+    ),
+    false,
+  );
+});
+
+Deno.test("custom exercise writes delegate ownership and archive clocks to one RPC", async () => {
+  const harness = makeHarness();
+  const exercise = { name: "Custom Press", muscleGroup: "Chest", equipment: "HANDLES" };
+  const response = await harness.handler(requestFromBody({
     ...validPushBody(),
     customExercises: [
+      { ...exercise, clientId: "custom-legacy" },
       {
-        clientId: "custom-tombstoned",
-        name: "Stale Edit",
-        muscleGroup: "Chest",
-        defaultCableConfig: "DOUBLE",
-        archived: false,
-        updatedAt: "2026-07-14T00:00:00.000Z",
+        ...exercise,
+        clientId: "custom-deleted",
+        createdAt: Date.parse("2026-07-01T12:00:00.000Z"),
+        deletedAt: Date.parse("2026-07-15T12:00:00.000Z"),
       },
     ],
   }));
-  assertEquals(staleRes.status, 200);
-  assertEquals(
-    staleHarness.adminWritePayloads.filter((c) =>
-      c.table === "exercise_catalog" && c.method === "upsert"
-    ),
-    [],
-  );
 
-  const undatedHarness = makeHarness(undefined, {
-    catalogBehavior: (query) => {
-      if (query.calls.some((c) => c.method === "in")) {
-        return {
-          data: [{
-            id: "custom-tombstoned",
-            is_custom: true,
-            user_id: VALID_USER_ID,
-            archived: true,
-            created_at: "2026-07-01T00:00:00.000Z",
-            updated_at: "2026-07-15T12:00:00.000Z",
-          }],
-          error: null,
-        };
-      }
-      return undefined;
+  assertEquals(response.status, 200);
+  assertEquals(harness.adminRpcCalls.filter((call) =>
+    call.name === "upsert_mobile_custom_exercises"
+  ), [{
+    name: "upsert_mobile_custom_exercises",
+    args: {
+      p_user_id: VALID_USER_ID,
+      p_rows: [
+        {
+          id: "custom-legacy",
+          name: "Custom Press",
+          display_name: "Custom Press",
+          muscle_group: "Chest",
+          equipment: ["HANDLES"],
+          default_cable_config: "DOUBLE",
+          archived: false,
+          created_at: null,
+          updated_at: null,
+        },
+        {
+          id: "custom-deleted",
+          name: "Custom Press",
+          display_name: "Custom Press",
+          muscle_group: "Chest",
+          equipment: ["HANDLES"],
+          default_cable_config: "DOUBLE",
+          archived: true,
+          created_at: "2026-07-01T12:00:00.000Z",
+          updated_at: "2026-07-15T12:00:00.000Z",
+        },
+      ],
     },
+  }]);
+  assertEquals(harness.adminWritePayloads.filter((call) => call.table === "exercise_catalog"), []);
+});
+
+Deno.test("an atomic custom exercise ownership rejection returns 400 before other writes", async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => name === "upsert_mobile_custom_exercises"
+      ? { data: false, error: null }
+      : undefined,
   });
-  const undatedRes = await undatedHarness.handler(requestFromBody({
+  const response = await harness.handler(requestFromBody({
     ...validPushBody(),
-    customExercises: [{
-      clientId: "custom-tombstoned",
-      name: "Old Client Edit",
-      muscleGroup: "Chest",
-      defaultCableConfig: "DOUBLE",
-    }],
+    customExercises: [{ clientId: "foreign-catalog-id", name: "Custom Press" }],
   }));
-  assertEquals(undatedRes.status, 200);
-  assertEquals(
-    undatedHarness.adminWritePayloads.filter((c) =>
-      c.table === "exercise_catalog" && c.method === "upsert"
-    ),
-    [],
-  );
+
+  assertEquals(response.status, 400);
+  assertEquals(await json(response), {
+    error: "Custom exercise id conflicts with an existing catalog exercise.",
+  });
+  assertEquals(harness.adminWritePayloads, []);
 });
