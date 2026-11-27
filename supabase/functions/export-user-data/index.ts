@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { readBoundedRequestBody, REQUEST_BODY_LIMITS } from '../_shared/requestBody.ts';
 import {
   getUserDataTable,
   isNonTableSource,
@@ -385,9 +386,17 @@ async function exportUserDataHandler(
     const verifiedUser = user as unknown as ExportUser;
     const userId = verifiedUser.id;
 
+    const bodyRead = await readBoundedRequestBody(req, REQUEST_BODY_LIMITS.exportUserData);
+    if (bodyRead.kind !== 'ok') {
+      return json(
+        { error: bodyRead.kind === 'too_large' ? 'Request body too large' : 'Invalid request body' },
+        bodyRead.kind === 'too_large' ? 413 : 400,
+        cors,
+      );
+    }
     let body: unknown;
     try {
-      body = await req.json();
+      body = JSON.parse(new TextDecoder().decode(bodyRead.bytes));
     } catch {
       return json({ error: 'Invalid JSON body' }, 400, cors);
     }
