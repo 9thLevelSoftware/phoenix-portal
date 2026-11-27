@@ -49,6 +49,8 @@ export const REQUEST_BODY_LIMITS = {
   // POST { table, cursor? }. Cursor values are capped at 512 characters.
   exportUserData: 16 * 1024,
   generateInsights: 16 * 1024,
+  // A label, a URL (2,048 max), nine scope names and one header value (512 max).
+  webhookEndpoints: 16 * 1024,
   garminWebhook: 1024 * 1024,
   paddleWebhook: 1024 * 1024,
   // Five parity ID lists may each contain 10,000 UUIDs (~1.95 MB total).

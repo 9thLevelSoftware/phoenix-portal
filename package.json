@@ -113,7 +113,13 @@
     "nanoid": "^3.3.18",
     "postcss": "^8.5.23",
     "undici": "^7.29.0",
-    "sharp": "$sharp"
+    "sharp": "$sharp",
+    "@sentry/bundler-plugins": {
+      "glob": "^14.0.4"
+    },
+    "workbox-build": {
+      "glob": "^14.0.4"
+    }
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",
