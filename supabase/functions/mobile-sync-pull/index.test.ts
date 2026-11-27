@@ -1271,7 +1271,7 @@ Deno.test("the final entity filling the page exactly ends the sync", async () =>
   assertEquals(body.hasMore, false, "nothing follows custom exercises");
 });
 
-Deno.test("first-page pull queries exact owner and profile and maps all five canonicals", async () => {
+Deno.test("first-page pull queries exact owner and profile and maps all six canonicals", async () => {
   const harness = makeHarness(undefined, {
     preferenceResult: { data: validPreferenceRow(), error: null },
   });
@@ -1910,6 +1910,11 @@ Deno.test({
           vbtEnabled: true,
           preferences: structuredClone(VBT_PREFERENCES),
         }),
+        mutateRealPreference(
+          fixture,
+          "CUSTOM_EQUIPMENT",
+          structuredClone(CUSTOM_EQUIPMENT_PAYLOAD),
+        ),
       ]);
       const ownerLogs: unknown[][] = [];
       const ownerHandler = realPullHandler(fixture, fixture.ownerId, ownerLogs);

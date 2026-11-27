@@ -1072,6 +1072,7 @@ SELECT results_eq(
             ('empty-led'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('empty-rack'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('empty-vbt'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
+            ('empty-workout'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('invalid-core-number'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('invalid-led-scheme'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
             ('invalid-rack-items'::text COLLATE "C", false, 'VALIDATION_FAILED'::text COLLATE "C", 0::bigint, NULL::jsonb),
