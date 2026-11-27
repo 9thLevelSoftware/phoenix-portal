@@ -1051,6 +1051,13 @@ function safeJsonParse(value: string | null | undefined): unknown {
   }
 }
 
+function toIsoTimestamp(value: string | number | null | undefined): string | null {
+  if (value == null) return null;
+  const ms = typeof value === 'number' ? value : Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toISOString();
+}
+
 // =============================================================================
 // Handler
 // =============================================================================
@@ -1621,50 +1628,38 @@ async function mobileSyncPushHandler(
     if (payload.customExercises.length > 0) {
       const catalogRows = payload.customExercises.map((ce) => {
         const name = ce.name.trim();
-        const muscleGroup = ce.muscleGroup || 'General';
         return {
           id: ce.clientId,
           name,
           display_name: ce.displayName?.trim() || name,
-          muscle_group: muscleGroup,
-          muscle_groups: [muscleGroup],
+          muscle_group: ce.muscleGroup || 'General',
           equipment: ce.equipment
             ? ce.equipment.split(',').map((e) => e.trim()).filter(Boolean)
             : [],
           default_cable_config: ce.defaultCableConfig || 'DOUBLE',
-          is_custom: true,
-          user_id: userId,
-          archived: false,
-          popularity: 0,
+          archived: Boolean(ce.archived) || ce.deletedAt != null,
+          created_at: toIsoTimestamp(ce.createdAt),
+          updated_at: toIsoTimestamp(ce.updatedAt) ?? toIsoTimestamp(ce.deletedAt),
         };
       });
 
-      const catalogIds = catalogRows.map((row) => row.id);
-      const { data: existingCatalogRows, error: existingCatalogError } = await db
-        .from('exercise_catalog')
-        .select('id, is_custom, user_id')
-        .in('id', catalogIds);
+      const { data: accepted, error: catalogError } = await db
+        .rpc('upsert_mobile_custom_exercises', {
+          p_user_id: userId,
+          p_rows: catalogRows,
+        });
 
-      if (existingCatalogError) {
-        throw new DatabaseOperationError('custom exercise ownership lookup', existingCatalogError);
+      if (catalogError) {
+        throw new DatabaseOperationError('custom exercise upsert', catalogError);
       }
-
-      const conflictingCatalogRow = (existingCatalogRows ?? []).find(
-        (row) => row.is_custom !== true || row.user_id !== userId
-      );
-      if (conflictingCatalogRow) {
+      if (accepted === false) {
         return new Response(
           JSON.stringify({ error: 'Custom exercise id conflicts with an existing catalog exercise.' }),
           { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } }
         );
       }
-
-      const { error: catalogError } = await db
-        .from('exercise_catalog')
-        .upsert(catalogRows, { onConflict: 'id' });
-
-      if (catalogError) {
-        throw new DatabaseOperationError('custom exercise upsert', catalogError);
+      if (accepted !== true) {
+        throw new Error('Invalid custom exercise upsert result');
       }
     }
 
@@ -3025,13 +3020,13 @@ async function mobileSyncPushHandler(
       // they would never match an existing row and the insert path would create
       // duplicate PRs on every re-sync.
       const existingPrIdsByIdentity = new Map<string, string | null>();
+      const livePrDerivedIdentities = new Set<string>();
       for (const row of existingPrs ?? []) {
         const existingId = typeof row.id === 'string' ? row.id : null;
+        const derivedIdentity = personalRecordDerivedIdentityKey(row);
         existingPrIdsByIdentity.set(personalRecordIdentityKey(row), existingId);
-        existingPrIdsByIdentity.set(
-          personalRecordDerivedIdentityKey(row),
-          existingId,
-        );
+        existingPrIdsByIdentity.set(derivedIdentity, existingId);
+        if (row.deleted_at == null) livePrDerivedIdentities.add(derivedIdentity);
       }
 
       const latestPayloadRowsByIdentity = new Map<string, typeof prRows[number]>();
@@ -3039,13 +3034,19 @@ async function mobileSyncPushHandler(
         latestPayloadRowsByIdentity.set(personalRecordIdentityKey(row), row);
       }
 
+      const modeOnlyPrReplays: Array<typeof prRows[number] & { fill_missing_workout_mode_only: true }> = [];
       const dedupedPrRows = [...latestPayloadRowsByIdentity.values()].filter((row) => {
         const key = personalRecordIdentityKey(row);
         const existingId = existingPrIdsByIdentity.get(key);
         if (
           existingId &&
           (!row.id || normalizeUuid(row.id) !== normalizeUuid(existingId))
-        ) return false;
+        ) {
+          if (!dedicatedPrsPresent && row.workout_mode != null && livePrDerivedIdentities.has(key)) {
+            modeOnlyPrReplays.push({ ...row, fill_missing_workout_mode_only: true });
+          }
+          return false;
+        }
         existingPrIdsByIdentity.set(key, row.id ?? existingId ?? null);
         return true;
       });
@@ -3080,7 +3081,7 @@ async function mobileSyncPushHandler(
         return row.deleted_at != null && existing.deleted_at == null;
       });
 
-      if (prRowsToWrite.length > 0) {
+      if (prRowsToWrite.length > 0 || modeOnlyPrReplays.length > 0) {
         // Dedicated rows keep the id-keyed upsert (F335: same derived
         // identity with a different id is a distinct record). Set-derived
         // rows go through SQL so ON CONFLICT can target the partial unique
@@ -3092,7 +3093,9 @@ async function mobileSyncPushHandler(
               .upsert(rows, { onConflict: 'id' })
           : db.rpc('upsert_set_derived_personal_records', {
               p_user_id: userId,
-              p_rows: rows,
+              // Replay identity must stay exact even when the FK retry adjusts
+              // insert candidates. The RPC only fills missing modes in place.
+              p_rows: [...rows, ...modeOnlyPrReplays],
             });
         // The set-derived RPC returns how many rows it actually inserted or
         // changed (0 when a concurrent push already wrote the same values).
@@ -3281,7 +3284,9 @@ async function mobileSyncPushHandler(
           const chunk = dropSetProbeIds.slice(i, i + chunkSize);
           const { data: existingExercises, error: existingDropSetErr } = await db
             .from('routine_exercises')
-            .select('id, drop_set_enabled, drop_set_min_weight_kg, duration_seconds')
+            .select(
+              'id, drop_set_enabled, drop_set_min_weight_kg, duration_seconds',
+            )
             .in('id', chunk);
           if (existingDropSetErr) {
             throw new DatabaseOperationError(
@@ -3347,12 +3352,23 @@ async function mobileSyncPushHandler(
               : existingDurations.get(normalizeUuid(e.id)) ?? null,
           }
           : {}),
+        // SQL NULL means unset. An explicit clear round-trips as an empty map.
+        ...(e.rackBehaviorOverrides !== undefined
+          ? { rack_behavior_overrides: e.rackBehaviorOverrides ?? {} }
+          : {}),
       }));
 
-      if (reRows.length > 0) {
+      // Both upsert clients take the union of keys in each batch. Keep omitted
+      // rack overrides in a separate batch so SQL leaves the current value intact.
+      const rackBatches = [
+        reRows.filter((row) => !Object.hasOwn(row, 'rack_behavior_overrides')),
+        reRows.filter((row) => Object.hasOwn(row, 'rack_behavior_overrides')),
+      ];
+      for (const rows of rackBatches) {
+        if (rows.length === 0) continue;
         const { error: reErr } = await db
           .from('routine_exercises')
-          .upsert(reRows, { onConflict: 'id' });
+          .upsert(rows, { onConflict: 'id' });
         // Same retryable contract as the orphan cleanup that follows (R-5).
         if (reErr) throw new PartialWriteRetryError('routine_exercises upsert', reErr);
       }

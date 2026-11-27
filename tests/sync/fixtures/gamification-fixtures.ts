@@ -197,6 +197,7 @@ export function createPersonalRecordFixture(
 		session_id: null,
 		source: null,
 		weight_kg: null,
+		workout_mode: null,
 	};
 	return Object.assign(base, overrides);
 }

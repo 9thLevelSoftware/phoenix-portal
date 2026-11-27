@@ -417,6 +417,7 @@ export type Database = {
 					sidedness: string | null;
 					source: string | null;
 					source_id: string | null;
+					sync_updated_at: string;
 					thumbnail_url: string | null;
 					updated_at: string;
 					user_id: string | null;
@@ -447,6 +448,7 @@ export type Database = {
 					sidedness?: string | null;
 					source?: string | null;
 					source_id?: string | null;
+					sync_updated_at?: string;
 					thumbnail_url?: string | null;
 					updated_at?: string;
 					user_id?: string | null;
@@ -476,6 +478,7 @@ export type Database = {
 					sidedness?: string | null;
 					source?: string | null;
 					source_id?: string | null;
+					sync_updated_at?: string;
 					thumbnail_url?: string | null;
 					updated_at?: string;
 					user_id?: string | null;
@@ -907,6 +910,9 @@ export type Database = {
 					body_weight_kg: number;
 					core_revision: number;
 					core_updated_at: string;
+					custom_equipment: NonNullable<Json>;
+					custom_equipment_revision: number;
+					custom_equipment_updated_at: string;
 					equipment_rack: NonNullable<Json>;
 					led_color_scheme_id: number;
 					led_preferences: NonNullable<Json>;
@@ -933,6 +939,9 @@ export type Database = {
 					body_weight_kg?: number;
 					core_revision?: number;
 					core_updated_at?: string;
+					custom_equipment?: NonNullable<Json>;
+					custom_equipment_revision?: number;
+					custom_equipment_updated_at?: string;
 					equipment_rack?: NonNullable<Json>;
 					led_color_scheme_id?: number;
 					led_preferences?: NonNullable<Json>;
@@ -958,6 +967,9 @@ export type Database = {
 					body_weight_kg?: number;
 					core_revision?: number;
 					core_updated_at?: string;
+					custom_equipment?: NonNullable<Json>;
+					custom_equipment_revision?: number;
+					custom_equipment_updated_at?: string;
 					equipment_rack?: NonNullable<Json>;
 					led_color_scheme_id?: number;
 					led_preferences?: NonNullable<Json>;
@@ -1238,6 +1250,7 @@ export type Database = {
 					user_id: string;
 					value: number;
 					weight_kg: number | null;
+					workout_mode: string | null;
 					workout_phase: string | null;
 				};
 				ComputedFields: never;
@@ -1259,6 +1272,7 @@ export type Database = {
 					user_id: string;
 					value: number;
 					weight_kg?: number | null;
+					workout_mode?: string | null;
 					workout_phase?: string | null;
 				};
 				Update: {
@@ -1279,6 +1293,7 @@ export type Database = {
 					user_id?: string;
 					value?: number;
 					weight_kg?: number | null;
+					workout_mode?: string | null;
 					workout_phase?: string | null;
 				};
 				Relationships: [
@@ -1651,6 +1666,7 @@ export type Database = {
 					per_set_rest: Json | null;
 					per_set_weights: Json | null;
 					pr_percentage: number | null;
+					rack_behavior_overrides: Json | null;
 					rep_count_timing: string | null;
 					reps: number;
 					rest_seconds: number;
@@ -1685,6 +1701,7 @@ export type Database = {
 					per_set_rest?: Json | null;
 					per_set_weights?: Json | null;
 					pr_percentage?: number | null;
+					rack_behavior_overrides?: Json | null;
 					rep_count_timing?: string | null;
 					reps?: number;
 					rest_seconds?: number;
@@ -1718,6 +1735,7 @@ export type Database = {
 					per_set_rest?: Json | null;
 					per_set_weights?: Json | null;
 					pr_percentage?: number | null;
+					rack_behavior_overrides?: Json | null;
 					rep_count_timing?: string | null;
 					reps?: number;
 					rest_seconds?: number;
@@ -3689,6 +3707,44 @@ export type Database = {
 					target_value: number;
 				}[];
 			};
+			get_known_personal_record_changes: {
+				Args: {
+					p_cursor_id: string;
+					p_cursor_updated_at: string;
+					p_known_ids: string[];
+					p_last_sync_at: string;
+					p_limit: number;
+					p_profile_id: string;
+					p_user_id: string;
+				};
+				Returns: {
+					achieved_at: string;
+					deleted_at: string | null;
+					exercise_id: string | null;
+					exercise_name: string;
+					id: string;
+					local_profile_id: string | null;
+					muscle_group: string;
+					previous_value: number | null;
+					record_type: string;
+					reps: number | null;
+					session_id: string | null;
+					source: string | null;
+					unit: string;
+					updated_at: string;
+					user_id: string;
+					value: number;
+					weight_kg: number | null;
+					workout_mode: string | null;
+					workout_phase: string | null;
+				}[];
+				SetofOptions: {
+					from: "*";
+					to: "personal_records";
+					isOneToOne: false;
+					isSetofReturn: true;
+				};
+			};
 			get_muscle_distribution: {
 				Args: { p_profile_id?: string; p_user_id: string };
 				Returns: {
@@ -3756,6 +3812,7 @@ export type Database = {
 					user_id: string;
 					value: number;
 					weight_kg: number | null;
+					workout_mode: string | null;
 					workout_phase: string | null;
 				}[];
 				SetofOptions: {
@@ -3792,6 +3849,7 @@ export type Database = {
 					user_id: string;
 					value: number;
 					weight_kg: number | null;
+					workout_mode: string | null;
 					workout_phase: string | null;
 				}[];
 				SetofOptions: {
@@ -4055,6 +4113,7 @@ export type Database = {
 					user_id: string;
 					value: number;
 					weight_kg: number | null;
+					workout_mode: string | null;
 					workout_phase: string | null;
 				}[];
 				SetofOptions: {
@@ -4268,6 +4327,10 @@ export type Database = {
 					server_updated_at: string;
 				}[];
 			};
+			upsert_mobile_custom_exercises: {
+				Args: { p_rows: Json; p_user_id: string };
+				Returns: boolean;
+			};
 			upsert_routine_lww: {
 				Args: { p_rows: Json };
 				Returns: {
@@ -4316,6 +4379,10 @@ export type Database = {
 			user_subscription_tier: {
 				Args: Record<PropertyKey, never>;
 				Returns: string;
+			};
+			validate_custom_equipment_document: {
+				Args: { p_document: Json };
+				Returns: boolean;
 			};
 			verify_profile_recovery_source: {
 				Args: {

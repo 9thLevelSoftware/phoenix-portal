@@ -205,6 +205,11 @@ INSERT INTO public.routine_exercises (id, routine_id, name, order_index, created
     ('cccc0000-0000-4000-8000-00000000000e', 'bbbb0000-0000-4000-8000-000000000003', 'E row', 0, '2020-01-05T00:00:00Z'),
     ('cccc0000-0000-4000-8000-00000000000f', 'bbbb0000-0000-4000-8000-000000000004', 'O row', 0, '2020-01-06T00:00:00Z');
 
+UPDATE public.routine_exercises
+SET rack_behavior_overrides = '{"rack-1":"COUNTERWEIGHT"}'::jsonb
+WHERE id IN ('cccc0000-0000-4000-8000-000000000001',
+             'cccc0000-0000-4000-8000-000000000002');
+
 INSERT INTO public.training_cycles (id, user_id, name) VALUES
     ('dddd0000-0000-4000-8000-000000000001', 'aaaa0000-0000-4000-8000-0000000000f1', 'Block A'),
     ('dddd0000-0000-4000-8000-000000000002', 'aaaa0000-0000-4000-8000-0000000000f2', 'O block');
@@ -229,7 +234,8 @@ SELECT is(
         'Pull day v2', 'desc', 3, 1800,
         jsonb_build_array(
             pg_temp.ex('Row', 0, 'cccc0000-0000-4000-8000-000000000001'),
-            pg_temp.ex('Pulldown', 1, 'cccc0000-0000-4000-8000-000000000002'),
+            pg_temp.ex('Pulldown', 1, 'cccc0000-0000-4000-8000-000000000002')
+                || '{"rack_behavior_overrides":null}'::jsonb,
             pg_temp.ex('Face pull', 2)
         )
     ),
@@ -242,6 +248,27 @@ SELECT is(
       WHERE routine_id = 'bbbb0000-0000-4000-8000-000000000001'),
     3,
     'the routine has three exercises after the update'
+);
+
+SELECT is(
+    (SELECT rack_behavior_overrides FROM public.routine_exercises
+      WHERE id = 'cccc0000-0000-4000-8000-000000000001'),
+    '{"rack-1":"COUNTERWEIGHT"}'::jsonb,
+    'a portal update omitting rack overrides preserves the current map for the same exercise id'
+);
+
+SELECT is(
+    (SELECT rack_behavior_overrides FROM public.routine_exercises
+      WHERE id = 'cccc0000-0000-4000-8000-000000000002'),
+    '{}'::jsonb,
+    'a portal update explicitly clearing rack overrides stores an empty map'
+);
+
+SELECT is(
+    (SELECT rack_behavior_overrides FROM public.routine_exercises
+      WHERE routine_id = 'bbbb0000-0000-4000-8000-000000000001' AND name = 'Face pull'),
+    NULL::jsonb,
+    'a new exercise omitting rack overrides keeps the SQL NULL for unset'
 );
 
 -- THE regression assertion: an id the caller sent is the id still stored.
