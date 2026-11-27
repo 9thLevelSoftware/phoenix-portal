@@ -1435,5 +1435,109 @@ SELECT results_eq(
     'WORKOUT fields remain optional when the required version is present'
 );
 
+SELECT diag('database:complete-mobile-workout-defaults-on-first-section');
+
+-- Constructor defaults from mobile ProfilePreferences.kt, serialized by
+-- ProfilePreferencesCodec with encodeDefaults=true.
+CREATE TEMP TABLE mobile_workout_defaults (payload jsonb NOT NULL) ON COMMIT DROP;
+INSERT INTO mobile_workout_defaults VALUES ('{
+    "version": 1,
+    "stopAtTop": false,
+    "beepsEnabled": true,
+    "stallDetectionEnabled": true,
+    "audioRepCountEnabled": false,
+    "repCountTiming": "TOP",
+    "summaryCountdownSeconds": 10,
+    "autoStartCountdownSeconds": 5,
+    "gamificationEnabled": true,
+    "autoStartRoutine": false,
+    "countdownBeepsEnabled": true,
+    "repSoundEnabled": true,
+    "motionStartEnabled": false,
+    "weightSuggestionsEnabled": true,
+    "defaultRoutineExerciseUsePercentOfPR": false,
+    "defaultRoutineExerciseWeightPercentOfPR": 80,
+    "voiceStopEnabled": false,
+    "justLiftDefaults": {
+        "workoutModeId": 0,
+        "weightPerCableKg": 20.0,
+        "weightChangePerRep": 0.0,
+        "eccentricLoadPercentage": 100,
+        "echoLevelValue": 1,
+        "stallDetectionEnabled": true,
+        "repCountTimingName": "TOP",
+        "restSeconds": 60
+    },
+    "singleExerciseDefaults": {}
+}'::jsonb);
+
+INSERT INTO public.local_profiles (user_id, id, name, device_id)
+VALUES
+    ('11111111-1111-4111-8111-111111111111'::uuid, 'equipment-first-defaults', 'Equipment first', 'pgtap'),
+    ('11111111-1111-4111-8111-111111111111'::uuid, 'workout-first-defaults', 'Workout first', 'pgtap'),
+    ('11111111-1111-4111-8111-111111111111'::uuid, 'column-workout-defaults', 'Column defaults', 'pgtap');
+
+SELECT results_eq(
+    $sql$
+        SELECT accepted, server_revision
+        FROM public.mutate_local_profile_preference_section(
+            '11111111-1111-4111-8111-111111111111'::uuid,
+            'equipment-first-defaults',
+            'CUSTOM_EQUIPMENT',
+            1,
+            0,
+            '{"version":1,"items":[]}'::jsonb
+        )
+    $sql$,
+    $values$ VALUES (true, 1::bigint) $values$,
+    'CUSTOM_EQUIPMENT can create a fresh profile preference row first'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT workout_preferences, workout_revision
+        FROM public.local_profile_preferences
+        WHERE user_id = '11111111-1111-4111-8111-111111111111'::uuid
+          AND local_profile_id = 'equipment-first-defaults'
+    $sql$,
+    $expected$ SELECT payload, 0::bigint FROM mobile_workout_defaults $expected$,
+    'CUSTOM_EQUIPMENT-first creation stores complete mobile WORKOUT defaults at revision zero'
+);
+
+SELECT results_eq(
+    $sql$
+        SELECT accepted, server_revision, canonical_section -> 'payload'
+        FROM public.mutate_local_profile_preference_section(
+            '11111111-1111-4111-8111-111111111111'::uuid,
+            'workout-first-defaults',
+            'WORKOUT',
+            1,
+            0,
+            (SELECT payload || '{"stopAtTop":true,"summaryCountdownSeconds":30}'::jsonb
+             FROM mobile_workout_defaults)
+        )
+    $sql$,
+    $expected$
+        SELECT true, 1::bigint,
+               payload || '{"stopAtTop":true,"summaryCountdownSeconds":30}'::jsonb
+        FROM mobile_workout_defaults
+    $expected$,
+    'WORKOUT-first creation accepts the supplied customized document unchanged at revision one'
+);
+
+INSERT INTO public.local_profile_preferences (user_id, local_profile_id)
+VALUES ('11111111-1111-4111-8111-111111111111'::uuid, 'column-workout-defaults');
+
+SELECT results_eq(
+    $sql$
+        SELECT workout_preferences, workout_revision
+        FROM public.local_profile_preferences
+        WHERE user_id = '11111111-1111-4111-8111-111111111111'::uuid
+          AND local_profile_id = 'column-workout-defaults'
+    $sql$,
+    $expected$ SELECT payload, 0::bigint FROM mobile_workout_defaults $expected$,
+    'direct default-column construction stores complete mobile WORKOUT defaults at revision zero'
+);
+
 SELECT * FROM finish();
 ROLLBACK;
