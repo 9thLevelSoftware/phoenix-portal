@@ -18,6 +18,10 @@ type PaidTier = Exclude<SubscriptionTier, "FREE">;
  *     20260920000900_flame_write_policies.sql), the import RPCs, OAuth start
  *     (initiate-oauth) and the integration sync / rankings Edge Functions.
  *     Routines and cycles pushed from mobile stay EMBER (service-role push).
+ *     Data sharing (outbound webhooks) is FLAME in the `webhook-endpoints`
+ *     Edge Function and again in SQL when deliveries are claimed; it has no
+ *     route of its own (Profile > Settings), and pausing or deleting an
+ *     endpoint is deliberately allowed below FLAME.
  *   - INFERNO: the force-curve and biomechanics DATA — rep_telemetry (and the
  *     telemetry_points view), vbt_assessments, session_phase_statistics and
  *     exercise_signatures — is SELECT-gated in RLS
@@ -42,6 +46,7 @@ export const FEATURE_MIN_TIER = {
 	cycles: "FLAME",
 	compare: "FLAME",
 	integrations: "FLAME",
+	dataSharing: "FLAME",
 	sessionReplay: "FLAME",
 	biomechanics: "INFERNO",
 } as const satisfies Record<string, PaidTier>;

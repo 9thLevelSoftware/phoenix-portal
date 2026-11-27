@@ -131,6 +131,7 @@ export function createRoutineExerciseFixture(
 		// Drop-set retry (mobile #673). Floor is per-cable kg.
 		drop_set_enabled: false,
 		drop_set_min_weight_kg: null,
+		rack_behavior_overrides: null,
 	};
 	return Object.assign(base, overrides);
 }

@@ -153,6 +153,19 @@ export const queryKeys = {
 		syncQueueActive: (userId: string) =>
 			[...queryKeys.integrations.syncQueue(userId), "active"] as const,
 	},
+	dataSharing: {
+		all: ["data-sharing"] as const,
+		endpoints: (userId: string) =>
+			[...queryKeys.dataSharing.all, "endpoints", userId] as const,
+		// Nested under `endpoints` so one invalidation after any write refreshes
+		// the endpoint list and every open delivery log.
+		deliveries: (userId: string, endpointId: string) =>
+			[
+				...queryKeys.dataSharing.endpoints(userId),
+				"deliveries",
+				endpointId,
+			] as const,
+	},
 	comments: {
 		all: ["comments"] as const,
 		byItem: (itemId: string) => [...queryKeys.comments.all, itemId] as const,

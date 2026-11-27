@@ -284,6 +284,9 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"vbt_preferences",
 			"vbt_revision",
 			"vbt_updated_at",
+			"custom_equipment",
+			"custom_equipment_revision",
+			"custom_equipment_updated_at",
 			"updated_at",
 		],
 		purge: "cascade",
@@ -295,6 +298,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"user_id",
 		"name",
 		"started_at",
+		"completed_at",
 		"duration_seconds",
 		"total_volume",
 		"set_count",
@@ -404,6 +408,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"session_id",
 		"exercise_id",
 		"deleted_at",
+		"workout_mode",
 		// PR 57: push path that produced the row (set_derived | dedicated);
 		// NULL on rows predating 20260920005700.
 		"source",
@@ -491,6 +496,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"user_id",
 			"created_at",
 			"updated_at",
+			"sync_updated_at",
 			"source",
 			"source_id",
 			"license",
@@ -564,6 +570,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"exercise_id",
 			"drop_set_enabled",
 			"drop_set_min_weight_kg",
+			"rack_behavior_overrides",
 		],
 		purge: "cascade",
 	},
@@ -1031,6 +1038,50 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"retry_count",
 		"error_message",
 	]),
+	// Data sharing (20261106120000): the endpoints the user registered and the
+	// delivery log. Both cascade from auth.users, the log through its composite
+	// FK to webhook_endpoints. The signing key and custom header value live in
+	// webhook_endpoint_secrets (EXCLUDED).
+	owned(
+		"webhook_endpoints",
+		"cascade",
+		[
+			"id",
+			"user_id",
+			"label",
+			"url",
+			"scopes",
+			"status",
+			"disabled_reason",
+			"custom_header_name",
+			"signing_key_hint",
+			"consecutive_failures",
+			"last_success_at",
+			"last_failure_at",
+			"created_at",
+			"updated_at",
+		],
+		{
+			note: "Endpoint metadata only; signing_key_hint is the last characters of the key, shown so two endpoints can be told apart.",
+		},
+	),
+	owned("webhook_deliveries", "cascade", [
+		"id",
+		"endpoint_id",
+		"user_id",
+		"entity",
+		"entity_id",
+		"event_type",
+		"status",
+		"attempt_count",
+		"next_attempt_at",
+		"claimed_at",
+		"last_status_code",
+		"last_error_code",
+		"duration_ms",
+		"created_at",
+		"finished_at",
+	]),
 ];
 
 /**
@@ -1071,6 +1122,12 @@ export const EXCLUDED: readonly ExcludedUserDataTable[] = [
 	{
 		table: "oauth_tokens",
 		reason: "Provider access/refresh tokens and API keys are credentials, not user content; connection metadata is exported via user_integrations.",
+		purge: "cascade",
+		purgeMatch: { column: "user_id" },
+	},
+	{
+		table: "webhook_endpoint_secrets",
+		reason: "Webhook signing keys and custom header values are credentials, not user content; endpoint metadata is exported via webhook_endpoints.",
 		purge: "cascade",
 		purgeMatch: { column: "user_id" },
 	},

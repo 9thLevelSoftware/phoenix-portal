@@ -104,6 +104,7 @@ export function createSessionFixture(
 		updated_at: DEFAULT_TIMESTAMP,
 		local_profile_id: null,
 		client_updated_at: DEFAULT_TIMESTAMP,
+		completed_at: null,
 
 		// Session enrichment fields (GAPs 3-6)
 		avg_velocity_mps: 0.65,

@@ -808,6 +808,9 @@ function makeHarness(
       ) {
         return options.personalRecordsResult;
       }
+      if (name === "upsert_mobile_custom_exercises") {
+        return { data: true, error: null };
+      }
       if (name === "upsert_set_derived_personal_records") {
         // Real function returns rows inserted or changed; with an empty store
         // every distinct row is a fresh insert.
@@ -1211,8 +1214,36 @@ Deno.test("cycles gate the parent and its days in one merge RPC; a rejected cycl
 // `exercise_progress`. Properties carried forward: a rejected parent gets no
 // component replacement at all, and the replacement is never decomposed into
 // per-table child writes.
+Deno.test("a completed workout is written with its final sets in the completion RPC", async () => {
+  const body = validNestedRelationshipBody();
+  const startedAt = "2026-07-11T12:00:00.000Z";
+  const completedAt = "2026-07-11T13:00:00.000Z";
+  Object.assign((body.sessions as Array<Record<string, unknown>>)[0], {
+    startedAt,
+    completedAt,
+    updatedAt: completedAt,
+  });
+  const harness = makeHarness(undefined, { syncLwwEnabled: false });
+  const response = await harness.handler(requestFromBody(body));
+  assertEquals(response.status, 200, JSON.stringify(await json(response)));
+  const call = harness.adminRpcCalls.find((entry) =>
+    entry.name === "replace_session_children_with_completion"
+  );
+  assertEquals(call?.args.p_completions, [{
+    id: SESSION_ID,
+    client_updated_at: completedAt,
+    completed_at: completedAt,
+  }]);
+  assertEquals((call?.args.p_sets as Array<{ id: string }>).map((set) => set.id), [
+    SET_ID,
+  ]);
+});
+
 Deno.test("a rejected session parent gets no component replacement and no per-table child writes", async () => {
   const body = validNestedRelationshipBody();
+  Object.assign((body.sessions as Array<Record<string, unknown>>)[0], {
+    completedAt: "2026-09-20T12:00:00.000Z",
+  });
   body.routines = [];
   body.cycles = [];
   const harness = makeHarness(undefined, {
@@ -1248,7 +1279,7 @@ Deno.test("a rejected session parent gets no component replacement and no per-ta
   // No component replacement for a rejected parent, and never a per-table
   // child write (including exercise_progress) standing in for one.
   assertEquals(
-    harness.adminRpcCalls.filter((call) => call.name === "replace_session_children"),
+    harness.adminRpcCalls.filter((call) => call.name.startsWith("replace_session_children")),
     [],
   );
   assertEquals(
@@ -4560,6 +4591,13 @@ function personalRecordRpcStore() {
           row.source === "set_derived" && row.deleted_at == null &&
           setDerivedSqlIdentity(row) === identity
         );
+        if (incoming.fill_missing_workout_mode_only === true) {
+          if (existing && existing.workout_mode == null && incoming.workout_mode != null) {
+            existing.workout_mode = incoming.workout_mode;
+            affected += 1;
+          }
+          continue;
+        }
         if (existing) {
           if (existing.value !== incoming.value) {
             existing.value = incoming.value;
@@ -4609,11 +4647,13 @@ Deno.test("PR 57: two pushes of the same set-derived PR yield one row; a dedicat
   const upsertCalls = harness.adminRpcCalls.filter((call) =>
     call.name === "upsert_set_derived_personal_records"
   );
-  assertEquals(upsertCalls.length, 1);
+  assertEquals(upsertCalls.length, 2);
   assertEquals(upsertCalls[0].args.p_user_id, VALID_USER_ID);
   const sentRow = (upsertCalls[0].args.p_rows as Record<string, unknown>[])[0];
   assertEquals(sentRow.source, "set_derived");
   assert(!Object.hasOwn(sentRow, "id"));
+  const replayRow = (upsertCalls[1].args.p_rows as Record<string, unknown>[])[0];
+  assertEquals(replayRow.fill_missing_workout_mode_only, true);
   // Set-derived rows never use the PostgREST table write (it cannot target
   // the partial unique index).
   assertEquals(
@@ -4659,7 +4699,7 @@ Deno.test("PR 57: two pushes of the same set-derived PR yield one row; a dedicat
     harness.adminRpcCalls.filter((call) =>
       call.name === "upsert_set_derived_personal_records"
     ).length,
-    1,
+    upsertCalls.length,
   );
 });
 
@@ -10961,6 +11001,74 @@ Deno.test({
 });
 
 Deno.test({
+  name: `integration: custom exercise incremental pull pages backdated writes (LWW=${SYNC_LWW_ENABLED})`,
+  ignore: localIntegrationEnvironment === null,
+  fn: async () => {
+    const fixture = await createTombstonePushFixture();
+    try {
+      const push = realTombstonePushHandler(fixture);
+      const pull = realPullHandlerFor(fixture);
+      const createdAt = "2025-12-01T12:00:00.000Z";
+      const initialClock = "2025-12-02T12:00:00.000Z";
+      const deleteClock = "2025-12-03T12:00:00.000Z";
+      const editClock = "2025-12-04T12:00:00.000Z";
+      const deleted = {
+        clientId: `custom-${fixture.ownerId},("É")\\archive`,
+        name: "Custom Press",
+      };
+      const edited = {
+        clientId: `custom-${fixture.ownerId}-edit`,
+        name: "Custom Row",
+      };
+      await pushOk(push, {
+        ...validPushBody(),
+        customExercises: [deleted, edited].map((exercise) => ({
+          ...exercise, createdAt, updatedAt: initialClock,
+        })),
+      });
+
+      const lastSync = Date.now();
+      await pushOk(push, {
+        ...validPushBody(),
+        customExercises: [{ ...deleted, deletedAt: deleteClock }],
+      });
+      await pushOk(push, {
+        ...validPushBody(),
+        customExercises: [{ ...edited, name: "Renamed Custom Row", updatedAt: editClock }],
+      });
+
+      const request = { deviceId: "other-device", lastSync, pageSize: 1 };
+      const firstResponse = await pull(requestFromBody(request));
+      const first = await json(firstResponse);
+      assertEquals(firstResponse.status, 200, JSON.stringify(first));
+      assertEquals(first.hasMore, true);
+      const firstRows = first.customExercises as Array<Record<string, unknown>>;
+      assertEquals(firstRows.map((row) => row.clientId), [deleted.clientId]);
+      assertEquals(firstRows[0].archived, true);
+      assertEquals(epochMs(firstRows[0].createdAt), epochMs(createdAt));
+      assertEquals(epochMs(firstRows[0].updatedAt), epochMs(deleteClock));
+      assertEquals(epochMs(firstRows[0].deletedAt), epochMs(deleteClock));
+      const cursor = JSON.parse(atob(String(first.nextCursor)));
+      assertEquals(cursor.type, "customExercises");
+      assertEquals(cursor.id, deleted.clientId);
+      assert(epochMs(cursor.updatedAt) >= lastSync, "the cursor uses the server receipt clock");
+
+      const secondResponse = await pull(requestFromBody({ ...request, cursor: first.nextCursor }));
+      const second = await json(secondResponse);
+      assertEquals(secondResponse.status, 200, JSON.stringify(second));
+      assertEquals(second.hasMore, false);
+      const secondRows = second.customExercises as Array<Record<string, unknown>>;
+      assertEquals(secondRows.map((row) => row.clientId), [edited.clientId]);
+      assertEquals(secondRows[0].archived, false);
+      assertEquals(secondRows[0].name, "Renamed Custom Row");
+      assertEquals(epochMs(secondRows[0].updatedAt), epochMs(editClock));
+    } finally {
+      await deleteTombstonePushFixture(fixture.admin, [fixture.ownerId]);
+    }
+  },
+});
+
+Deno.test({
   name:
     "integration: a foreign cycle_days id in a push leaves the victim row untouched",
   ignore: localIntegrationEnvironment === null,
@@ -12747,4 +12855,352 @@ Deno.test("sortedUniqueIds: delete chunks run in one order regardless of payload
   const c = "0000000c-0000-4000-8000-000000000000";
   assertEquals(sortedUniqueIds([c, a, b, a.toLowerCase()]).map((id) => id.toLowerCase()), [a.toLowerCase(), b, c]);
   assertEquals(sortedUniqueIds([b, c, a]), sortedUniqueIds([a, c, b]));
+});
+
+Deno.test("AUD-012: CUSTOM_EQUIPMENT preference mutation is accepted and invalid variants return VALIDATION_FAILED", async () => {
+  const validPayload = {
+    version: 1,
+    items: [{
+      token: "U_EZ_BAR",
+      label: "EZ Bar",
+      createdAt: 1791500000000,
+    }],
+  };
+  const mutation = {
+    localProfileId: "profile-a",
+    section: "CUSTOM_EQUIPMENT",
+    documentVersion: 1,
+    baseRevision: 0,
+    clientModifiedAt: "2026-07-11T12:00:00Z",
+    payload: validPayload,
+  };
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => {
+      if (name === "mutate_local_profile_preference_section") {
+        return {
+          data: [{
+            accepted: true,
+            rejection_reason: null,
+            server_revision: 1,
+            canonical_section: {
+              localProfileId: "profile-a",
+              section: "CUSTOM_EQUIPMENT",
+              documentVersion: 1,
+              serverRevision: 1,
+              serverUpdatedAt: "2026-07-11T12:00:01.000Z",
+              payload: validPayload,
+            },
+          }],
+          error: null,
+        };
+      }
+      return { data: [], error: null };
+    },
+  });
+
+  const okRes = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profilePreferenceSections: [mutation],
+  }));
+  const okBody = await json(okRes);
+  assertEquals(okRes.status, 200, JSON.stringify(okBody));
+  assertEquals(
+    (okBody.canonicalProfilePreferenceSections as Array<Record<string, unknown>>),
+    [{
+      localProfileId: "profile-a",
+      section: "CUSTOM_EQUIPMENT",
+      documentVersion: 1,
+      serverRevision: 1,
+      serverUpdatedAt: "2026-07-11T12:00:01.000Z",
+      payload: validPayload,
+    }],
+  );
+  assertEquals(okBody.profilePreferenceRejections, []);
+
+  // Reserved slug & invalid token fail preference validation cleanly without 400ing the push.
+  const badRes = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profilePreferenceSections: [{
+      ...mutation,
+      payload: {
+        version: 1,
+        items: [{ token: "LONG_BAR", label: "Long Bar", createdAt: 1791500000000 }],
+      },
+    }],
+  }));
+  const badBody = await json(badRes);
+  assertEquals(badRes.status, 200, JSON.stringify(badBody));
+  assertEquals(badBody.canonicalProfilePreferenceSections, []);
+  assertEquals(
+    badBody.profilePreferenceRejections,
+    [{
+      localProfileId: "profile-a",
+      section: "CUSTOM_EQUIPMENT",
+      serverRevision: 0,
+      reason: "VALIDATION_FAILED",
+    }],
+  );
+});
+
+Deno.test("AUD-010: push forwards workoutMode on both set-derived and dedicated personalRecords and preserves Two Clocks", async () => {
+  const store = personalRecordRpcStore();
+  const harness = makeHarness(undefined, { rpcBehavior: store.rpcBehavior });
+  const basePrSession = makePrSession();
+  const prSession = {
+    ...basePrSession,
+    workoutMode: "OLD_SCHOOL",
+    exercises: basePrSession.exercises.map((ex) => ({
+      ...ex,
+      sets: ex.sets.map((set) => ({ ...set, workoutMode: "ECHO" })),
+    })),
+  };
+
+  const setDerivedRes = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    sessions: [prSession],
+  }));
+  assertEquals(setDerivedRes.status, 200);
+  const rpcCall = harness.adminRpcCalls.find((c) =>
+    c.name === "upsert_set_derived_personal_records"
+  );
+  assert(rpcCall);
+  assertEquals(
+    (rpcCall.args.p_rows as Array<Record<string, unknown>>)[0].workout_mode,
+    "ECHO",
+  );
+
+  const dedicatedId = "00000000-0000-4000-8000-000000000910";
+  const clientUpdatedAt = "2026-07-11T12:34:56.000Z";
+  const dedicatedRes = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    personalRecords: [{
+      id: dedicatedId,
+      exerciseName: "Bench Press",
+      recordType: "MAX_VOLUME",
+      value: 500,
+      weightKg: 50,
+      reps: 10,
+      workoutPhase: "COMBINED",
+      workoutMode: "TUT",
+      achievedAt: "2026-07-11T12:00:00.000Z",
+      updatedAt: clientUpdatedAt,
+    }],
+  }));
+  assertEquals(dedicatedRes.status, 200);
+  const prWrite = harness.adminWritePayloads.find((c) =>
+    c.table === "personal_records" && c.method === "upsert"
+  );
+  assert(prWrite);
+  const writtenRow = (prWrite.payload as Array<Record<string, unknown>>)[0];
+  assertEquals(writtenRow.workout_mode, "TUT");
+  assertEquals(writtenRow.updated_at, clientUpdatedAt);
+});
+
+Deno.test("AUD-010: a replay fills a missing set-derived mode without rewriting the record", async () => {
+  const store = personalRecordRpcStore();
+  const harness = makeHarness(undefined, { rpcBehavior: store.rpcBehavior });
+  const session = makePrSession();
+  const pushSession = (payload: Omit<typeof session, "workoutMode"> & { workoutMode?: string }) =>
+    harness.handler(requestFromBody({ ...validPushBody(), sessions: [payload] }));
+
+  const first = await pushSession({ ...session, workoutMode: undefined });
+  assertEquals(first.status, 200);
+  assertEquals((await json(first)).personalRecordsInserted, 1);
+  const [stored] = store.rows.values();
+  assertEquals(stored.workout_mode, null);
+  const original = { ...stored };
+
+  const replay = await pushSession({ ...session, workoutMode: "ECHO" });
+  assertEquals(replay.status, 200);
+  assertEquals((await json(replay)).personalRecordsInserted, 1);
+  assertEquals(store.rows.size, 1);
+  assertEquals(stored, { ...original, workout_mode: "ECHO" });
+
+  const repeat = await pushSession({ ...session, workoutMode: "TUT" });
+  assertEquals(repeat.status, 200);
+  assertEquals((await json(repeat)).personalRecordsInserted, 0);
+  assertEquals(stored, { ...original, workout_mode: "ECHO" });
+
+  const replayCall = harness.adminRpcCalls.filter((call) =>
+    call.name === "upsert_set_derived_personal_records"
+  )[1];
+  const [replayRow] = replayCall.args.p_rows as Array<Record<string, unknown>>;
+  assertEquals(replayRow.fill_missing_workout_mode_only, true);
+});
+
+Deno.test("AUD-041: routine exercise rackBehaviorOverrides preserves omitted rows and parses explicit updates", async () => {
+  const { rackBehaviorOverrides: _omitted, ...omittedExercise } = currentMobileRoutineExercise(
+    ROUTINE_EXERCISE_ID,
+  );
+  const omittedHarness = makeHarness();
+  const omittedRes = await omittedHarness.handler(
+    requestFromBody(routinePushBody([omittedExercise])),
+  );
+  assertEquals(omittedRes.status, 200);
+  const [omittedRow] = routineExerciseUpsertRows(omittedHarness);
+  assertEquals("rack_behavior_overrides" in omittedRow, false);
+
+  const mixedHarness = makeHarness();
+  const mixedRes = await mixedHarness.handler(
+    requestFromBody(routinePushBody([
+      omittedExercise,
+      {
+        ...currentMobileRoutineExercise(TIMED_ROUTINE_EXERCISE_ID),
+        orderIndex: 1,
+        rackBehaviorOverrides: JSON.stringify({
+          "rack-1": "COUNTERWEIGHT",
+          ["__proto__"]: "DISPLAY_ONLY",
+        }),
+      },
+    ])),
+  );
+  assertEquals(mixedRes.status, 200);
+  const [withoutOverrides, withOverrides] = mixedHarness.adminWriteArgs
+    .filter((call) => call.table === "routine_exercises" && call.method === "upsert")
+    .map((call) => call.payload as Array<Record<string, unknown>>);
+  assertEquals(withoutOverrides.map((row) => row.id), [ROUTINE_EXERCISE_ID]);
+  assertEquals(withOverrides.map((row) => row.id), [TIMED_ROUTINE_EXERCISE_ID]);
+  assertEquals(Object.hasOwn(withoutOverrides[0], "rack_behavior_overrides"), false);
+  assert(
+    mixedHarness.adminQueryCalls.every((call) =>
+      call.table !== "routine_exercises" || call.method !== "select" ||
+      !String(call.args[0]).includes("rack_behavior_overrides")
+    ),
+  );
+  assertEquals(
+    withOverrides[0].rack_behavior_overrides,
+    { "rack-1": "COUNTERWEIGHT", ["__proto__"]: "DISPLAY_ONLY" },
+  );
+
+  const clearHarness = makeHarness();
+  const clearRes = await clearHarness.handler(
+    requestFromBody(routinePushBody([{
+      ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
+      rackBehaviorOverrides: null,
+    }])),
+  );
+  assertEquals(clearRes.status, 200);
+  const [clearedRow] = routineExerciseUpsertRows(clearHarness);
+  assertEquals(clearedRow.rack_behavior_overrides, {});
+});
+
+Deno.test("AUD-041: rejects invalid routine exercise rackBehaviorOverrides before any writes", async () => {
+  for (const rackBehaviorOverrides of [
+    "{",
+    "null",
+    "[]",
+    '"COUNTERWEIGHT"',
+    '{"rack-1":null}',
+    '{"rack-1":{}}',
+    '{"rack-1":"UNKNOWN"}',
+    '{"__proto__":"UNKNOWN"}',
+    { "rack-1": "COUNTERWEIGHT" },
+  ]) {
+    const harness = makeHarness();
+    const response = await harness.handler(
+      requestFromBody(routinePushBody([{
+        ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
+        rackBehaviorOverrides,
+      }])),
+    );
+    assertEquals(response.status, 400, JSON.stringify(rackBehaviorOverrides));
+    assertEquals(harness.adminWriteArgs, []);
+  }
+});
+
+Deno.test("AUD-041: failure of the second exercise batch remains retryable before orphan cleanup", async () => {
+  const { rackBehaviorOverrides: _omitted, ...exerciseWithoutOverrides } =
+    currentMobileRoutineExercise(ROUTINE_EXERCISE_ID);
+  let exerciseUpserts = 0;
+  const harness = makeHarness(undefined, {
+    tableResults: {
+      routine_exercises: (operations) => {
+        const failed = operations.some((operation) => operation.name === "upsert") &&
+          ++exerciseUpserts === 2;
+        return { data: [], error: failed ? INJECTED_DB_ERROR : null };
+      },
+    },
+  });
+  const response = await harness.handler(requestFromBody(routinePushBody([
+    exerciseWithoutOverrides,
+    currentMobileRoutineExercise(TIMED_ROUTINE_EXERCISE_ID),
+  ])));
+  await assertPartialWriteRetry(harness, response, "routine_exercises.upsert");
+  assertEquals(exerciseUpserts, 2);
+  assertEquals(
+    harness.adminWriteArgs.some((call) =>
+      call.table === "routine_exercises" && call.method === "delete"
+    ),
+    false,
+  );
+});
+
+Deno.test("custom exercise writes delegate ownership and archive clocks to one RPC", async () => {
+  const harness = makeHarness();
+  const exercise = { name: "Custom Press", muscleGroup: "Chest", equipment: "HANDLES" };
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    customExercises: [
+      { ...exercise, clientId: "custom-legacy" },
+      {
+        ...exercise,
+        clientId: "custom-deleted",
+        createdAt: Date.parse("2026-07-01T12:00:00.000Z"),
+        deletedAt: Date.parse("2026-07-15T12:00:00.000Z"),
+      },
+    ],
+  }));
+
+  assertEquals(response.status, 200);
+  assertEquals(harness.adminRpcCalls.filter((call) =>
+    call.name === "upsert_mobile_custom_exercises"
+  ), [{
+    name: "upsert_mobile_custom_exercises",
+    args: {
+      p_user_id: VALID_USER_ID,
+      p_rows: [
+        {
+          id: "custom-legacy",
+          name: "Custom Press",
+          display_name: "Custom Press",
+          muscle_group: "Chest",
+          equipment: ["HANDLES"],
+          default_cable_config: "DOUBLE",
+          archived: false,
+          created_at: null,
+          updated_at: null,
+        },
+        {
+          id: "custom-deleted",
+          name: "Custom Press",
+          display_name: "Custom Press",
+          muscle_group: "Chest",
+          equipment: ["HANDLES"],
+          default_cable_config: "DOUBLE",
+          archived: true,
+          created_at: "2026-07-01T12:00:00.000Z",
+          updated_at: "2026-07-15T12:00:00.000Z",
+        },
+      ],
+    },
+  }]);
+  assertEquals(harness.adminWritePayloads.filter((call) => call.table === "exercise_catalog"), []);
+});
+
+Deno.test("an atomic custom exercise ownership rejection returns 400 before other writes", async () => {
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => name === "upsert_mobile_custom_exercises"
+      ? { data: false, error: null }
+      : undefined,
+  });
+  const response = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    customExercises: [{ clientId: "foreign-catalog-id", name: "Custom Press" }],
+  }));
+
+  assertEquals(response.status, 400);
+  assertEquals(await json(response), {
+    error: "Custom exercise id conflicts with an existing catalog exercise.",
+  });
+  assertEquals(harness.adminWritePayloads, []);
 });

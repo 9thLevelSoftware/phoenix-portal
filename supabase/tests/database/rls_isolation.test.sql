@@ -524,6 +524,20 @@ VALUES ('a1a1a1a1-0038-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-0000000
         -- not A's live session: guard_workout_tombstone would freeze it
         'a1a1a1a1-0040-4000-8000-00000000000a', now());
 
+-- Data sharing (20261106120000). The endpoint is paused so the capture
+-- triggers stay inert while the probes below write to A's other rows.
+INSERT INTO public.webhook_endpoints
+    (id, user_id, label, url, scopes, status, disabled_reason, signing_key_hint)
+VALUES ('a1a1a1a1-0042-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a',
+        'A endpoint', 'https://hooks.example.test/a', ARRAY['workouts'], 'paused', 'user_paused', 'abcd');
+
+INSERT INTO public.webhook_endpoint_secrets (endpoint_id, user_id, signing_secret_enc)
+VALUES ('a1a1a1a1-0042-4000-8000-00000000000a', 'a1a1a1a1-0000-4000-8000-00000000000a', 'enc:v1:rls-fixture');
+
+INSERT INTO public.webhook_deliveries (id, endpoint_id, user_id, entity, entity_id)
+VALUES ('a1a1a1a1-0043-4000-8000-00000000000a', 'a1a1a1a1-0042-4000-8000-00000000000a',
+        'a1a1a1a1-0000-4000-8000-00000000000a', 'workout', 'a1a1a1a1-0001-4000-8000-00000000000a');
+
 -- One row per private user-owned relation.
 --   key_col / row_key: how the probe finds A's fixture row.
 --   owner_select: rows A must see; NULL = service-only (expect <= 0).
@@ -596,7 +610,12 @@ INSERT INTO rls_cases VALUES
     ('profile_ownership_transfers', 'mutation_id', 'a1a1a1a1-0037-4000-8000-00000000000a', NULL, NULL, NULL, $s$request_hash = 'rls-probe'$s$),
     ('training_cycle_deletion_tombstones', 'cycle_id', 'a1a1a1a1-0036-4000-8000-00000000000a', NULL, NULL, NULL, $s$deleted_at = '2000-01-01T00:00:00Z'$s$),
     ('workout_deletion_tombstones', 'mutation_id', 'a1a1a1a1-0038-4000-8000-00000000000a', 1, NULL, NULL, $s$request_hash = 'rls-probe'$s$),
-    ('wearable_daily_summaries',  'id', 'a1a1a1a1-0034-4000-8000-00000000000a', 1, NULL, NULL, $s$provider = 'rls-probe'$s$);
+    ('wearable_daily_summaries',  'id', 'a1a1a1a1-0034-4000-8000-00000000000a', 1, NULL, NULL, $s$provider = 'rls-probe'$s$),
+    -- Data sharing: the owner reads endpoints and the delivery log; every
+    -- write is server-side, and the secrets table is service-only.
+    ('webhook_endpoints',         'id', 'a1a1a1a1-0042-4000-8000-00000000000a', 1, NULL, NULL, $s$label = 'rls-probe'$s$),
+    ('webhook_endpoint_secrets',  'endpoint_id', 'a1a1a1a1-0042-4000-8000-00000000000a', NULL, NULL, NULL, $s$signing_secret_enc = 'rls-probe'$s$),
+    ('webhook_deliveries',        'id', 'a1a1a1a1-0043-4000-8000-00000000000a', 1, NULL, NULL, $s$event_type = 'rls-probe'$s$);
 
 -- PR 38: force-curve and biomechanics relations whose SELECT policy requires
 -- INFERNO (20260920003800_inferno_read_policies.sql). Their owner_select is 0
