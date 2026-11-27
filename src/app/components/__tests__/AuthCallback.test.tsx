@@ -57,6 +57,7 @@ describe("AuthCallback", () => {
 	});
 
 	afterEach(() => {
+		vi.restoreAllMocks();
 		vi.clearAllMocks();
 	});
 
@@ -146,6 +147,40 @@ describe("AuthCallback", () => {
 			screen.getByText(/this sign-in link is invalid or has expired/i),
 		).toBeInTheDocument();
 		expect(screen.queryByText(/evil\.example/i)).not.toBeInTheDocument();
+	});
+
+	it("shows generic copy without logging when getSession returns an error", async () => {
+		const consoleError = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+		const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+		const sessionError = {
+			message: "Refresh Token Not Found: secret-provider-detail",
+		};
+		mockGetSession.mockResolvedValue({
+			data: { session: null },
+			error: sessionError,
+		});
+
+		renderAuthCallback("/auth/callback?provider=google");
+
+		expect(
+			await screen.findByRole("heading", { name: /google sign-in failed/i }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText(
+				/authentication could not be completed\. please try again\./i,
+			),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByText(/refresh token not found/i),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByText(/secret-provider-detail/i),
+		).not.toBeInTheDocument();
+		expect(consoleError).not.toHaveBeenCalled();
+		expect(consoleLog).not.toHaveBeenCalled();
+		expect(mockNavigate).not.toHaveBeenCalled();
 	});
 
 	it("maps an unknown error code to the generic fallback", async () => {
