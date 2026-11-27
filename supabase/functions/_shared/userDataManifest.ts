@@ -284,6 +284,9 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"vbt_preferences",
 			"vbt_revision",
 			"vbt_updated_at",
+			"custom_equipment",
+			"custom_equipment_revision",
+			"custom_equipment_updated_at",
 			"updated_at",
 		],
 		purge: "cascade",
@@ -405,6 +408,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 		"session_id",
 		"exercise_id",
 		"deleted_at",
+		"workout_mode",
 		// PR 57: push path that produced the row (set_derived | dedicated);
 		// NULL on rows predating 20260920005700.
 		"source",
@@ -565,6 +569,7 @@ export const USER_DATA_MANIFEST: readonly UserDataTable[] = [
 			"exercise_id",
 			"drop_set_enabled",
 			"drop_set_min_weight_kg",
+			"rack_behavior_overrides",
 		],
 		purge: "cascade",
 	},

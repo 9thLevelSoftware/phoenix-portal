@@ -1051,6 +1051,13 @@ function safeJsonParse(value: string | null | undefined): unknown {
   }
 }
 
+function toIsoTimestamp(value: string | number | null | undefined): string | null {
+  if (value == null) return null;
+  const ms = typeof value === 'number' ? value : Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toISOString();
+}
+
 // =============================================================================
 // Handler
 // =============================================================================
@@ -1619,30 +1626,11 @@ async function mobileSyncPushHandler(
     // Upsert custom catalog rows before any session/routine child rows that may
     // reference those catalog IDs through FK columns.
     if (payload.customExercises.length > 0) {
-      const catalogRows = payload.customExercises.map((ce) => {
-        const name = ce.name.trim();
-        const muscleGroup = ce.muscleGroup || 'General';
-        return {
-          id: ce.clientId,
-          name,
-          display_name: ce.displayName?.trim() || name,
-          muscle_group: muscleGroup,
-          muscle_groups: [muscleGroup],
-          equipment: ce.equipment
-            ? ce.equipment.split(',').map((e) => e.trim()).filter(Boolean)
-            : [],
-          default_cable_config: ce.defaultCableConfig || 'DOUBLE',
-          is_custom: true,
-          user_id: userId,
-          archived: false,
-          popularity: 0,
-        };
-      });
-
-      const catalogIds = catalogRows.map((row) => row.id);
+      const customExerciseReceiptNow = new Date(dependencies.now()).toISOString();
+      const catalogIds = [...new Set(payload.customExercises.map((ce) => ce.clientId))];
       const { data: existingCatalogRows, error: existingCatalogError } = await db
         .from('exercise_catalog')
-        .select('id, is_custom, user_id')
+        .select('id, is_custom, user_id, archived, updated_at, created_at')
         .in('id', catalogIds);
 
       if (existingCatalogError) {
@@ -1659,12 +1647,77 @@ async function mobileSyncPushHandler(
         );
       }
 
-      const { error: catalogError } = await db
-        .from('exercise_catalog')
-        .upsert(catalogRows, { onConflict: 'id' });
+      const existingById = new Map<string, {
+        archived: boolean;
+        updated_at: string | null;
+        created_at: string | null;
+      }>();
+      for (const row of existingCatalogRows ?? []) {
+        if (typeof row.id === 'string') {
+          existingById.set(row.id, {
+            archived: Boolean(row.archived),
+            updated_at: typeof row.updated_at === 'string' ? row.updated_at : null,
+            created_at: typeof row.created_at === 'string' ? row.created_at : null,
+          });
+        }
+      }
 
-      if (catalogError) {
-        throw new DatabaseOperationError('custom exercise upsert', catalogError);
+      const catalogRows = payload.customExercises.flatMap((ce) => {
+        const existing = existingById.get(ce.clientId);
+        const archived = Boolean(ce.archived) || ce.deletedAt != null;
+        const incomingUpdatedAt = toIsoTimestamp(ce.updatedAt) ??
+          toIsoTimestamp(ce.deletedAt) ??
+          customExerciseReceiptNow;
+        const incomingCreatedAt = toIsoTimestamp(ce.createdAt);
+
+        if (existing) {
+          const existingTs = existing.updated_at ? Date.parse(existing.updated_at) : Number.NaN;
+          const incomingTs = Date.parse(incomingUpdatedAt);
+          const hasExplicitIncomingClock = ce.updatedAt != null || ce.deletedAt != null;
+          // Never resurrect an existing archived tombstone from an undated/old client
+          // or from an older/equal-timestamp non-archived edit.
+          if (existing.archived && !archived) {
+            if (!hasExplicitIncomingClock) return [];
+            if (Number.isFinite(existingTs) && incomingTs <= existingTs) return [];
+          } else if (
+            hasExplicitIncomingClock &&
+            Number.isFinite(existingTs) &&
+            Number.isFinite(incomingTs) &&
+            incomingTs < existingTs
+          ) {
+            return [];
+          }
+        }
+
+        const name = ce.name.trim();
+        const muscleGroup = ce.muscleGroup || 'General';
+        return [{
+          id: ce.clientId,
+          name,
+          display_name: ce.displayName?.trim() || name,
+          muscle_group: muscleGroup,
+          muscle_groups: [muscleGroup],
+          equipment: ce.equipment
+            ? ce.equipment.split(',').map((e) => e.trim()).filter(Boolean)
+            : [],
+          default_cable_config: ce.defaultCableConfig || 'DOUBLE',
+          is_custom: true,
+          user_id: userId,
+          archived,
+          created_at: existing?.created_at ?? incomingCreatedAt ?? customExerciseReceiptNow,
+          updated_at: incomingUpdatedAt,
+          popularity: 0,
+        }];
+      });
+
+      if (catalogRows.length > 0) {
+        const { error: catalogError } = await db
+          .from('exercise_catalog')
+          .upsert(catalogRows, { onConflict: 'id' });
+
+        if (catalogError) {
+          throw new DatabaseOperationError('custom exercise upsert', catalogError);
+        }
       }
     }
 
@@ -3262,11 +3315,15 @@ async function mobileSyncPushHandler(
       // out of the upsert entirely, so it is never touched. When some rows
       // carry it, the rows that don't are filled from the existing row.
       const anyDurationSent = reSource.some((e) => e.durationSeconds !== undefined);
+      const anyRackBehaviorOverridesSent = reSource.some(
+        (e) => e.rackBehaviorOverrides !== undefined,
+      );
       const dropSetProbeIds = [...new Set(
         reSource
           .filter((e) =>
             needsDropSetExistingRow(e) ||
-            (anyDurationSent && e.durationSeconds === undefined)
+            (anyDurationSent && e.durationSeconds === undefined) ||
+            (anyRackBehaviorOverridesSent && e.rackBehaviorOverrides === undefined)
           )
           .map((e) => e.id),
       )];
@@ -3275,13 +3332,16 @@ async function mobileSyncPushHandler(
         drop_set_min_weight_kg: number | null;
       }>();
       const existingDurations = new Map<string, number | null>();
+      const existingRackBehaviorOverrides = new Map<string, unknown>();
       if (dropSetProbeIds.length > 0) {
         const chunkSize = 100;
         for (let i = 0; i < dropSetProbeIds.length; i += chunkSize) {
           const chunk = dropSetProbeIds.slice(i, i + chunkSize);
           const { data: existingExercises, error: existingDropSetErr } = await db
             .from('routine_exercises')
-            .select('id, drop_set_enabled, drop_set_min_weight_kg, duration_seconds')
+            .select(
+              'id, drop_set_enabled, drop_set_min_weight_kg, duration_seconds, rack_behavior_overrides',
+            )
             .in('id', chunk);
           if (existingDropSetErr) {
             throw new DatabaseOperationError(
@@ -3300,6 +3360,10 @@ async function mobileSyncPushHandler(
             existingDurations.set(
               normalizeUuid(row.id),
               typeof row.duration_seconds === 'number' ? row.duration_seconds : null,
+            );
+            existingRackBehaviorOverrides.set(
+              normalizeUuid(row.id),
+              row.rack_behavior_overrides ?? null,
             );
           }
         }
@@ -3345,6 +3409,13 @@ async function mobileSyncPushHandler(
             duration_seconds: e.durationSeconds !== undefined
               ? e.durationSeconds
               : existingDurations.get(normalizeUuid(e.id)) ?? null,
+          }
+          : {}),
+        ...(anyRackBehaviorOverridesSent
+          ? {
+            rack_behavior_overrides: e.rackBehaviorOverrides !== undefined
+              ? safeJsonParse(e.rackBehaviorOverrides)
+              : existingRackBehaviorOverrides.get(normalizeUuid(e.id)) ?? null,
           }
           : {}),
       }));

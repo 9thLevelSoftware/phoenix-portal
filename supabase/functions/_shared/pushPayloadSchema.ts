@@ -319,6 +319,7 @@ const routineExerciseSchema = z.object({
 	echoLevel: nullableField(z.string()),
 	perSetEchoLevels: nullableField(z.string()),
 	warmupSets: nullableField(z.string()),
+	rackBehaviorOverrides: nullableField(z.string()),
 	// Do not manufacture `false` for an omitted flag. Older mobile builds omit
 	// this field; defaulting it would upsert `drop_set_enabled=false` over a
 	// value written by the portal or a newer device (SYNC_LWW_ENABLED is off).
@@ -331,6 +332,13 @@ const routineExerciseSchema = z.object({
 	durationSeconds: nullableField(nonNegInt.max(2_147_483_647)),
 });
 
+const wireTimestamp = z.union([
+	isoDatetime,
+	nonNegInt.refine((ms: number) => Number.isFinite(new Date(ms).getTime()), {
+		message: "expected a valid epoch ms integer",
+	}),
+]);
+
 const customExerciseSchema = z.object({
 	clientId: z.string().min(1),
 	name: z.string().trim().min(1),
@@ -338,6 +346,10 @@ const customExerciseSchema = z.object({
 	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
 	equipment: nullableField(z.string()),
 	defaultCableConfig: z.string().nullish().transform((v) => v ?? "DOUBLE"),
+	archived: z.boolean().optional(),
+	deletedAt: nullableField(wireTimestamp),
+	updatedAt: nullableField(wireTimestamp),
+	createdAt: nullableField(wireTimestamp),
 });
 
 const routineSchema = z.object({
@@ -539,8 +551,6 @@ const personalRecordSchema = z.object({
 	updatedAt: nullableDatetime(),
 	deletedAt: nullableDatetime(),
 	localProfileId: localProfileIdSchema.nullable().optional(),
-	// Accepted for wire compatibility; personal_records has no workout_mode
-	// column, so the push handler can only preserve this through session_id.
 	workoutMode: nullableField(z.string()),
 });
 

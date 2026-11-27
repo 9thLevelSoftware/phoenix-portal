@@ -907,6 +907,9 @@ export type Database = {
 					body_weight_kg: number;
 					core_revision: number;
 					core_updated_at: string;
+					custom_equipment: NonNullable<Json>;
+					custom_equipment_revision: number;
+					custom_equipment_updated_at: string;
 					equipment_rack: NonNullable<Json>;
 					led_color_scheme_id: number;
 					led_preferences: NonNullable<Json>;
@@ -933,6 +936,9 @@ export type Database = {
 					body_weight_kg?: number;
 					core_revision?: number;
 					core_updated_at?: string;
+					custom_equipment?: NonNullable<Json>;
+					custom_equipment_revision?: number;
+					custom_equipment_updated_at?: string;
 					equipment_rack?: NonNullable<Json>;
 					led_color_scheme_id?: number;
 					led_preferences?: NonNullable<Json>;
@@ -958,6 +964,9 @@ export type Database = {
 					body_weight_kg?: number;
 					core_revision?: number;
 					core_updated_at?: string;
+					custom_equipment?: NonNullable<Json>;
+					custom_equipment_revision?: number;
+					custom_equipment_updated_at?: string;
 					equipment_rack?: NonNullable<Json>;
 					led_color_scheme_id?: number;
 					led_preferences?: NonNullable<Json>;
@@ -1238,6 +1247,7 @@ export type Database = {
 					user_id: string;
 					value: number;
 					weight_kg: number | null;
+					workout_mode: string | null;
 					workout_phase: string | null;
 				};
 				ComputedFields: never;
@@ -1259,6 +1269,7 @@ export type Database = {
 					user_id: string;
 					value: number;
 					weight_kg?: number | null;
+					workout_mode?: string | null;
 					workout_phase?: string | null;
 				};
 				Update: {
@@ -1279,6 +1290,7 @@ export type Database = {
 					user_id?: string;
 					value?: number;
 					weight_kg?: number | null;
+					workout_mode?: string | null;
 					workout_phase?: string | null;
 				};
 				Relationships: [
@@ -1651,6 +1663,7 @@ export type Database = {
 					per_set_rest: Json | null;
 					per_set_weights: Json | null;
 					pr_percentage: number | null;
+					rack_behavior_overrides: Json | null;
 					rep_count_timing: string | null;
 					reps: number;
 					rest_seconds: number;
@@ -1685,6 +1698,7 @@ export type Database = {
 					per_set_rest?: Json | null;
 					per_set_weights?: Json | null;
 					pr_percentage?: number | null;
+					rack_behavior_overrides?: Json | null;
 					rep_count_timing?: string | null;
 					reps?: number;
 					rest_seconds?: number;
@@ -1718,6 +1732,7 @@ export type Database = {
 					per_set_rest?: Json | null;
 					per_set_weights?: Json | null;
 					pr_percentage?: number | null;
+					rack_behavior_overrides?: Json | null;
 					rep_count_timing?: string | null;
 					reps?: number;
 					rest_seconds?: number;
@@ -3756,6 +3771,7 @@ export type Database = {
 					user_id: string;
 					value: number;
 					weight_kg: number | null;
+					workout_mode: string | null;
 					workout_phase: string | null;
 				}[];
 				SetofOptions: {
@@ -3792,6 +3808,7 @@ export type Database = {
 					user_id: string;
 					value: number;
 					weight_kg: number | null;
+					workout_mode: string | null;
 					workout_phase: string | null;
 				}[];
 				SetofOptions: {
@@ -4055,6 +4072,7 @@ export type Database = {
 					user_id: string;
 					value: number;
 					weight_kg: number | null;
+					workout_mode: string | null;
 					workout_phase: string | null;
 				}[];
 				SetofOptions: {
@@ -4316,6 +4334,10 @@ export type Database = {
 			user_subscription_tier: {
 				Args: Record<PropertyKey, never>;
 				Returns: string;
+			};
+			validate_custom_equipment_document: {
+				Args: { p_document: Json };
+				Returns: boolean;
 			};
 			verify_profile_recovery_source: {
 				Args: {

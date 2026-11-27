@@ -12776,3 +12776,326 @@ Deno.test("sortedUniqueIds: delete chunks run in one order regardless of payload
   assertEquals(sortedUniqueIds([c, a, b, a.toLowerCase()]).map((id) => id.toLowerCase()), [a.toLowerCase(), b, c]);
   assertEquals(sortedUniqueIds([b, c, a]), sortedUniqueIds([a, c, b]));
 });
+
+Deno.test("AUD-012: CUSTOM_EQUIPMENT preference mutation is accepted and invalid variants return VALIDATION_FAILED", async () => {
+  const validPayload = {
+    version: 1,
+    items: [{
+      token: "U_EZ_BAR",
+      label: "EZ Bar",
+      createdAt: 1791500000000,
+    }],
+  };
+  const mutation = {
+    localProfileId: "profile-a",
+    section: "CUSTOM_EQUIPMENT",
+    documentVersion: 1,
+    baseRevision: 0,
+    clientModifiedAt: "2026-07-11T12:00:00Z",
+    payload: validPayload,
+  };
+  const harness = makeHarness(undefined, {
+    rpcBehavior: async (name) => {
+      if (name === "mutate_local_profile_preference_section") {
+        return {
+          data: [{
+            accepted: true,
+            rejection_reason: null,
+            server_revision: 1,
+            canonical_section: {
+              localProfileId: "profile-a",
+              section: "CUSTOM_EQUIPMENT",
+              documentVersion: 1,
+              serverRevision: 1,
+              serverUpdatedAt: "2026-07-11T12:00:01.000Z",
+              payload: validPayload,
+            },
+          }],
+          error: null,
+        };
+      }
+      return { data: [], error: null };
+    },
+  });
+
+  const okRes = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profilePreferenceSections: [mutation],
+  }));
+  const okBody = await json(okRes);
+  assertEquals(okRes.status, 200, JSON.stringify(okBody));
+  assertEquals(
+    (okBody.canonicalProfilePreferenceSections as Array<Record<string, unknown>>),
+    [{
+      localProfileId: "profile-a",
+      section: "CUSTOM_EQUIPMENT",
+      documentVersion: 1,
+      serverRevision: 1,
+      serverUpdatedAt: "2026-07-11T12:00:01.000Z",
+      payload: validPayload,
+    }],
+  );
+  assertEquals(okBody.profilePreferenceRejections, []);
+
+  // Reserved slug & invalid token fail preference validation cleanly without 400ing the push.
+  const badRes = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    profilePreferenceSections: [{
+      ...mutation,
+      payload: {
+        version: 1,
+        items: [{ token: "LONG_BAR", label: "Long Bar", createdAt: 1791500000000 }],
+      },
+    }],
+  }));
+  const badBody = await json(badRes);
+  assertEquals(badRes.status, 200, JSON.stringify(badBody));
+  assertEquals(badBody.canonicalProfilePreferenceSections, []);
+  assertEquals(
+    badBody.profilePreferenceRejections,
+    [{
+      localProfileId: "profile-a",
+      section: "CUSTOM_EQUIPMENT",
+      serverRevision: 0,
+      reason: "VALIDATION_FAILED",
+    }],
+  );
+});
+
+Deno.test("AUD-010: push forwards workoutMode on both set-derived and dedicated personalRecords and preserves Two Clocks", async () => {
+  const store = personalRecordRpcStore();
+  const harness = makeHarness(undefined, { rpcBehavior: store.rpcBehavior });
+  const basePrSession = makePrSession();
+  const prSession = {
+    ...basePrSession,
+    workoutMode: "OLD_SCHOOL",
+    exercises: basePrSession.exercises.map((ex) => ({
+      ...ex,
+      sets: ex.sets.map((set) => ({ ...set, workoutMode: "ECHO" })),
+    })),
+  };
+
+  const setDerivedRes = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    sessions: [prSession],
+  }));
+  assertEquals(setDerivedRes.status, 200);
+  const rpcCall = harness.adminRpcCalls.find((c) =>
+    c.name === "upsert_set_derived_personal_records"
+  );
+  assert(rpcCall);
+  assertEquals(
+    (rpcCall.args.p_rows as Array<Record<string, unknown>>)[0].workout_mode,
+    "ECHO",
+  );
+
+  const dedicatedId = "00000000-0000-4000-8000-000000000910";
+  const clientUpdatedAt = "2026-07-11T12:34:56.000Z";
+  const dedicatedRes = await harness.handler(requestFromBody({
+    ...validPushBody(),
+    personalRecords: [{
+      id: dedicatedId,
+      exerciseName: "Bench Press",
+      recordType: "MAX_VOLUME",
+      value: 500,
+      weightKg: 50,
+      reps: 10,
+      workoutPhase: "COMBINED",
+      workoutMode: "TUT",
+      achievedAt: "2026-07-11T12:00:00.000Z",
+      updatedAt: clientUpdatedAt,
+    }],
+  }));
+  assertEquals(dedicatedRes.status, 200);
+  const prWrite = harness.adminWritePayloads.find((c) =>
+    c.table === "personal_records" && c.method === "upsert"
+  );
+  assert(prWrite);
+  const writtenRow = (prWrite.payload as Array<Record<string, unknown>>)[0];
+  assertEquals(writtenRow.workout_mode, "TUT");
+  assertEquals(writtenRow.updated_at, clientUpdatedAt);
+});
+
+Deno.test("AUD-041: routine exercise rackBehaviorOverrides preserves omitted rows and parses explicit updates", async () => {
+  const { rackBehaviorOverrides: _omitted, ...omittedExercise } = currentMobileRoutineExercise(
+    ROUTINE_EXERCISE_ID,
+  );
+  const omittedHarness = makeHarness();
+  const omittedRes = await omittedHarness.handler(
+    requestFromBody(routinePushBody([omittedExercise])),
+  );
+  assertEquals(omittedRes.status, 200);
+  const [omittedRow] = routineExerciseUpsertRows(omittedHarness);
+  assertEquals("rack_behavior_overrides" in omittedRow, false);
+
+  const mixedHarness = makeHarness(async () => VALID_AUTH_RESULT, {
+    tableResults: {
+      routine_exercises: storedRoutineExercises([{
+        id: ROUTINE_EXERCISE_ID,
+        drop_set_enabled: false,
+        drop_set_min_weight_kg: null,
+        duration_seconds: null,
+        rack_behavior_overrides: { "rack-existing": "ADDED_RESISTANCE" },
+      }]),
+    },
+  });
+  const mixedRes = await mixedHarness.handler(
+    requestFromBody(routinePushBody([
+      omittedExercise,
+      {
+        ...currentMobileRoutineExercise(TIMED_ROUTINE_EXERCISE_ID),
+        orderIndex: 1,
+        rackBehaviorOverrides: JSON.stringify({ "rack-1": "COUNTERWEIGHT" }),
+      },
+    ])),
+  );
+  assertEquals(mixedRes.status, 200);
+  const byId = new Map(
+    routineExerciseUpsertRows(mixedHarness).map((r) => [r.id, r]),
+  );
+  assertEquals(
+    byId.get(ROUTINE_EXERCISE_ID)?.rack_behavior_overrides,
+    { "rack-existing": "ADDED_RESISTANCE" },
+  );
+  assertEquals(
+    byId.get(TIMED_ROUTINE_EXERCISE_ID)?.rack_behavior_overrides,
+    { "rack-1": "COUNTERWEIGHT" },
+  );
+
+  const clearHarness = makeHarness();
+  const clearRes = await clearHarness.handler(
+    requestFromBody(routinePushBody([{
+      ...currentMobileRoutineExercise(ROUTINE_EXERCISE_ID),
+      rackBehaviorOverrides: null,
+    }])),
+  );
+  assertEquals(clearRes.status, 200);
+  const [clearedRow] = routineExerciseUpsertRows(clearHarness);
+  assertEquals(clearedRow.rack_behavior_overrides, null);
+});
+
+Deno.test("AUD-061: customExercises soft-delete sync respects LWW, prevents tombstone resurrection, and preserves backward compat", async () => {
+  // 1. Legacy client omitting archived/deletedAt/updatedAt/createdAt still works.
+  const legacyHarness = makeHarness();
+  const legacyRes = await legacyHarness.handler(requestFromBody({
+    ...validPushBody(),
+    customExercises: [{
+      clientId: "custom-legacy",
+      name: "Legacy Press",
+      muscleGroup: "Chest",
+      equipment: "HANDLES",
+      defaultCableConfig: "DOUBLE",
+    }],
+  }));
+  assertEquals(legacyRes.status, 200);
+  const legacyWrite = legacyHarness.adminWritePayloads.find((c) =>
+    c.table === "exercise_catalog" && c.method === "upsert"
+  );
+  assert(legacyWrite);
+  const [legacyRow] = legacyWrite.payload as Array<Record<string, unknown>>;
+  assertEquals(legacyRow.archived, false);
+  assertEquals(typeof legacyRow.updated_at, "string");
+  assertEquals(typeof legacyRow.created_at, "string");
+
+  // 2. Soft-delete with epoch ms deletedAt sets archived=true and ISO updated_at.
+  const deleteHarness = makeHarness();
+  const deletedMs = Date.parse("2026-07-15T12:00:00.000Z");
+  const createdMs = Date.parse("2026-07-01T12:00:00.000Z");
+  const deleteRes = await deleteHarness.handler(requestFromBody({
+    ...validPushBody(),
+    customExercises: [{
+      clientId: "custom-del",
+      name: "Deleted Press",
+      muscleGroup: "Chest",
+      equipment: "HANDLES",
+      defaultCableConfig: "DOUBLE",
+      deletedAt: deletedMs,
+      updatedAt: deletedMs,
+      createdAt: createdMs,
+    }],
+  }));
+  assertEquals(deleteRes.status, 200);
+  const deleteWrite = deleteHarness.adminWritePayloads.find((c) =>
+    c.table === "exercise_catalog" && c.method === "upsert"
+  );
+  assert(deleteWrite);
+  const [deletedRow] = deleteWrite.payload as Array<Record<string, unknown>>;
+  assertEquals(deletedRow.archived, true);
+  assertEquals(deletedRow.updated_at, "2026-07-15T12:00:00.000Z");
+  assertEquals(deletedRow.created_at, "2026-07-01T12:00:00.000Z");
+
+  // 3. Stale or undated client edit never resurrects an existing archived tombstone.
+  const staleHarness = makeHarness(undefined, {
+    catalogBehavior: (query) => {
+      if (query.calls.some((c) => c.method === "in")) {
+        return {
+          data: [{
+            id: "custom-tombstoned",
+            is_custom: true,
+            user_id: VALID_USER_ID,
+            archived: true,
+            created_at: "2026-07-01T00:00:00.000Z",
+            updated_at: "2026-07-15T12:00:00.000Z",
+          }],
+          error: null,
+        };
+      }
+      return undefined;
+    },
+  });
+  const staleRes = await staleHarness.handler(requestFromBody({
+    ...validPushBody(),
+    customExercises: [
+      {
+        clientId: "custom-tombstoned",
+        name: "Stale Edit",
+        muscleGroup: "Chest",
+        defaultCableConfig: "DOUBLE",
+        archived: false,
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    ],
+  }));
+  assertEquals(staleRes.status, 200);
+  assertEquals(
+    staleHarness.adminWritePayloads.filter((c) =>
+      c.table === "exercise_catalog" && c.method === "upsert"
+    ),
+    [],
+  );
+
+  const undatedHarness = makeHarness(undefined, {
+    catalogBehavior: (query) => {
+      if (query.calls.some((c) => c.method === "in")) {
+        return {
+          data: [{
+            id: "custom-tombstoned",
+            is_custom: true,
+            user_id: VALID_USER_ID,
+            archived: true,
+            created_at: "2026-07-01T00:00:00.000Z",
+            updated_at: "2026-07-15T12:00:00.000Z",
+          }],
+          error: null,
+        };
+      }
+      return undefined;
+    },
+  });
+  const undatedRes = await undatedHarness.handler(requestFromBody({
+    ...validPushBody(),
+    customExercises: [{
+      clientId: "custom-tombstoned",
+      name: "Old Client Edit",
+      muscleGroup: "Chest",
+      defaultCableConfig: "DOUBLE",
+    }],
+  }));
+  assertEquals(undatedRes.status, 200);
+  assertEquals(
+    undatedHarness.adminWritePayloads.filter((c) =>
+      c.table === "exercise_catalog" && c.method === "upsert"
+    ),
+    [],
+  );
+});

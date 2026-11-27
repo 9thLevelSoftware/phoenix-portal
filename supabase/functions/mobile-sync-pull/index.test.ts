@@ -319,6 +319,15 @@ const VBT_PREFERENCES = {
   dominatrixModeActive: false,
 };
 
+const CUSTOM_EQUIPMENT_PAYLOAD = {
+  version: 1,
+  items: [{
+    token: "U_EZ_BAR",
+    label: "EZ Bar",
+    createdAt: 1791500000000,
+  }],
+};
+
 function validPreferenceRow(): Record<string, unknown> {
   return {
     local_profile_id: VALID_PROFILE_ID,
@@ -341,6 +350,9 @@ function validPreferenceRow(): Record<string, unknown> {
     vbt_preferences: structuredClone(VBT_PREFERENCES),
     vbt_revision: 5,
     vbt_updated_at: "2026-07-15T10:05:00.9Z",
+    custom_equipment: structuredClone(CUSTOM_EQUIPMENT_PAYLOAD),
+    custom_equipment_revision: 6,
+    custom_equipment_updated_at: "2026-07-15T10:05:01Z",
   };
 }
 
@@ -1320,6 +1332,14 @@ Deno.test("first-page pull queries exact owner and profile and maps all five can
         preferences: VBT_PREFERENCES,
       },
     },
+    {
+      localProfileId: VALID_PROFILE_ID,
+      section: "CUSTOM_EQUIPMENT",
+      documentVersion: 1,
+      serverRevision: 6,
+      serverUpdatedAt: "2026-07-15T10:05:01.000Z",
+      payload: CUSTOM_EQUIPMENT_PAYLOAD,
+    },
   ]);
   const query = harness.adminCalls.find((call) =>
     call.kind === "from" && call.name === "local_profile_preferences"
@@ -1333,7 +1353,8 @@ Deno.test("first-page pull queries exact owner and profile and maps all five can
         "core_revision,core_updated_at,equipment_rack,rack_revision,rack_updated_at," +
         "workout_preferences,workout_revision,workout_updated_at," +
         "led_color_scheme_id,led_preferences,led_revision,led_updated_at," +
-        "vbt_enabled,vbt_preferences,vbt_revision,vbt_updated_at",
+        "vbt_enabled,vbt_preferences,vbt_revision,vbt_updated_at," +
+        "custom_equipment,custom_equipment_revision,custom_equipment_updated_at",
       ],
     },
     { name: "eq", args: ["user_id", VALID_USER_ID] },
@@ -4009,4 +4030,203 @@ Deno.test("pull serves the device shadow stats, never the derived columns", asyn
     lastWorkoutAt: "2026-07-10T10:00:00.000Z",
     updatedAt: "2026-07-10T00:00:00.000Z",
   });
+});
+
+Deno.test("AUD-010: pull emits workoutMode on personalRecords and defaults missing to null", async () => {
+  const prId1 = "00000000-0000-4000-8000-000000000101";
+  const prId2 = "00000000-0000-4000-8000-000000000102";
+  const harness = makeHarness(undefined, {
+    rpcResults: {
+      get_personal_records_excluding_ids: {
+        data: [
+          {
+            id: prId1,
+            user_id: VALID_USER_ID,
+            exercise_id: "bench_press",
+            local_profile_id: VALID_PROFILE_ID,
+            exercise_name: "Bench Press",
+            muscle_group: "Chest",
+            record_type: "MAX_VOLUME",
+            value: 500,
+            weight_kg: 50,
+            reps: 10,
+            workout_phase: "COMBINED",
+            workout_mode: "ECHO",
+            session_id: null,
+            achieved_at: "2026-07-10T00:00:00.000Z",
+            updated_at: "2026-07-10T00:00:01.000Z",
+            deleted_at: null,
+          },
+          {
+            id: prId2,
+            user_id: VALID_USER_ID,
+            exercise_id: null,
+            local_profile_id: VALID_PROFILE_ID,
+            exercise_name: "Squat",
+            muscle_group: "Legs",
+            record_type: "MAX_WEIGHT",
+            value: 100,
+            weight_kg: 100,
+            reps: 5,
+            workout_phase: "COMBINED",
+            session_id: null,
+            achieved_at: "2026-07-10T00:00:00.000Z",
+            updated_at: "2026-07-10T00:00:02.000Z",
+            deleted_at: null,
+          },
+        ],
+        error: null,
+      },
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  const prs = body.personalRecords as Array<Record<string, unknown>>;
+  assertEquals(prs.length, 2);
+  assertEquals(prs[0].workoutMode, "ECHO");
+  assertEquals(prs[1].workoutMode, null);
+});
+
+Deno.test("AUD-041: pull emits stringified rackBehaviorOverrides or null on routine exercises", async () => {
+  const routineId = "00000000-0000-4000-8000-000000000201";
+  const ex1Id = "00000000-0000-4000-8000-000000000202";
+  const ex2Id = "00000000-0000-4000-8000-000000000203";
+  const harness = makeHarness(undefined, {
+    rpcImpl: (name) => {
+      if (name === "get_routines_excluding_ids") {
+        return {
+          data: [{
+            id: routineId,
+            user_id: VALID_USER_ID,
+            name: "Rack Test Routine",
+            description: "",
+            exercise_count: 2,
+            estimated_duration: 300,
+            times_completed: 0,
+            is_favorite: false,
+            updated_at: "2026-07-10T00:00:00.000Z",
+          }],
+          error: null,
+        };
+      }
+      return undefined;
+    },
+    fromPages: {
+      routine_exercises: [{
+        data: [
+          {
+            id: ex1Id,
+            routine_id: routineId,
+            exercise_id: "bench_press",
+            name: "Bench Press",
+            muscle_group: "Chest",
+            sets: 3,
+            reps: 10,
+            weight: 40,
+            rest_seconds: 90,
+            mode: "OLD_SCHOOL",
+            order_index: 0,
+            rack_behavior_overrides: { "rack-1": "COUNTERWEIGHT" },
+            catalog: { display_name: "Bench Press", equipment: ["BENCH"] },
+          },
+          {
+            id: ex2Id,
+            routine_id: routineId,
+            exercise_id: null,
+            name: "Squat",
+            muscle_group: "Legs",
+            sets: 3,
+            reps: 10,
+            weight: 60,
+            rest_seconds: 90,
+            mode: "OLD_SCHOOL",
+            order_index: 1,
+            rack_behavior_overrides: null,
+            catalog: null,
+          },
+        ],
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  const routines = body.routines as Array<{ exercises: Array<Record<string, unknown>> }>;
+  assertEquals(routines.length, 1);
+  assertEquals(
+    routines[0].exercises[0].rackBehaviorOverrides,
+    JSON.stringify({ "rack-1": "COUNTERWEIGHT" }),
+  );
+  assertEquals(routines[0].exercises[1].rackBehaviorOverrides, null);
+});
+
+Deno.test("AUD-061: pull emits archived, deletedAt, updatedAt, and createdAt on customExercises", async () => {
+  const harness = makeHarness(undefined, {
+    fromPages: {
+      exercise_catalog: [{
+        data: [
+          {
+            id: "custom-live",
+            name: "Live Custom",
+            display_name: "Live Custom",
+            muscle_group: "Chest",
+            equipment: ["HANDLES"],
+            default_cable_config: "DOUBLE",
+            archived: false,
+            created_at: "2026-07-01T00:00:00.000Z",
+            updated_at: "2026-07-02T00:00:00.000Z",
+          },
+          {
+            id: "custom-deleted",
+            name: "Deleted Custom",
+            display_name: "Deleted Custom",
+            muscle_group: "Back",
+            equipment: ["LONG_BAR"],
+            default_cable_config: "DOUBLE",
+            archived: true,
+            created_at: "2026-07-01T00:00:00.000Z",
+            updated_at: "2026-07-05T12:00:00.000Z",
+          },
+        ],
+        error: null,
+      }],
+    },
+  });
+
+  const response = await harness.handler(requestFromBody(validPullBody()));
+  const body = await json(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.customExercises, [
+    {
+      clientId: "custom-live",
+      name: "Live Custom",
+      displayName: "Live Custom",
+      muscleGroup: "Chest",
+      equipment: "HANDLES",
+      defaultCableConfig: "DOUBLE",
+      archived: false,
+      deletedAt: null,
+      updatedAt: "2026-07-02T00:00:00.000Z",
+      createdAt: "2026-07-01T00:00:00.000Z",
+    },
+    {
+      clientId: "custom-deleted",
+      name: "Deleted Custom",
+      displayName: "Deleted Custom",
+      muscleGroup: "Back",
+      equipment: "LONG_BAR",
+      defaultCableConfig: "DOUBLE",
+      archived: true,
+      deletedAt: "2026-07-05T12:00:00.000Z",
+      updatedAt: "2026-07-05T12:00:00.000Z",
+      createdAt: "2026-07-01T00:00:00.000Z",
+    },
+  ]);
 });

@@ -628,7 +628,8 @@ async function mobileSyncPullHandler(
             'core_revision,core_updated_at,equipment_rack,rack_revision,rack_updated_at,' +
             'workout_preferences,workout_revision,workout_updated_at,' +
             'led_color_scheme_id,led_preferences,led_revision,led_updated_at,' +
-            'vbt_enabled,vbt_preferences,vbt_revision,vbt_updated_at',
+            'vbt_enabled,vbt_preferences,vbt_revision,vbt_updated_at,' +
+            'custom_equipment,custom_equipment_revision,custom_equipment_updated_at',
           )
           .eq('user_id', verifiedUserId)
           .eq('local_profile_id', profileId)
@@ -1052,6 +1053,11 @@ async function mobileSyncPullHandler(
             echoLevel: re.echo_level,
             perSetEchoLevels: re.per_set_echo_levels ?? null,
             warmupSets: re.warmup_sets ?? null,
+            rackBehaviorOverrides: re.rack_behavior_overrides != null
+              ? (typeof re.rack_behavior_overrides === 'string'
+                ? re.rack_behavior_overrides
+                : JSON.stringify(re.rack_behavior_overrides))
+              : null,
             dropSetEnabled: re.drop_set_enabled ?? false,
             dropSetMinWeightKg: re.drop_set_min_weight_kg ?? null,
             // Timed exercises (null = rep-based). A response key, so shipping
@@ -1558,6 +1564,7 @@ async function mobileSyncPullHandler(
         weightKg: pr.weight_kg,
         reps: pr.reps,
         workoutPhase: pr.workout_phase,
+        workoutMode: pr.workout_mode ?? null,
         sessionId: pr.session_id,
         achievedAt: pr.achieved_at,
         updatedAt: pr.updated_at,
@@ -1610,14 +1617,21 @@ async function mobileSyncPullHandler(
         customExercisesPage.splice(remainingPageSize);
       }
 
-      customExerciseDtos = customExercisesPage.map((ce: Record<string, unknown>) => ({
-        clientId: ce.id,
-        name: ce.name,
-        displayName: ce.display_name,
-        muscleGroup: ce.muscle_group,
-        equipment: Array.isArray(ce.equipment) ? ce.equipment.join(",") : "",
-        defaultCableConfig: ce.default_cable_config,
-      }));
+      customExerciseDtos = customExercisesPage.map((ce: Record<string, unknown>) => {
+        const archived = Boolean(ce.archived);
+        return {
+          clientId: ce.id,
+          name: ce.name,
+          displayName: ce.display_name,
+          muscleGroup: ce.muscle_group,
+          equipment: Array.isArray(ce.equipment) ? ce.equipment.join(",") : "",
+          defaultCableConfig: ce.default_cable_config,
+          archived,
+          deletedAt: archived ? (ce.updated_at ?? null) : null,
+          updatedAt: ce.updated_at ?? null,
+          createdAt: ce.created_at ?? null,
+        };
+      });
       remainingPageSize -= customExerciseDtos.length;
     }
 

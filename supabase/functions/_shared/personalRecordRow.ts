@@ -57,6 +57,7 @@ export interface PrSetInput {
 	prVolume?: number | null;
 	weightKg: number;
 	actualReps: number;
+	workoutMode?: string | null;
 }
 
 export interface PrExerciseInput {
@@ -69,6 +70,7 @@ export interface PrExerciseInput {
 export interface PrSessionInput {
 	id?: string;
 	startedAt: string;
+	workoutMode?: string | null;
 	exercises: PrExerciseInput[];
 }
 
@@ -89,6 +91,7 @@ export interface PersonalRecordRow {
 	updated_at?: string;
 	deleted_at?: string | null;
 	workout_phase: string;
+	workout_mode?: string | null;
 	/**
 	 * Which push path produced the row (personal_records.source). Set-derived
 	 * rows are written through upsert_set_derived_personal_records, whose
@@ -623,6 +626,7 @@ export function buildDedicatedPersonalRecordRows(
 			achieved_at: record.achievedAt ?? new Date().toISOString(),
 			deleted_at: record.deletedAt ?? null,
 			workout_phase: record.workoutPhase ?? "COMBINED",
+			workout_mode: record.workoutMode ?? null,
 			source: "dedicated",
 		};
 
@@ -685,6 +689,7 @@ export function buildPersonalRecordRows(
 					session_id: session.id ?? null,
 					achieved_at: session.startedAt,
 					workout_phase: set.prPhase ?? "COMBINED",
+					workout_mode: set.workoutMode ?? session.workoutMode ?? null,
 					source: "set_derived",
 				});
 			}
