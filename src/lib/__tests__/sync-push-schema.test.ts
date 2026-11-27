@@ -625,6 +625,12 @@ describe("pushPayloadSchema", () => {
 		).toBe("unknown");
 	});
 
+	it("returns unknown when the push omits platform", () => {
+		expect(pushPayloadSchema.parse({ deviceId: "d1" }).platform).toBe(
+			"unknown",
+		);
+	});
+
 	it("reports duplicate session exercise IDs before bulk upsert", () => {
 		const parsed = pushPayloadSchema.parse({
 			deviceId: "d1",

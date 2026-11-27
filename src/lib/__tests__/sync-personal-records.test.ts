@@ -264,6 +264,7 @@ describe("buildDedicatedPersonalRecordRows", () => {
 				updated_at: "2026-04-21T12:30:00.000Z",
 				deleted_at: "2026-04-21T12:31:00.000Z",
 				workout_phase: "CONCENTRIC",
+				workout_mode: null,
 				source: "dedicated",
 			},
 		]);
@@ -1260,5 +1261,72 @@ describe("personal_records session exercise display-name hydration", () => {
 			exercise_name: "Cable Curl",
 			exercise_id: "catalog-cable-curl",
 		});
+	});
+});
+
+describe("AUD-010: personal_records workout_mode propagation", () => {
+	it("carries workoutMode on dedicated PR rows and falls back to null when omitted", () => {
+		const out = buildDedicatedPersonalRecordRows(
+			[
+				{
+					id: "11111111-1111-4111-8111-111111111111",
+					exerciseName: "Bench Press",
+					recordType: "MAX_VOLUME",
+					value: 500,
+					weightKg: 50,
+					reps: 10,
+					workoutMode: "ECHO",
+					achievedAt: "2026-04-21T12:00:00.000Z",
+				},
+				{
+					id: "22222222-2222-4222-8222-222222222222",
+					exerciseName: "Squat",
+					recordType: "MAX_WEIGHT",
+					value: 100,
+					achievedAt: "2026-04-21T12:00:00.000Z",
+				},
+			],
+			USER_ID,
+			PROFILE_ID,
+		);
+
+		expect(out[0]?.workout_mode).toBe("ECHO");
+		expect(out[1]?.workout_mode).toBeNull();
+	});
+
+	it("carries set.workoutMode with session.workoutMode fallback on set-derived PR rows", () => {
+		const out = buildPersonalRecordRows(
+			[
+				{
+					startedAt: "2026-04-21T12:00:00.000Z",
+					workoutMode: "OLD_SCHOOL",
+					exercises: [
+						{
+							name: "Bench Press",
+							sets: [
+								{
+									isPr: true,
+									prType: "MAX_VOLUME",
+									prVolume: 500,
+									weightKg: 50,
+									actualReps: 10,
+									workoutMode: "ECHO",
+								},
+								{
+									isPr: true,
+									prType: "MAX_WEIGHT",
+									weightKg: 80,
+									actualReps: 5,
+								},
+							],
+						},
+					],
+				},
+			],
+			USER_ID,
+			PROFILE_ID,
+		);
+
+		expect(out.map((r) => r.workout_mode)).toEqual(["ECHO", "OLD_SCHOOL"]);
 	});
 });

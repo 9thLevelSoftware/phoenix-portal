@@ -40,7 +40,7 @@ export function PrivacyPolicy() {
 						Project Phoenix - Companion App
 					</p>
 					<p className="text-sm text-muted-foreground mb-8">
-						Effective Date: February 20, 2026
+						Effective Date: November 6, 2026
 					</p>
 
 					{/* Summary Box */}
@@ -249,6 +249,18 @@ export function PrivacyPolicy() {
 										Consent — you explicitly authorize each integration
 										connection. You may withdraw consent by disconnecting the
 										integration at any time (Article 6(1)(a))
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Data sharing endpoints (optional):
+										</span>{" "}
+										Consent — data is sent to an endpoint only after you add it
+										and choose what to share. You may withdraw consent by
+										pausing or deleting the endpoint at any time (Article
+										6(1)(a))
 									</span>
 								</li>
 								<li className="flex items-start gap-2">
@@ -470,6 +482,23 @@ export function PrivacyPolicy() {
 								display name and workout statistics to other users. You can
 								control this in your profile privacy settings.
 							</p>
+							<p className="text-secondary-foreground leading-relaxed mt-3">
+								<span className="font-semibold">
+									Data sharing you set up yourself.
+								</span>{" "}
+								If you add a data sharing endpoint in your profile settings, we
+								send the kinds of data you select (for example workouts,
+								personal records, routines and training cycles) to the web
+								address you provide, each time that data changes. This is off
+								unless you turn it on, only you can configure it for your
+								account, and each endpoint receives only your own data. We never
+								send raw force-curve telemetry, activities imported from Strava,
+								your payment details or other users' data this way. The
+								recipient is chosen by you and does not act on our behalf: once
+								data reaches your endpoint, how it is stored and used is between
+								you and whoever operates it. You can pause or delete an endpoint
+								at any time, and sharing stops immediately.
+							</p>
 						</section>
 
 						<section>
@@ -572,6 +601,18 @@ export function PrivacyPolicy() {
 										monitoring data (when consented to) is processed on servers
 										in the United States. Sentry relies on Standard Contractual
 										Clauses for EEA/UK data transfers
+									</span>
+								</li>
+								<li className="flex items-start gap-2">
+									<span className="text-primary mt-1">•</span>
+									<span>
+										<span className="font-semibold">
+											Data sharing endpoints:
+										</span>{" "}
+										If you set one up, the data you select is sent to wherever
+										that endpoint is hosted, which may be outside your country
+										of residence. That transfer is made at your direction, to a
+										recipient you chose
 									</span>
 								</li>
 							</ul>

@@ -60,9 +60,12 @@ export const localProfileIdSchema = z
  * Platform normalizer. Accepts any input; always returns a canonical
  * "android" | "ios" | "unknown". Delegates to `normalizeSyncPlatform` so
  * blank and unknown inputs stay one source of truth.
+ * `.optional()` keeps an absent key valid: a bare `z.unknown()` object key is
+ * required in newer zod, so a push without `platform` would 400.
  */
 export const platformSchema = z
 	.unknown()
+	.optional()
 	.transform<"android" | "ios" | "unknown">((value: unknown) =>
 		normalizeSyncPlatform(value),
 	);
@@ -245,6 +248,7 @@ const sessionSchema = z.object({
 	name: nullableField(z.string()),
 	startedAt: datetimeWithDefault(() => new Date().toISOString()),
 	updatedAt: nullableDatetime(),
+	completedAt: nullableDatetime(),
 	// DB NOT-NULL-DEFAULT numeric columns: coerce nullish → 0.
 	// durationSeconds: see sessionDurationSecondsField above — negative
 	// values are accepted here and normalized to 0 in the handler.
@@ -287,6 +291,32 @@ const repTelemetrySchema = z.object({
 	cable: nullableField(z.string()),
 });
 
+// Keep these names aligned with mobile's RackItemBehavior enum.
+const rackItemBehavior = z.enum(["ADDED_RESISTANCE", "COUNTERWEIGHT", "DISPLAY_ONLY"]);
+const rackBehaviorOverridesSchema = z.string().transform((wire: string, ctx: z.RefinementCtx) => {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(wire);
+	} catch {
+		// Use the same validation error for malformed JSON and invalid maps.
+	}
+	if (
+		parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) &&
+		Object.values(parsed).every((behavior: unknown) =>
+			rackItemBehavior.safeParse(behavior).success
+		)
+	) {
+		// Validate the values without reconstructing the object so every JSON
+		// string key survives, including names inherited by ordinary objects.
+		return parsed as Record<string, z.infer<typeof rackItemBehavior>>;
+	}
+	ctx.addIssue({
+		code: z.ZodIssueCode.custom,
+		message: "expected a JSON object mapping rack item IDs to supported behaviors",
+	});
+	return z.NEVER;
+});
+
 const routineExerciseSchema = z.object({
 	id: uuid,
 	routineId: uuid,
@@ -315,6 +345,7 @@ const routineExerciseSchema = z.object({
 	echoLevel: nullableField(z.string()),
 	perSetEchoLevels: nullableField(z.string()),
 	warmupSets: nullableField(z.string()),
+	rackBehaviorOverrides: nullableField(rackBehaviorOverridesSchema),
 	// Do not manufacture `false` for an omitted flag. Older mobile builds omit
 	// this field; defaulting it would upsert `drop_set_enabled=false` over a
 	// value written by the portal or a newer device (SYNC_LWW_ENABLED is off).
@@ -327,6 +358,13 @@ const routineExerciseSchema = z.object({
 	durationSeconds: nullableField(nonNegInt.max(2_147_483_647)),
 });
 
+const wireTimestamp = z.union([
+	isoDatetime,
+	nonNegInt.refine((ms: number) => Number.isFinite(new Date(ms).getTime()), {
+		message: "expected a valid epoch ms integer",
+	}),
+]);
+
 const customExerciseSchema = z.object({
 	clientId: z.string().min(1),
 	name: z.string().trim().min(1),
@@ -334,6 +372,10 @@ const customExerciseSchema = z.object({
 	muscleGroup: z.string().nullish().transform((v) => v ?? "General"),
 	equipment: nullableField(z.string()),
 	defaultCableConfig: z.string().nullish().transform((v) => v ?? "DOUBLE"),
+	archived: z.boolean().optional(),
+	deletedAt: nullableField(wireTimestamp),
+	updatedAt: nullableField(wireTimestamp),
+	createdAt: nullableField(wireTimestamp),
 });
 
 const routineSchema = z.object({
@@ -535,8 +577,6 @@ const personalRecordSchema = z.object({
 	updatedAt: nullableDatetime(),
 	deletedAt: nullableDatetime(),
 	localProfileId: localProfileIdSchema.nullable().optional(),
-	// Accepted for wire compatibility; personal_records has no workout_mode
-	// column, so the push handler can only preserve this through session_id.
 	workoutMode: nullableField(z.string()),
 });
 
