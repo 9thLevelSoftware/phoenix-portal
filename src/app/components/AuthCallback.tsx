@@ -130,7 +130,7 @@ export function AuthCallback() {
 					}
 
 					if (error) {
-						setErrorMessage(error.message);
+						setErrorMessage(GENERIC_AUTH_FAILURE_MESSAGE);
 						return;
 					}
 
