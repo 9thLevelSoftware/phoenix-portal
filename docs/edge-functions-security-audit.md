@@ -368,6 +368,29 @@ try {
 
 ---
 
+## Addendum: functions added after this audit
+
+> **Added 2026-11-06. Not part of the 2026-03-28 audit.** The functions below
+> did not exist when this report was written and were not reviewed by its
+> auditor. This is a pointer to where their security model is stated, not a
+> finding.
+
+#### `webhook-endpoints` and `deliver-webhooks` (data sharing)
+
+| Topic | Where it is decided |
+| --- | --- |
+| Authentication | `webhook-endpoints`: gateway JWT plus `auth.getUser()`; the user id comes only from the token. `deliver-webhooks`: `x-cron-secret` or service-role bearer, stated above its `verify_jwt = false` block in `supabase/config.toml` |
+| User isolation | Every query carries the JWT user id (`webhook-endpoints/index.ts`). Payload reads use the claimed delivery's owner id (`_shared/webhookPayload.ts`). A composite foreign key ties each delivery to its endpoint's owner (`20261106120000`) |
+| Tier | FLAME in `requireSubscription`, and again in SQL when deliveries are claimed |
+| Secrets | Generated server-side, returned once, AES-GCM at rest in a table no browser role can read (`webhook_endpoint_secrets`) |
+| Outbound requests (SSRF) | `_shared/webhookTarget.ts` is the only code that fetches a user-chosen URL. **Its header states a residual risk that is not closed:** DNS rebinding, bounded but not eliminated |
+| Rate limiting | General key, plus a tighter key for the actions that contact a user-chosen host |
+
+Tests that fail if these break are named in `CLAUDE.md` under "Data sharing
+(outbound webhooks)" and in `docs/data-sharing-webhooks.md`.
+
+---
+
 ## Recommendations Summary
 
 ### High Priority (Address Soon)

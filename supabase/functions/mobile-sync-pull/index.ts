@@ -226,17 +226,23 @@ interface DecodedCursor {
   type: EntityType;
   updatedAt: string; // raw timestamptz / ISO; never Date-normalized
   id: string;
+  clock?: 'server';
 }
 
 /**
  * Encodes pagination state into an opaque cursor string.
- * Format: base64(JSON({type, updatedAt, id}))
+ * Format: base64(JSON({type, updatedAt, id, clock?}))
  */
 function encodeCursor(type: EntityType, updatedAt: string, id: string): string {
   // Keep the raw DB timestamptz string. Date#toISOString() truncates to
   // milliseconds and makes `updated_at > cursor` match an entire µs cluster.
-  const payload = JSON.stringify({ type, updatedAt, id });
-  return btoa(payload);
+  const payload = JSON.stringify({
+    type, updatedAt, id, ...(type === 'customExercises' ? { clock: 'server' } : {}),
+  });
+  // Custom exercise IDs are arbitrary text. Escape UTF-16 code units for btoa.
+  return btoa(payload.replace(/[^\x00-\x7f]/g, (unit) =>
+    '\\u' + unit.charCodeAt(0).toString(16).padStart(4, '0')
+  ));
 }
 
 /**
@@ -628,7 +634,8 @@ async function mobileSyncPullHandler(
             'core_revision,core_updated_at,equipment_rack,rack_revision,rack_updated_at,' +
             'workout_preferences,workout_revision,workout_updated_at,' +
             'led_color_scheme_id,led_preferences,led_revision,led_updated_at,' +
-            'vbt_enabled,vbt_preferences,vbt_revision,vbt_updated_at',
+            'vbt_enabled,vbt_preferences,vbt_revision,vbt_updated_at,' +
+            'custom_equipment,custom_equipment_revision,custom_equipment_updated_at',
           )
           .eq('user_id', verifiedUserId)
           .eq('local_profile_id', profileId)
@@ -1052,6 +1059,13 @@ async function mobileSyncPullHandler(
             echoLevel: re.echo_level,
             perSetEchoLevels: re.per_set_echo_levels ?? null,
             warmupSets: re.warmup_sets ?? null,
+            // SQL NULL preserves older mobile state. An explicit clear is
+            // stored as an empty JSON object and sent as the string "{}".
+            rackBehaviorOverrides: re.rack_behavior_overrides != null
+              ? (typeof re.rack_behavior_overrides === 'string'
+                ? re.rack_behavior_overrides
+                : JSON.stringify(re.rack_behavior_overrides))
+              : null,
             dropSetEnabled: re.drop_set_enabled ?? false,
             dropSetMinWeightKg: re.drop_set_min_weight_kg ?? null,
             // Timed exercises (null = rep-based). A response key, so shipping
@@ -1507,13 +1521,13 @@ async function mobileSyncPullHandler(
       if (error) return readFailure('personal records', error, cors);
       const unseenRows = (data as Record<string, unknown>[]) ?? [];
 
-      // The parity RPC intentionally excludes IDs the device already has.
-      // That is correct for active rows, but a later tombstone must be sent
-      // back to that same known ID or the client would retain it forever.
-      let knownTombstones: Record<string, unknown>[] = [];
+      // The parity RPC excludes IDs the device already has. Recent tombstones
+      // and live set-derived rows with a stored mode also need to reach peers
+      // holding the same ID, within the same cursor window.
+      let knownChanges: Record<string, unknown>[] = [];
       if (knownPRIds.length > 0) {
-        const { data: tombstoneData, error: tombstoneError } = await supabase
-          .rpc('get_personal_record_tombstones', {
+        const { data: changesData, error: changesError } = await supabase
+          .rpc('get_known_personal_record_changes', {
             p_user_id: userId,
             p_known_ids: knownPRIds,
             p_last_sync_at: staleSinceISO,
@@ -1522,11 +1536,11 @@ async function mobileSyncPullHandler(
             p_cursor_id: cursorId,
             p_limit: remainingPageSize + 1,
           });
-        if (tombstoneError) return readFailure('personal-record tombstones', tombstoneError, cors);
-        knownTombstones = (tombstoneData as Record<string, unknown>[]) ?? [];
+        if (changesError) return readFailure('personal-record changes', changesError, cors);
+        knownChanges = (changesData as Record<string, unknown>[]) ?? [];
       }
       const rowsById = new Map<string, Record<string, unknown>>();
-      for (const row of [...unseenRows, ...knownTombstones]) {
+      for (const row of [...unseenRows, ...knownChanges]) {
         const id = typeof row.id === 'string' ? row.id : null;
         if (id) rowsById.set(id, row);
       }
@@ -1558,6 +1572,7 @@ async function mobileSyncPullHandler(
         weightKg: pr.weight_kg,
         reps: pr.reps,
         workoutPhase: pr.workout_phase,
+        workoutMode: pr.workout_mode ?? null,
         sessionId: pr.session_id,
         achievedAt: pr.achieved_at,
         updatedAt: pr.updated_at,
@@ -1571,21 +1586,29 @@ async function mobileSyncPullHandler(
     // 6. Return user's custom exercises from catalog
     // =========================================================================
     if (!hasMore && startTypeIndex <= ENTITY_ORDER.indexOf('customExercises') && remainingPageSize > 0) {
-      const { cursorUpdatedAt, cursorId } = buildCursorCondition(cursor, 'customExercises');
+      // Cursors minted before the clock migration sort by the client clock.
+      // Restart this section to avoid dropping rows at the clock transition.
+      const { cursorUpdatedAt, cursorId } = buildCursorCondition(
+        cursor?.clock === 'server' ? cursor : null, 'customExercises'
+      );
 
       let customExercisesQuery = supabase
         .from("exercise_catalog")
         .select("*")
         .eq("is_custom", true)
         .eq("user_id", userId)
-        .gt("updated_at", staleSinceISO)
-        .order("updated_at", { ascending: true })
+        .gt("sync_updated_at", staleSinceISO)
+        .order("sync_updated_at", { ascending: true })
         .order("id", { ascending: true })
         .limit(remainingPageSize + 1);
 
       if (cursorUpdatedAt && cursorId) {
+        // PostgREST quoted filter values escape only backslash and quote.
+        const quoteFilter = (value: string) => `"${value.replace(/[\\"]/g, "\\$&")}"`;
+        const timestamp = quoteFilter(cursorUpdatedAt);
+        const id = quoteFilter(cursorId);
         customExercisesQuery = customExercisesQuery.or(
-          `updated_at.gt.${cursorUpdatedAt},and(updated_at.eq.${cursorUpdatedAt},id.gt.${cursorId})`
+          `sync_updated_at.gt.${timestamp},and(sync_updated_at.eq.${timestamp},id.gt.${id})`
         );
       }
 
@@ -1606,18 +1629,25 @@ async function mobileSyncPullHandler(
       if (customExercisesPage.length > remainingPageSize) {
         hasMore = true;
         const lastCustomExercise = customExercisesPage[remainingPageSize - 1];
-        nextCursor = encodeCursor('customExercises', String(lastCustomExercise.updated_at), lastCustomExercise.id as string);
+        nextCursor = encodeCursor('customExercises', String(lastCustomExercise.sync_updated_at), lastCustomExercise.id as string);
         customExercisesPage.splice(remainingPageSize);
       }
 
-      customExerciseDtos = customExercisesPage.map((ce: Record<string, unknown>) => ({
-        clientId: ce.id,
-        name: ce.name,
-        displayName: ce.display_name,
-        muscleGroup: ce.muscle_group,
-        equipment: Array.isArray(ce.equipment) ? ce.equipment.join(",") : "",
-        defaultCableConfig: ce.default_cable_config,
-      }));
+      customExerciseDtos = customExercisesPage.map((ce: Record<string, unknown>) => {
+        const archived = Boolean(ce.archived);
+        return {
+          clientId: ce.id,
+          name: ce.name,
+          displayName: ce.display_name,
+          muscleGroup: ce.muscle_group,
+          equipment: Array.isArray(ce.equipment) ? ce.equipment.join(",") : "",
+          defaultCableConfig: ce.default_cable_config,
+          archived,
+          deletedAt: archived ? (ce.updated_at ?? null) : null,
+          updatedAt: ce.updated_at ?? null,
+          createdAt: ce.created_at ?? null,
+        };
+      });
       remainingPageSize -= customExerciseDtos.length;
     }
 
